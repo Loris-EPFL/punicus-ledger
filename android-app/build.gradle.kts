@@ -3,6 +3,7 @@
 // come out of it: the release one (eth.serotine) and the debug one (eth.serotine.debug,
 // its own label and amber icon), see the build types below.
 
+import org.gradle.api.artifacts.component.ModuleComponentSelector
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -142,13 +143,13 @@ kotlin {
 // merge (the `gradle pins` runs of #281). Every edge to JNA in these classpaths takes
 // the AAR artifact, so the graph is the same with and without the locks.
 configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
-    resolutionStrategy.dependencySubstitution {
-        substitute(module("net.java.dev.jna:jna"))
-            .using(
-                variant(module("net.java.dev.jna:jna:${libs.versions.jna.get()}")) {
-                    artifactSelection { selectArtifact("aar", "aar", null) }
-                },
-            ).because("JNA's classes come from its AAR alone on Android")
+    resolutionStrategy.dependencySubstitution.all {
+        val selector = requested
+        if (selector is ModuleComponentSelector &&
+            selector.group == "net.java.dev.jna" && selector.module == "jna"
+        ) {
+            artifactSelection { selectArtifact("aar", "aar", null) }
+        }
     }
 }
 

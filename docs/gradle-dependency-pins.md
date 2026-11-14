@@ -113,7 +113,9 @@ per-configuration exclude or substitution. The comments in the build files
 have the detail; revisit them on the move to AGP 9 and Gradle 9.
 
 The settings classpath is not locked: `settings.gradle.kts` applies no
-plugin today. A settings plugin added later is hash-pinned like everything
+plugin today. `settings-gradle.lockfile` exists all the same: Gradle writes
+it for the version catalog's internal configuration, which resolves
+nothing (`empty=incomingCatalogForLibs0`). A settings plugin added later is hash-pinned like everything
 else; locking its version takes a `buildscript` block in `settings.gradle.kts`
 that turns locking on for that classpath.
 

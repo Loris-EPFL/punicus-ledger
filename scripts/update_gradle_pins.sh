@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerate the Gradle dependency pins (#281; carried over from Myotis, its
-# #734): the per-project lockfiles (gradle.lockfile, buildscript-gradle.lockfile,
-# settings-gradle.lockfile) and gradle/verification-metadata.xml.
+# #734): the per-project lockfiles (gradle.lockfile, buildscript-gradle.lockfile)
+# and gradle/verification-metadata.xml.
 # docs/gradle-dependency-pins.md is the narrative; this is the one command it
 # points to.
 #
@@ -17,7 +17,8 @@
 #                                            metadata, and the lockfiles its
 #                                            first host wrote
 #     --allow-repin                          accept a change to a hash that is
-#                                            ALREADY pinned (see below)
+#                                            ALREADY pinned (see below); never a
+#                                            change to the <configuration> block
 #
 # Existing pins only grow. After either mode, the result is compared with the
 # metadata committed at HEAD (scripts/check_pins_additive.py): new entries
@@ -71,10 +72,20 @@ trap 'rm -f "$committed"' EXIT
 git show "HEAD:$metadata" > "$committed" 2>/dev/null || : > "$committed"
 existing_pins_unchanged() {
     [[ "$prune" == 0 && -s "$committed" ]] || return 0
-    if ! python3 -I scripts/check_pins_additive.py "$committed" "$metadata"; then
-        if [[ "$allow_repin" == 1 ]]; then
+    local rc=0
+    python3 -I scripts/check_pins_additive.py "$committed" "$metadata" || rc=$?
+    if [[ "$rc" != 0 ]]; then
+        # 2: only artifact entries changed, which --allow-repin may accept. 1: the
+        # <configuration> block changed or the file has a shape the guard does not
+        # model: nothing waives that; restore or fix the block by hand.
+        if [[ "$allow_repin" == 1 && "$rc" == 2 ]]; then
             echo "update_gradle_pins.sh: --allow-repin: keeping the changed pins above. Review them like code." >&2
             return 0
+        fi
+        if [[ "$rc" != 2 ]]; then
+            echo "update_gradle_pins.sh: the verification settings changed, or the file is malformed (above)." >&2
+            echo "            --allow-repin does not cover this: restore the <configuration> block from HEAD." >&2
+            exit 1
         fi
         echo "update_gradle_pins.sh: the result changes pins that were already committed (above)." >&2
         echo "            New pins only add entries. Bytes that changed under a pinned version are what" >&2
@@ -134,11 +145,11 @@ args=(--console=plain)
 # hashes are written (lenient only warns, and only for this run).
 # --write-locks rewrites the lock state of every configuration it resolves, so
 # a removed dependency leaves its lockfile here.
-# :android-app:processDebugResources as in the `gradle pins` chain: AGP creates
-# some configurations (androidApis) and settles some graphs only once its
-# tasks are configured, and the lock must match what the hash run sees.
-./gradlew resolveAllDependencies :android-app:processDebugResources --write-locks \
-    --dependency-verification lenient "${args[@]}"
+# The same task list in all three runs: AGP creates some configurations
+# (androidApis) only once its tasks are configured, so the set of locked
+# configurations depends on it. --continue: every project's gaps in one run.
+walk=(resolveAllDependencies :android-app:processDebugResources)
+./gradlew "${walk[@]}" --write-locks --dependency-verification lenient --continue "${args[@]}"
 
 # Then the hashes, with the NEW locks in force — a separate run on purpose:
 # without lock constraints, conflict resolution also fetches the metadata of
@@ -155,15 +166,17 @@ args=(--console=plain)
 # files are never accessed and never recorded — and a fresh checkout then
 # fails on them. Refreshing re-fetches and re-parses the metadata, so every
 # file a cold resolution touches is recorded.
-tasks=(resolveAllDependencies)
-[[ "$quick" == 1 ]] || tasks+=(assemble lint :desktop-app:checkRuntime)
-./gradlew "${tasks[@]}" --write-verification-metadata sha256 --refresh-dependencies "${args[@]}"
+# :desktop-app:prepareAppResources runs stageMyotisLibrary, which resolves this
+# host's Myotis natives jar through a detached configuration.
+tasks=("${walk[@]}")
+[[ "$quick" == 1 ]] || tasks+=(assemble lint :desktop-app:prepareAppResources :desktop-app:checkRuntime)
+./gradlew "${tasks[@]}" --write-verification-metadata sha256 --refresh-dependencies --continue "${args[@]}"
 
 existing_pins_unchanged
 
 # Then a VERIFYING walk with both pins in force: proves the result is complete
 # for this host (every configuration resolves, matches its lock and has a hash).
-./gradlew resolveAllDependencies "${args[@]}" -q
+./gradlew "${walk[@]}" --continue "${args[@]}" -q
 
 echo
 echo "pins regenerated for this host. Changed:"

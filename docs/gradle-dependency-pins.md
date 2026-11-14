@@ -12,7 +12,7 @@ Walletbeat's *Release process* attribute, which asks for dependency locking.
 |---|---|---|
 | `gradle/wrapper/gradle-wrapper.properties` | the Gradle distribution (`distributionSha256Sum`) | by hand, from `https://services.gradle.org/distributions/gradle-<v>-bin.zip.sha256` |
 | `<project>/gradle.lockfile` (one per project, plus the root's) | the exact module version every configuration resolved to, transitives included | `--write-locks` |
-| `buildscript-gradle.lockfile`, `settings-gradle.lockfile` | the root buildscript classpath (every plugin) and the settings classpath | `--write-locks` |
+| `buildscript-gradle.lockfile` | the root buildscript classpath (every plugin) | `--write-locks` |
 | `gradle/verification-metadata.xml` | the SHA-256 of every artifact and metadata file (`.jar`, `.aar`, `.klib`, `.module`, `.pom`) of every external module, on every CI host | `--write-verification-metadata sha256` |
 
 The lock catches a **version** moving: a transitive version range, or a
@@ -41,8 +41,9 @@ resolves every resolvable configuration, three times:
 1. Writing the locks. Verification is `lenient` for this run only, because a
    bumped dependency has no hash yet.
 2. Writing this host's hashes with the new locks in force, plus
-   `assemble lint :desktop-app:checkRuntime`, whose plugins resolve tools only
-   while they run (`--quick` skips them). A separate run, because without lock
+   `assemble lint :desktop-app:prepareAppResources :desktop-app:checkRuntime`,
+   whose plugins and build scripts resolve tools and the Myotis natives jar
+   only while they run (`--quick` skips them). A separate run, because without lock
    constraints conflict resolution also fetches the metadata of every
    candidate version it then discards.
 3. Verifying, with both pins in force.
@@ -95,14 +96,21 @@ Their versions still follow the pinned Compose version, and their bytes are
 still pinned per host in the metadata. A lock mismatch on one host means a new
 host-specific module: add it to that list; do not write locks on that host.
 
-The same list holds two modules that are not host-specific:
-`kotlin-stdlib-common` and libsodium-bindings' `resource-loader`. Their
-presence in `:android-app`'s runtime classpaths differs between the run that
-writes the locks and the runs that have them in force (Gradle 8.14 with AGP
-8.13), so no lock state is right for both. Their versions are still fixed
-(by kotlin-stdlib's alignment and by libsodium-bindings' POM) and their bytes
-are pinned. The comment in `build.gradle.kts` has the detail; revisit it on
-the move to AGP 9 and Gradle 9.
+The same list holds one module that is not host-specific,
+`kotlin-stdlib-common`. Its presence in `:android-app`'s runtime classpaths
+differs between the run that writes the locks and the runs that have them in
+force (Gradle 8.14 with AGP 8.13), so no lock state is right for both. Its
+version is still fixed by kotlin-stdlib's alignment, and its bytes are pinned.
+libsodium-bindings' `resource-loader` showed the same flip, for another
+reason: `:data` excluded it on one edge only, and the locks' constraints
+brought it in by another path. It is now excluded from every runtime
+classpath (root `build.gradle.kts`). The comments there have the detail;
+revisit both on the move to AGP 9 and Gradle 9.
+
+The settings classpath is not locked: `settings.gradle.kts` applies no
+plugin today. A settings plugin added later is hash-pinned like everything
+else; locking its version takes a `buildscript` block in `settings.gradle.kts`
+that turns locking on for that classpath.
 
 `--write-verification-metadata` only ever adds entries, so entries for
 versions nothing resolves any more stay behind. `--prune` deletes the file

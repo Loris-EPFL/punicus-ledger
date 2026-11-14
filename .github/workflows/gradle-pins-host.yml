@@ -50,6 +50,14 @@ on:
         required: false
         type: string
         default: ''
+      write_tasks:
+        description: >-
+          Tasks run in the hash pass only, for artifacts a task resolves through a detached
+          configuration while it runs (the Myotis natives jar, Compose's JDK probe, lint's and
+          assemble's tools). They change no lock state, so the lock pass leaves them out.
+        required: false
+        type: string
+        default: ''
       canary:
         description: Also prove that tampered pins fail the check (once pins are committed)
         required: false
@@ -77,6 +85,7 @@ jobs:
         shell: bash
     env:
       EXTRA_TASKS: ${{ inputs.extra_tasks }}
+      WRITE_TASKS: ${{ inputs.write_tasks }}
       HOST: ${{ inputs.host }}
     steps:
       # Git for Windows checks text files out with CRLF by default, and the bash steps run
@@ -123,6 +132,14 @@ jobs:
             *) echo "::error::the JDK is $arch, and this host is meant to be $WANT"; exit 1 ;;
           esac
 
+      # The JDK 21 toolchain is the JDK this job runs on, as in desktop-dmg.yml: stageMyotisLibrary
+      # (in write_tasks) refuses a toolchain of another architecture than the Gradle JVM's, which
+      # an x64 JDK under Rosetta would otherwise meet. --continue: every project's gaps in one
+      # run, not only the first failing project's.
+      - name: Gradle arguments
+        run: |
+          echo "GRADLE_ARGS=--continue --console=plain -Porg.gradle.java.installations.auto-detect=false -Porg.gradle.java.installations.auto-download=false -Porg.gradle.java.installations.paths=$JAVA_HOME" >> "$GITHUB_ENV"
+
       # COLD cache, deliberately. Gradle reads a parent POM or an imported BOM only while it first
       # parses a module's POM, then caches the parsed result, so a warm cache never touches those
       # files again: a check run there cannot notice that they are unpinned. Only a cold check
@@ -150,8 +167,8 @@ jobs:
         run: |
           for attempt in 1 2; do
             log="$RUNNER_TEMP/pins-check-$attempt.log"
-            # shellcheck disable=SC2086 # EXTRA_TASKS is a task list
-            ./gradlew resolveAllDependencies $EXTRA_TASKS --console=plain 2>&1 | tee "$log" \
+            # shellcheck disable=SC2086 # EXTRA_TASKS and GRADLE_ARGS are word lists
+            ./gradlew resolveAllDependencies $EXTRA_TASKS $GRADLE_ARGS 2>&1 | tee "$log" \
               && exit 0
             if grep -qE 'Dependency pins do not match|failed verification|dependency lock state' "$log"; then
               echo "::error::a pin failure on attempt $attempt: not retried (a warm cache would hide a missing pin)"
@@ -179,7 +196,8 @@ jobs:
           # Restore on ANY exit: the tampered files must not reach the steps that follow.
           trap 'git checkout -- "$lock" "$meta"' EXIT
           expect_failure() {
-            if out=$(./gradlew :domain:resolveAllDependencies --console=plain 2>&1); then
+            # shellcheck disable=SC2086
+            if out=$(./gradlew :domain:resolveAllDependencies $GRADLE_ARGS 2>&1); then
               echo "::error::$1 passed the check — the pin-failure classifier in build.gradle.kts no longer matches"
               exit 1
             fi
@@ -258,21 +276,17 @@ jobs:
         env:
           WRITE_LOCKS: ${{ inputs.write_locks }}
         run: |
-          for attempt in 1 2; do
-            if [ "$WRITE_LOCKS" = true ]; then
-              # With the same extra tasks as the hash pass: AGP creates some configurations
-              # (androidApis) and settles some graphs only once its tasks are configured, so a lock
-              # pass without them writes lock state the hash pass then disagrees with.
-              # shellcheck disable=SC2086
-              ./gradlew resolveAllDependencies $EXTRA_TASKS --write-locks --dependency-verification lenient \
-                --console=plain || { sleep 20; continue; }
-            fi
+          # No retry: a pin failure is not transient, and a second attempt on a warm cache can
+          # pass where a cold one fails.
+          if [ "$WRITE_LOCKS" = true ]; then
+            # The same task list as the check: AGP creates some configurations (androidApis) only
+            # once its tasks are configured, so the set of locked configurations depends on it.
             # shellcheck disable=SC2086
-            ./gradlew resolveAllDependencies $EXTRA_TASKS --write-verification-metadata sha256 \
-              --refresh-dependencies --console=plain && exit 0
-            sleep 20
-          done
-          exit 1
+            ./gradlew resolveAllDependencies $EXTRA_TASKS --write-locks --dependency-verification lenient $GRADLE_ARGS
+          fi
+          # shellcheck disable=SC2086
+          ./gradlew resolveAllDependencies $EXTRA_TASKS $WRITE_TASKS --write-verification-metadata sha256 \
+            --refresh-dependencies $GRADLE_ARGS
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() && steps.contribute.outcome == 'success' }}

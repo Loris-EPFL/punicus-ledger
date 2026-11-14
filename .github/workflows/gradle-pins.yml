@@ -23,10 +23,12 @@
 # reviews the hash diff like code, and commits it: pins that a bumped plugin's code produced are
 # never pushed unreviewed.
 #
-# What the walk does not see: an artifact resolved only while a task RUNS (a plugin's detached
-# configuration). aapt2 is the per-host one, covered by `extra_tasks` below; Compose's JDK version
-# probe (:desktop-app:checkRuntime) comes from the update script's task pass, and the desktop
-# packaging workflows prove it.
+# What the walk does not see: an artifact resolved only while a task RUNS (a detached
+# configuration). aapt2 is per OS, covered by `extra_tasks` below. `write_tasks` runs the update
+# script's task pass in the hash pass: assemble and lint on Linux x64, and on every desktop host
+# :desktop-app:prepareAppResources (stageMyotisLibrary resolves that host's Myotis natives jar)
+# and :desktop-app:checkRuntime (Compose's JDK probe). The check does not run them, so a gap there
+# shows in the packaging workflows; the desktop ones prove it.
 #
 # Triggers: the files that can change the graph or its pins. Push scoped to main so a branch push
 # with an open PR runs once (under pull_request); pull_request unscoped, so part PRs into feature
@@ -77,6 +79,7 @@ jobs:
       upload_as: gradle-pins-linux-x64
       write_locks: true
       extra_tasks: ":android-app:processDebugResources"
+      write_tasks: "assemble lint :desktop-app:prepareAppResources :desktop-app:checkRuntime"
       canary: true
 
   windows-x64:
@@ -88,6 +91,7 @@ jobs:
       host: windows-x64
       previous: gradle-pins-linux-x64
       upload_as: gradle-pins-windows-x64
+      write_tasks: ":desktop-app:prepareAppResources :desktop-app:checkRuntime"
       extra_tasks: ":android-app:processDebugResources"
 
   # GitHub's arm64 runner is free for public repositories only, and a private repository would
@@ -102,6 +106,7 @@ jobs:
       host: linux-arm64
       previous: gradle-pins-windows-x64
       upload_as: gradle-pins-linux-arm64
+      write_tasks: ":desktop-app:prepareAppResources :desktop-app:checkRuntime"
 
   macos-x64:
     needs: linux-arm64
@@ -113,6 +118,7 @@ jobs:
       java_architecture: x64
       previous: ${{ github.event.repository.private && 'gradle-pins-windows-x64' || 'gradle-pins-linux-arm64' }}
       upload_as: gradle-pins-macos-x64
+      write_tasks: ":desktop-app:prepareAppResources :desktop-app:checkRuntime"
 
   # Last on a Unix host on purpose: Gradle rewrites the whole file on every
   # --write-verification-metadata run, so the merged upload carries LF line endings whatever
@@ -126,4 +132,5 @@ jobs:
       host: macos-arm64
       previous: gradle-pins-macos-x64
       upload_as: gradle-pins-merged
+      write_tasks: ":desktop-app:prepareAppResources :desktop-app:checkRuntime"
       extra_tasks: ":android-app:processDebugResources"

@@ -103,8 +103,8 @@ catalog states. Bump both repositories together.
 (Owner's request, 2026-11-09, #281; carried over from Myotis's #734.)
 docs/gradle-dependency-pins.md has the detail.
 
-- Lockfiles (`gradle.lockfile` per project, `buildscript-gradle.lockfile`,
-  `settings-gradle.lockfile`) pin every version, transitives included.
+- Lockfiles (`gradle.lockfile` per project, `buildscript-gradle.lockfile`)
+  pin every version, transitives included.
   `gradle/verification-metadata.xml` pins every artifact's SHA-256, per CI
   host. The wrapper pins the distribution (`distributionSha256Sum`).
 - A new or bumped dependency, plugins included, fails the build until its

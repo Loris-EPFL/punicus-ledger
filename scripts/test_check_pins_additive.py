@@ -54,17 +54,17 @@ class Additive(unittest.TestCase):
 
     def test_a_changed_hash_fails(self):
         code, out = self.check(doc(comps=OLD_COMPS.replace("11" * 32, "ff" * 32)))
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         self.assertIn("pinned artifact entry changed: g:a:1 a-1.jar", out)
 
     def test_an_also_trust_fails(self):
         widened = OLD_COMPS.replace('origin="test"/>', 'origin="test"><also-trust value="' + "ee" * 32 + '"/></sha256>', 1)
         code, out = self.check(doc(comps=widened))
-        self.assertEqual(code, 1, out)
+        self.assertEqual(code, 2, out)
         self.assertIn("pinned artifact entry changed", out)
 
     def test_a_removed_pin_fails(self):
-        self.assertEqual(self.check(doc(comps=component("g", "a", "1", {"a-1.jar": "11" * 32})))[0], 1)
+        self.assertEqual(self.check(doc(comps=component("g", "a", "1", {"a-1.jar": "11" * 32})))[0], 2)
 
     def test_a_loosened_configuration_fails(self):
         code, out = self.check(doc(conf=CONF.replace("<verify-metadata>true", "<verify-metadata>false")))
@@ -72,6 +72,12 @@ class Additive(unittest.TestCase):
         self.assertIn("the <configuration> block changed", out)
 
     # --- the shapes the comparison does not model
+
+    def test_a_loosened_configuration_with_a_changed_hash_is_fatal(self):
+        conf = CONF.replace("<verify-metadata>true", "<verify-metadata>false")
+        comps = OLD_COMPS.replace("11" * 32, "33" * 32)
+        code, out = self.check(doc(conf=conf, comps=comps))
+        self.assertEqual(code, 1, out)
 
     def test_a_second_configuration_block_fails(self):
         extra = '<configuration><trusted-artifacts><trust group=".*" regex="true"/></trusted-artifacts></configuration>\n'

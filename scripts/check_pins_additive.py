@@ -14,8 +14,12 @@ new versions bring. So the new file must
     <also-trust> alternates added, no duplicate entries: a bump never needs to
     re-hash or widen a version that was already pinned.
 
-Anything else (verification turned off, a trusted-artifact wildcard added, a
-pinned hash replaced) exits 1 and names the change.
+Anything else exits non-zero and names the change: 2 when only artifact
+entries changed (a pinned hash replaced or widened, an entry removed or
+duplicated), the one kind `update_gradle_pins.sh --allow-repin` may accept; 1
+for everything that loosens verification itself (the <configuration> block
+changed, verification turned off, a trusted-artifact wildcard added) or a file
+of a shape this script does not model, which nothing waives.
 
 Before comparing, both files must have exactly the SHAPE this script models,
 because Gradle reads more than that: its reader goes by element name with
@@ -115,6 +119,11 @@ def main(old_path, new_path):
         problems.append("a <configuration> block is missing")
     elif canonical(old_conf) != canonical(new_conf):
         problems.append("the <configuration> block changed (verification settings, trusted artifacts or keys)")
+    if problems:
+        # Fatal, whatever else changed: --allow-repin never waives these (exit 1).
+        for p in problems:
+            print("check_pins_additive: " + p, file=sys.stderr)
+        return 1
 
     old_arts, new_arts = artifacts(old), artifacts(new)
     for key, copies in sorted(new_arts.items()):
@@ -132,9 +141,11 @@ def main(old_path, new_path):
             problems.append("pinned artifact entry changed: " + label)
 
     if problems:
+        # Only artifact entries changed: the one kind update_gradle_pins.sh --allow-repin
+        # may accept, after the cause is known (exit 2).
         for p in problems:
             print("check_pins_additive: " + p, file=sys.stderr)
-        return 1
+        return 2
     print("check_pins_additive: OK — {} new artifact pin(s), nothing existing changed".format(
         len(set(new_arts) - set(old_arts))))
     return 0

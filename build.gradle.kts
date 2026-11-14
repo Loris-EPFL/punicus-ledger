@@ -50,20 +50,14 @@ allprojects {
             listOf(
                 "org.jetbrains.compose.desktop:desktop-jvm-*",
                 "org.jetbrains.skiko:skiko-awt-runtime-*",
-                // Two modules whose presence in :android-app's runtime classpaths flips
-                // between the run that writes the locks and every run after it, which has
-                // the locks in force (Gradle 8.14 with AGP 8.13's compile/runtime classpath
-                // alignment; seen in the first `gradle pins` runs of #281): the lock pass
-                // records kotlin-stdlib-common, which a locked run then no longer selects,
-                // and misses libsodium-bindings' resource-loader (excluded on :data's edge
-                // to it), which a locked run then selects. No lock state can be right for
-                // both, so they stay out of it. Their versions are still fixed:
-                // kotlin-stdlib-common is aligned to the pinned Kotlin version by
-                // kotlin-stdlib's own constraints, and resource-loader is a fixed version
-                // in libsodium-bindings' POM. Their bytes are still pinned in
+                // kotlin-stdlib-common: the run that writes the locks finds it in
+                // :android-app's runtime classpaths, and every run with those locks in
+                // force no longer selects it (Gradle 8.14 with AGP 8.13; seen in the first
+                // `gradle pins` runs of #281). No lock state is right for both, so it stays
+                // out of it. Its version is still fixed (kotlin-stdlib's own constraints
+                // align it to the pinned Kotlin version) and its bytes are still pinned in
                 // verification-metadata.xml. Revisit on the AGP 9 / Gradle 9 move.
                 "org.jetbrains.kotlin:kotlin-stdlib-common",
-                "com.goterl:resource-loader",
             ),
         )
         // DEFAULT lock mode, not STRICT: STRICT fails any configuration without
@@ -72,6 +66,17 @@ allprojects {
         // have none). resolveAllDependencies enforces STRICT's rule instead,
         // in the `gradle pins` check: a configuration that resolves without lock
         // state is a pin failure there.
+    }
+
+    // libsodium-bindings' resource loader stays out of every runtime classpath. :data
+    // already excludes it on its edge to the bindings (data/build.gradle.kts: nothing
+    // calls the bindings' own loader), but an edge exclude holds only while every path
+    // to the module carries it, and with the lock's constraints in force another path
+    // brought it back into :android-app's runtime classpaths, the APK's among them (the
+    // first `gradle pins` runs of #281). Excluded per configuration, the graph is the
+    // same with and without the locks.
+    configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
+        exclude(group = "com.goterl", module = "resource-loader")
     }
 
     // Resolves every resolvable configuration of this project (and of its
@@ -220,7 +225,10 @@ allprojects {
                         val locked = locks != null && conf.name in locks
                         logger.warn(
                             "resolveAllDependencies: ${project.path}:${conf.name} skipped" +
-                                (if (locked) " (has lock state, not checked here)" else "") + " — $causes",
+                                (if (locked) " (has lock state, not checked here)" else "") +
+                                // The first line only: a variant-mismatch cause lists every
+                                // variant of the module, some 300 lines per configuration.
+                                " — ${causes.lineSequence().first().take(300)}",
                         )
                     }
                 }

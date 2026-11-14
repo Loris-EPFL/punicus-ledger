@@ -1,5 +1,8 @@
 package eth.serotine.data.keys
 
+import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppIsolation
+import eth.serotine.domain.model.PerAppPath
 import kotlinx.serialization.Serializable
 
 /**
@@ -14,11 +17,13 @@ import kotlinx.serialization.Serializable
  * DEK'    AES-256-GCM(KEK, DEK),             aad = version, address, hardware tag, salt, ops, mem
  * ```
  *
- * The envelope also names the account [index] of the seed it is filed for ([SealedSeed.index],
- * BIP-44's `m/44'/60'/0'/0/index`; 0, the first, when absent). It is not bound as additional
- * data, so envelopes sealed before it existed still open: signing derives the key at that index
- * and refuses one that is not the account the envelope is filed under, so an index edited on disk
- * signs nothing.
+ * The envelope also names the account of the seed it is filed for ([SealedSeed.path]): its [SealedSeed.index],
+ * BIP-44's `m/44'/60'/0'/0/index` (0, the first, when absent), or a per-app address's [SealedSeed.perApp],
+ * `m/44'/60'/a'/b'/c'` (docs/keys-and-signing.md, *Per-app addresses*). And it names its phrase
+ * ([SealedSeed.phrase], the first account's address), absent from envelopes sealed before it existed. None of
+ * these is bound as additional data, so envelopes sealed before they existed still open: signing derives the key
+ * at that path, and refuses one that is not the account the envelope is filed under or whose phrase is not the one
+ * named, so a path or a phrase edited on disk signs nothing.
  *
  * Both factors are necessary (rule 1): the password is mixed into the KEK, never compared.
  * The salt and the Argon2id parameters are bound as the DEK wrap's additional data and
@@ -65,7 +70,8 @@ internal object Envelope {
     }
 
     /**
-     * [seed] sealed for [address], its account [index], under [password] and [hardware]. [withDek] is handed the new
+     * [seed] sealed for [address], the account at [path] of the phrase whose first account is [phrase], under
+     * [password] and [hardware]. [withDek] is handed the new
      * DEK before it is zeroed, for the biometric path to wrap it too (rule 4: its own key, the
      * password path untouched); it must not keep it. The password is stretched first, by
      * [stretch], so [Argon2idOutOfMemory] leaves before anything else is made.
@@ -77,10 +83,10 @@ internal object Envelope {
         hardware: HardwareSecret?,
         cost: Cost,
         stretch: PasswordStretch = PasswordStretch.Sodium,
-        index: Int = 0,
+        path: AccountPath = AccountPath.Ordinary(0),
+        phrase: String? = null,
         withDek: (ByteArray) -> Unit = {},
     ): SealedSeed {
-        require(index >= 0) { "a non-hardened index" }
         val salt = EnvelopeCrypto.randomBytes(SALT_BYTES)
         val hardwareTag = hardware?.tag ?: NO_HARDWARE
         val kek = kek(password, salt, cost.opsLimit, cost.memLimitBytes, hardware, stretch)
@@ -105,7 +111,9 @@ internal object Envelope {
                 ).toHex(),
                 seedNonce = seedNonce.toHex(),
                 seed = EnvelopeCrypto.aesGcmSeal(dek, seedNonce, seed, seedAad(address)).toHex(),
-                index = index,
+                index = (path as? AccountPath.Ordinary)?.index ?: 0,
+                perApp = (path as? AccountPath.PerApp)?.path?.let { PerAppIndices(it.account, it.change, it.index) },
+                phrase = phrase,
             )
         } finally {
             kek.fill(0)
@@ -116,14 +124,16 @@ internal object Envelope {
     /**
      * Whether [sealed] is an envelope this code may try to open with [hardware], judged
      * without the password: this version, this device's hardware tag, parameters within the
-     * floor and the ceiling, a well-formed salt and nonces, a non-hardened index, and — when [address] is given —
+     * floor and the ceiling, a well-formed salt and nonces, a path in range ([SealedSeed.path]), a phrase that is
+     * an address or none, and — when [address] is given —
      * that address, the one its file is named after.
      */
     fun canOpen(sealed: SealedSeed, hardware: HardwareSecret?, address: String? = null): Boolean =
         sealed.version == VERSION &&
             sealed.hardware == (hardware?.tag ?: NO_HARDWARE) &&
             withinBounds(sealed.opsLimit, sealed.memLimitBytes) &&
-            sealed.index >= 0 &&
+            sealed.path() != null &&
+            (sealed.phrase == null || Address.parse(sealed.phrase)?.hex == sealed.phrase) &&
             (address == null || sealed.address == address) &&
             hexOfLength(sealed.salt, SALT_BYTES) &&
             hexOfLength(sealed.dekNonce, NONCE_BYTES) &&
@@ -301,7 +311,9 @@ internal object Envelope {
 /**
  * An envelope as it is stored: everything hex, nothing secret in the clear. [index] is the account
  * of the seed it is filed for, left out when it is the first (0), as every envelope sealed before
- * further accounts could be derived is.
+ * further accounts could be derived is. [perApp] is a per-app address's path instead, left out for
+ * an ordinary account; [phrase] the address of the phrase's first account, left out by envelopes
+ * sealed before it was written.
  */
 @Serializable
 internal class SealedSeed(
@@ -316,4 +328,21 @@ internal class SealedSeed(
     val seedNonce: String,
     val seed: String,
     val index: Int = 0,
-)
+    val perApp: PerAppIndices? = null,
+    val phrase: String? = null,
+) {
+    /**
+     * The account's path in its seed, or null when it is out of range or both [index] and [perApp] name one: such an
+     * envelope is damaged.
+     */
+    fun path(): AccountPath? {
+        val app = perApp ?: return if (index >= 0) AccountPath.Ordinary(index) else null
+        if (index != 0) return null
+        val inRange = app.a >= AppIsolation.ACCOUNT_FLOOR && app.b >= 0 && app.c >= 0
+        return if (inRange) AccountPath.PerApp(PerAppPath(app.a, app.b, app.c)) else null
+    }
+}
+
+/** A per-app address's path as an envelope stores it: `m/44'/60'/[a]'/[b]'/[c]'`. */
+@Serializable
+internal class PerAppIndices(val a: Int, val b: Int, val c: Int)

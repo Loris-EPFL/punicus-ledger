@@ -1,6 +1,10 @@
 package eth.serotine.data.keys
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
+import eth.serotine.domain.model.AppIsolation
+import eth.serotine.domain.model.PerAppPath
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
@@ -14,6 +18,7 @@ import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.PasswordCost
+import eth.serotine.domain.repository.PerAppDerivation
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import fr.acinq.secp256k1.Secp256k1
@@ -536,6 +541,177 @@ class EnvelopeKeyStoreTest {
 
         assertEquals(Signing.Unavailable, store.sign(hardhatSecond, digest, Unlock.WithPassword(password)))
         assertEquals(KeyDerivation.Unavailable, store.deriveAccount(hardhatSecond, password, setOf(hardhatAddress)))
+    }
+
+    // --- Per-app addresses (docs/keys-and-signing.md, *Per-app addresses*).
+
+    private fun host(name: String): AppHost = (AppHost.parse(name) as AppHostResult.Host).host
+
+    // The fixed vectors of docs/keys-and-signing.md for Hardhat's phrase, computed independently of this code.
+    private val perAppVectors = mapOf(
+        "example.com" to "0xD95Eed45757974E165fd937990362A47aeC0C4c9",
+        "app.uniswap.org" to "0x71324bAd1dFD6129fb591115e7156211a5592148",
+        "walletbeat.eth.limo" to "0xb25C58C595AD12B8A6C5e980f5e0457716A8F37b",
+        "app.safe.global" to "0x126d22A926D830F06023094e0A4Ac5bc50703A6e",
+        "localhost" to "0xb95bA35cf5b2bA6D0E44f640837e97E6945FDF09",
+    )
+    private val exampleAddress = Address.of(perAppVectors.getValue("example.com"))
+    private val examplePath = PerAppPath(1_336_343_364, 399_755_631, 110_655_970)
+
+    /** [address]'s envelope rewritten on disk as [edit] makes it. */
+    private fun rewrite(address: Address, edit: (SealedSeed) -> SealedSeed) {
+        val edited = edit(sealedIn(envelopeOf(address)))
+        envelopeOf(address).writeText(Json.encodeToString(SealedSeed.serializer(), edited))
+    }
+
+    /** This envelope with its path and phrase as given, everything else as it was. */
+    private fun SealedSeed.with(
+        index: Int = this.index,
+        perApp: PerAppIndices? = this.perApp,
+        phrase: String? = this.phrase,
+    ) = SealedSeed(
+        version, address, hardware, salt, opsLimit, memLimitBytes, dekNonce, dek, seedNonce, seed,
+        index, perApp, phrase,
+    )
+
+    @Test
+    fun perAppAddressesAreTheFixedVectors() {
+        val seed = Bip39.seed(hardhat.words)
+        perAppVectors.forEach { (name, expected) ->
+            val path = AccountPath.PerApp(AppIsolation.pathOf(host(name)))
+            assertEquals(Address.of(expected), addressOf(seed, path), name)
+        }
+    }
+
+    @Test
+    fun aPerAppAddressIsSealedInAnEnvelopeOfItsOwnThatNamesItsPathAndPhraseAndSigns() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(hardhatAddress)).phrase, "every new envelope names it")
+
+        assertEquals(
+            PerAppDerivation.Stored(exampleAddress, examplePath, hardhatAddress, KeyProtection.PASSWORD_ONLY),
+            store.derivePerApp(hardhatAddress, host("example.com"), password),
+        )
+        val sealed = sealedIn(envelopeOf(exampleAddress))
+        assertEquals(listOf(1_336_343_364, 399_755_631, 110_655_970), sealed.perApp!!.let { listOf(it.a, it.b, it.c) })
+        assertEquals(0, sealed.index)
+        assertFalse("index" in envelopeOf(exampleAddress).readText(), "a per-app envelope names no index")
+        assertEquals(hardhatAddress.hex, sealed.phrase)
+
+        val signed = store.sign(exampleAddress, digest, Unlock.WithPassword(password))
+        assertIs<Signing.Signed>(signed)
+        assertTrue(signs(signed.signature, exampleAddress))
+        // A per-app address is an account of its phrase like any other: further accounts derive from it.
+        assertEquals(
+            KeyDerivation.Stored(hardhatSecond, 1, KeyProtection.PASSWORD_ONLY),
+            store.deriveAccount(exampleAddress, password, held = setOf(hardhatAddress)),
+        )
+        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(hardhatSecond)).phrase)
+    }
+
+    @Test
+    fun aPerAppAddressMadeBeforeIsKeptAndComesBackFromAnyAccountOfItsPhrase() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        store.derivePerApp(hardhatAddress, host("example.com"), password)
+        store.deriveAccount(hardhatAddress, password, held = setOf(hardhatAddress))
+        val before = envelopeOf(exampleAddress).readText()
+
+        assertEquals(
+            PerAppDerivation.Stored(exampleAddress, examplePath, hardhatAddress, KeyProtection.PASSWORD_ONLY),
+            store.derivePerApp(hardhatSecond, host("example.com"), password),
+        )
+        assertEquals(before, envelopeOf(exampleAddress).readText(), "not sealed again")
+        assertEquals(
+            Address.of(perAppVectors.getValue("app.uniswap.org")),
+            (store.derivePerApp(hardhatSecond, host("app.uniswap.org"), password) as PerAppDerivation.Stored).address,
+            "another host, another address",
+        )
+    }
+
+    @Test
+    fun aPerAppAddressIsRestoredFromThePhraseAlone() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        store.derivePerApp(hardhatAddress, host("example.com"), password)
+        store.delete(exampleAddress)
+        store.delete(hardhatAddress)
+        assertEquals(0, directory.list()!!.count { it.endsWith(".seed") })
+
+        store.importMnemonic(hardhat, password)
+        assertEquals(
+            PerAppDerivation.Stored(exampleAddress, examplePath, hardhatAddress, KeyProtection.PASSWORD_ONLY),
+            store.derivePerApp(hardhatAddress, host("example.com"), password),
+        )
+        assertIs<Signing.Signed>(store.sign(exampleAddress, digest, Unlock.WithPassword(password)))
+    }
+
+    @Test
+    fun aPerAppDerivationNeedsTheWalletPasswordAndAStoredKey() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+
+        assertEquals(
+            PerAppDerivation.WrongPassword,
+            store.derivePerApp(hardhatAddress, host("example.com"), WalletPassword("not the password")),
+        )
+        assertEquals(PerAppDerivation.NoKey, store.derivePerApp(abandonAddress, host("example.com"), password))
+        assertEquals(1, directory.list()!!.count { it.endsWith(".seed") }, "nothing stored")
+    }
+
+    @Test
+    fun aPerAppPathEditedOnDiskSignsNothing() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        store.derivePerApp(hardhatAddress, host("example.com"), password)
+        val original = envelopeOf(exampleAddress).readText()
+
+        // Another path in range: the envelope opens, but its key is not the account it is filed under.
+        rewrite(exampleAddress) { it.with(perApp = PerAppIndices(1_336_343_364, 399_755_631, 110_655_971)) }
+        assertEquals(Signing.Unavailable, store.sign(exampleAddress, digest, Unlock.WithPassword(password)))
+        assertEquals(
+            KeyDerivation.Unavailable,
+            store.deriveAccount(exampleAddress, password, held = setOf(hardhatAddress)),
+        )
+        // Below 2^30, or naming an index beside it: damaged, not opened.
+        envelopeOf(exampleAddress).writeText(original)
+        rewrite(exampleAddress) { it.with(perApp = PerAppIndices(1, 399_755_631, 110_655_970)) }
+        assertFalse(Envelope.canOpen(sealedIn(envelopeOf(exampleAddress)), null))
+        envelopeOf(exampleAddress).writeText(original)
+        rewrite(exampleAddress) { it.with(index = 1) }
+        assertFalse(Envelope.canOpen(sealedIn(envelopeOf(exampleAddress)), null))
+        assertEquals(Signing.Unavailable, store.sign(exampleAddress, digest, Unlock.WithPassword(password)))
+
+        envelopeOf(exampleAddress).writeText(original)
+        assertIs<Signing.Signed>(store.sign(exampleAddress, digest, Unlock.WithPassword(password)))
+    }
+
+    @Test
+    fun aPhraseEditedOnDiskSignsNothingAndOneLeftOutIsLearnt() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+
+        rewrite(hardhatAddress) { it.with(phrase = abandonAddress.hex) }
+        assertEquals(Signing.Unavailable, store.sign(hardhatAddress, digest, Unlock.WithPassword(password)))
+        assertEquals(
+            PerAppDerivation.Unavailable,
+            store.derivePerApp(hardhatAddress, host("example.com"), password),
+        )
+        rewrite(hardhatAddress) { it.with(phrase = "not an address") }
+        assertFalse(Envelope.canOpen(sealedIn(envelopeOf(hardhatAddress)), null))
+
+        // As an envelope sealed before the phrase was named: it signs, and learns its phrase doing so.
+        rewrite(hardhatAddress) { it.with(phrase = null) }
+        val sealedBefore = sealedIn(envelopeOf(hardhatAddress))
+        assertIs<Signing.Signed>(store.sign(hardhatAddress, digest, Unlock.WithPassword(password)))
+        val learnt = sealedIn(envelopeOf(hardhatAddress))
+        assertEquals(hardhatAddress.hex, learnt.phrase)
+        assertEquals(sealedBefore.dek to sealedBefore.seed, learnt.dek to learnt.seed, "not sealed again")
+        // A derivation learns it too.
+        rewrite(hardhatAddress) { it.with(phrase = null) }
+        assertIs<PerAppDerivation.Stored>(store.derivePerApp(hardhatAddress, host("example.com"), password))
+        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(hardhatAddress)).phrase)
     }
 
     @Test

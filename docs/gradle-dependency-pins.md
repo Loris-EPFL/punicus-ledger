@@ -104,8 +104,13 @@ version is still fixed by kotlin-stdlib's alignment, and its bytes are pinned.
 libsodium-bindings' `resource-loader` showed the same flip, for another
 reason: `:data` excluded it on one edge only, and the locks' constraints
 brought it in by another path. It is now excluded from every runtime
-classpath (root `build.gradle.kts`). The comments there have the detail;
-revisit both on the move to AGP 9 and Gradle 9.
+classpath (root `build.gradle.kts`). JNA's jar did the same on Android: `:data`
+drops the engine's edge to it, and under the locks it came back beside the JNA
+AAR, so the dex merge found every class twice. `:android-app`'s runtime
+classpaths now take the AAR on every edge to JNA. The rule that follows: on a
+locked build, an edge-level `exclude` is not enough to keep a module out; use a
+per-configuration exclude or substitution. The comments in the build files
+have the detail; revisit them on the move to AGP 9 and Gradle 9.
 
 The settings classpath is not locked: `settings.gradle.kts` applies no
 plugin today. A settings plugin added later is hash-pinned like everything

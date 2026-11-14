@@ -74,8 +74,9 @@ allprojects {
     // to the module carries it, and with the lock's constraints in force another path
     // brought it back into :android-app's runtime classpaths, the APK's among them (the
     // first `gradle pins` runs of #281). Excluded per configuration, the graph is the
-    // same with and without the locks.
-    configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
+    // same with and without the locks. A JVM project's own `runtimeClasspath` is named
+    // too: :desktop-app's showed the same flip in the next run.
+    configurations.matching { it.name == "runtimeClasspath" || it.name.endsWith("RuntimeClasspath") }.configureEach {
         exclude(group = "com.goterl", module = "resource-loader")
     }
 

@@ -173,11 +173,10 @@ everything on the chain side: the verified `call`, `estimateGasDetailed`,
 
 ### Per-app addresses (issue #252)
 
-Owner's decisions, 2026-11-05; the path widened to 92 bits of the hash by
-the owner's decision of 2026-11-14, on PR #297. Where this section reads the
-decisions more narrowly than #252 states them (the host in ASCII alone;
-`www.` a host of its own; an alias removed without a question), the reading
-is proposed in PR #297 and open, the owner's to confirm. A dApp that connects is offered an address
+Owner's decisions, 2026-11-05; the path widened to 92 bits of the hash, and
+the readings here confirmed (the host in ASCII alone; `www.` a host of its
+own; an alias removed without a question), by the owner's decisions of
+2026-11-14, on PR #297. A dApp that connects is offered an address
 of its own, derived from the recovery phrase for the host it states, so that
 it cannot read the user's activity on other dApps (WalletBeat's *Privacy →
 App isolation*, which this earns a PASS on). How the address is derived and

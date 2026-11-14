@@ -97,16 +97,20 @@ data class PerAppPath(val account: Int, val change: Int, val index: Int) {
 /**
  * The path of a per-app address (issue #252; docs/keys-and-signing.md, *Per-app addresses*; the path's width,
  * owner's decision 2026-11-14 on PR #297): `m/44'/60'/a'/b'/c'`, from the first 92 bits of
- * `keccak256("serotine/app-isolation/v1" ‖ host)` read big-endian: `a` is 2³⁰ plus the first 30 bits, `b` the next
- * 31, `c` the next 31. A dApp states its host unverified and can search many, so 92 bits keep it from choosing a
- * host that lands on another site's address, and `a ≥ 2³⁰` keeps every per-app address out of the low accounts.
+ * `keccak256("serotine/app-isolation/v1/" ‖ host)` read big-endian: `a` is 2³⁰ plus the first 30 bits, `b`
+ * the next 31, `c` the next 31. A dApp states its host unverified and can search many, so 92 bits keep it from
+ * choosing a host that lands on another site's address, and `a ≥ 2³⁰` keeps every per-app address out of the low
+ * accounts.
  * The derivation does not depend on the chain or on anything stored: the same phrase and host always give the same
  * address.
  */
 object AppIsolation {
 
-    /** The domain separator hashed before the host. Changing it changes every per-app address. */
-    const val TAG = "serotine/app-isolation/v1"
+    /**
+     * The domain separator hashed before the host. Changing it changes every per-app address. It ends in `/`, which
+     * no host holds, so no later tag can hash as this one with another host (owner's decision, 2026-11-14).
+     */
+    const val TAG = "serotine/app-isolation/v1/"
 
     /** The least account of a per-app path: 2³⁰. */
     const val ACCOUNT_FLOOR = 1 shl 30

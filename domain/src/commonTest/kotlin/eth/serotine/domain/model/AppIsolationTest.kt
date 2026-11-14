@@ -3,7 +3,6 @@ package eth.serotine.domain.model
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 class AppIsolationTest {
@@ -62,33 +61,21 @@ class AppIsolationTest {
     }
 
     // The fixed vectors of docs/keys-and-signing.md, *Per-app addresses*: host → the first twelve bytes of
-    // keccak256("serotine/app-isolation/v1" ‖ host) → a, b, c. Computed independently of this code.
+    // keccak256("serotine/app-isolation/v1/" ‖ host) → a, b, c. Computed independently of this code.
     @Test
     fun thePathIsTheFirst92BitsOfTheTaggedHash() {
         val vectors = mapOf(
-            "example.com" to PerAppPath(1_172_550_437, 1_970_329_353, 15_099_968), // 178ecc97ab86b8480e668405
-            "app.uniswap.org" to PerAppPath(2_025_759_771, 1_047_566_855, 367_116_372), // e2fa906df384d0395e1c054b
-            // 48342a871fd98a461175fb2f
-            "walletbeat.eth.limo" to PerAppPath(1_376_586_401, 1_677_406_536, 1_628_921_778),
-            "app.safe.global" to PerAppPath(1_389_081_365, 600_412_453, 798_229_191), // 4b2ecc551e4c892af9402c72
-            "localhost" to PerAppPath(1_327_406_733, 1_934_306_193, 1_863_016_393), // 3c7a7a379a595c8ef0b5fc99
+            "example.com" to PerAppPath(1_336_343_364, 399_755_631, 110_655_970), // 3e9bed10be9e4b7869879e28
+            "app.uniswap.org" to PerAppPath(1_516_966_953, 1_787_332_407, 1_989_753_074), // 69ac50a7544439bf69938f21
+            "walletbeat.eth.limo" to PerAppPath(2_058_966_761, 904_126_976, 98_949_316), // eae55ba5af1f10005e5d8c41
+            "app.safe.global" to PerAppPath(1_181_040_959, 1_799_679_872, 2_038_531_148), // 199504ff5a277c07981844c3
+            "localhost" to PerAppPath(1_257_319_863, 1_751_139_060, 1_271_328_885), // 2bc4b6df430217a4bc6f075e
         )
         vectors.forEach { (name, path) -> assertEquals(path, AppIsolation.pathOf(host(name)), name) }
         assertEquals(
-            "m/44'/60'/1172550437'/1970329353'/15099968'",
+            "m/44'/60'/1336343364'/399755631'/110655970'",
             AppIsolation.pathOf(host("example.com")).toString(),
         )
-    }
-
-    // Hosts searched for to hit a 31-bit account (review of PR #297) no longer land anywhere chosen.
-    @Test
-    fun aHostSearchedForA31BitAccountNoLongerReachesIt() {
-        // 48342a87…, walletbeat.eth.limo's first four bytes: the same a, another b and c.
-        val searched = AppIsolation.pathOf(host("h324768444.test"))
-        assertEquals(PerAppPath(1_376_586_401, 2_063_453_745, 766_961_056), searched)
-        assertNotEquals(AppIsolation.pathOf(host("walletbeat.eth.limo")), searched)
-        // 00000000…: a is the floor, 2^30, never a low account.
-        assertEquals(PerAppPath(1 shl 30, 482_569_315, 1_982_029_818), AppIsolation.pathOf(host("h995859629.test")))
     }
 
     @Test

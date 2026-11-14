@@ -303,8 +303,8 @@ upgrades*).
      addresses*) is marked as one under its name: the host it was made for,
      stated by that dApp and not verified; its full path
      (`m/44'/60'/a'/b'/c'`), so another wallet can find it; and the aliases
-     the user linked to it, each with Remove. Proposed, open for the
-     owner (PR #297): removing an alias asks nothing, as it deletes no key;
+     the user linked to it, each with Remove. Removing an alias asks
+     nothing, as it deletes no key (owner's decision, 2026-11-14, on PR #297);
      the next connection from that host offers it a new address.
 5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; greyed out as in 3) ·
    Send ‹symbol› from another wallet (7H, as in 3) ·

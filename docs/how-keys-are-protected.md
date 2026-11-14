@@ -217,8 +217,8 @@ cannot, because **no phone or computer chip can sign with secp256k1**:
 | Windows | TPM 2.0 | RSA, P-256, P-384 | no |
 | Linux | TPM 2.0 where there is one | as the TPM | no |
 
-None of them can import an outside key and keep it either: Android imports
-only inward, the Secure Enclave not at all. (Samsung's Blockchain Keystore
+And none hands out a key it made: Android's Keystore can import a key but
+never exports one, and the Secure Enclave can do neither. (Samsung's Blockchain Keystore
 does hold secp256k1, but only on Galaxy phones, behind a partner program;
 it is no basis for an app on every platform.)
 
@@ -1371,8 +1371,8 @@ override suspend fun unwrap(wrapped: ByteArray, reason: String): BiometricUnwrap
         decrypting(key)
     } catch (e: KeyPermanentlyInvalidatedException) {
         return BiometricUnwrap.Unusable(BiometricUnusable.INVALIDATED)
+    // … UnrecoverableKeyException reads as invalidated too; any other failure as Failed
     }
-    // …
     return when (val result = prompter.authenticate(cipher, reason)) {
         is PromptResult.Authenticated -> try {
             BiometricUnwrap.Dek(result.cipher.doFinal(wrapped))
@@ -2135,8 +2135,14 @@ Keystore classes need a device and have no unit test.
 
 ```bash
 ls -la ~/.local/share/serotine/keys
-python3 -m json.tool ~/.local/share/serotine/keys/0x*.seed
 ```
+
+```bash
+for f in ~/.local/share/serotine/keys/0x*.seed; do python3 -m json.tool < "$f"; done
+```
+
+(Feed one file at a time, on standard input: given two paths, `json.tool`
+writes over the second one.)
 
 The folder shows `drwx------`, each file `-rw-------`, and the JSON has the
 shape of section 3: a salt, a cost, two nonces and two ciphertexts, and no

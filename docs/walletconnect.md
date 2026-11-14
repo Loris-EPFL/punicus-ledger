@@ -240,8 +240,10 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     `newhost → address` is kept, remembered and preselected like any host.
   - Aliases are app-private data, not key material, and not restored with
     the phrase. The account's details list them, each removable there.
-- **Every per-app address is listed (D9)**, under Settings → Connected
-  dApps (owner's request, 2026-11-14): each with its host, its aliases, its
+- **Every per-app address is listed (D9)**, in the Per-app tab of the
+  account detail of the phrase's first account (docs/wallet-ux.md, 4), and
+  for every phrase together under Settings → Connected dApps (owner's
+  requests, 2026-11-14): each with its host, its aliases, its
   phrase, its full path and Copy address. **"Restore a per-app address"**
   there takes a host and a phrase, opens the envelope with the wallet
   password and derives that host's address again, key and all, into the key
@@ -714,7 +716,8 @@ their mockups come with the PR that builds each.
   the wallet's accounts matched against the Safe's owners.
 - **D8 Waiting for a signature** (direction 2): what was asked, of which
   wallet, until when; and the way back to it.
-- **D9 Per-app addresses** (issue #252): every per-app address held, with
+- **D9 Per-app addresses** (issue #252), a tab of the phrase's first
+  account's detail and a list in Settings: every per-app address held, with
   its host, aliases, phrase, path and Copy; "Restore a per-app address" by
   host and phrase, under the wallet unlock.
 

@@ -283,7 +283,13 @@ upgrades*).
      Swap opens 24 and is greyed out as Send is: docs/swaps.md, *A Safe's
      swap*).
    - The tabs Assets | Activity: Assets is what follows, Activity is 25,
-     drawn in the tab, read only while the tab is shown.
+     drawn in the tab, read only while the tab is shown. The account a
+     recovery phrase is known by (its first account, `m/44'/60'/0'/0/0`, or,
+     when that one is not in the wallet, the phrase's account listed first)
+     has a third tab, **Per-app** (owner's request, 2026-11-14, on #252):
+     that phrase's per-app addresses, as D9 lists them (docs/walletconnect.md),
+     each opening its account, with Copy, and "Restore a per-app address"
+     with the phrase already chosen.
    - Sorted by value, highest first: assets without a price follow the
      priced ones, by name; a stale price sorts by the value it shows. The
      top bar's menu sorts by name instead ("Sort by name", then "Sort by

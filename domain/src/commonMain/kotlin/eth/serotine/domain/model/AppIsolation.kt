@@ -79,38 +79,62 @@ sealed interface AppHostResult {
 }
 
 /**
- * The path of a per-app address (issue #252; docs/keys-and-signing.md, *Per-app addresses*):
- * `m/44'/60'/a'/0/0`, where `a` ([accountOf]) is the first 31 bits of
- * `keccak256("serotine/app-isolation/v1" ‖ host)`, read big-endian, and 1 where that gives 0. A phrase's
- * ordinary accounts are at account 0 (`m/44'/60'/0'/0/i`), so a per-app address is never one of them.
- * The derivation does not depend on the chain or on anything stored: the same phrase and host always give
- * the same address.
+ * The BIP-32 path of a per-app address below `m/44'/60'`: `m/44'/60'/[account]'/[change]'/[index]'`, every level
+ * hardened. [account] is in `2³⁰..2³¹ - 1`, so a per-app address is never one of a phrase's ordinary accounts
+ * (account 0) nor of the low accounts other derivations and account-counting wallets use; [change] and [index]
+ * are in `0..2³¹ - 1`.
+ */
+data class PerAppPath(val account: Int, val change: Int, val index: Int) {
+    init {
+        require(account >= AppIsolation.ACCOUNT_FLOOR) { "a per-app account is at least 2^30" }
+        require(change >= 0 && index >= 0) { "a hardened level is below 2^31" }
+    }
+
+    /** The path as BIP-32 writes it, as the account's details show it. */
+    override fun toString(): String = "m/44'/60'/$account'/$change'/$index'"
+}
+
+/**
+ * The path of a per-app address (issue #252; docs/keys-and-signing.md, *Per-app addresses*; the path's width,
+ * owner's decision 2026-11-14 on PR #297): `m/44'/60'/a'/b'/c'`, from the first 92 bits of
+ * `keccak256("serotine/app-isolation/v1" ‖ host)` read big-endian: `a` is 2³⁰ plus the first 30 bits, `b` the next
+ * 31, `c` the next 31. A dApp states its host unverified and can search many, so 92 bits keep it from choosing a
+ * host that lands on another site's address, and `a ≥ 2³⁰` keeps every per-app address out of the low accounts.
+ * The derivation does not depend on the chain or on anything stored: the same phrase and host always give the same
+ * address.
  */
 object AppIsolation {
 
     /** The domain separator hashed before the host. Changing it changes every per-app address. */
     const val TAG = "serotine/app-isolation/v1"
 
-    /** The BIP-44 account `a` of [host]'s address: hardened in the path, in `1..2³¹ - 1`. */
-    fun accountOf(host: AppHost): Int {
+    /** The least account of a per-app path: 2³⁰. */
+    const val ACCOUNT_FLOOR = 1 shl 30
+
+    private const val LOW_31 = 0x7fffffffL
+
+    /** [host]'s path. */
+    fun pathOf(host: AppHost): PerAppPath {
         val hash = keccak256((TAG + host.name).encodeToByteArray())
-        val first = ((hash[0].toInt() and 0xff) shl 24) or ((hash[1].toInt() and 0xff) shl 16) or
-            ((hash[2].toInt() and 0xff) shl 8) or (hash[3].toInt() and 0xff)
-        val account = first ushr 1
-        return if (account == 0) 1 else account
+        fun word(at: Int): Long = (0 until 4).fold(0L) { acc, i -> (acc shl 8) or (hash[at + i].toLong() and 0xff) }
+        // The first 96 bits as three big-endian words w0 w1 w2: a takes bits 0..29, b 30..60, c 61..91.
+        val w0 = word(0)
+        val w1 = word(4)
+        val w2 = word(8)
+        val a = (w0 ushr 2).toInt()
+        val b = (((w0 and 0x3) shl 29) or (w1 ushr 3)).toInt()
+        val c = ((((w1 and 0x7) shl 32) or w2) ushr 4 and LOW_31).toInt()
+        return PerAppPath(ACCOUNT_FLOOR or a, b, c)
     }
 
-    /** [host]'s path as BIP-32 writes it, as the account's details show it. */
-    fun pathOf(host: AppHost): String = "m/44'/60'/${accountOf(host)}'/0/0"
-
     /**
-     * The host among [held], the hosts whose per-app addresses this device holds for one phrase, whose
-     * account `a` is [host]'s, or null. Such a host is refused for [host] ("already used for another
-     * app"), never shared silently: the two would see one address. [host] itself among [held] is no
-     * collision.
+     * The host among [held], the hosts whose per-app addresses this device holds for one phrase, whose path is
+     * [host]'s, or null. Such a host is refused for [host] ("already used for another app"), never shared
+     * silently: the two would see one address. With 92 bits of the hash this is not expected to happen; the check
+     * stays so that it can never happen silently. [host] itself among [held] is no collision.
      */
     fun collision(host: AppHost, held: Iterable<AppHost>): AppHost? {
-        val account = accountOf(host)
-        return held.firstOrNull { it != host && accountOf(it) == account }
+        val path = pathOf(host)
+        return held.firstOrNull { it != host && pathOf(it) == path }
     }
 }

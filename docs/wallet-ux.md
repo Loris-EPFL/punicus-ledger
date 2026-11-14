@@ -302,7 +302,7 @@ upgrades*).
    - A **per-app address** (issue #252; docs/walletconnect.md, *Per-app
      addresses*) is marked as one under its name: the host it was made for,
      stated by that dApp and not verified; its full path
-     (`m/44'/60'/a'/0/0`), so another wallet can find it; and the aliases
+     (`m/44'/60'/a'/b'/c'`), so another wallet can find it; and the aliases
      the user linked to it, each with Remove. Proposed, open for the
      owner (PR #297): removing an alias asks nothing, as it deletes no key;
      the next connection from that host offers it a new address.

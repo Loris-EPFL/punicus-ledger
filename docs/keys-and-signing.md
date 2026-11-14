@@ -349,64 +349,58 @@ its KDoc and returns it as a result the UI shows as state.
   nothing. The use case (`DeriveAccount`) adds the account on the network of
   the one it comes from, as one step under the app's `WalletChanges`; Add on
   another network adds it elsewhere.
-- **Per-app addresses** (issue #252; owner's decisions, 2026-11-05, with
-  the path "open to refinement in the PR that codes it"). An address of its
-  own for each dApp that connects, so that no dApp learns the user's
-  activity on another (WalletBeat's *App isolation*). The flow is in
+- **Per-app addresses** (issue #252; owner's decisions, 2026-11-05; the
+  path widened by the owner's decision of 2026-11-14 on PR #297). An
+  address of its own for each dApp that connects, so that no dApp learns the
+  user's activity on another (WalletBeat's *App isolation*). The flow is in
   docs/walletconnect.md (*Per-app addresses*); what the key store does:
-  - **Open, the owner's, before part 2 makes the path permanent** (PR #297):
-    1. **`a` can be chosen by whoever chooses the host.** The host is the
-       dApp's unverified claim, and 31 bits are searched in minutes, so a
-       dApp can pick a host whose `a` is another site's (`h324768444.test`
-       lands on `walletbeat.eth.limo`'s account), or 1
-       (`m/44'/60'/1'/0/0`, the key of 0xbow's master secret, *Privacy
-       Pools note secrets*). The collision refusal covers only hosts this
-       device holds. Proposed: widen the path to 93 bits of the hash,
-       `m/44'/60'/a'/b'/c'`, with bit 30 of `a` set so per-app accounts stay
-       out of the low range. Or keep the path and say what it does not
-       cover.
-    2. Readings of the decisions this page takes, not stated in #252: "the
-       first 31 bits" read big-endian (`uint32 >>> 1`); a host outside
-       ASCII refused rather than mapped by IDNA (its `xn--` form accepted);
-       the tag keeping the app's old name; a collision checked per phrase.
-    3. **The tag and the host are joined with nothing between**, so a later
-       tag `v10` with `example.com` would hash as `v1` with `0example.com`.
-       A closing character no host holds (`serotine/app-isolation/v1/`)
-       rules that out, and costs nothing while no address exists.
-  - **The path** is `m/44'/60'/a'/0/0`. `a` is the first 31 bits, read
-    big-endian, of `keccak256("serotine/app-isolation/v1" ‖ host)`, set to 1
-    if that gives 0 (`AppIsolation.accountOf` in `:domain`). The tag is
-    UTF-8, the host its normal form (`AppHost`: ASCII, lower case, no port,
-    no trailing dot) in ASCII, with nothing between the two. The tag keeps
-    the name the app had when the decision was taken: changing it would
-    change every per-app address.
-  - `a` is never 0, so a per-app address is never one of the phrase's
-    ordinary accounts (`m/44'/60'/0'/0/i`).
+  - **The path** is `m/44'/60'/a'/b'/c'`, every level hardened
+    (`AppIsolation.pathOf` in `:domain`). Read the first 92 bits of
+    `keccak256("serotine/app-isolation/v1" ‖ host)` big-endian: `a` is 2³⁰
+    plus the first 30 bits, `b` the next 31 bits, `c` the 31 after them.
+    The tag is UTF-8, the host its normal form (`AppHost`: ASCII, lower
+    case, no port, no trailing dot) in ASCII.
+  - **Why 92 bits** (owner's decision, 2026-11-14, on PR #297). The host is
+    the dApp's unverified claim, and a dApp can try as many hosts as it
+    likes. #252's first proposal, `m/44'/60'/a'/0/0` with 31 bits, was
+    searched in minutes in the review: a host landing on another site's
+    account, or on `m/44'/60'/1'/0/0`, the key of 0xbow's master secret
+    (*Privacy Pools note secrets*). Over 92 bits, aiming at a chosen
+    address is out of reach.
+  - **`a ≥ 2³⁰`**, so a per-app address is never one of the phrase's
+    ordinary accounts (`m/44'/60'/0'/0/i`), nor one of the low accounts that
+    other derivations and wallets counting at the account level use.
+  - **Open, the owner's** (PR #297): readings of the decisions this page
+    takes, not stated in #252. The bits read big-endian; a host outside
+    ASCII refused rather than mapped by IDNA (its `xn--` form accepted); the
+    tag keeping the app's old name; a collision checked per phrase. And
+    the tag and the host are joined with nothing between, so a later tag
+    `v10` with `example.com` would hash as `v1` with `0example.com`: a
+    closing character no host holds (`serotine/app-isolation/v1/`) would
+    rule that out, at no cost while no address exists.
   - **Nothing is stored that the phrase does not give back.** The address
     depends on the phrase's seed and the host alone, not on the chain or on
     anything kept: restoring the phrase and connecting to the same host gives
-    the same address. A wallet that takes a custom path, as Ledger Live's
-    account-level path does, finds it once given `a`; the account's details
-    show the full path.
+    the same address. A wallet that takes a custom path finds it once given
+    the path; the account's details show it in full.
   - **Made like a further account** (above): from the envelope of an account
     of the phrase, opened with the wallet password, its seed checked against
     that account; sealed again in an envelope of its own under the per-app
     address. Only an account whose envelope holds a seed can give one: an
     account imported as a bare private key, a watched account or a Safe
     cannot.
-  - **The envelope names its account** (`account`, `a`, beside `index`, both
-    left out when 0, so envelopes stored before are unchanged): the path
-    signing derives is `m/44'/60'/account'/0/index`. Neither is bound as
+  - **The envelope names its path** (`perApp`: `a`, `b` and `c`, left out
+    for an ordinary account, so envelopes stored before are unchanged; an
+    envelope with both `perApp` and `index` is damaged). It is not bound as
     additional data, for the reason `index` is not: signing derives the key
     at that path and refuses one that is not the account the envelope is
     filed under, so a path edited on disk signs nothing.
-  - **A collision is refused**, never merged. Two hosts whose `a` is the
-    same give one address. When a host's `a` is that of another host whose
-    per-app address this device holds for the same phrase, the second host
-    gets "already used for another app" and the choice of existing accounts.
-    By accident, with 2³¹ values, it is a vanishing case (a collision among
-    n hosts is about n²/2³²); on purpose it is minutes of work (open point 1
-    above).
+  - **A collision is refused**, never merged. Two hosts with one path give
+    one address. When a host's path is that of another host whose per-app
+    address this device holds for the same phrase, the second host gets
+    "already used for another app" and the choice of existing accounts.
+    Over 92 bits this is not expected, by accident or on purpose; the check
+    stays so that it can never happen silently.
   - **Not key material, and not restored with the phrase:** which host an
     address was made for, the addresses last approved for each host, and the
     aliases the user links (docs/walletconnect.md). They are app-private
@@ -417,19 +411,20 @@ its KDoc and returns it as a result the UI shows as state.
     `test test test test test test test test test test test junk` (the
     empty passphrase), computed independently of the code:
 
-    | host | first 4 bytes of the hash | `a` | address |
+    | host | first 12 bytes of the hash | `a`, `b`, `c` | address |
     |---|---|---|---|
-    | `example.com` | `178ecc97` | 197617227 | `0xB22b2aDA95ADF7bc412319854673Ce8EC704BDF9` |
-    | `app.uniswap.org` | `e2fa906d` | 1904035894 | `0xdbcF5FD66702399a082d6D4dec20c8aCC0986Ab4` |
-    | `walletbeat.eth.limo` | `48342a87` | 605689155 | `0xF4ea49D1DD471407299954EFCD8d1B65Fe8f5b8e` |
-    | `app.safe.global` | `4b2ecc55` | 630679082 | `0x7A603d66Bc7cAbdF034f3E74d67068981942a37B` |
-    | `localhost` | `3c7a7a37` | 507329819 | `0xd3AE63Dfe861077a9B1582264987b98175924F7c` |
+    | `example.com` | `178ecc97ab86b8480e668405` | 1172550437, 1970329353, 15099968 | `0xd5966914a8A1804978FcB03309d4674862ec139d` |
+    | `app.uniswap.org` | `e2fa906df384d0395e1c054b` | 2025759771, 1047566855, 367116372 | `0xC64C73BB5Fe7d4F7400202A56Ba28da16eF91757` |
+    | `walletbeat.eth.limo` | `48342a871fd98a461175fb2f` | 1376586401, 1677406536, 1628921778 | `0xFA55d295471aA4230312f7912C60d86b35024d9A` |
+    | `app.safe.global` | `4b2ecc551e4c892af9402c72` | 1389081365, 600412453, 798229191 | `0x62Fbea1ACA46Bd75eB17780EA70A7460ABc5C362` |
+    | `localhost` | `3c7a7a379a595c8ef0b5fc99` | 1327406733, 1934306193, 1863016393 | `0x2B8E79C4B5bC7Da97ad611FD528c47F4E5ED1d45` |
 
-    `h34064.test` and `h38875.test` collide (both `a` = 1424491982), the
-    vector for the refusal. `h995859629.test` hashes to `00000000`, so its
-    `a` is 1 only through the `0 → 1` rule; `h1229355441.test` hashes to
-    `00000002`, `a` 1 without it: both give `m/44'/60'/1'/0/0`,
-    `0x8C8d35429F74ec245F8Ef2f4Fd1e551cFF97d650`.
+    The hosts the review found for the 31-bit path reach nothing chosen
+    now: `h324768444.test` (`48342a87d7ee718adb6e5a0a`) shares
+    `walletbeat.eth.limo`'s `a` only, 1376586401, 2063453745, 766961056,
+    `0x2342a6fb9ea0d1bC5C30FDd9Df4559fdCD15900e`; `h995859629.test`
+    (`00000000e61b631f6235ffa3`) gets `a` = 2³⁰, 1073741824, 482569315,
+    1982029818, `0x9BFAC9eC3BF47555cc83443851d120F84185c7C0`.
 - **Storage.** The BIP-39 seed goes into the envelope above, one file per
   account (`<address>.seed`, JSON) in a directory of the app's own.
   - Writes go through a temporary file readable by this user alone, an

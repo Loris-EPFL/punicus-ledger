@@ -173,11 +173,11 @@ everything on the chain side: the verified `call`, `estimateGasDetailed`,
 
 ### Per-app addresses (issue #252)
 
-Owner's decisions, 2026-11-05. Where this section reads them more
-narrowly than #252 states them (the host in ASCII alone; `www.` a host of
-its own; an alias removed without a question), the reading is proposed in
-PR #297 and open, the owner's to confirm; so is the path (docs/keys-and-signing.md,
-*Per-app addresses*, the open points). A dApp that connects is offered an address
+Owner's decisions, 2026-11-05; the path widened to 92 bits of the hash by
+the owner's decision of 2026-11-14, on PR #297. Where this section reads the
+decisions more narrowly than #252 states them (the host in ASCII alone;
+`www.` a host of its own; an alias removed without a question), the reading
+is proposed in PR #297 and open, the owner's to confirm. A dApp that connects is offered an address
 of its own, derived from the recovery phrase for the host it states, so that
 it cannot read the user's activity on other dApps (WalletBeat's *Privacy →
 App isolation*, which this earns a PASS on). How the address is derived and
@@ -207,9 +207,9 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   - Without a phrase on this device (only watched accounts, or Safes) the
     option is greyed out, never hidden (owner ruling, 2026-10-18, #55), and
     a tap says that a per-app address needs a recovery phrase held here.
-  - A host whose address collides with another host's on this device is
-    refused with "already used for another app", and the choice falls back
-    to the existing accounts.
+  - A host whose path is another host's on this device (over 92 bits, not
+    expected) is refused with "already used for another app", and the
+    choice falls back to the existing accounts.
   - The account made is an ordinary EOA on the session's network, named
     after its host and marked as a per-app address, its host on its
     details. The same address serves the session's other network (Ethereum
@@ -737,7 +737,7 @@ merge part PRs into the feature branch itself.
 3. **`feature/per-app-addresses`, issue #252** (*Per-app addresses*):
    1. The rulings in these pages, and in `:domain` the host and the path
       with fixed vectors and the collision refusal.
-   2. The key store: an envelope that names its account `a`, deriving and
+   2. The key store: an envelope that names its per-app path, deriving and
       signing at the per-app path, a restore giving the same address.
    3. D3: the new address offered and preselected, greyed out without a
       phrase, the phrase chosen, the per-host memory and its preselection,

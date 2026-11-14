@@ -2,6 +2,8 @@ package eth.serotine.domain.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 class AppIsolationTest {
@@ -59,29 +61,45 @@ class AppIsolationTest {
         assertEquals(AppHostResult.NotAName, AppHost.parse(("a".repeat(63) + ".").repeat(4) + "com"))
     }
 
-    // The fixed vectors of docs/keys-and-signing.md, *Per-app addresses*: host → the first four bytes of
-    // keccak256("serotine/app-isolation/v1" ‖ host) → a. Computed independently of this code.
+    // The fixed vectors of docs/keys-and-signing.md, *Per-app addresses*: host → the first twelve bytes of
+    // keccak256("serotine/app-isolation/v1" ‖ host) → a, b, c. Computed independently of this code.
     @Test
-    fun theAccountIsTheFirst31BitsOfTheTaggedHash() {
-        assertEquals(197_617_227, AppIsolation.accountOf(host("example.com"))) // 178ecc97
-        assertEquals(1_904_035_894, AppIsolation.accountOf(host("app.uniswap.org"))) // e2fa906d
-        assertEquals(605_689_155, AppIsolation.accountOf(host("walletbeat.eth.limo"))) // 48342a87
-        assertEquals(630_679_082, AppIsolation.accountOf(host("app.safe.global"))) // 4b2ecc55
-        assertEquals(507_329_819, AppIsolation.accountOf(host("localhost"))) // 3c7a7a37
-        assertEquals("m/44'/60'/197617227'/0/0", AppIsolation.pathOf(host("example.com")))
-        // 00000000: a would be 0, the account of the phrase's ordinary accounts, and is set to 1.
-        assertEquals(1, AppIsolation.accountOf(host("h995859629.test")))
-        // 00000002: a is 1 without that rule, so the two collide.
-        assertEquals(1, AppIsolation.accountOf(host("h1229355441.test")))
+    fun thePathIsTheFirst92BitsOfTheTaggedHash() {
+        val vectors = mapOf(
+            "example.com" to PerAppPath(1_172_550_437, 1_970_329_353, 15_099_968), // 178ecc97ab86b8480e668405
+            "app.uniswap.org" to PerAppPath(2_025_759_771, 1_047_566_855, 367_116_372), // e2fa906df384d0395e1c054b
+            // 48342a871fd98a461175fb2f
+            "walletbeat.eth.limo" to PerAppPath(1_376_586_401, 1_677_406_536, 1_628_921_778),
+            "app.safe.global" to PerAppPath(1_389_081_365, 600_412_453, 798_229_191), // 4b2ecc551e4c892af9402c72
+            "localhost" to PerAppPath(1_327_406_733, 1_934_306_193, 1_863_016_393), // 3c7a7a379a595c8ef0b5fc99
+        )
+        vectors.forEach { (name, path) -> assertEquals(path, AppIsolation.pathOf(host(name)), name) }
+        assertEquals(
+            "m/44'/60'/1172550437'/1970329353'/15099968'",
+            AppIsolation.pathOf(host("example.com")).toString(),
+        )
+    }
+
+    // Hosts searched for to hit a 31-bit account (review of PR #297) no longer land anywhere chosen.
+    @Test
+    fun aHostSearchedForA31BitAccountNoLongerReachesIt() {
+        // 48342a87…, walletbeat.eth.limo's first four bytes: the same a, another b and c.
+        val searched = AppIsolation.pathOf(host("h324768444.test"))
+        assertEquals(PerAppPath(1_376_586_401, 2_063_453_745, 766_961_056), searched)
+        assertNotEquals(AppIsolation.pathOf(host("walletbeat.eth.limo")), searched)
+        // 00000000…: a is the floor, 2^30, never a low account.
+        assertEquals(PerAppPath(1 shl 30, 482_569_315, 1_982_029_818), AppIsolation.pathOf(host("h995859629.test")))
     }
 
     @Test
-    fun anotherHostWithTheSameAccountIsACollisionAndTheHostItselfIsNot() {
-        // Two hosts whose a collides, found by a birthday search over "h<n>.test": both 1424491982.
-        val first = host("h34064.test")
-        val second = host("h38875.test")
-        assertEquals(AppIsolation.accountOf(first), AppIsolation.accountOf(second))
-        assertEquals(first, AppIsolation.collision(second, listOf(host("example.com"), first)))
+    fun aPathOutsideItsRangeCannotBeMade() {
+        assertFailsWith<IllegalArgumentException> { PerAppPath((1 shl 30) - 1, 0, 0) }
+        assertFailsWith<IllegalArgumentException> { PerAppPath(1 shl 30, -1, 0) }
+        assertFailsWith<IllegalArgumentException> { PerAppPath(1 shl 30, 0, -1) }
+    }
+
+    @Test
+    fun theHostItselfIsNoCollisionNorIsAnotherHost() {
         val example = host("example.com")
         assertNull(AppIsolation.collision(example, listOf(example, host("app.uniswap.org"))))
         assertNull(AppIsolation.collision(example, emptyList()))

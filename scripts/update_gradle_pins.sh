@@ -128,7 +128,7 @@ if [[ "$from_ci" == 1 ]]; then
     existing_pins_unchanged
     echo "updated the pins from run $run — review the diff:"
     git --no-pager diff --stat -- '*.lockfile' "$metadata"
-    git status --porcelain -- '*.lockfile' | grep '^??' || true
+    git status --porcelain -- '*.lockfile' "$metadata" | grep '^??' || true
     exit 0
 fi
 
@@ -181,4 +181,4 @@ existing_pins_unchanged
 echo
 echo "pins regenerated for this host. Changed:"
 git --no-pager diff --stat -- '*.lockfile' "$metadata"
-git status --porcelain -- '*.lockfile' | grep '^??' || true
+git status --porcelain -- '*.lockfile' "$metadata" | grep '^??' || true

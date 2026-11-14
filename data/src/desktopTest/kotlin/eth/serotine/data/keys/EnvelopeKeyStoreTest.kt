@@ -688,7 +688,7 @@ class EnvelopeKeyStoreTest {
     }
 
     @Test
-    fun aPhraseEditedOnDiskSignsNothingAndOneLeftOutIsLearnt() = runTest {
+    fun aPhraseEditedOnDiskSignsNothingAndOneLeftOutStillSigns() = runTest {
         val store = store()
         store.importMnemonic(hardhat, password)
 
@@ -701,17 +701,22 @@ class EnvelopeKeyStoreTest {
         rewrite(hardhatAddress) { it.with(phrase = "not an address") }
         assertFalse(Envelope.canOpen(sealedIn(envelopeOf(hardhatAddress)), null))
 
-        // As an envelope sealed before the phrase was named: it signs, and learns its phrase doing so.
+        // As an envelope sealed before the phrase was named: it signs and derives, and is left as it is.
         rewrite(hardhatAddress) { it.with(phrase = null) }
-        val sealedBefore = sealedIn(envelopeOf(hardhatAddress))
+        val before = envelopeOf(hardhatAddress).readText()
         assertIs<Signing.Signed>(store.sign(hardhatAddress, digest, Unlock.WithPassword(password)))
-        val learnt = sealedIn(envelopeOf(hardhatAddress))
-        assertEquals(hardhatAddress.hex, learnt.phrase)
-        assertEquals(sealedBefore.dek to sealedBefore.seed, learnt.dek to learnt.seed, "not sealed again")
-        // A derivation learns it too.
-        rewrite(hardhatAddress) { it.with(phrase = null) }
+        assertEquals(
+            PerAppDerivation.Stored(exampleAddress, examplePath, hardhatAddress, KeyProtection.PASSWORD_ONLY),
+            store.derivePerApp(hardhatAddress, host("example.com"), password),
+        )
+        assertEquals(before, envelopeOf(hardhatAddress).readText())
+        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(exampleAddress)).phrase, "the new one names it")
+
+        // A per-app envelope naming another phrase is not kept: it is sealed again, naming its own.
+        rewrite(exampleAddress) { it.with(phrase = abandonAddress.hex) }
         assertIs<PerAppDerivation.Stored>(store.derivePerApp(hardhatAddress, host("example.com"), password))
-        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(hardhatAddress)).phrase)
+        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(exampleAddress)).phrase)
+        assertIs<Signing.Signed>(store.sign(exampleAddress, digest, Unlock.WithPassword(password)))
     }
 
     @Test

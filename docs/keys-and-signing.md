@@ -389,6 +389,15 @@ its KDoc and returns it as a result the UI shows as state.
     address. Only an account whose envelope holds a seed can give one: an
     account imported as a bare private key, a watched account or a Safe
     cannot.
+  - **Every envelope of a phrase names the phrase** by its first account's
+    address (`phrase`, `m/44'/60'/0'/0/0`): a public value, checked against
+    the seed when the envelope opens, so that D3 and D9 can tell phrases
+    apart before the unlock. An envelope stored before carries none; its
+    phrase is learnt at its next unlock.
+  - **Restored on request** (D9, owner's request, 2026-11-14): a host and a
+    phrase, the wallet password, and the address is derived again into an
+    envelope of its own. The private key is not shown or exported: that
+    would be an exception to *Key material*, which only the owner makes.
   - **The envelope names its path** (`perApp`: `a`, `b` and `c`, left out
     for an ordinary account, so envelopes stored before are unchanged; an
     envelope with both `perApp` and `index` is damaged). It is not bound as

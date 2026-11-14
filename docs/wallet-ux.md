@@ -1675,4 +1675,4 @@ Swapping tokens has a page of its own, docs/swaps.md (issue #69). The swap
 screens there are numbered from 22.
 
 dApp connections have a page of their own too, docs/walletconnect.md (issue
-#22; owner rulings, 2026-11-03). Their screens there are numbered D1 to D8.
+#22; owner rulings, 2026-11-03). Their screens there are numbered D1 to D9.

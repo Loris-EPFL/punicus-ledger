@@ -200,9 +200,17 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   accounts follow, and the user may tick them instead or as well. Approve
   approves what is ticked. Making the address takes the wallet unlock, as
   New account from the same phrase does.
-  - It is made from a recovery phrase held here. With several phrases, D3
-    asks which, defaulting to the phrase of the first account in the list
-    that has one.
+  - It is made from a recovery phrase held here. **Which phrase:** each
+    phrase is known by the address of its first account
+    (`m/44'/60'/0'/0/0`), which every envelope of that phrase records, a
+    public value checked against the seed when the envelope opens; so the
+    phrases can be told apart and listed before the unlock, whether or not
+    that first account is still in the wallet. With one phrase, D3 asks
+    nothing. With several, D3 shows which phrase the new address comes from
+    (named by an account of it in the list) and lets the user change it,
+    defaulting to the phrase of the first account in the list that has one.
+    The phrase chosen is remembered with the address made, so a second
+    connection of the same host offers the same address.
   - Without a phrase on this device (only watched accounts, or Safes) the
     option is greyed out, never hidden (owner ruling, 2026-10-18, #55), and
     a tap says that a per-app address needs a recovery phrase held here.
@@ -232,6 +240,14 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     `newhost → address` is kept, remembered and preselected like any host.
   - Aliases are app-private data, not key material, and not restored with
     the phrase. The account's details list them, each removable there.
+- **Every per-app address is listed (D9)**, under Settings → Connected
+  dApps (owner's request, 2026-11-14): each with its host, its aliases, its
+  phrase, its full path and Copy address. **"Restore a per-app address"**
+  there takes a host and a phrase, opens the envelope with the wallet
+  password and derives that host's address again, key and all, into the key
+  store, without waiting for the site to connect (after a restore of the
+  phrase, say). The private key itself is never shown or exported (CLAUDE.md,
+  *Trust*, *Key material*).
 - **Signing in with one** (D4): see *Signing in* below.
 - **Not done here, said where it matters:** paying gas for a per-app address
   from another of the user's accounts links them on chain (signing in needs
@@ -661,7 +677,7 @@ then a user connects with a `wc:` link.
 
 ## The screens
 
-Numbered D1 to D8. Each gets a preview per state and one in the dark theme;
+Numbered D1 to D9. Each gets a preview per state and one in the dark theme;
 their mockups come with the PR that builds each.
 
 - **D1 Connections** (Settings): the dApp sessions, and in direction 2 the
@@ -698,6 +714,9 @@ their mockups come with the PR that builds each.
   the wallet's accounts matched against the Safe's owners.
 - **D8 Waiting for a signature** (direction 2): what was asked, of which
   wallet, until when; and the way back to it.
+- **D9 Per-app addresses** (issue #252): every per-app address held, with
+  its host, aliases, phrase, path and Copy; "Restore a per-app address" by
+  host and phrase, under the wallet unlock.
 
 ## The plan
 
@@ -741,7 +760,7 @@ merge part PRs into the feature branch itself.
    3. D3: the new address offered and preselected, greyed out without a
       phrase, the phrase chosen, the per-host memory and its preselection,
       the account marked as per-app.
-   4. Aliases: the list, "Type the old site's host", the confirmation,
+   4. D9, and aliases: the list, "Type the old site's host", the confirmation,
       preselection through an alias, removal on the account's details.
    5. D4: the host named, the domain warning, the alias match.
 4. **Later, each its own issue:** QR scanning on iOS (Android's is built); a

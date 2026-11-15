@@ -1480,8 +1480,8 @@ they are helpful." The rulings (owner rulings, 2026-11-05, #246; the
   Remove. *Add an NFT* is greyed out while the account's network is off, a
   tap saying why (owner ruling, 2026-10-18, #55).
 - **ENS names seen, as candidates** (issue #274; it amends "older NFTs are
-  added by contract and id" for ENS names, which is open, the owner's to
-  decide, as proposed in the PR that codes it). Every verified resolution
+  added by contract and id" for ENS names: owner ruling, 2026-11-15, on
+  #299). Every verified resolution
   in the wallet that lands on one of the user's accounts (Watch, the
   duplicate case included; Send; Create Safe's owners; the check of a name
   an account follows; the account's primary name; never a dApp request,

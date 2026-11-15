@@ -1,6 +1,6 @@
 ---
 name: security-fix
-description: "Fixing a vulnerability that is not public yet: a report from SECURITY.md (a private advisory), or one the owner hands over in private. Replaces Workflow steps 3 to 5: no PR and no push to any branch before the owner merges, the CI checks run locally, a patch handed to the owner for the advisory's private fork, neutral wording until the advisory is published. The owner merges, releases and publishes the advisory. Use before any work on such a report."
+description: "Fixing a vulnerability that is not public yet: a report from SECURITY.md (a private advisory), one the owner hands over in private, or one you come across yourself in shipped code. Replaces Workflow steps 3 to 5: no PR and no push to any branch before the owner merges, the CI checks run locally, a patch handed to the owner for the advisory's private fork, neutral wording until the advisory is published. The owner merges, releases and publishes the advisory. Use before any work on such a vulnerability, and the moment you find one."
 ---
 
 # Fixing a privately reported vulnerability
@@ -8,11 +8,17 @@ description: "Fixing a vulnerability that is not public yet: a report from SECUR
 The owner's request, 2026-11-15, on Myotis #870. Myotis carries the same
 procedure in `.claude/agent/security-fixes.md`; a change is made in both.
 
+**A vulnerability you come across yourself** in code `main` already ships,
+during other work or a review, is covered too. Stop and tell the owner in
+the conversation before it appears anywhere on GitHub: in a commit, a PR or
+a review reply.
+
 `SECURITY.md` promises a reporter two things. The discussion stays in the
 private advisory. The advisory is published once a fixed release is out. The
 Workflow points the other way: every work item gets a public PR, and PRs are
 the project's public record. This skill replaces steps 3 to 5 of the
-Workflow for an embargoed fix, and nothing else. Every other rule in
+Workflow for an embargoed fix, and step 1's branch (a local one, never
+pushed), and nothing else. Every other rule in
 CLAUDE.md still applies: trust, keys and never merging first.
 
 ## When it applies
@@ -53,14 +59,17 @@ again (steps 7 to 9 need them), but every one of them stays neutral:
 
 ## Steps
 
-1. **Check that the build runs here, before you code.** Run `./gradlew help`
-   (or a quick `./gradlew :domain:desktopTest`). Some cloud environments
+1. **Check that the build runs here, before you code.** Run a quick task
+   that resolves dependencies, such as `./gradlew :domain:desktopTest`
+   (`./gradlew help` resolves none, so a blocked repository would not show). Some cloud environments
    cannot reach Google's Maven repository, and Gradle does not configure
    there. If it cannot run, say so to the owner at once: the fix is then
    built and tested where Gradle runs (a local session, the owner's machine,
    or an environment that reaches Google's Maven) before the patch goes into
    the private fork.
 2. **Code** the fix on a local branch off the current `main`. Do not push it.
+   Its commit messages, code comments and test names become permanent in
+   `git log` at the merge: word them neutrally from the start (above).
 3. **Run what CI would run, locally.** GitHub runs no CI and no status checks
    in an advisory's temporary private fork, and no integration reaches it,
    the CI reviewer included. A PR into `main` is checked by more than
@@ -68,7 +77,12 @@ again (steps 7 to 9 need them), but every one of them stays neutral:
    - `ci.yml`: `./gradlew build`;
      `python3 scripts/check_security_invariants.py` and its tests
      (`python3 -m unittest discover -s scripts -p 'test_check_security_invariants.py'`).
-   - A test that fails without the fix and passes with it.
+   - A test that fails without the fix and passes with it. That test is the
+     reproduction, and it lands on public `main` with the merge, before the
+     fixed release. Whether it ships with the fix or follows as a second
+     patch once the advisory is published is the owner's disclosure
+     decision: ask, and keep it as a separate commit either way.
+   - A task Gradle skipped is "not run", never "passed".
    - `android-apk.yml`: the minSdk 29 gate, which runs nowhere else.
      `./gradlew build` does not scan the APKs. Run
      `python3 scripts/check_apk_min_api.py --apk <apk>` on the debug and the
@@ -102,7 +116,12 @@ again (steps 7 to 9 need them), but every one of them stays neutral:
    there.
 6. **The owner merges** the fork's PR into `main` from the advisory. Merging
    is the owner's action (owner ruling, 2026-08-31). Never merge, and never
-   enable auto-merge.
+   enable auto-merge. GitHub titles that merge commit `Merge pull request
+   from GHSA-…`, which no neutral wording reaches, and enforces none of
+   `main`'s protection rules for it. From that moment `main` shows a marked
+   security fix with no fixed release out. So the report of step 5 says what
+   the release will need (step 8), and the owner can merge when the release
+   can follow directly. The timing is the owner's.
 7. **After the merge, before the release.** The fix is public from the merge
    on. The owner, or a session the owner asks, checks every run on the merge
    commit, not Build and Test alone: `ci.yml`, `android-apk.yml`,

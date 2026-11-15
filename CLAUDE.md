@@ -45,7 +45,7 @@ or edited. A skill (`.claude/skills/<name>/SKILL.md`) loads on demand:
 | `release` | the owner asks for a release, a version bump or a `v*` tag | developer |
 | `reviewer` | you review a diff or a PR | reviewer |
 | `ux` | you design or change a screen, a flow or the words the user sees | UX designer |
-| `security-fix` | you work on a vulnerability that is not public yet (a private advisory) | developer |
+| `security-fix` | you work on, or come across, a vulnerability that is not public yet | developer |
 
 **Roles.** A developer starts with this file; the rules load as code is
 touched; `/pr` comes at step 3 of the Workflow. A reviewer starts with
@@ -140,7 +140,8 @@ security fix (below the steps).
 5. **Address every comment** and drive CI to green. Keep watching until the
    PR is merged or closed.
 
-**An embargoed security fix** (a vulnerability that is not public yet) takes
+**An embargoed security fix** (a vulnerability that is not public yet,
+reported or found by you; a found one is told to the owner first) takes
 the `security-fix` skill instead of steps 3 to 5: no PR, and no push to any
 branch, the designated one included, before the owner has merged the fix;
 neutral wording until the advisory is published (owner's request,

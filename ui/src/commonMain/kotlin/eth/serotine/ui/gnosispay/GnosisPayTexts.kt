@@ -126,7 +126,8 @@ internal object GnosisPayTexts {
         is DelayTransferState.Waiting -> "The Delay module holds it until ${formatDateTime(state.readyAt)}. " +
             "Execute is offered then."
         is DelayTransferState.Behind -> "${entries(state.ahead).replaceFirstChar { it.uppercase() }} queued before " +
-            "it come first, whoever queued them. Each is executed by someone, or skipped once it has expired; " +
+            "it come first. One queued from this device is listed above, with its own Execute. Any other is " +
+            "executed by whoever can, or skipped by anyone once expired, which Punicus does not offer yet; " +
             "Punicus never executes an entry it did not queue here."
         is DelayTransferState.Expired -> "Its window to execute closes at ${formatDateTime(state.expiresAt)}, too " +
             "soon for a transaction sent now to be mined in time."

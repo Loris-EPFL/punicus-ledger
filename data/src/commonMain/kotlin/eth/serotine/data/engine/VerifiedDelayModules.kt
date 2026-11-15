@@ -39,7 +39,8 @@ import kotlinx.coroutines.flow.map
  *
  * A call the engine refuses is [ReadUnavailable.REFUSED]; one that reverts, answers something
  * that is not what the getter returns, or lists more than [MAX_MEMBERS] members, is unproven: a
- * pinned Delay's getters do neither. Polled, cached and refused as [ProvenReads] describes, keyed
+ * pinned Delay's getters do neither. A Delay that is another's is told by its first three getters
+ * alone. Polled, cached and refused as [ProvenReads] describes, keyed
  * by the Safe and the module: the Safe's own Delay's reading stands for [DELAY_KEPT_FOR_HEADS]
  * heads, any other for [NOT_DELAY_KEPT_FOR_HEADS].
  */
@@ -79,9 +80,9 @@ class VerifiedDelayModules internal constructor(
     ): EngineReading<DelayFinding>? {
         for (attempt in 1..READ_TRIES) {
             currentCoroutineContext().ensureActive()
-            when (val read = Getters(chain, module).settings()) {
+            when (val read = Getters(chain, module).settings(safe)) {
                 is Read.Done ->
-                    return EngineReading.Proven(finding(read.value, safe, module, generation), read.block, read.hash)
+                    return EngineReading.Proven(finding(read.value, module, generation), read.block, read.hash)
                 is Read.Stopped -> when (read.ended) {
                     Ended.STRADDLED -> Unit
                     Ended.NO_ANSWER -> if (attempt < READ_TRIES) delay(RETRY_PAUSE)
@@ -93,21 +94,11 @@ class VerifiedDelayModules internal constructor(
         return null
     }
 
-    /** What [settings] make of the Delay at [module]: [safe]'s own when its avatar, target and owner are [safe]. */
-    private fun finding(settings: Settings, safe: Address, module: Address, generation: DelayGeneration): DelayFinding {
-        if (settings.avatar != safe || settings.target != safe || settings.owner != safe) {
-            return DelayFinding.NotWired(generation)
-        }
+    /** What [settings] make of the Delay at [module], a proxy of a [generation] mastercopy. */
+    private fun finding(settings: Settings, module: Address, generation: DelayGeneration): DelayFinding {
+        val own = settings as? Settings.Own ?: return DelayFinding.NotWired(generation)
         return DelayFinding.Wired(
-            DelayModule(
-                module,
-                generation,
-                settings.cooldown,
-                settings.expiration,
-                settings.txNonce,
-                settings.queueNonce,
-                settings.members,
-            ),
+            DelayModule(module, generation, own.cooldown, own.expiration, own.txNonce, own.queueNonce, own.members),
         )
     }
 
@@ -206,11 +197,16 @@ class VerifiedDelayModules internal constructor(
             return done(DelayQueue(txNonce, queueNonce, cooldown, expiration, null, (last - txNonce).toInt()))
         }
 
-        /** The Delay's settings and members. */
-        fun settings(): Read<Settings> {
+        /**
+         * The Delay's settings and members; or, once its avatar, target or owner is not [safe],
+         * [Settings.Foreign] at once, at the block of those three: nothing more of another's Delay
+         * is read.
+         */
+        fun settings(safe: Address): Read<Settings> {
             val avatar = address(AVATAR) ?: return stopped
             val target = address(TARGET) ?: return stopped
             val owner = address(OWNER) ?: return stopped
+            if (avatar != safe || target != safe || owner != safe) return done(Settings.Foreign)
             val cooldown = number(TX_COOLDOWN) ?: return stopped
             val expiration = number(TX_EXPIRATION) ?: return stopped
             val txNonce = number(TX_NONCE) ?: return stopped
@@ -218,21 +214,24 @@ class VerifiedDelayModules internal constructor(
             // A pinned Delay keeps its next entry within its queue.
             if (txNonce > queueNonce) return Read.Stopped(Ended.NOT_A_DELAYS_ANSWER)
             val members = members() ?: return stopped
-            return done(Settings(avatar, target, owner, cooldown, expiration, txNonce, queueNonce, members))
+            return done(Settings.Own(cooldown, expiration, txNonce, queueNonce, members))
         }
     }
 
     /** A Delay's settings, as its getters answer them at one block. */
-    private data class Settings(
-        val avatar: Address,
-        val target: Address,
-        val owner: Address,
-        val cooldown: Long,
-        val expiration: Long,
-        val txNonce: Long,
-        val queueNonce: Long,
-        val members: List<Address>,
-    )
+    private sealed interface Settings {
+        /** The Safe's own Delay: avatar, target and owner the Safe, with its periods, queue and members. */
+        data class Own(
+            val cooldown: Long,
+            val expiration: Long,
+            val txNonce: Long,
+            val queueNonce: Long,
+            val members: List<Address>,
+        ) : Settings
+
+        /** A Delay whose avatar, target or owner is not the Safe asked about. */
+        data object Foreign : Settings
+    }
 
     /** How one read of the getters ended: [Done] with what it read at [Done.block], or [Stopped]. */
     private sealed interface Read<out T> {
@@ -333,8 +332,11 @@ class VerifiedDelayModules internal constructor(
         val RETRY_PAUSE = 1.seconds
 
         /**
-         * Heads a Delay's reading stands, about a minute of Gnosis Chain's: what a screen shows. A
-         * quote, a review and a check before sending subscribe anew and read it fresh ([ProvenReads]).
+         * Heads the Safe's own Delay's reading stands, about a minute of Gnosis Chain's. A kept reading
+         * is served to every subscriber within them, a new one included ([ProvenReads]): a change the
+         * Safe's own transactions make to the Delay (its owner, its members) shows up to that late, and
+         * its nonces are a screen's, never what an execution is checked against. That check reads the
+         * queue with calls of its own, at one block, when it is made (docs/gnosis-pay.md, *Sending*).
          */
         const val DELAY_KEPT_FOR_HEADS = 12L
 

@@ -72,8 +72,10 @@ modules its verified state lists is the Safe's own Delay:
 The Safe is added as any Safe is: watched (*Watch an address*). No new way to
 add an account exists. The account's screen then says it is a Gnosis Pay
 account and offers Send when a member's key is held here on Gnosis Chain.
-Otherwise Send is greyed out, and a tap says what is missing: a member's key,
-the member added on Gnosis Chain, or a module on the retired mastercopy.
+Otherwise Send is greyed out, and a tap says what is missing: a member's key;
+the member added on Gnosis Chain; the member's watched entry on Gnosis Chain
+removed and added again from the held one; the wallet's account list, which
+cannot be read right now; or that the module is on the retired mastercopy.
 
 `ObserveGnosisPay` (domain) and `VerifiedDelayModules` (data) implement it.
 

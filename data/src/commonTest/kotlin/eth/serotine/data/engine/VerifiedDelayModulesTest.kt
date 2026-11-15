@@ -169,6 +169,19 @@ class VerifiedDelayModulesTest {
     }
 
     @Test
+    fun anotherSafesDelayIsToldByItsFirstThreeGetters() = runTest {
+        fake.snapshot = running(head = 7)
+        gnosisPayDelay(owner = member)
+        // Never set up as this Safe's: its members are no list read here, and nothing past the owner is asked.
+        fake.calls.remove(delay to VerifiedDelayModules.TX_COOLDOWN.toHex())
+
+        assertEquals(
+            DelayReading.Verified(DelayFinding.NotWired(DelayGeneration.CURRENT), 7),
+            delays().settled(),
+        )
+    }
+
+    @Test
     fun callsThatStraddleTwoBlocksAreMadeAgainThenUnproven() = runTest {
         fake.snapshot = running(head = 7)
         gnosisPayDelay()

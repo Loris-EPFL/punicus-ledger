@@ -32,10 +32,10 @@ import kotlinx.coroutines.flow.map
  * ([readEach]): a module enabled or disabled starts or stops its own reading only.
  *
  * A Safe with several Delays of its own is read by the first of the current mastercopy in its
- * module order, else, once every module has answered, the first of the retired one. A Safe whose modules are not all read yet is
- * [GnosisPayReading.Checking] until one of them is its Delay or all of them are read, and
- * [GnosisPayReading.Unavailable] when a module that could still be its Delay cannot be read: a
- * Safe is never said not to be one on a read that did not answer.
+ * module order, else, once every module has answered, the first of the retired one. A Safe whose
+ * modules are not all read yet is [GnosisPayReading.Checking] until one of them is its Delay or
+ * all of them are read, and [GnosisPayReading.Unavailable] when a module that could still be its
+ * Delay cannot be read: a Safe is never said not to be one on a read that did not answer.
  */
 class ObserveGnosisPay(
     private val kinds: AddressKinds,
@@ -97,12 +97,18 @@ class ObserveGnosisPay(
         val hereAddresses = here.mapTo(HashSet()) { it.address }
         val elsewhere = held.filter { it.network != safe.network && it.address !in hereAddresses }
             .distinctBy { it.address }
+        // A member watched on the Safe's network whose key is held under another network's entry.
+        val watchedHere = loaded?.accounts.orEmpty().filter {
+            it.network == safe.network && it.custody == AccountCustody.Watched && it.address in delay.members &&
+                elsewhere.any { held -> held.address == it.address }
+        }
         return GnosisPayReading.Found(
             delay,
             block,
             membersHeld = here,
             membersHeldElsewhere = elsewhere,
             accountsRead = loaded != null,
+            membersWatchedHere = watchedHere,
         )
     }
 }
@@ -124,7 +130,8 @@ sealed interface GnosisPayReading {
      * wallet's EOAs on the Safe's network whose key is held here and that are among its members;
      * [membersHeldElsewhere], members whose key is held here only under an account on another
      * network, one entry per address; [accountsRead] false when the wallet's list could not be read,
-     * so which members are held cannot be told.
+     * so which members are held cannot be told; [membersWatchedHere], the members of
+     * [membersHeldElsewhere] that are in the wallet on the Safe's network as watched entries.
      */
     data class Found(
         val delay: DelayModule,
@@ -132,6 +139,7 @@ sealed interface GnosisPayReading {
         val membersHeld: List<Account>,
         val membersHeldElsewhere: List<Account>,
         val accountsRead: Boolean = true,
+        val membersWatchedHere: List<Account> = emptyList(),
     ) : GnosisPayReading {
         /** Whether a transfer can be queued through [delay] from this wallet, or what is missing. */
         val sending: GnosisPaySending
@@ -139,6 +147,7 @@ sealed interface GnosisPayReading {
                 delay.generation == DelayGeneration.RETIRED -> GnosisPaySending.RETIRED_MODULE
                 membersHeld.isNotEmpty() -> GnosisPaySending.AVAILABLE
                 !accountsRead -> GnosisPaySending.ACCOUNTS_UNREADABLE
+                membersWatchedHere.isNotEmpty() -> GnosisPaySending.MEMBER_WATCHED_HERE
                 membersHeldElsewhere.isNotEmpty() -> GnosisPaySending.MEMBER_ON_ANOTHER_NETWORK
                 else -> GnosisPaySending.NO_MEMBER_KEY
             }
@@ -158,6 +167,13 @@ enum class GnosisPaySending {
 
     /** A member's key is held here, but not as an account on the Safe's network: adding it there sends. */
     MEMBER_ON_ANOTHER_NETWORK,
+
+    /**
+     * A member's key is held here under another network's entry, while the member is watched on the
+     * Safe's network: adding it again changes nothing, so the watched entry is removed first, and
+     * the member then added on the Safe's network from the held one.
+     */
+    MEMBER_WATCHED_HERE,
 
     /** The wallet's account list cannot be read right now: whether a member's key is held cannot be told. */
     ACCOUNTS_UNREADABLE,

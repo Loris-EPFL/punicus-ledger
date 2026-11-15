@@ -25,7 +25,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 20 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
-| [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 11 |
+| [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 18 |
 | [Send from another wallet](#handoff) | `handoff/` | 18 |
 | [Import recovery phrase](#mnemonic-import) | `mnemonic-import/` | 12 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
@@ -399,7 +399,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="gnosis-pay"></a>
 ## Gnosis Pay account
 
-`gnosis-pay/`, 11 states: `overview`, `overview-dark`, `queued`, `execute-refused`, `watched`, `compose`, `compose-error`, `review`, `review-requoted`, `loading`, `unavailable`
+`gnosis-pay/`, 18 states: `overview`, `overview-dark`, `queued`, `execute-refused`, `watched`, `compose`, `compose-error`, `review`, `review-requoted`, `compose-quoting`, `review-signing`, `review-checking`, `review-wrong-password`, `review-not-sent`, `review-biometrics`, `queued-unverified`, `loading`, `unavailable`
 
 <a href="gnosis-pay/overview.png"><img src="gnosis-pay/overview.png" width="206" alt="overview"></a>
 <a href="gnosis-pay/overview-dark.png"><img src="gnosis-pay/overview-dark.png" width="206" alt="overview-dark"></a>
@@ -410,6 +410,13 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="gnosis-pay/compose-error.png"><img src="gnosis-pay/compose-error.png" width="206" alt="compose-error"></a>
 <a href="gnosis-pay/review.png"><img src="gnosis-pay/review.png" width="206" alt="review"></a>
 <a href="gnosis-pay/review-requoted.png"><img src="gnosis-pay/review-requoted.png" width="206" alt="review-requoted"></a>
+<a href="gnosis-pay/compose-quoting.png"><img src="gnosis-pay/compose-quoting.png" width="206" alt="compose-quoting"></a>
+<a href="gnosis-pay/review-signing.png"><img src="gnosis-pay/review-signing.png" width="206" alt="review-signing"></a>
+<a href="gnosis-pay/review-checking.png"><img src="gnosis-pay/review-checking.png" width="206" alt="review-checking"></a>
+<a href="gnosis-pay/review-wrong-password.png"><img src="gnosis-pay/review-wrong-password.png" width="206" alt="review-wrong-password"></a>
+<a href="gnosis-pay/review-not-sent.png"><img src="gnosis-pay/review-not-sent.png" width="206" alt="review-not-sent"></a>
+<a href="gnosis-pay/review-biometrics.png"><img src="gnosis-pay/review-biometrics.png" width="206" alt="review-biometrics"></a>
+<a href="gnosis-pay/queued-unverified.png"><img src="gnosis-pay/queued-unverified.png" width="206" alt="queued-unverified"></a>
 <a href="gnosis-pay/loading.png"><img src="gnosis-pay/loading.png" width="206" alt="loading"></a>
 <a href="gnosis-pay/unavailable.png"><img src="gnosis-pay/unavailable.png" width="206" alt="unavailable"></a>
 

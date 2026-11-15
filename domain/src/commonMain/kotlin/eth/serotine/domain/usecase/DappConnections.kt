@@ -4,6 +4,8 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
@@ -13,6 +15,7 @@ import eth.serotine.domain.repository.DappPairing
 import eth.serotine.domain.repository.DappProposal
 import eth.serotine.domain.repository.DappProposalId
 import eth.serotine.domain.repository.DappSessionId
+import eth.serotine.domain.repository.DappSiteMemory
 import eth.serotine.domain.repository.DappSessions
 import eth.serotine.domain.repository.NetworkSettings
 import kotlinx.coroutines.flow.Flow
@@ -118,12 +121,15 @@ class PairDapp(private val sessions: DappSessions) {
 /**
  * Approves a proposal with [accounts]: each must be one of the wallet's accounts the proposal's dApp may be
  * offered ([dappOffer]), on a network it asked for, all of one kind of funds with what it requires, so
- * that nothing a screen got wrong reaches the dApp ([DappApproval.InvalidAccounts]).
+ * that nothing a screen got wrong reaches the dApp ([DappApproval.InvalidAccounts]). Once approved, the accounts
+ * are remembered for the site of the host the dApp states ([DappSiteMemory]; issue #252), to be preselected when a
+ * host of that site connects again; a memory that cannot be saved takes nothing from the approval.
  */
 class ApproveDappProposal(
     private val sessions: DappSessions,
     private val accounts: AccountRepository,
     private val networks: NetworkSettings,
+    private val sites: DappSiteMemory,
 ) {
     suspend operator fun invoke(proposal: DappProposalId, chosen: List<AccountId>): DappApproval {
         val asked = (sessions.observe().first() as? DappConnections.On)?.proposals?.find { it.id == proposal }
@@ -137,7 +143,11 @@ class ApproveDappProposal(
             dappOffer(account, enabled, asked, chosen - id) == DappOffer.OFFERED
         } && missingRequired(asked, chosen).isEmpty()
         if (!valid) return DappApproval.InvalidAccounts
-        return sessions.approve(proposal, chosen)
+        val approval = sessions.approve(proposal, chosen)
+        if (approval is DappApproval.Approved) {
+            (AppHost.ofUrl(asked.dapp.url) as? AppHostResult.Host)?.let { sites.remember(it.host.site, chosen) }
+        }
+        return approval
     }
 }
 

@@ -435,6 +435,8 @@ class AppNavigationTest {
         networkSettings = MemoryNetworkSettings(),
         dappSessions = OffDappSessions,
         dappRequests = dappRequests,
+        perAppKeys = FakePerAppKeys(),
+        dappSites = MemoryDappSites(),
         dappConnectionsOff = true,
     )
 

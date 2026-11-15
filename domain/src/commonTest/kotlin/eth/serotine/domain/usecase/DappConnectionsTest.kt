@@ -76,6 +76,7 @@ class DappConnectionsTest {
     }
 
     private val sessions = FakeSessions()
+    private val sites = MemorySites()
     private val proposal = DappProposalId("pairing", 1)
 
     private fun proposal(required: Set<String> = emptySet(), optional: Set<String>) = DappProposal(
@@ -137,7 +138,7 @@ class DappConnectionsTest {
 
     @Test
     fun anApprovalNamesOfferedAccountsOnly() = runTest {
-        val approve = ApproveDappProposal(sessions, accounts, networks)
+        val approve = ApproveDappProposal(sessions, accounts, networks, sites)
         assertEquals(DappApproval.InvalidAccounts, approve(proposal, emptyList()))
         assertEquals(DappApproval.InvalidAccounts, approve(proposal, listOf(watched.id)))
         assertEquals(DappApproval.InvalidAccounts, approve(proposal, listOf(gnosis.id)), "not asked for")
@@ -153,6 +154,8 @@ class DappConnectionsTest {
         assertTrue(approve(proposal, listOf(held.id, watchedSafe.id)) is DappApproval.Approved)
         assertTrue(approve(proposal, listOf(mainnet.id)) is DappApproval.Approved)
         assertEquals(listOf(proposal to listOf(held.id, watchedSafe.id), proposal to listOf(mainnet.id)), sessions.approved)
+        // Remembered for the dApp's site, the last approval in place of the one before.
+        assertEquals(mapOf(testHost("dapp.test") to listOf(mainnet.id)), sites.remembered.value)
     }
 
     @Test
@@ -167,7 +170,7 @@ class DappConnectionsTest {
     fun aProposalIsApprovedOnlyWithAnAccountOnEachNetworkItRequires() = runTest {
         val both = proposal(required = setOf("eip155:1", "eip155:100"), optional = emptySet())
         sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(both), emptyList())
-        val approve = ApproveDappProposal(sessions, accounts, networks)
+        val approve = ApproveDappProposal(sessions, accounts, networks, sites)
         assertEquals(setOf(Network.GNOSIS), missingRequired(both, listOf(mainnet.id)))
         assertEquals(DappApproval.InvalidAccounts, approve(proposal, listOf(mainnet.id)), "none on Gnosis Chain")
         assertTrue(sessions.approved.isEmpty())

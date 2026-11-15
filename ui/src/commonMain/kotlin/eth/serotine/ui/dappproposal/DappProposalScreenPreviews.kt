@@ -2,6 +2,7 @@ package eth.serotine.ui.dappproposal
 
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.DappRefusal
 import eth.serotine.domain.usecase.DappOffer
 import eth.serotine.ui.ScreenPreview
@@ -153,6 +154,82 @@ private fun DappProposalEndedPreview() = DappProposalPreview(
 @Composable
 private fun DappProposalLoadingPreview() = DappProposalPreview(DappProposalUiState())
 
+// Per-app addresses (issue #252). A first connection from a site: a new address of its own, ticked, the password typed.
+private val firstVisit = realFunds.copy(
+    url = "https://app.uniswap.org",
+    accounts = realFunds.accounts.map { it.copy(chosen = false) },
+    newAddress = NewAddressOption(
+        title = "New address for uniswap.org",
+        where = "app.uniswap.org, site uniswap.org · On Ethereum and Gnosis Chain",
+        chosen = true,
+        unavailable = null,
+    ),
+    password = WalletPassword("made-up password"),
+)
+
+@Preview
+@Composable
+private fun DappProposalNewAddressPreview() = DappProposalPreview(firstVisit)
+
+@Preview
+@Composable
+private fun DappProposalNewAddressDarkPreview() = DappProposalPreview(firstVisit, darkTheme = true)
+
+// Two recovery phrases on this device: the row names the one it comes from, which can be changed.
+private val twoPhrases = firstVisit.copy(
+    newAddress = firstVisit.newAddress!!.copy(phrase = "From the recovery phrase of Savings", changeable = true),
+)
+
+@Preview
+@Composable
+private fun DappProposalTwoPhrasesPreview() = DappProposalPreview(twoPhrases)
+
+@Preview
+@Composable
+private fun DappProposalChoosingPhrasePreview() = DappProposalPreview(
+    twoPhrases.copy(
+        phrases = listOf(
+            PhraseOption("1:0x1", "Savings", "0x52b4…91e0", chosen = true),
+            PhraseOption("1:0x5", "Cold", "0x9e0a…5b12", chosen = false),
+        ),
+    ),
+)
+
+// Only watched accounts and Safes: no phrase to make it from, so it is greyed out, never hidden.
+@Preview
+@Composable
+private fun DappProposalNoPhrasePreview() = DappProposalPreview(
+    request.copy(
+        url = "https://app.uniswap.org",
+        newAddress = NewAddressOption(
+            title = "New address for uniswap.org",
+            where = "app.uniswap.org, site uniswap.org",
+            chosen = false,
+            unavailable = DappProposalViewModel.NO_PHRASE,
+        ),
+    ),
+)
+
+// The site connecting again: its per-app address, approved last, preselected among the accounts.
+@Preview
+@Composable
+private fun DappProposalSeenBeforePreview() = DappProposalPreview(
+    realFunds.copy(
+        url = "https://app.uniswap.org",
+        accounts = listOf(
+            AccountOption(
+                "1:0x6",
+                "uniswap.org",
+                "0x9fa6…8D52",
+                chosen = true,
+                unavailable = null,
+                network = Network.ETHEREUM.displayName,
+                perAppSite = "uniswap.org",
+            ),
+        ) + realFunds.accounts.map { it.copy(chosen = false) },
+    ),
+)
+
 /** Every preview above, which DappProposalScreenPreviewsTest renders: a new preview goes in here too. */
 internal val dappProposalScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("request") { DappProposalRequestPreview() },
@@ -169,4 +246,10 @@ internal val dappProposalScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("not-saved") { DappProposalNotSavedPreview() },
     ScreenPreview("ended") { DappProposalEndedPreview() },
     ScreenPreview("loading") { DappProposalLoadingPreview() },
+    ScreenPreview("new-address") { DappProposalNewAddressPreview() },
+    ScreenPreview("new-address-dark") { DappProposalNewAddressDarkPreview() },
+    ScreenPreview("two-phrases") { DappProposalTwoPhrasesPreview() },
+    ScreenPreview("choosing-phrase") { DappProposalChoosingPhrasePreview() },
+    ScreenPreview("no-phrase") { DappProposalNoPhrasePreview() },
+    ScreenPreview("seen-before") { DappProposalSeenBeforePreview() },
 )

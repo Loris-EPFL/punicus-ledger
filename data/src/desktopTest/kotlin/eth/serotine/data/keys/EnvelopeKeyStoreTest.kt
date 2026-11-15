@@ -613,6 +613,31 @@ class EnvelopeKeyStoreTest {
     }
 
     @Test
+    fun thePhrasesAreListedWithoutTheUnlockAndAnOlderFurtherAccountNamesNone() = runTest {
+        val store = store()
+        assertEquals(emptyMap(), store.phrases())
+        store.importMnemonic(hardhat, password)
+        store.importMnemonic(abandon, password)
+        store.deriveAccount(hardhatAddress, password, held = setOf(hardhatAddress))
+        store.derivePerApp(hardhatAddress, host("example.com"), password)
+        // A further account sealed before part 2 named no phrase.
+        store.deriveAccount(hardhatAddress, password, held = setOf(hardhatAddress, hardhatSecond))
+        rewrite(hardhatThird) { it.with(phrase = null) }
+        // A first account sealed before then names none either, and is its phrase's first account all the same.
+        rewrite(abandonAddress) { it.with(phrase = null) }
+
+        assertEquals(
+            mapOf(
+                hardhatAddress to hardhatAddress,
+                abandonAddress to abandonAddress,
+                hardhatSecond to hardhatAddress,
+                exampleAddress to hardhatAddress,
+            ),
+            store.phrases(),
+        )
+    }
+
+    @Test
     fun aPerAppAddressMadeBeforeIsKeptAndComesBackFromAnyAccountOfItsPhrase() = runTest {
         val store = store()
         store.importMnemonic(hardhat, password)

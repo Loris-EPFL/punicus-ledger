@@ -17,6 +17,7 @@ import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.CowOrders
 import eth.serotine.domain.repository.DappRequests
 import eth.serotine.domain.repository.DappSessions
+import eth.serotine.domain.repository.DappSiteMemory
 import eth.serotine.domain.repository.DebugLog
 import eth.serotine.domain.repository.DebugScreenSetting
 import eth.serotine.domain.repository.DisplayCurrencySetting
@@ -37,6 +38,7 @@ import eth.serotine.domain.repository.NetworkSettings
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.NftContracts
 import eth.serotine.domain.repository.Outbox
+import eth.serotine.domain.repository.PerAppKeys
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
@@ -96,6 +98,7 @@ import eth.serotine.domain.usecase.HoldSafeSignature
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.KeepWaitingSwap
+import eth.serotine.domain.usecase.MakePerAppAddress
 import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
@@ -125,6 +128,7 @@ import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveNetworkOverview
 import eth.serotine.domain.usecase.ObserveNfts
 import eth.serotine.domain.usecase.ObserveOutbox
+import eth.serotine.domain.usecase.ObservePerAppChoice
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeHistory
@@ -408,6 +412,10 @@ class AppGraph(
     private val dappSessions: DappSessions,
     /** The requests dApps send over those sessions: the same adapter's. */
     private val dappRequests: DappRequests,
+    /** The key store's per-app addresses (issue #252): the host's key store, the instance [keys] is. */
+    private val perAppKeys: PerAppKeys,
+    /** The accounts last approved for each dApp site, preselected when a host of it connects again (issue #252). */
+    private val dappSites: DappSiteMemory,
     /**
      * Whether this build carries no WalletConnect project ID, so that dApp connections are switched
      * off and Settings shows Connected dApps greyed out (ruling 2).
@@ -992,8 +1000,10 @@ class AppGraph(
     fun dappProposalViewModel(proposalKey: String): DappProposalViewModel = DappProposalViewModel(
         proposalKey,
         observeDappConnections(),
-        ApproveDappProposal(dappSessions, accounts, networkSettings),
+        ApproveDappProposal(dappSessions, accounts, networkSettings, dappSites),
         RejectDappProposal(dappSessions),
+        ObservePerAppChoice(accounts, perAppKeys, dappSites, networkSettings),
+        MakePerAppAddress(perAppKeys, accounts, walletChanges),
     )
 
     fun currencyViewModel(): CurrencyViewModel =

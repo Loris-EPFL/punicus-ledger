@@ -185,7 +185,7 @@ that can fail (locked, biometric invalidated, hardware missing) says so in
 its KDoc and returns it as a result the UI shows as state.
 
 **What exists today**: the key-store port
-`KeyStore`, the per-app port `PerAppKeys` (`derivePerApp`) and the signer
+`KeyStore`, the per-app port `PerAppKeys` (`derivePerApp`, `phrases`) and the signer
 port `Signer` in `:domain`, all implemented by `EnvelopeKeyStore` in
 `eth.serotine.data.keys`.
 
@@ -416,9 +416,11 @@ port `Signer` in `:domain`, all implemented by `EnvelopeKeyStore` in
     apart before the unlock. An envelope stored before carries none, and is
     left as it is: rewritten, an older build of the app could no longer
     read it. Its phrase is learnt when a per-app address is next derived
-    from it (`PerAppDerivation.Stored.phrase`), and part 3 keeps it with the account,
-    app-private like the per-site memory. The first account of a phrase
-    needs none: its address is the phrase's.
+    from it (`PerAppDerivation.Stored.phrase`), and kept with the per-app
+    account made (`PerAppAccount.phrase`, in the account list); until then
+    D3 lists such an account as a phrase of its own. The first account of a
+    phrase needs none: its address is the phrase's. `PerAppKeys.phrases()`
+    reads them from the envelopes without the unlock.
   - **Restored on request** (D9, owner's request, 2026-11-14): a host (or
     its site) and a phrase, the wallet password, and the address is derived again into an
     envelope of its own. The private key is not shown or exported: that

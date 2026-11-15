@@ -7,11 +7,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -23,8 +27,11 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,15 +41,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.unavailable
+import eth.serotine.ui.platform.protectFromScreenCapture
 
 /** Test tag of an account's row, followed by its address, for UI tests. */
 const val DAPP_PROPOSAL_ACCOUNT_TAG = "dapp-proposal-account-"
+
+/** Test tag of the new per-app address's row, for UI tests. */
+const val DAPP_PROPOSAL_NEW_ADDRESS_TAG = "dapp-proposal-new-address"
+
+/** Test tag of the wallet password field, for UI tests. */
+const val DAPP_PROPOSAL_PASSWORD_TAG = "dapp-proposal-password"
 
 /**
  * Binds [DappProposalScreen] to its ViewModel; an answer, or a proposal no longer waiting, ends it
@@ -60,6 +79,8 @@ fun DappProposalRoute(
     LaunchedEffect(state.done, state.gone) {
         if (state.done || state.gone) done()
     }
+    // Leaving the screen, the app put in the background included, drops a typed password.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     DappProposalScreen(
         state,
         onToggle = viewModel::toggle,
@@ -67,6 +88,9 @@ fun DappProposalRoute(
         onReject = viewModel::reject,
         onDismissExplanation = viewModel::dismissExplanation,
         onBack = onBack,
+        onPasswordChange = viewModel::onPasswordChange,
+        onChoosePhrase = viewModel::choosePhrase,
+        onPickPhrase = viewModel::pickPhrase,
         modifier = modifier,
     )
 }
@@ -75,7 +99,9 @@ fun DappProposalRoute(
  * A dApp's session proposal (docs/walletconnect.md, screen D3) as a pure function of [state]: what
  * the dApp says of itself, marked as its claim, the networks the connection would hold, each with its kind
  * of funds, what it asks to do, and the accounts to choose, each with its network, those this dApp may not
- * be offered greyed out, a tap saying why. Approve and
+ * be offered greyed out, a tap saying why. At their head, the new per-app address for the dApp's site (issue #252),
+ * ticked while the site has none, greyed out when it cannot be made, with the phrase it comes from when there are
+ * several; chosen, it asks for the wallet password. Approve and
  * Reject; a proposal that asks for too much can only be rejected, and says why.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,9 +113,13 @@ fun DappProposalScreen(
     onReject: () -> Unit,
     onDismissExplanation: () -> Unit,
     onBack: () -> Unit,
+    onPasswordChange: (String) -> Unit = {},
+    onChoosePhrase: () -> Unit = {},
+    onPickPhrase: (String?) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     state.explaining?.let { UnavailableDialog(UnavailableNotice(it.title, it.reason), onDismissExplanation) }
+    state.phrases?.let { PhraseDialog(it, onPickPhrase) }
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -149,6 +179,8 @@ fun DappProposalScreen(
                 Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
             }
             Heading("Accounts it sees")
+            state.newAddress?.let { NewAddressRow(it, state.busy, onToggle, onChoosePhrase) }
+            if (state.newAddress?.chosen == true) PasswordField(state, onPasswordChange, onApprove)
             state.accounts.forEach { account ->
                 val unavailable = account.unavailable != null
                 val color = if (unavailable) Unavailable.contentColor() else MaterialTheme.colorScheme.onSurface
@@ -170,7 +202,8 @@ fun DappProposalScreen(
                             account.network.isEmpty() -> account.address
                             else -> "${account.network} · ${account.address}"
                         }
-                        Text(account.unavailable ?: where, color = color)
+                        val line = account.perAppSite?.let { "Per-app address for $it · $where" } ?: where
+                        Text(account.unavailable ?: line, color = color)
                     },
                     colors = ListItemDefaults.colors(),
                 )
@@ -205,6 +238,113 @@ fun DappProposalScreen(
             }
         }
     }
+}
+
+/** The new per-app address's row: ticked or not, greyed out with a tap saying why when it cannot be made. */
+@Composable
+private fun NewAddressRow(
+    option: NewAddressOption,
+    busy: Boolean,
+    onToggle: (String) -> Unit,
+    onChoosePhrase: () -> Unit,
+) {
+    val unavailable = option.unavailable != null
+    val color = if (unavailable) Unavailable.contentColor() else MaterialTheme.colorScheme.onSurface
+    ListItem(
+        modifier = Modifier
+            .toggleable(
+                value = option.chosen,
+                enabled = !busy,
+                role = Role.Checkbox,
+                onValueChange = { onToggle(DappProposalViewModel.NEW_KEY) },
+            )
+            .unavailable(unavailable)
+            .testTag(DAPP_PROPOSAL_NEW_ADDRESS_TAG),
+        leadingContent = { Checkbox(checked = option.chosen, onCheckedChange = null, enabled = !unavailable) },
+        headlineContent = { Text(option.title, color = color) },
+        supportingContent = {
+            Column {
+                Text(option.unavailable ?: option.where, color = color)
+                if (!unavailable) {
+                    Text(
+                        "An address of its own, so this site cannot see your other accounts.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                option.phrase?.let { phrase ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(phrase, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = color)
+                        if (option.changeable) TextButton(onClick = onChoosePhrase, enabled = !busy) { Text("Change") }
+                    }
+                }
+            }
+        },
+        colors = ListItemDefaults.colors(),
+    )
+}
+
+/** The wallet password, which making the new address takes. The window is kept out of capture while it shows. */
+@Composable
+private fun PasswordField(state: DappProposalUiState, onPasswordChange: (String) -> Unit, onApprove: () -> Unit) {
+    val captureBlocked = protectFromScreenCapture()
+    OutlinedTextField(
+        value = state.password.text,
+        onValueChange = onPasswordChange,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth()
+            .testTag(DAPP_PROPOSAL_PASSWORD_TAG),
+        enabled = !state.busy,
+        label = { Text("Wallet password") },
+        supportingText = { Text("Making the new address takes it.") },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(
+            autoCorrectEnabled = false,
+            keyboardType = KeyboardType.Password,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(onDone = { onApprove() }),
+    )
+    if (!captureBlocked) {
+        Text(
+            "Screenshots and screen recordings of this window cannot be blocked here. Make sure nothing is " +
+                "recording your screen.",
+            Modifier.padding(horizontal = 16.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+/** The phrases a new address can come from, each named by an account of it; picking one closes the list. */
+@Composable
+private fun PhraseDialog(phrases: List<PhraseOption>, onPick: (String?) -> Unit) {
+    AlertDialog(
+        onDismissRequest = { onPick(null) },
+        title = { Text("Which recovery phrase") },
+        text = {
+            Column {
+                Text(
+                    "The new address comes from one of the recovery phrases on this device, each named here by an " +
+                        "account of it.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                phrases.forEach { phrase ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onPick(phrase.key) }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = phrase.chosen, onClick = { onPick(phrase.key) })
+                        Column {
+                            Text(phrase.name)
+                            Text(phrase.address, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onPick(null) }) { Text("Cancel") } },
+    )
 }
 
 @Composable

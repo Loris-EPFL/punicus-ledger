@@ -4,12 +4,12 @@
 # means the library's Kotlin metadata never runs ahead of the host's compiler.
 # Bump both together.
 [versions]
-# AGP 8.13 (with Gradle 8.14, gradle/wrapper): its R8 understands Kotlin 2.2
-# metadata. Myotis's AGP 8.7.3 does not — D8 prints a 200-line "error occurred
-# when parsing kotlin metadata" stack trace per dexed class — and Myotis already
-# runs 8.13.2's lint for the same reason (its gradle.properties). AGP 8.13 is the
-# last 8.x line; 9.x changes the KMP Android target to its own plugin, a
-# migration for both repositories at once.
+# AGP 8.13 (with Gradle 8.14, gradle/wrapper), held until the move to AGP 9 that
+# Myotis made in its #837 (9.x changes the KMP Android target to its own plugin, a
+# migration of its own). AGP 8.13's own R8 and lint cannot read the Kotlin 2.4
+# below, so two overrides stand in until then: R8 9.1.57 on the root buildscript
+# classpath (build.gradle.kts) and AGP 9.5.1's lint (android.experimental.lint.version
+# in gradle.properties).
 agp = "8.13.2"
 # Kotlin 2.4.21, Myotis's own pin since its #837: the engine library from Myotis 0.1.21
 # on carries Kotlin 2.4 metadata, which an older host compiler cannot read. (2.2.21 is

@@ -7,9 +7,11 @@
 // occurred when parsing kotlin metadata" with a stack trace per Kotlin class (some 11,000
 // on the `gradle pins` run of the Kotlin 2.4 bump, until the Gradle client ran out of
 // memory), and a minified build would ship stale @Metadata. developer.android.com/build/
-// kotlin-support names R8 9.1.29 for Kotlin 2.4, with AGP 8.5.2 and newer; 9.1.29 was never
-// published, so this is the newest 9.1 patch. Drop the block with the move to AGP 9, whose
-// bundled R8 reads Kotlin 2.4.
+// kotlin-support names R8 9.1.29 for Kotlin 2.4, with AGP 8.5.2 and newer. 9.1.29 is only on
+// R8's own repository (storage.googleapis.com/r8-releases/raw), which this build does not add;
+// 9.1.57 is the newest 9.1 patch on Google's Maven. Drop `repositories {}` and `dependencies {}`
+// below, and keep the locking, with the move to an AGP whose own R8 is 9.1.29 or newer: not
+// AGP 9.0, whose R8 is a 9.0.
 buildscript {
     repositories {
         google {

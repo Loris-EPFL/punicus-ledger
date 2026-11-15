@@ -183,6 +183,10 @@ private fun BadgeLabel(control: Control, spoken: Boolean = true) {
 }
 
 /** The badge's icon, as tall as a line of its text: the badge keeps its height in either form. */
+// RestrictedApi: lint takes the public Density.toDp(TextUnit) for its declaration in
+// FontScalingLinear, which Density extends off Android and which is restricted to Compose's own
+// library group (Compose Multiplatform 1.12). The call is the public API.
+@Suppress("RestrictedApi")
 @Composable
 private fun iconSize(): Dp {
     val lineHeight = MaterialTheme.typography.labelSmall.lineHeight

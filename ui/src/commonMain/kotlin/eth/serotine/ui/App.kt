@@ -297,7 +297,8 @@ private fun Destinations(
             // The whole back stack goes: every screen's ViewModel but the Debug tab's is cleared, the seed
             // screen's words with it, and back leaves the app instead of reaching a screen.
             navController.navigate(Destination.UPDATE_REQUIRED) {
-                popUpTo(navController.graph.id) { inclusive = true }
+                // By the root graph's route: its Int id is restricted API in multiplatform navigation.
+                popUpTo(Destination.ROOT) { inclusive = true }
             }
         } else if (navController.currentDestination?.route == Destination.UPDATE_REQUIRED) {
             navController.navigate(Tab.ACCOUNTS.graph) {
@@ -346,7 +347,7 @@ private fun Destinations(
     // One destination per screen. Inside a destination, viewModel {} is scoped to its
     // back-stack entry: the ViewModel survives configuration changes while the screen is
     // on the back stack, and is cleared when the screen is popped off it.
-    NavHost(navController, startDestination = Tab.ACCOUNTS.graph, modifier = modifier) {
+    NavHost(navController, startDestination = Tab.ACCOUNTS.graph, modifier = modifier, route = Destination.ROOT) {
         navigation(startDestination = Destination.ACCOUNTS, route = Tab.ACCOUNTS.graph) {
             composable(Destination.ACCOUNTS) {
                 AccountsRoute(
@@ -1214,6 +1215,8 @@ private fun WithAccount(
 }
 
 private object Destination {
+    /** The root graph, the NavHost's own: what the update screen clears the back stack down to. */
+    const val ROOT = "root"
     const val ACCOUNTS = "accounts"
     const val CONNECTIONS = "connections"
     const val PAIR_DAPP = "pairdapp"

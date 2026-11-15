@@ -474,6 +474,17 @@ private fun AccountDetailSafeOwnersPreview() = AccountDetailPreview(treasury.cop
 
 @Preview
 @Composable
+private fun AccountDetailGnosisPayOwnersPreview() = AccountDetailPreview(
+    treasury.copy(
+        label = "Card",
+        network = NetworkLabel(100, "Gnosis Chain", testnet = false),
+        segment = DetailSegment.OWNERS,
+        gnosisPay = "Gnosis Pay account. Its controlling key is on this device: transfers go through its Delay module.",
+    ),
+)
+
+@Preview
+@Composable
 private fun AccountDetailSafeOwnersNetworkOffPreview() =
     AccountDetailPreview(treasury.copy(segment = DetailSegment.OWNERS, networkOn = false))
 
@@ -881,4 +892,5 @@ internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("nft-adding") { AccountDetailNftAddingPreview() },
     ScreenPreview("activity-queued") { AccountDetailActivityQueuedPreview() },
     ScreenPreview("activity-queued-conflict-dark") { AccountDetailActivityQueuedConflictPreview() },
+    ScreenPreview("gnosis-pay-owners") { AccountDetailGnosisPayOwnersPreview() },
 )

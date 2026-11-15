@@ -91,6 +91,12 @@ private fun GnosisPayComposePreview() = GnosisPayPreview(
             assets = listOf(
                 AssetItem(null, "XDAI", "0.42 XDAI"),
                 AssetItem("0xcB444e90D8198415266c6a2724b7900fb12FC56E", "EURe", "1,250 EURe"),
+                AssetItem(
+                    "0x52908400098527886E0F7030069857D2E4169EE7",
+                    "EURe",
+                    "3 EURe",
+                    warning = "Not the built-in EURe: another contract",
+                ),
             ),
             asset = "0xcB444e90D8198415266c6a2724b7900fb12FC56E",
             to = "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
@@ -126,12 +132,32 @@ private fun GnosisPayReviewPreview() = GnosisPayPreview(
                 "From" to "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
                 "To" to "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
                 "Amount" to "50 EURe",
-                "Fee" to "0.0002 XDAI at most",
+                "Fee" to "0.0002 XDAI at most, normal (fees at block 43,000,511)",
+                "Signer's XDAI" to "0.42 XDAI now, at least 0.4198 XDAI after (block 43,000,512)",
                 "What happens" to "Queued now. It waits 3 min, then needs a second transaction to execute it, " +
                     "within 30 min.",
             ),
-            fee = FeeLevel.entries.first(),
+            fee = FeeLevel.NORMAL,
             unlock = UnlockStep(),
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun GnosisPayReviewRequotedPreview() = GnosisPayPreview(
+    overview.copy(
+        step = GnosisPayStep.Review(
+            title = "Execute 12.5 XDAI to 0x5aAeb6…eAed",
+            lines = listOf(
+                "To" to "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+                "Amount" to "12.5 XDAI",
+                "Fee" to "0.0003 XDAI at most, normal (fees at block 43,000,530)",
+                "What happens" to "Executes the transfer: the account's funds move now.",
+            ),
+            fee = FeeLevel.NORMAL,
+            unlock = UnlockStep(),
+            note = "The quote was over a minute old, so it was made again: check it, then sign.",
         ),
     ),
 )
@@ -158,6 +184,7 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("compose") { GnosisPayComposePreview() },
     ScreenPreview("compose-error") { GnosisPayComposeErrorPreview() },
     ScreenPreview("review") { GnosisPayReviewPreview() },
+    ScreenPreview("review-requoted") { GnosisPayReviewRequotedPreview() },
     ScreenPreview("loading") { GnosisPayLoadingPreview() },
     ScreenPreview("unavailable") { GnosisPayUnavailablePreview() },
 )

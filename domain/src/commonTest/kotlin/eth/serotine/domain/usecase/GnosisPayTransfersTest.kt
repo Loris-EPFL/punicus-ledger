@@ -420,4 +420,27 @@ class GnosisPayTransfersTest {
             ReadDelayTransfers(history, delays) { 1_000 }(AccountId(Network.GNOSIS, safe), delay),
         )
     }
+
+    @Test
+    fun aQueueingOlderThanItsEntryCanWaitAndADayIsNoLongerReadNorListed() = runTest {
+        val old = transfer()
+        val recent = transfer(TransferAsset.Erc20Token(eure))
+        // 90,000 s of cooldown, 111,600 s of expiration and a day: 288,000 s before now, nothing waits.
+        val now = 1_000_000L
+        history.entries.value = listOf(
+            HistoryEntry(sentBy(SentAction.DelayQueue(old), now - 288_001, 1), SentOutcome.NonceUsed),
+            HistoryEntry(sentBy(SentAction.DelayQueue(recent), now - 100, 2), SentOutcome.NonceUsed),
+            // The same call queued twice: its queue is read once.
+            HistoryEntry(sentBy(SentAction.DelayQueue(recent), now - 50, 3), SentOutcome.NonceUsed),
+        )
+        answers[old.hash] = DelayQueueReading.Read(queueOf(DelayEntry(5, old.hash, 1_000)), 120, now)
+        answers[recent.hash] = DelayQueueReading.Read(queueOf(DelayEntry(6, recent.hash, now - 90), queued = 2), 120, now)
+        asked.clear()
+
+        val reading = ReadDelayTransfers(history, delays) { now }(AccountId(Network.GNOSIS, safe), delay)
+            as DelayTransfersReading.Read
+
+        assertEquals(listOf(recent, recent), reading.transfers.map { it.transfer })
+        assertEquals(listOf(recent.hash), asked)
+    }
 }

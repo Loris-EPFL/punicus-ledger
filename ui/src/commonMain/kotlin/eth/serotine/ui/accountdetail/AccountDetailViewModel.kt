@@ -972,7 +972,7 @@ internal fun AccountDetailUiState.withAmountsHidden(hidden: Boolean): AccountDet
 }
 
 /** What a Safe's Owners tab says of it as a Gnosis Pay account; null when it is none, or not read yet. */
-private fun gnosisPayEntry(reading: GnosisPayReading): String? {
+internal fun gnosisPayEntry(reading: GnosisPayReading): String? {
     val found = reading as? GnosisPayReading.Found ?: return null
     val who = when (found.sending) {
         GnosisPaySending.AVAILABLE -> "Its controlling key is on this device: transfers go through its Delay module."

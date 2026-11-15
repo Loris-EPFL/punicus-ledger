@@ -72,8 +72,11 @@ modules its verified state lists is the Safe's own Delay:
 3. Its cooldown, expiration, queue and members are read the same way.
 
 The Safe is added as any Safe is: watched (*Watch an address*). No new way to
-add an account exists. The account's screen then says it is a Gnosis Pay
-account and offers Send when a member's key is held here on Gnosis Chain.
+add an account exists. Its Owners tab then says it is a Gnosis Pay account
+and opens the Gnosis Pay screen. The account's own Send and Swap stay greyed
+out, since no owner can sign: a tap on Send says that its transfers go
+through the Delay and offers the Gnosis Pay screen. That screen offers Send
+when a member's key is held here on Gnosis Chain.
 Otherwise Send is greyed out, and a tap says what is missing: a member's key;
 the member added on Gnosis Chain; the member's watched entry on Gnosis Chain
 removed and added again from the held one; the wallet's account list, which
@@ -87,7 +90,9 @@ A transfer from a Gnosis Pay account is two transactions from a member whose
 key is held here. The member pays both fees in xDAI.
 
 1. **Queue.** `execTransactionFromModule(to, value, data, CALL)` sent to the
-   Delay, quoted, simulated and signed like any transaction from the member.
+   Delay, quoted, simulated and signed like any transaction from the member:
+   at the normal fee level, which the review names, and never on a quote
+   more than a minute old, as on Send.
 2. **Wait.** The cooldown runs from the block that queued it. The screen
    shows when the transfer can be executed, and until when.
 3. **Execute.** `executeNextTx` with the same four fields, sent by the
@@ -115,7 +120,9 @@ Delay spend its entry and move nothing.
 The queued transfers are found again in the history of what this wallet
 sent, and the queue decides which still wait: a queueing not mined yet is
 listed while it is on its way; once mined, only while the queue holds an
-entry of its call (or may, further back, or cannot be read). One executed by
+entry of its call (or may, further back, or cannot be read), and no longer
+than its cooldown, its expiration and a day after its queueing, so that the
+poll's reads follow the window, not the history. One executed by
 anyone, skipped, or never mined leaves the list, whether or not this device
 saw how. The list is this device's: after a reinstall, or on another device,
 a transfer queued before is not found, though the Delay's `TransactionAdded`

@@ -34,13 +34,21 @@ import eth.serotine.domain.usecase.ReadDelayTransfers
 import eth.serotine.domain.usecase.SendDelayCall
 import eth.serotine.domain.usecase.TokenHoldings
 import eth.serotine.domain.usecase.TransferSending
+import eth.serotine.ui.components.AddressInput
+import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.PROMPT_TOO_LATE
+import eth.serotine.ui.components.QUOTE_MAX_AGE
+import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.notSentItem
+import eth.serotine.ui.components.promptDeadline
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -65,6 +73,11 @@ import kotlinx.coroutines.launch
  * whose key is held here. What is signed is the reviewed quote's transaction; the password leaves
  * the state the moment it is handed to the signer, and whenever the review is left. A send that a
  * peer took ends in [sent] with its transaction hash, which the transfer's status follows.
+ *
+ * A quote is never signed stale, as on Send: it is made again when the screen is shown after it
+ * was not, and when it is older than [QUOTE_MAX_AGE] at the tap that would sign it ([timeSource]
+ * tells); the biometric prompt gets what is left of that age as its deadline ([promptDeadline]).
+ * Both steps are quoted at [FeeLevel.NORMAL], which the review names.
  */
 class GnosisPayViewModel(
     private val safe: AccountId,
@@ -78,6 +91,7 @@ class GnosisPayViewModel(
     private val sendDelayCall: SendDelayCall,
     private val describeKeyStore: DescribeKeyStore,
     private val pollInterval: Duration = 15.seconds,
+    private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : ViewModel() {
 
     /** Where the user is in a transfer, beside what the chain says. */
@@ -92,12 +106,22 @@ class GnosisPayViewModel(
             val quoting: Boolean = false,
         ) : Flow
 
+        /**
+         * [quote], made at [quotedAt] for [member], under review; [form] the form it came from (a
+         * queueing's), [hidden] once the screen stopped being shown after it was made, [requoting]
+         * while it is made again, and [note] why it was.
+         */
         data class Review(
             val quote: DelayQuote,
             val member: Address,
             val unlock: UnlockStep,
+            val quotedAt: TimeMark,
+            val form: Compose? = null,
             val signing: Boolean = false,
             val error: String? = null,
+            val hidden: Boolean = false,
+            val requoting: Boolean = false,
+            val note: String? = null,
         ) : Flow
     }
 
@@ -115,9 +139,11 @@ class GnosisPayViewModel(
     /** The hash of the transaction just sent, for the status screen; null until one is. */
     val sent: StateFlow<String?> = sentHash
 
+    /** Moved on by every send, so that the queued transfers are read again at once. */
+    private val sends = MutableStateFlow(0)
+
     private var latest: GnosisPayReading.Found? = null
     private var latestHoldings: TokenHoldings? = null
-    private var latestNative: BalanceReading? = null
     private var latestQueued: List<QueuedDelayTransfer> = emptyList()
 
     /** The account as a Gnosis Pay account, read once for everything this screen shows. */
@@ -125,17 +151,18 @@ class GnosisPayViewModel(
 
     /** The transfers queued from here, read again every [pollInterval] for the Delay the account has now. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val queued = reading
-        .map { (it as? GnosisPayReading.Found)?.delay?.address }
-        .distinctUntilChanged()
-        .flatMapLatest { delay ->
-            if (delay == null) {
+    private val queued = combine(
+        reading.map { (it as? GnosisPayReading.Found)?.delay?.address }.distinctUntilChanged(),
+        sends,
+    ) { module, _ -> module }
+        .flatMapLatest { module ->
+            if (module == null) {
                 flowOf(null)
             } else {
                 flow<DelayTransfersReading?> {
                     while (true) {
                         // A read that throws is no answer this time; the next poll asks again.
-                        safely { readDelayTransfers(safe, delay) }?.let { emit(it) }
+                        safely { readDelayTransfers(safe, module) }?.let { emit(it) }
                         delay(pollInterval)
                     }
                 }.onStart { emit(null) }
@@ -169,7 +196,6 @@ class GnosisPayViewModel(
             is GnosisPayReading.Found -> reading
         }
         latest = found
-        latestNative = chain.native
         latestHoldings = chain.holdings
         latestQueued = (chain.transfers as? DelayTransfersReading.Read)?.transfers.orEmpty()
         GnosisPayUiState.Ready(
@@ -193,9 +219,11 @@ class GnosisPayViewModel(
     private fun queuedRow(queued: QueuedDelayTransfer, found: GnosisPayReading.Found, busy: String?): QueuedRow {
         val held = found.membersHeld.any { it.address == queued.member }
         val ready = queued.state is DelayTransferState.Ready
+        // Shown greyed out whenever it cannot be done, saying why (owner ruling, 2026-10-18, #55).
         val execute = when {
-            queued.state == null || queued.state is DelayTransferState.NotInQueue ||
-                queued.state is DelayTransferState.Expired -> null
+            queued.state == null -> ActionItem(false, GnosisPayTexts.EXECUTE_UNVERIFIED)
+            queued.state is DelayTransferState.NotInQueue -> ActionItem(false, GnosisPayTexts.EXECUTE_NOT_MINED)
+            queued.state is DelayTransferState.Expired -> ActionItem(false, GnosisPayTexts.whyNotYet(queued.state))
             !held -> ActionItem(false, GnosisPayTexts.EXECUTE_NEEDS_MEMBER)
             found.sending == GnosisPaySending.RETIRED_MODULE ->
                 ActionItem(false, GnosisPayTexts.sendReason(found.sending))
@@ -203,7 +231,7 @@ class GnosisPayViewModel(
             else -> ActionItem(true, null)
         }.let { action ->
             // While its execution is being quoted: greyed out, saying so.
-            val checking = action?.enabled == true && busy == queued.queuedBy
+            val checking = action.enabled && busy == queued.queuedBy
             if (checking) ActionItem(false, GnosisPayTexts.CHECKING) else action
         }
         return QueuedRow(
@@ -230,8 +258,10 @@ class GnosisPayViewModel(
             lines = GnosisPayTexts.reviewLines(step.quote, found, step.member, safe.network),
             fee = step.quote.call.level,
             unlock = step.unlock,
-            signing = step.signing,
+            signing = step.signing || step.requoting,
             error = step.error,
+            note = step.note,
+            checking = step.requoting,
         )
     }
 
@@ -256,13 +286,18 @@ class GnosisPayViewModel(
     }
 
     /** Review: the transfer planned from the form and its queueing quoted on chain. */
-    fun review(fee: FeeLevel = FeeLevel.entries.first()) {
+    fun review(fee: FeeLevel = FeeLevel.NORMAL) {
         val compose = flowState.value as? Flow.Compose ?: return
         val found = latest ?: return
         if (compose.quoting) return
         val member = found.membersHeld.firstOrNull()?.address ?: return
         val asset = GnosisPayTexts.assetOf(compose.asset, latestHoldings) ?: return showCompose(GnosisPayTexts.NO_ASSET)
-        val to = Address.parse(compose.to) ?: return showCompose(GnosisPayTexts.BAD_ADDRESS)
+        val to = when (val input = Eip55.parse(compose.to)) {
+            is AddressInput.Valid -> input.address
+            AddressInput.NotAnAddress -> return showCompose(GnosisPayTexts.BAD_ADDRESS)
+            // A typo in a mixed-case address: never sent to on the chance it was meant.
+            AddressInput.ChecksumMismatch -> return showCompose(GnosisPayTexts.BAD_CHECKSUM)
+        }
         val decimals = (asset as? TransferAsset.Erc20Token)?.token?.decimals ?: NATIVE_DECIMALS
         val amount = UInt256.parseUnits(compose.amount, decimals) ?: return showCompose(GnosisPayTexts.BAD_AMOUNT)
         val modules = found.safeModules
@@ -274,11 +309,13 @@ class GnosisPayViewModel(
         flowState.value = compose.copy(quoting = true, error = null)
         val mine = ++request
         viewModelScope.launch {
+            val quotedAt = timeSource.markNow()
             val quoting = safely { quoteDelayQueue(member, transfer, fee) }
-            // Left meanwhile (Back, a new Send): the answer is no one's.
+            val unlock = if (quoting is DelayQuoting.Quoted) unlockStep() else UnlockStep()
+            // Left meanwhile (Back, a new Send), the unlock's check included: the answer is no one's.
             if (request != mine || flowState.value !is Flow.Compose) return@launch
             flowState.value = when (quoting) {
-                is DelayQuoting.Quoted -> Flow.Review(quoting.quote, member, unlockStep())
+                is DelayQuoting.Quoted -> Flow.Review(quoting.quote, member, unlock, quotedAt, form = compose)
                 null -> compose.copy(quoting = false, error = GnosisPayTexts.QUOTE_FAILED)
                 else -> compose.copy(quoting = false, error = GnosisPayTexts.quoteRefused(quoting))
             }
@@ -290,7 +327,7 @@ class GnosisPayViewModel(
      * review, once its row offers it (a member's key held here, the current module, ready); a quote
      * refused says why on the overview.
      */
-    fun execute(id: String, fee: FeeLevel = FeeLevel.entries.first()) {
+    fun execute(id: String, fee: FeeLevel = FeeLevel.NORMAL) {
         val found = latest ?: return
         val overview = flowState.value as? Flow.Overview ?: return
         if (overview.busy != null) return
@@ -300,10 +337,12 @@ class GnosisPayViewModel(
         flowState.value = Flow.Overview(busy = id)
         val mine = ++request
         viewModelScope.launch {
+            val quotedAt = timeSource.markNow()
             val quoting = safely { quoteDelayExecution(queued.member, queued.transfer, fee) }
+            val unlock = if (quoting is DelayQuoting.Quoted) unlockStep() else UnlockStep()
             if (request != mine || flowState.value !is Flow.Overview) return@launch
             flowState.value = when (quoting) {
-                is DelayQuoting.Quoted -> Flow.Review(quoting.quote, queued.member, unlockStep())
+                is DelayQuoting.Quoted -> Flow.Review(quoting.quote, queued.member, unlock, quotedAt)
                 null -> Flow.Overview(error = GnosisPayTexts.QUOTE_FAILED)
                 else -> Flow.Overview(error = GnosisPayTexts.quoteRefused(quoting))
             }
@@ -312,20 +351,73 @@ class GnosisPayViewModel(
 
     fun onPasswordChange(text: String) {
         val review = flowState.value as? Flow.Review ?: return
-        if (review.signing) return
+        if (review.signing || review.requoting) return
         flowState.value = review.copy(unlock = review.unlock.copy(password = WalletPassword(text), error = null))
     }
 
     fun sign() {
         val review = flowState.value as? Flow.Review ?: return
-        if (review.signing || review.unlock.password.text.isEmpty()) return
+        if (review.signing || review.requoting || review.unlock.password.text.isEmpty() || requoted(review)) return
         send(review, Unlock.WithPassword(review.unlock.password))
     }
 
     fun signWithBiometrics() {
         val review = flowState.value as? Flow.Review ?: return
-        if (review.signing || !review.unlock.biometrics) return
-        send(review, Unlock.WithBiometrics(GnosisPayTexts.reviewTitle(review.quote, safe.network)))
+        if (review.signing || review.requoting || !review.unlock.biometrics || requoted(review)) return
+        // The prompt gets what is left of the quote's age: past it, nothing is signed, and it is made again.
+        val notAfter = promptDeadline(review.quotedAt) ?: return requote(review, PROMPT_TOO_LATE)
+        // The recipient in full: the prompt is the last thing read before the key signs.
+        val reason = GnosisPayTexts.biometricReason(review.quote, safe.network)
+        send(review, Unlock.WithBiometrics(reason, notAfter))
+    }
+
+    /** Whether [review]'s quote is too old to sign, and so is being made again instead. */
+    private fun requoted(review: Flow.Review): Boolean {
+        // Quoted before the screen was last hidden: never signed as it was.
+        if (review.hidden) {
+            requote(review, note = null)
+            return true
+        }
+        if (review.quotedAt.elapsedNow() <= QUOTE_MAX_AGE) return false
+        requote(review, STALE_QUOTE)
+        return true
+    }
+
+    /**
+     * [review]'s transfer quoted again, its step and fee level as they were, the password typed
+     * kept; [note] what the review then says. A refusal ends the review where it came from, saying why.
+     */
+    private fun requote(review: Flow.Review, note: String?) {
+        flowState.value = review.copy(requoting = true, error = null, note = null)
+        val mine = ++request
+        viewModelScope.launch {
+            val quotedAt = timeSource.markNow()
+            val level = review.quote.call.level
+            val quoting = safely {
+                when (review.quote.step) {
+                    DelayStep.QUEUE -> quoteDelayQueue(review.member, review.quote.transfer, level)
+                    DelayStep.EXECUTE -> quoteDelayExecution(review.member, review.quote.transfer, level)
+                }
+            }
+            val current = flowState.value as? Flow.Review ?: return@launch
+            if (request != mine) return@launch
+            val why = when (quoting) {
+                is DelayQuoting.Quoted -> null
+                null -> GnosisPayTexts.QUOTE_FAILED
+                else -> GnosisPayTexts.quoteRefused(quoting)
+            }
+            flowState.value = when {
+                quoting is DelayQuoting.Quoted -> current.copy(
+                    quote = quoting.quote,
+                    quotedAt = quotedAt,
+                    hidden = false,
+                    requoting = false,
+                    note = note,
+                )
+                current.form != null -> current.form.copy(quoting = false, error = why)
+                else -> Flow.Overview(error = why)
+            }
+        }
     }
 
     private fun send(review: Flow.Review, unlock: Unlock) {
@@ -334,6 +426,8 @@ class GnosisPayViewModel(
         flowState.value = signing
         viewModelScope.launch {
             val sending = safely { sendDelayCall(review.quote, unlock) }
+            // Whatever it became, the queued transfers are read again now rather than at the next poll.
+            sends.value++
             val current = flowState.value as? Flow.Review ?: return@launch
             when (sending) {
                 is TransferSending.Sent -> {
@@ -380,10 +474,20 @@ class GnosisPayViewModel(
         return true
     }
 
-    /** The screen is no longer shown: the password typed leaves the state. */
+    /**
+     * The screen is no longer shown: the password typed leaves the state, and the quote under review
+     * is made again before anything is signed.
+     */
     fun onHidden() {
         val review = flowState.value as? Flow.Review ?: return
-        if (!review.signing) flowState.value = review.copy(unlock = review.unlock.copy(password = WalletPassword.EMPTY))
+        if (review.signing) return
+        flowState.value = review.copy(unlock = review.unlock.copy(password = WalletPassword.EMPTY), hidden = true)
+    }
+
+    /** The screen is shown again: a quote made before it was hidden is made again now. */
+    fun onShown() {
+        val review = flowState.value as? Flow.Review ?: return
+        if (review.hidden && !review.signing && !review.requoting) requote(review, note = null)
     }
 
     private fun showCompose(error: String) {

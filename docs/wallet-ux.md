@@ -1607,10 +1607,19 @@ A Safe on Gnosis Chain whose own Delay module a member controls
 - **Queued from this device**: each transfer queued here and not executed,
   with where it stands ("Waits until …", "Ready to execute until …",
   "Expired …: nothing moved"). Execute is offered once it is the next entry
-  and its cooldown has passed, greyed out with the time until then.
-- Send is a form (the Safe's assets, the recipient's address, the amount),
-  then a review of the member's transaction with the unlock that signs it.
-  A transaction sent opens its status (screen 9).
+  and its cooldown has passed. Until then it is greyed out, and a tap says
+  why: the time until then, the entries ahead, or what cannot be verified.
+- Send is a form (the Safe's assets, the recipient's address, checked
+  against its EIP-55 checksum, and the amount), then a review of the
+  member's transaction with the unlock that signs it. The review names the
+  fee level, the member's xDAI before and after, and the blocks each figure
+  was read at. A quote over a minute old is made again before it is signed,
+  as on Send (screen 8). A transaction sent opens its status (screen 9).
+- The light client's strip (Detailed view) or sync line (simple mode) sits
+  above the screen, as on every screen that reads the chain.
+- On the account's own screen, Send and Swap stay greyed out: no owner can
+  sign. A tap on Send says the transfers go through the Delay, and offers
+  the Gnosis Pay screen.
 
 ## Co-signing a Safe transaction
 

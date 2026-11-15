@@ -24,13 +24,17 @@ import eth.serotine.domain.repository.DelayModules
 import eth.serotine.domain.repository.DelayQueue
 import eth.serotine.domain.repository.DelayQueueReading
 import eth.serotine.domain.repository.DelayReading
+import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
+import eth.serotine.domain.repository.Signing
+import eth.serotine.domain.usecase.DelayQuoting
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveGnosisPay
@@ -57,6 +61,7 @@ import eth.serotine.ui.MemoryUserTokens
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +75,8 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GnosisPayViewModelTest {
@@ -117,6 +124,7 @@ class GnosisPayViewModelTest {
     private val sent = MemorySentTransfers()
     private val outbox = MemoryOutbox()
     private val signer = FakeSigner()
+    private val time = TestTimeSource()
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -131,11 +139,12 @@ class GnosisPayViewModelTest {
             ObserveGnosisPay(kinds, delays, accounts),
             ObserveNativeBalance(balances),
             ObserveTokenHoldings(ObserveKnownTokens(ListCatalog(), MemoryUserTokens(), FakeMetadata()), tokens),
-            ReadDelayTransfers(history, delays),
+            ReadDelayTransfers(history, delays) { 1_200 },
             QuoteDelayQueue(delays, history, inputs, balances, tokens, sent, Network.GNOSIS, outbox),
             QuoteDelayExecution(delays, inputs, balances, tokens, sent, Network.GNOSIS, outbox),
             SendDelayCall(signer, FakeBroadcaster(), sent),
             DescribeKeyStore(FakeKeys()),
+            timeSource = time,
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
         return viewModel
@@ -232,6 +241,137 @@ class GnosisPayViewModelTest {
         viewModel.execute(row.id)
         val review = viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.step is GnosisPayStep.Review }
         assertTrue(((review as GnosisPayUiState.Ready).step as GnosisPayStep.Review).title.startsWith("Execute"))
+    }
+
+    private suspend fun GnosisPayViewModel.reviewTransfer(to: String = recipient.hex): GnosisPayStep.Review {
+        ready()
+        startSend()
+        onAssetChange(null)
+        onToChange(to)
+        onAmountChange("1.5")
+        review()
+        return ready().step as GnosisPayStep.Review
+    }
+
+    @Test
+    fun theQueueingIsQuotedAtTheNormalFeeLevel() = runTest {
+        val review = viewModel().reviewTransfer()
+
+        assertEquals(FeeLevel.NORMAL, review.fee)
+        assertTrue(review.lines.any { (label, value) -> label == "Fee" && "normal" in value }, review.lines.toString())
+    }
+
+    @Test
+    fun aMistypedChecksumIsRefusedOnTheForm() = runTest {
+        val viewModel = viewModel()
+        viewModel.ready()
+        viewModel.startSend()
+        // EIP-55's own example, one letter's case flipped.
+        viewModel.onToChange("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAeD")
+        viewModel.onAmountChange("1")
+        viewModel.review()
+
+        assertEquals(GnosisPayTexts.BAD_CHECKSUM, (viewModel.ready().step as GnosisPayStep.Compose).error)
+    }
+
+    @Test
+    fun aQuoteOverAMinuteOldIsMadeAgainBeforeAnythingIsSigned() = runTest {
+        val viewModel = viewModel()
+        viewModel.reviewTransfer()
+        viewModel.onPasswordChange("correct horse")
+        time += 61.seconds
+
+        viewModel.sign()
+
+        val review = viewModel.ready().step as GnosisPayStep.Review
+        assertEquals(emptyList(), signer.passwords)
+        assertNotNull(review.note)
+        assertEquals(false, review.signing)
+
+        // Fresh now: the next tap signs.
+        viewModel.sign()
+        assertEquals(listOf("correct horse"), signer.passwords)
+    }
+
+    @Test
+    fun aHiddenScreenDropsThePasswordAndHasItsQuoteMadeAgainWhenShown() = runTest {
+        val viewModel = viewModel()
+        viewModel.reviewTransfer()
+        viewModel.onPasswordChange("correct horse")
+
+        viewModel.onHidden()
+        assertEquals("", (viewModel.ready().step as GnosisPayStep.Review).unlock.password.text)
+
+        viewModel.onPasswordChange("correct horse")
+        viewModel.onShown()
+        viewModel.sign()
+        // Quoted again on the way back, so this tap signs the fresh quote.
+        assertEquals(listOf("correct horse"), signer.passwords)
+    }
+
+    @Test
+    fun aWrongPasswordSaysSoAndStaysOnTheReview() = runTest {
+        signer.answer = Signing.WrongPassword
+        val viewModel = viewModel()
+        viewModel.reviewTransfer()
+        viewModel.onPasswordChange("wrong")
+        viewModel.sign()
+
+        val review = viewModel.ready().step as GnosisPayStep.Review
+        assertNotNull(review.unlock.error)
+        assertEquals(false, review.signing)
+        assertNull(viewModel.sent.value)
+    }
+
+    @Test
+    fun anExecutionTheDelayNoLongerAllowsSaysWhyOnTheOverview() = runTest {
+        queuedTransfer()
+        val viewModel = viewModel()
+        val row = viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.queued?.isNotEmpty() == true }
+            .let { (it as GnosisPayUiState.Ready).queued.single() }
+        queueAnswer = DelayQueueReading.NotTheSafes(DelayGeneration.CURRENT, 42)
+
+        viewModel.execute(row.id)
+
+        val overview = viewModel.uiState
+            .first { ((it as? GnosisPayUiState.Ready)?.step as? GnosisPayStep.Overview)?.error != null }
+        val error = ((overview as GnosisPayUiState.Ready).step as GnosisPayStep.Overview).error
+        assertEquals(GnosisPayTexts.quoteRefused(DelayQuoting.NotTheSafesDelay(DelayGeneration.CURRENT)), error)
+    }
+
+    @Test
+    fun anExecuteWhoseStandingCannotBeVerifiedIsGreyedOutNotHidden() = runTest {
+        queuedTransfer()
+        queueAnswer = DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
+        val viewModel = viewModel()
+        val row = viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.queued?.isNotEmpty() == true }
+            .let { (it as GnosisPayUiState.Ready).queued.single() }
+
+        assertEquals(ActionItem(false, GnosisPayTexts.EXECUTE_UNVERIFIED), row.execute)
+    }
+
+    /** One transfer queued from here 200 s ago, at the head's time of 1,200, ready to execute. */
+    private fun queuedTransfer(): DelayTransfer {
+        val transfer = (
+            DelayTransfer.of(safe, delay, listOf(delay), TransferAsset.Native, recipient, UInt256.of(7))
+                as DelayTransferPlan.Planned
+            ).transfer
+        val queueing = SentTransfer(
+            Network.GNOSIS,
+            member,
+            3,
+            SignedTransfer(byteArrayOf(1, 2, 3)),
+            SentAction.DelayQueue(transfer),
+            UInt256.ZERO,
+            100,
+        )
+        history.entries.value = listOf(HistoryEntry(queueing, SentOutcome.NonceUsed))
+        queueAnswer = DelayQueueReading.Read(
+            DelayQueue(0, 1, 180, 1_800, DelayEntry(0, transfer.hash, 1_000), 1),
+            41,
+            1_200,
+        )
+        return transfer
     }
 
     @Test

@@ -3,6 +3,7 @@ package eth.serotine.domain.usecase
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DelayTransfer
+import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
@@ -419,8 +420,9 @@ sealed interface DelayTransfersReading {
  * execution from here was seen to succeed after. The queue decides: one whose queueing is not
  * mined yet (and was taken within [FOLLOW_SECONDS]) is listed while it is on its way; once it is,
  * only while the queue holds an entry of its call, or may hold one further back, or cannot be read.
- * One executed or skipped by anyone, expired and skipped, or never mined leaves the list.
- * [clock] is in unix seconds.
+ * One executed or skipped by anyone, expired and skipped, or never mined leaves the list, and so
+ * does one mined longer ago than its entry can wait and be executed, plus a day. Each call's queue
+ * is read once. [clock] is in unix seconds.
  */
 class ReadDelayTransfers(
     private val history: TransactionHistory,
@@ -434,12 +436,26 @@ class ReadDelayTransfers(
         }
         val now = clock()
         var unread: ReadUnavailable? = null
+        // One read per call, however many queueings share it, newest first: the first read's periods
+        // bound which older ones can still hold an entry, so the poll's cost stays with the window,
+        // not with the history.
+        val reads = mutableMapOf<Digest, DelayQueueReading>()
+        var window: Long? = null
         val transfers = entries.candidateQueueings(safe.network, safe.address, delay)
-            .sortedBy { it.entry.transfer.sentAt }
+            .sortedByDescending { it.entry.transfer.sentAt }
             .mapNotNull { (entry, transfer) ->
                 val onItsWay = entry.onItsWay(now)
-                val state = when (val read = delays.queue(safe.network, safe.address, delay, transfer.hash)) {
-                    is DelayQueueReading.Read -> read.queue.state(read.headTime)
+                val bound = window
+                if (!onItsWay && bound != null && entry.transfer.sentAt < now - bound) return@mapNotNull null
+                val read = reads.getOrPut(transfer.hash) {
+                    delays.queue(safe.network, safe.address, delay, transfer.hash)
+                }
+                val state = when (read) {
+                    is DelayQueueReading.Read -> {
+                        val shown = window ?: read.queue.shownFor()?.also { window = it }
+                        if (!onItsWay && shown != null && entry.transfer.sentAt < now - shown) return@mapNotNull null
+                        read.queue.state(read.headTime)
+                    }
                     // Not this Safe's Delay any more: nothing of it waits through it.
                     is DelayQueueReading.NotTheSafes -> return@mapNotNull null
                     is DelayQueueReading.Unavailable -> null.also { unread = read.reason }
@@ -455,9 +471,22 @@ class ReadDelayTransfers(
                     state,
                 )
             }
+            .reversed()
         return DelayTransfersReading.Read(transfers, unread)
     }
 }
+
+/**
+ * How long after its queueing a transfer is still listed: while its entry can wait and be executed
+ * ([DelayQueue.cooldownSeconds] and [DelayQueue.expirationSeconds]), and a day more, so that an
+ * expired one is said to have expired before it leaves the list; null with no expiration, when an
+ * entry waits for good.
+ */
+private fun DelayQueue.shownFor(): Long? =
+    if (expirationSeconds == 0L) null else cooldownSeconds + expirationSeconds + EXPIRED_SHOWN_SECONDS
+
+/** How long an expired transfer stays listed, saying it expired: a day. */
+private const val EXPIRED_SHOWN_SECONDS = 86_400L
 
 /** A queueing in the history: its [entry], and the transfer it [queued]. */
 private data class Queueing(val entry: HistoryEntry, val queued: DelayTransfer)

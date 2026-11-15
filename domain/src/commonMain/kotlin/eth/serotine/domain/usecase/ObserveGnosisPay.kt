@@ -142,7 +142,7 @@ sealed interface GnosisPayReading {
         val membersHeldElsewhere: List<Account>,
         val accountsRead: Boolean = true,
         val membersWatchedHere: List<Account> = emptyList(),
-        val safeModules: List<Address> = emptyList(),
+        val safeModules: List<Address>,
     ) : GnosisPayReading {
         /** Whether a transfer can be queued through [delay] from this wallet, or what is missing. */
         val sending: GnosisPaySending

@@ -1,8 +1,9 @@
 package eth.serotine.ui.gnosispay
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +38,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
@@ -43,8 +47,22 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.InterfaceMode
+import eth.serotine.ui.components.AccountAvatar
+import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
+import eth.serotine.ui.components.UnavailableNotice
+import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.UnlockFields
+import eth.serotine.ui.components.done
+import eth.serotine.ui.components.next
+import eth.serotine.ui.components.nextTo
+import eth.serotine.ui.components.submitOnDone
+import eth.serotine.ui.components.unavailable
+import eth.serotine.ui.mode.LocalInterfaceMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of Send through the Delay, for UI tests. */
 const val GNOSIS_PAY_SEND_TAG = "gnosis-pay-send"
@@ -70,17 +88,21 @@ const val GNOSIS_PAY_SIGN_TAG = "gnosis-pay-sign"
 /**
  * Binds [GnosisPayScreen] to its ViewModel: an account that leaves the wallet ends the screen
  * through [onGone], a transaction sent opens its status through [onSent], and a screen no longer
- * shown drops the password typed.
+ * shown drops the password typed and has its quote made again when it is shown. [lightClient] is
+ * Gnosis Chain's: the strip above the screen in Detailed view, the sync line in simple mode.
  */
 @Composable
 fun GnosisPayRoute(
     viewModel: GnosisPayViewModel,
+    lightClient: StateFlow<LightClientItem>,
     onBack: () -> Unit,
     onGone: () -> Unit,
     onSent: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Main.immediate: as on Send, an edit reaches its field in the same frame.
+    val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
+    val item by lightClient.collectAsStateWithLifecycle()
     val sent by viewModel.sent.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
     val opened by rememberUpdatedState(onSent)
@@ -95,6 +117,7 @@ fun GnosisPayRoute(
     }
     // The password goes when the screen is no longer shown: the app in the background, or the screen left.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     DisposableEffect(viewModel) { onDispose { viewModel.onHidden() } }
     GnosisPayScreen(
         state = state,
@@ -111,6 +134,9 @@ fun GnosisPayRoute(
             onSignWithBiometrics = viewModel::signWithBiometrics,
         ),
         modifier = modifier,
+        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
+        lightClient = item.takeIf { LocalInterfaceMode.current == InterfaceMode.DETAILED },
+        syncLine = item.takeIf { LocalInterfaceMode.current == InterfaceMode.SIMPLE },
     )
 }
 
@@ -132,6 +158,8 @@ data class GnosisPayActions(
  * makes a transfer do, who controls it, the transfers queued from here with Execute, and Send
  * through the Delay; then the transfer's form and its review with the unlock that signs. An action
  * that cannot be done now is greyed out, and a tap says why (owner ruling, 2026-10-18, #55).
+ * Under Gnosis Chain's light client strip ([lightClient], Detailed view) or its sync line
+ * ([syncLine], simple mode), as every screen that reads the chain.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -140,8 +168,10 @@ fun GnosisPayScreen(
     onBack: () -> Unit,
     actions: GnosisPayActions,
     modifier: Modifier = Modifier,
+    lightClient: LightClientItem? = null,
+    syncLine: LightClientItem? = null,
 ) {
-    var unavailable by remember { mutableStateOf<String?>(null) }
+    var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -155,9 +185,10 @@ fun GnosisPayScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+        UnderLightClientStripIfAny(lightClient, Modifier.padding(padding), syncLine) {
             Column(
-                Modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
+                Modifier.align(Alignment.TopCenter)
+                    .widthIn(max = 640.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 when (state) {
@@ -178,7 +209,7 @@ fun GnosisPayScreen(
             }
         }
     }
-    unavailable?.let { reason -> UnavailableDialog("Not available yet", reason, onDismiss = { unavailable = null }) }
+    unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
 }
 
 @Composable
@@ -186,10 +217,15 @@ private fun Overview(
     state: GnosisPayUiState.Ready,
     step: GnosisPayStep.Overview,
     actions: GnosisPayActions,
-    onUnavailable: (String) -> Unit,
+    onUnavailable: (UnavailableNotice) -> Unit,
 ) {
-    Text(state.label, style = MaterialTheme.typography.titleLarge)
-    Mono(state.address)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        AccountAvatar(state.address)
+        Column {
+            Text(state.label, style = MaterialTheme.typography.titleLarge)
+            Mono(state.address)
+        }
+    }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Controlled through its Delay module", style = MaterialTheme.typography.titleSmall)
@@ -200,27 +236,29 @@ private fun Overview(
     }
     Text("Controlled by", style = MaterialTheme.typography.titleSmall)
     state.members.forEach { member ->
-        Column {
-            Text(
-                listOfNotNull(member.label, if (member.heldHere) "key on this device" else "key not on this device")
-                    .joinToString(" · "),
-            )
-            Mono(member.address)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            AccountAvatar(member.address, size = 32.dp)
+            Column {
+                Text(
+                    listOfNotNull(member.label, if (member.heldHere) "key on this device" else "key not on this device")
+                        .joinToString(" · "),
+                )
+                Mono(member.address)
+            }
         }
     }
+    val sendLabel = "Send through the Delay"
     Button(
-        onClick = { if (state.send.enabled) actions.onSend() else state.send.reason?.let(onUnavailable) },
-        modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_SEND_TAG),
-        enabled = true,
-        colors = if (state.send.enabled) {
-            androidx.compose.material3.ButtonDefaults.buttonColors()
-        } else {
-            androidx.compose.material3.ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        onClick = {
+            if (state.send.enabled) {
+                actions.onSend()
+            } else {
+                state.send.reason?.let { onUnavailable(UnavailableNotice(sendLabel, it)) }
+            }
         },
-    ) { Text("Send through the Delay") }
+        modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_SEND_TAG).unavailable(!state.send.enabled),
+        colors = if (state.send.enabled) ButtonDefaults.buttonColors() else Unavailable.buttonColors(),
+    ) { Text(sendLabel) }
     Text("Queued from this device", style = MaterialTheme.typography.titleSmall)
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     if (state.queued.isEmpty()) Text("Nothing is waiting.", style = MaterialTheme.typography.bodyMedium)
@@ -232,10 +270,19 @@ private fun Overview(
                 row.execute?.let { execute ->
                     OutlinedButton(
                         onClick = {
-                            if (execute.enabled) actions.onExecute(row.id) else execute.reason?.let(onUnavailable)
+                            if (execute.enabled) {
+                                actions.onExecute(row.id)
+                            } else {
+                                execute.reason?.let { onUnavailable(UnavailableNotice("Execute ${row.title}", it)) }
+                            }
                         },
-                        modifier = Modifier.testTag("$GNOSIS_PAY_EXECUTE_TAG-${row.id}"),
-                    ) { Text(if (execute.enabled) "Execute" else "Execute (not yet)") }
+                        modifier = Modifier.testTag("$GNOSIS_PAY_EXECUTE_TAG-${row.id}").unavailable(!execute.enabled),
+                        colors = if (execute.enabled) {
+                            ButtonDefaults.outlinedButtonColors()
+                        } else {
+                            ButtonDefaults.outlinedButtonColors(contentColor = Unavailable.contentColor())
+                        },
+                    ) { Text("Execute") }
                 }
             }
         }
@@ -243,20 +290,26 @@ private fun Overview(
     state.queuedNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Compose(state: GnosisPayUiState.Ready, step: GnosisPayStep.Compose, actions: GnosisPayActions) {
+    val amountField = remember { FocusRequester() }
     Text("Send from ${state.label}", style = MaterialTheme.typography.titleLarge)
     Text("Signed by ${step.sender.ifBlank { "the controlling account" }}, which pays the fees.")
     Text("Asset", style = MaterialTheme.typography.titleSmall)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         step.assets.forEach { asset ->
             FilterChip(
                 selected = asset.contract == step.asset,
                 onClick = { actions.onAssetChange(asset.contract) },
                 enabled = !step.quoting,
-                label = { Text("${asset.symbol} · ${asset.balance}") },
+                // The balance carries its symbol already.
+                label = { Text(asset.balance) },
             )
         }
+    }
+    step.assets.firstOrNull { it.contract == step.asset }?.warning?.let {
+        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
     OutlinedTextField(
         value = step.to,
@@ -264,6 +317,8 @@ private fun Compose(state: GnosisPayUiState.Ready, step: GnosisPayStep.Compose, 
         label = { Text("To (address)") },
         singleLine = true,
         enabled = !step.quoting,
+        keyboardOptions = KeyboardOptions().next(),
+        keyboardActions = nextTo(amountField),
         modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_TO_TAG),
     )
     OutlinedTextField(
@@ -272,8 +327,9 @@ private fun Compose(state: GnosisPayUiState.Ready, step: GnosisPayStep.Compose, 
         label = { Text("Amount") },
         singleLine = true,
         enabled = !step.quoting,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_AMOUNT_TAG),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal).done(),
+        keyboardActions = submitOnDone(!step.quoting, actions.onReview),
+        modifier = Modifier.fillMaxWidth().focusRequester(amountField).testTag(GNOSIS_PAY_AMOUNT_TAG),
     )
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     Button(
@@ -292,6 +348,7 @@ private fun Review(step: GnosisPayStep.Review, actions: GnosisPayActions) {
             Text(value)
         }
     }
+    step.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     UnlockFields(
         unlock = step.unlock,
@@ -299,7 +356,7 @@ private fun Review(step: GnosisPayStep.Review, actions: GnosisPayActions) {
         canSign = !step.signing && step.unlock.password.text.isNotEmpty(),
         canSignWithBiometrics = !step.signing && step.unlock.biometrics,
         signLabel = "Sign and send",
-        signingLabel = "Sending…",
+        signingLabel = if (step.checking) "Checking on chain…" else "Sending…",
         onPasswordChange = actions.onPasswordChange,
         onSign = actions.onSign,
         onSignWithBiometrics = actions.onSignWithBiometrics,

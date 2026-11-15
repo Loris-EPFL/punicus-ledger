@@ -819,6 +819,7 @@ private fun Destinations(
             if (account != null) {
                 GnosisPayRoute(
                     viewModel = viewModel { graph.gnosisPayViewModel(account) },
+                    lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(GNOSIS_PAY_ROUTE, inclusive = true) },
                     onGone = { navController.popBackStack(GNOSIS_PAY_ROUTE, inclusive = true) },
                     // Sent: its status, over this screen, which back returns to.

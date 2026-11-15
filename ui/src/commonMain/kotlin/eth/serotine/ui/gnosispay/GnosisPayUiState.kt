@@ -81,7 +81,9 @@ sealed interface GnosisPayStep {
     /**
      * The review of the member's transaction: its [title] ("Queue 50 EURe to 0x1234…abcd", "Execute
      * …"), its [lines] (label to value), the [fee] level it was quoted at, the [unlock] that signs it,
-     * [signing] while it does, and [error] why the last try sent nothing.
+     * [signing] while it does (or while the quote is made again), [error] why the last try sent
+     * nothing, [checking] while the quote is made again, and [note] why it was (a stale one), null
+     * when it was not.
      */
     data class Review(
         val title: String,
@@ -90,8 +92,14 @@ sealed interface GnosisPayStep {
         val unlock: UnlockStep,
         val signing: Boolean = false,
         val error: String? = null,
+        val note: String? = null,
+        val checking: Boolean = false,
     ) : GnosisPayStep
 }
 
-/** One asset of the Safe to send: its [contract] (null: the network's currency), [symbol] and [balance] as read. */
-data class AssetItem(val contract: String?, val symbol: String, val balance: String)
+/**
+ * One asset of the Safe to send: its [contract] (null: the network's currency), [symbol] and
+ * [balance] as read (with its symbol), and [warning] when it is a token the user added whose
+ * symbol is a built-in token's.
+ */
+data class AssetItem(val contract: String?, val symbol: String, val balance: String, val warning: String? = null)

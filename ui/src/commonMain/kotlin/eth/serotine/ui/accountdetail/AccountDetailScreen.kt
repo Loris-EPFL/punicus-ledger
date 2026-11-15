@@ -371,6 +371,14 @@ fun AccountDetailScreen(
         val reason = ready?.sendReason
         when {
             reason == null -> onSend(contract)
+            // A Gnosis Pay account sends from its own screen: the way there, offered beside the reason.
+            reason == GNOSIS_PAY_SEND -> unavailable = notice("Send", reason).let { blocked ->
+                UnavailableNotice(
+                    blocked.title,
+                    blocked.reason,
+                    blocked.fixes + UnavailableFix("Gnosis Pay", onGnosisPay),
+                )
+            }
             ready.handoff?.available == true -> unavailable = notice("Send", reason).let { blocked ->
                 UnavailableNotice(
                     blocked.title,

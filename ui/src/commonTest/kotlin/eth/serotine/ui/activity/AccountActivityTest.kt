@@ -655,6 +655,28 @@ class AccountActivityTest {
     }
 
     @Test
+    fun aGnosisPayTokenTransferExecutedFromHereIsOneRowItsTokenTransferIncluded() = runTest {
+        // The token's Transfer from the Safe to the recipient, in the execution's transaction, is the sent row's.
+        val delay = Address.of("0x" + "de".repeat(20))
+        val amount = UInt256.of(40_000_000)
+        val plan = DelayTransfer.of(treasury.address, delay, listOf(delay), TransferAsset.Erc20Token(usdc), bob, amount)
+        val executed = sent(10, SentAction.DelayExecution((plan as DelayTransferPlan.Planned).transfer), 100)
+        history.entries.value = listOf(HistoryEntry(executed, SentOutcome.Included(9_410_000, succeeded = true)))
+        treasuryIndexed(9_400_000L..9_420_000L)
+        val moduleSuccess = "0x6895c13664aa4f67288b25d7a21d7aaa34916e355fb9b6fae0a139a9085becb8"
+        val delayTopic = "0x" + "00".repeat(12) + delay.hex.removePrefix("0x")
+        index.logs = listOf(
+            safeLog(9_410_000, listOf(moduleSuccess, delayTopic), tx = executed.hash),
+            tokenLog(usdc.address, 9_410_000, treasury.address, bob, word("2625a00"), executed.hash, index = 1),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(activity(treasury.address).value).rows
+
+        assertEquals(1, rows.size, rows.map { it.title }.toString())
+        assertEquals(true, rows.single().title.startsWith("Executed "), rows.single().title)
+    }
+
+    @Test
     fun anEventOfATransactionSentFromHereThatNoBlockWasSeenForIsListedBesideIt() = runTest {
         // Mined while the app was closed: the row says only that its nonce was used.
         history.entries.value = listOf(HistoryEntry(execution, SentOutcome.NonceUsed))

@@ -8,6 +8,7 @@ import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.DelayGeneration
+import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.TokenBalanceReading
@@ -76,6 +77,12 @@ internal object GnosisPayTexts {
         "This transfer was queued by an account whose key is no longer on this device, so it cannot be " +
             "executed from here."
 
+    const val EXECUTE_UNVERIFIED =
+        "Where this transfer stands in the Delay module cannot be verified right now, so it is not executed. " +
+            "Punicus keeps checking."
+
+    const val EXECUTE_NOT_MINED = "Its queueing is not in a block yet. The cooldown starts once it is."
+
     fun queuedNote(reading: DelayTransfersReading?): String? = when (reading) {
         null -> null
         DelayTransfersReading.HistoryUnreadable ->
@@ -105,8 +112,10 @@ internal object GnosisPayTexts {
             }
             is DelayTransferState.Ready ->
                 "Ready to execute" + (state.expiresAt?.let { " until ${formatDateTime(it)}" } ?: "")
-            is DelayTransferState.Behind -> "Ready, behind ${entries(state.ahead)} queued by someone else"
-            is DelayTransferState.Expired -> "Expired at ${formatDateTime(state.expiresAt)}: nothing moved"
+            is DelayTransferState.Behind -> "Ready, behind ${entries(state.ahead)} queued before it"
+            // Within the last minutes of its window too: an execution sent now could land too late.
+            is DelayTransferState.Expired ->
+                "Expired, or about to, at ${formatDateTime(state.expiresAt)}: nothing moved"
             DelayTransferState.NotInQueue -> "No longer in the queue: executed or skipped"
             is DelayTransferState.FurtherBack -> "Further back in the queue than the first ${state.searched} entries"
         }
@@ -117,8 +126,10 @@ internal object GnosisPayTexts {
         is DelayTransferState.Waiting -> "The Delay module holds it until ${formatDateTime(state.readyAt)}. " +
             "Execute is offered then."
         is DelayTransferState.Behind -> "${entries(state.ahead).replaceFirstChar { it.uppercase() }} queued before " +
-            "it come first. Whoever queued them executes them, or they expire; Punicus never executes what it did " +
-            "not queue."
+            "it come first, whoever queued them. Each is executed by someone, or skipped once it has expired; " +
+            "Punicus never executes an entry it did not queue here."
+        is DelayTransferState.Expired -> "Its window to execute closes at ${formatDateTime(state.expiresAt)}, too " +
+            "soon for a transaction sent now to be mined in time."
         is DelayTransferState.FurtherBack -> "It is further back in the queue than Punicus reads."
         else -> "It cannot be executed now."
     }
@@ -136,6 +147,8 @@ internal object GnosisPayTexts {
                 Eip55.format(holding.token.address),
                 holding.token.symbol,
                 "${units.formatUnits(holding.token.decimals)} ${holding.token.symbol}",
+                warning = "Not the built-in ${holding.token.symbol}: another contract"
+                    .takeIf { holding.sharesBuiltInSymbol },
             )
         }
         return listOf(AssetItem(null, network.nativeSymbol, nativeBalance)) + tokens
@@ -152,6 +165,8 @@ internal object GnosisPayTexts {
     const val CHECKING = "Its execution is being checked on chain."
     const val NO_ASSET = "Choose the asset to send."
     const val BAD_ADDRESS = "Enter the recipient's address: 0x and 40 hex digits. Gnosis Chain resolves no names."
+    const val BAD_CHECKSUM = "That address's capital letters do not match its checksum (EIP-55): a character may " +
+        "be mistyped. Copy the address again, or enter it all in lower case only if you are sure of it."
     const val BAD_AMOUNT = "Enter an amount, in the asset's units."
     const val QUOTE_FAILED = "The transfer could not be checked on chain. Try again."
     const val SEND_FAILED = "Punicus could not finish sending it. Nothing new was signed; try again."
@@ -210,6 +225,16 @@ internal object GnosisPayTexts {
         }
     }
 
+    /** What the biometric prompt says: the step and the recipient in full, the last thing read before signing. */
+    fun biometricReason(quote: DelayQuote, network: Network): String {
+        val transfer = quote.transfer
+        val what = "${amount(transfer.amount, transfer.asset, network)} to ${eip55(transfer.recipient)}"
+        return when (quote.step) {
+            DelayStep.QUEUE -> "Queue $what"
+            DelayStep.EXECUTE -> "Execute $what"
+        }
+    }
+
     fun reviewLines(
         quote: DelayQuote,
         found: GnosisPayReading.Found,
@@ -217,7 +242,10 @@ internal object GnosisPayTexts {
         network: Network,
     ): List<Pair<String, String>> {
         val transfer = quote.transfer
-        val maxFee = "${quote.call.maxFee.formatUnits(NATIVE_DECIMALS)} ${network.nativeSymbol} at most"
+        val symbol = network.nativeSymbol
+        val call = quote.call
+        val maxFee = "${call.maxFee.formatUnits(NATIVE_DECIMALS)} $symbol at most, ${feeLevel(call.level)} " +
+            "(fees at block ${grouped(call.feeBlock)})"
         val step = when (quote.step) {
             DelayStep.QUEUE -> "Queued now. It waits ${period(found.delay.cooldownSeconds)}, then needs a second " +
                 "transaction to execute it" + if (found.delay.expirationSeconds == 0L) {
@@ -234,9 +262,21 @@ internal object GnosisPayTexts {
             "Through" to "Delay module ${eip55(transfer.delay)}",
             "Signed by" to eip55(member),
             "Fee" to maxFee,
+            "Signer's $symbol" to "${call.nativeBefore.formatUnits(NATIVE_DECIMALS)} $symbol now, at least " +
+                "${call.nativeAfterAtLeast.formatUnits(NATIVE_DECIMALS)} $symbol after" +
+                (call.balanceBlock?.let { " (block ${grouped(it)})" } ?: ""),
             "What happens" to step,
-            "Account balance" to amount(quote.safeBalance, transfer.asset, network),
+            "Account balance" to amount(quote.safeBalance, transfer.asset, network) +
+                (quote.safeBalanceBlock?.let { " (block ${grouped(it)})" } ?: ""),
+        ) + listOfNotNull(
+            call.simulationBlock?.let { "Simulated" to "Run as a verified call at block ${grouped(it)}" },
         )
+    }
+
+    private fun feeLevel(level: FeeLevel): String = when (level) {
+        FeeLevel.SLOW -> "slow"
+        FeeLevel.NORMAL -> "normal"
+        FeeLevel.FAST -> "fast"
     }
 
     fun unavailable(reason: ReadUnavailable): String =

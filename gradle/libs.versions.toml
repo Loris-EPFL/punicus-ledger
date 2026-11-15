@@ -41,13 +41,13 @@ navigation-compose = "2.9.2"
 material-icons-core = "1.7.3"
 # ACINQ's Kotlin Multiplatform binding of bitcoin-core's libsecp256k1: JNI on
 # Android and the JVM, cinterop on iOS — the native secp256k1 that
-# docs/keys-and-signing.md (rule 7) requires. 0.22.0 is the last release built with
-# Kotlin 2.2.21; 0.23.0 moves its stdlib to 2.3.
+# docs/keys-and-signing.md (rule 7) requires. Held at 0.22.0, built with Kotlin 2.2.21,
+# which the 2.4 compiler reads: moving it is a change of its own.
 secp256k1-kmp = "0.22.0"
 # The persistent account list (eth.serotine.data.account): multiplatform file I/O and
-# JSON. kotlinx-io 0.8.2 and kotlinx-serialization 1.9.0 are the last releases built
-# for Kotlin 2.2 (the next ones need a 2.3 stdlib); the serialization compiler plugin
-# is Kotlin's own, at the Kotlin pin.
+# JSON. kotlinx-io 0.8.2 and kotlinx-serialization 1.9.0, built for Kotlin 2.2, which
+# the 2.4 compiler reads: held, moving them is a change of their own. The serialization
+# compiler plugin is Kotlin's own, at the Kotlin pin.
 kotlinx-io = "0.8.2"
 kotlinx-serialization = "1.9.0"
 # The key envelope's Argon2id (docs/keys-and-signing.md, rule 2), from libsodium (the
@@ -70,9 +70,8 @@ myotis = "0.1.20"
 # 0.8.0 needs a Kotlin 2.2.20 stdlib, below our pin.
 kotlincrypto = "0.8.0"
 # Ktor, the app's one HTTP client (CLAUDE.md, *Platform & language direction*), used only
-# for CoW Protocol's order API (docs/swaps.md, *What CoW learns*). 3.3.3 is the last
-# release built with Kotlin 2.2.21 and coroutines 1.10.2; 3.4.0 moves its stdlib
-# to 2.3. Engines: CIO (Ktor's own, no OkHttp beneath it) on Android and the desktop,
+# for CoW Protocol's order API (docs/swaps.md, *What CoW learns*). Held at 3.3.3, built
+# with Kotlin 2.2.21 and coroutines 1.10.2: moving it is a change of its own. Engines: CIO (Ktor's own, no OkHttp beneath it) on Android and the desktop,
 # Darwin (NSURLSession) on iOS; neither retries a request behind the caller's back.
 ktor = "3.3.3"
 

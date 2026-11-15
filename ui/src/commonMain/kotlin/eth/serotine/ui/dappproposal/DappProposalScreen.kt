@@ -267,7 +267,7 @@ private fun NewAddressRow(
                 Text(option.unavailable ?: option.where, color = color)
                 if (!unavailable) {
                     Text(
-                        "An address of its own, so this site cannot see your other accounts.",
+                        "An address of its own, which no other site sees.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

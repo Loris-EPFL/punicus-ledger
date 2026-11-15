@@ -531,6 +531,46 @@ class DappViewModelsTest {
     }
 
     @Test
+    fun aSealThatSteppedDownIsSaidBeforeTheScreenLeaves() = runTest {
+        main()
+        keys.steppedDown = true
+        val wallet = FakeAccounts(ethereumHeld)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(perAppProposal()), emptyList())
+        val vm = perAppViewModel(wallet)
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.onPasswordChange("correct horse")
+        vm.approve()
+        runCurrent()
+        assertEquals(1, sessions.approved.size, "connected")
+        assertEquals(DappProposalViewModel.STEPPED_DOWN, vm.uiState.value.notice)
+        assertFalse(vm.uiState.value.done, "the notice is read first")
+    }
+
+    @Test
+    fun theSitesAddressOnANetworkThatIsOffIsGreyedOutNotLeftOut() = runTest {
+        main()
+        val mark = PerAppAccount(uniswap, AppIsolation.pathOf(uniswap), ethereumHeld.address)
+        val perApp = Account(
+            Network.ETHEREUM, keys.address, AccountKind.EOA, "uniswap.org", AccountCustody.InKeyStore, perApp = mark,
+        )
+        val wallet = FakeAccounts(ethereumHeld, perApp)
+        // Its address is on Ethereum; the dApp asks for Gnosis Chain too, which is off.
+        realFunds.on.value = setOf(Network.ETHEREUM)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(perAppProposal()), emptyList())
+        val vm = perAppViewModel(wallet)
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        val offered = vm.uiState.value.newAddress!!
+        assertEquals(DappProposalViewModel.NO_NETWORK, offered.unavailable)
+        assertFalse(offered.chosen)
+        // Turned on, the row can be ticked.
+        realFunds.on.value = setOf(Network.ETHEREUM, Network.GNOSIS)
+        runCurrent()
+        assertNull(vm.uiState.value.newAddress!!.unavailable)
+    }
+
+    @Test
     fun withoutAPhraseTheNewAddressIsGreyedOutAndSaysWhy() = runTest {
         main()
         val wallet = FakeAccounts(account(Network.ETHEREUM, '2', AccountCustody.Watched))

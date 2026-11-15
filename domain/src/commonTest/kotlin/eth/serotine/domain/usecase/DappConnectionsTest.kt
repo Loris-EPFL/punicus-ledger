@@ -5,7 +5,9 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppIsolation
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.repository.DappApproval
 import eth.serotine.domain.repository.DappConnections
 import eth.serotine.domain.repository.DappMetadata
@@ -156,6 +158,19 @@ class DappConnectionsTest {
         assertEquals(listOf(proposal to listOf(held.id, watchedSafe.id), proposal to listOf(mainnet.id)), sessions.approved)
         // Remembered for the dApp's site, the last approval in place of the one before.
         assertEquals(mapOf(testHost("dapp.test") to listOf(mainnet.id)), sites.remembered.value)
+    }
+
+    @Test
+    fun anotherSitesPerAppAddressIsNotApproved() = runTest {
+        val site = testHost("uniswap.org")
+        val perApp = account(Network.ETHEREUM, '6')
+            .copy(perApp = PerAppAccount(site, AppIsolation.pathOf(site), mainnet.address))
+        val approve = ApproveDappProposal(sessions, ListAccountRepository(mainnet, perApp), networks, sites)
+        // The proposal states https://dapp.test: uniswap.org's address is not for it, alone or beside another.
+        assertEquals(DappApproval.InvalidAccounts, approve(proposal, listOf(perApp.id)))
+        assertEquals(DappApproval.InvalidAccounts, approve(proposal, listOf(mainnet.id, perApp.id)))
+        assertTrue(sessions.approved.isEmpty())
+        assertTrue(sites.remembered.value.isEmpty())
     }
 
     @Test

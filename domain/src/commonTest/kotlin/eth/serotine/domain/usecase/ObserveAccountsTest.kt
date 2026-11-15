@@ -6,6 +6,7 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
@@ -44,6 +45,9 @@ class ObserveAccountsTest {
         override suspend fun rename(id: AccountId, label: String): AccountChange = error("not used by this test")
         override suspend fun remove(id: AccountId): AccountChange = error("not used by this test")
         override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange =
+            error("not used by this test")
+
+        override suspend fun markPerApp(id: AccountId, mark: PerAppAccount): AccountChange =
             error("not used by this test")
     }
 }

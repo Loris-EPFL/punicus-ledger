@@ -128,8 +128,8 @@ class ObservePerAppChoice(
  * Makes the per-app address of [host]'s site (issue #252; docs/walletconnect.md, *Per-app addresses*): derived from
  * the phrase [from]'s envelope holds, opened with the wallet password ([PerAppKeys.derivePerApp]), and added on each
  * of the networks given as an [AccountKind.EOA] held in the key store, named after its site and marked as a per-app
- * address ([PerAppAccount]); an entry of that address already listed and not marked so (watched, say) is replaced by
- * the marked one, keeping its name. A site whose path is that of another site's per-app address in the account list,
+ * address ([PerAppAccount]); an entry of that address already listed and not marked so (watched, say) is marked in
+ * place, keeping its name. A site whose path is that of another site's per-app address in the account list,
  * of any phrase, is refused before anything is derived ([AppIsolation.collision]). An envelope left in the key store
  * without its account cannot be weighed, since its site is not stored: one of the same path is taken for the same
  * site, as making it again after a removal needs.
@@ -177,7 +177,7 @@ class MakePerAppAddress(
         val made = networks.distinct().map { network ->
             val account = Account(network, stored.address, AccountKind.EOA, site.name, AccountCustody.InKeyStore,
                 perApp = mark)
-            if (!accounts.addMarked(account)) return PerAppMaking.ListNotSaved
+            if (!accounts.addMarked(account, mark)) return PerAppMaking.ListNotSaved
             account.id
         }
         return PerAppMaking.Made(stored.address, made, stored.steppedDown)
@@ -185,27 +185,19 @@ class MakePerAppAddress(
 }
 
 /**
- * [account] in the list, marked: added, or kept when it is there marked already; an entry of its address there not
- * marked so (the user's own per-app address watched before, say) is replaced by it, under the entry's name. False when
- * the list could not be saved.
+ * [account] in the list, marked as [mark]: added, or, when an entry of its address is there already (the user's own
+ * per-app address watched before, say), marked in place ([AccountRepository.markPerApp]): one change that keeps its
+ * name, its position and its history's start. False when the list could not be saved.
  */
-private suspend fun AccountRepository.addMarked(account: Account): Boolean {
+private suspend fun AccountRepository.addMarked(account: Account, mark: PerAppAccount): Boolean {
     repeat(MARK_ATTEMPTS) {
         when (add(account)) {
             AccountAdd.Added -> return true
             AccountAdd.NotSaved -> return false
-            AccountAdd.AlreadyPresent -> {
-                val existing = (observeAccounts().first() as? AccountList.Loaded)?.accounts
-                    ?.firstOrNull { it.id == account.id }
-                    ?: return@repeat // removed meanwhile: add again
-                if (existing.perApp == account.perApp && existing.custody == AccountCustody.InKeyStore) return true
-                when (remove(account.id)) {
-                    AccountChange.Changed, AccountChange.NotFound -> Unit
-                    AccountChange.NotSaved -> return false
-                }
-                val named = account.copy(label = existing.label, ensName = existing.ensName)
-                if (add(named) == AccountAdd.NotSaved) return false
-                return true
+            AccountAdd.AlreadyPresent -> when (markPerApp(account.id, mark)) {
+                AccountChange.Changed -> return true
+                AccountChange.NotSaved -> return false
+                AccountChange.NotFound -> Unit // removed meanwhile: add again
             }
         }
     }

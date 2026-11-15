@@ -97,6 +97,9 @@ class FileAccountRepository(
     override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange =
         updateEntry(id) { it.copy(custody = custody) }
 
+    override suspend fun markPerApp(id: AccountId, mark: PerAppAccount): AccountChange =
+        updateEntry(id) { it.copy(custody = AccountCustody.InKeyStore, perApp = mark) }
+
     /** Replaces the entry [id] with [update] of it, in place; NotFound when there is none. */
     private suspend fun updateEntry(id: AccountId, update: (Account) -> Account): AccountChange =
         file.change(AccountChange.NotSaved) { accounts ->

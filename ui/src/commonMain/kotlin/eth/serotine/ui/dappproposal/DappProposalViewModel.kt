@@ -250,7 +250,7 @@ class DappProposalViewModel(
 
     /**
      * The new address's row, and what Approve makes when it is chosen (null when it is not, or cannot be made); or
-     * null when the site has its address on every network it would go on already.
+     * null when the site has its address on every network it would go on already, whether that network is on or not.
      */
     private fun newAddressOption(
         proposal: DappProposal,
@@ -260,7 +260,10 @@ class DappProposalViewModel(
         wanted: Boolean,
     ): Pair<NewAddressOption, NewAddress?>? {
         val networks = perAppNetworks(proposal, choice.enabled, ticked, choice.made)
-        if (networks.isEmpty() && choice.made.isNotEmpty()) return null
+        // Left out only when the site has its address on every network it would go on, on or off: one it lacks
+        // that is off greys the row out with the way to turn it on (#55).
+        val lacking = networks.ifEmpty { perAppNetworks(proposal, Network.entries.toSet(), ticked, choice.made) }
+        if (lacking.isEmpty() && choice.made.isNotEmpty()) return null
         val site = choice.site
         val host = (choice.host as? AppHostResult.Host)?.host
         // The site's address on more networks comes from the phrase it was made from, whichever is chosen.

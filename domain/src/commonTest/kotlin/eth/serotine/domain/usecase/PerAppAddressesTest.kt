@@ -186,8 +186,9 @@ class PerAppAddressesTest {
     @Test
     fun aWatchedEntryOfTheAddressIsReplacedByTheMarkedOneUnderItsName() = runTest {
         val keys = FakePerAppKeys(address = address('7'))
-        val watchedOwn = account(Network.ETHEREUM, '7', custody = AccountCustody.Watched).copy(label = "Mine")
-        val accounts = ListAccountRepository(first, watchedOwn)
+        val watchedOwn = account(Network.ETHEREUM, '7', custody = AccountCustody.Watched)
+            .copy(label = "Mine", ensName = "mine.eth")
+        val accounts = ListAccountRepository(first, watchedOwn, other)
         val made = MakePerAppAddress(keys, accounts, WalletChanges())(
             first.id,
             testHost("app.uniswap.org"),
@@ -195,14 +196,16 @@ class PerAppAddressesTest {
             WalletPassword("correct horse"),
         )
         assertIs<PerAppMaking.Made>(made)
-        val entry = accounts.accounts.value.single { it.address == address('7') }
-        assertEquals("Mine", entry.label)
-        assertEquals(AccountCustody.InKeyStore, entry.custody)
+        // Marked in place, in one change: its name, the ENS name it follows and its place in the list are kept.
+        val entry = accounts.accounts.value[1]
+        assertEquals(address('7'), entry.address)
+        assertEquals(watchedOwn.copy(custody = AccountCustody.InKeyStore, perApp = entry.perApp), entry)
         assertEquals(testHost("uniswap.org"), entry.perApp?.site)
+        assertEquals(3, accounts.accounts.value.size)
     }
 
     @Test
-    fun anotherSitesPerAppAddressIsNotOfferedNorApproved() = runTest {
+    fun anotherSitesPerAppAddressIsNotOffered() = runTest {
         val site = testHost("uniswap.org")
         val mark = PerAppAccount(site, AppIsolation.pathOf(site), first.address)
         val perApp = account(Network.ETHEREUM, '6', perApp = mark)

@@ -26,19 +26,21 @@ internal class MemoryDappSites : DappSiteMemory {
 
 /**
  * A [PerAppKeys] that knows [phrases] and makes [address] for any site from [password], each call recorded in
- * [derived].
+ * [derived]; sealed at a lighter cost than the device's own when [steppedDown].
  */
 internal class FakePerAppKeys(
     var phrases: Map<Address, Address> = emptyMap(),
     var address: Address = Address.of("0x" + "a1".repeat(20)),
     private val password: String = "correct horse",
+    var steppedDown: Boolean = false,
 ) : PerAppKeys {
     val derived = mutableListOf<Pair<Address, AppHost>>()
 
     override suspend fun derivePerApp(from: Address, host: AppHost, password: WalletPassword): PerAppDerivation {
         derived += from to host
         if (password.text != this.password) return PerAppDerivation.WrongPassword
-        return PerAppDerivation.Stored(address, AppIsolation.pathOf(host), phrases[from] ?: from, KeyProtection.HARDWARE)
+        val phrase = phrases[from] ?: from
+        return PerAppDerivation.Stored(address, AppIsolation.pathOf(host), phrase, KeyProtection.HARDWARE, steppedDown)
     }
 
     override suspend fun phrases(): Map<Address, Address> = phrases

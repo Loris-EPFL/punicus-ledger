@@ -11,7 +11,6 @@ import kotlinx.coroutines.test.runTest
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -20,11 +19,11 @@ import kotlin.test.assertIs
 /**
  * Acceptance test of finding N3 of the security audit of 2026-11-01 (docs/keys-and-signing.md,
  * *A lost hardware key is said, not guessed around*): the key store asks the hardware secret whether
- * its key exists before anything could create one. [EnvelopeKeyStore.enableBiometrics] reads the
- * secret's protection first, which on Android (AndroidKeystoreSecret, `protection` lazy over
- * `key()`) generates the Keystore HMAC key when it is missing, so a lost key is remade beside the
- * envelopes sealed with the old one and the loss reads as "wrong password" from then on. Ignored
- * while the finding is open; remove the @Ignore with the fix.
+ * its key exists before anything could create one. [EnvelopeKeyStore.enableBiometrics] used to read
+ * the secret's protection first, which on Android (AndroidKeystoreSecret, `protection` lazy over
+ * `key()`) generates the Keystore HMAC key when it is missing, so a lost key was remade beside the
+ * envelopes sealed with the old one and the loss read as "wrong password" from then on. It now asks
+ * [HardwareSecret.isProvisioned] first, as describe and import do.
  */
 class EnvelopeKeyStoreLostHardwareKeyTest {
 
@@ -64,7 +63,6 @@ class EnvelopeKeyStoreLostHardwareKeyTest {
         directory.deleteRecursively()
     }
 
-    @Ignore // Audit 2026-11-01, N3: open.
     @Test
     fun turningOnBiometricsNeverRemakesALostHardwareKey() = runTest {
         val hardware = RemakingHardware()

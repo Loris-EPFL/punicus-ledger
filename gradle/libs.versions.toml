@@ -71,8 +71,9 @@ myotis = "0.1.20"
 kotlincrypto = "0.8.0"
 # Ktor, the app's one HTTP client (CLAUDE.md, *Platform & language direction*), used only
 # for CoW Protocol's order API (docs/swaps.md, *What CoW learns*). Held at 3.3.3, built
-# with Kotlin 2.2.21 and coroutines 1.10.2: moving it is a change of its own. Engines: CIO (Ktor's own, no OkHttp beneath it) on Android and the desktop,
-# Darwin (NSURLSession) on iOS; neither retries a request behind the caller's back.
+# with Kotlin 2.2.21 and coroutines 1.10.2: moving it is a change of its own. Engines:
+# CIO (Ktor's own, no OkHttp beneath it) on Android and the desktop, Darwin
+# (NSURLSession) on iOS; neither retries a request behind the caller's back.
 ktor = "3.3.3"
 
 [plugins]

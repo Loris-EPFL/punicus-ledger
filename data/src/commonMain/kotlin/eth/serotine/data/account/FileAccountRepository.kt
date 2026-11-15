@@ -46,7 +46,7 @@ import kotlinx.serialization.json.Json
  * Sepolia alone, so it reads as a Sepolia account (docs/networks.md, *Files*). The next change
  * writes the file as the current format. Format 5 records what makes an account a per-app address
  * ([Account.perApp]: its site, path and phrase; issue #252); an entry without it, as every entry of an older file,
- * is an ordinary account. An entry whose chain id this version does not know was
+ * is an ordinary account. A list with no per-app address is written as format 4, which the release before reads. An entry whose chain id this version does not know was
  * written by a later version that works on more networks: the list is then
  * [AccountList.Reason.NEWER_FORMAT], left untouched, and the user is asked to update.
  */
@@ -66,7 +66,10 @@ class FileAccountRepository(
             stored.accounts.map { it.toAccount(stored.version) }.distinctBy { it.id }
         },
         encode = { accounts ->
-            val stored = StoredAccounts(FORMAT_VERSION, accounts.map(::StoredAccount))
+            // Format 4 while no account is a per-app address, so that an update alone leaves a list the release
+            // before can still read.
+            val version = if (accounts.any { it.perApp != null }) FORMAT_VERSION else FORMAT_BEFORE_PER_APP
+            val stored = StoredAccounts(version, accounts.map(::StoredAccount))
             STRICT.encodeToString(StoredAccounts.serializer(), stored)
         },
     )
@@ -198,6 +201,9 @@ class FileAccountRepository(
          * entry made as one records its site, path and phrase.
          */
         const val FORMAT_VERSION = 5
+
+        /** The format written while no entry needs format 5's per-app mark. */
+        const val FORMAT_BEFORE_PER_APP = 4
         const val WATCHED = "watched"
         const val IN_KEY_STORE = "key-store"
         val STRICT = Json

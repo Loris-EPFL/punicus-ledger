@@ -113,7 +113,7 @@ class FileAccountRepositoryTest {
         repository().add(byName)
 
         assertEquals(
-            """{"version":5,"accounts":[{"address":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",""" +
+            """{"version":4,"accounts":[{"address":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",""" +
                 """"kind":"EOA","label":"Account 1","custody":"key-store","chain":11155111},""" +
                 """{"address":"0xdddddddddddddddddddddddddddddddddddddddd",""" +
                 """"kind":"EOA","label":"Savings","custody":"watched","chain":11155111},""" +
@@ -136,7 +136,7 @@ class FileAccountRepositoryTest {
 
         assertEquals(AccountList.Loaded(listOf(eoa)), repository.observeAccounts().first())
         assertEquals(AccountAdd.Added, repository.add(watched))
-        assertTrue(text(file).startsWith("""{"version":5,"""))
+        assertTrue(text(file).startsWith("""{"version":4,"""))
         assertEquals(AccountList.Loaded(listOf(eoa, watched)), repository().observeAccounts().first())
     }
 
@@ -151,7 +151,7 @@ class FileAccountRepositoryTest {
 
         assertEquals(AccountList.Loaded(listOf(watched)), repository.observeAccounts().first())
         assertEquals(AccountAdd.Added, repository.add(byName))
-        assertTrue(text(file).startsWith("""{"version":5,"""))
+        assertTrue(text(file).startsWith("""{"version":4,"""))
         assertEquals(AccountList.Loaded(listOf(watched, byName)), repository().observeAccounts().first())
     }
 

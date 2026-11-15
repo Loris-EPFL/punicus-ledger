@@ -23,7 +23,7 @@ private val overview = GnosisPayUiState.Ready(
     send = ActionItem(enabled = true, reason = null),
     queued = emptyList(),
     queuedNote = null,
-    step = GnosisPayStep.Overview,
+    step = GnosisPayStep.Overview(),
 )
 
 private val waiting = QueuedRow(
@@ -58,6 +58,18 @@ private fun GnosisPayOverviewDarkPreview() = GnosisPayPreview(overview.copy(queu
 @Preview
 @Composable
 private fun GnosisPayQueuedPreview() = GnosisPayPreview(overview.copy(queued = listOf(waiting, ready)))
+
+@Preview
+@Composable
+private fun GnosisPayExecuteRefusedPreview() = GnosisPayPreview(
+    overview.copy(
+        queued = listOf(ready),
+        step = GnosisPayStep.Overview(
+            error = "The controlling account holds too little xDAI for the fee. It pays the fees of both the " +
+                "queueing and the execution.",
+        ),
+    ),
+)
 
 @Preview
 @Composable
@@ -141,6 +153,7 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("overview") { GnosisPayOverviewPreview() },
     ScreenPreview("overview-dark") { GnosisPayOverviewDarkPreview() },
     ScreenPreview("queued") { GnosisPayQueuedPreview() },
+    ScreenPreview("execute-refused") { GnosisPayExecuteRefusedPreview() },
     ScreenPreview("watched") { GnosisPayWatchedPreview() },
     ScreenPreview("compose") { GnosisPayComposePreview() },
     ScreenPreview("compose-error") { GnosisPayComposeErrorPreview() },

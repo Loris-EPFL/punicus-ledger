@@ -52,6 +52,10 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.launch
 
 /**
@@ -78,7 +82,8 @@ class GnosisPayViewModel(
 
     /** Where the user is in a transfer, beside what the chain says. */
     private sealed interface Flow {
-        data object Overview : Flow
+        /** The overview; [busy] the queued transfer whose execution is quoted, [error] why the last one was not. */
+        data class Overview(val busy: String? = null, val error: String? = null) : Flow
         data class Compose(
             val asset: String?,
             val to: String,
@@ -96,7 +101,13 @@ class GnosisPayViewModel(
         ) : Flow
     }
 
-    private val flowState = MutableStateFlow<Flow>(Flow.Overview)
+    private val flowState = MutableStateFlow<Flow>(Flow.Overview())
+
+    /**
+     * The request the screen waits on: each quote takes the next number, and Back, Send or a new
+     * quote moves it on, so that an answer arriving late for a step left is no one's.
+     */
+    private var request = 0L
 
     /** The transaction a send ended in, which the screen hands to the transfer's status; null until then. */
     private val sentHash = MutableStateFlow<String?>(null)
@@ -109,19 +120,30 @@ class GnosisPayViewModel(
     private var latestNative: BalanceReading? = null
     private var latestQueued: List<QueuedDelayTransfer> = emptyList()
 
+    /** The account as a Gnosis Pay account, read once for everything this screen shows. */
+    private val reading = observeGnosisPay(safe).shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1)
+
+    /** The transfers queued from here, read again every [pollInterval] for the Delay the account has now. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val queued = observeGnosisPay(safe).flatMapLatest { reading ->
-        val found = reading as? GnosisPayReading.Found ?: return@flatMapLatest flowOf<DelayTransfersReading?>(null)
-        flow {
-            while (true) {
-                emit(readDelayTransfers(safe, found.delay.address))
-                delay(pollInterval)
+    private val queued = reading
+        .map { (it as? GnosisPayReading.Found)?.delay?.address }
+        .distinctUntilChanged()
+        .flatMapLatest { delay ->
+            if (delay == null) {
+                flowOf(null)
+            } else {
+                flow<DelayTransfersReading?> {
+                    while (true) {
+                        // A read that throws is no answer this time; the next poll asks again.
+                        safely { readDelayTransfers(safe, delay) }?.let { emit(it) }
+                        delay(pollInterval)
+                    }
+                }.onStart { emit(null) }
             }
         }
-    }
 
     private val chain = combine(
-        observeGnosisPay(safe),
+        reading,
         observeNativeBalance(safe.network, safe.address),
         observeTokenHoldings(safe.network, safe.address),
         queued,
@@ -162,22 +184,27 @@ class GnosisPayViewModel(
                 MemberRow(GnosisPayTexts.eip55(member), inWallet?.label, found.membersHeld.any { it.address == member })
             },
             send = ActionItem(found.sending == GnosisPaySending.AVAILABLE, GnosisPayTexts.sendReason(found.sending)),
-            queued = latestQueued.map { queuedRow(it, found) },
+            queued = latestQueued.map { queuedRow(it, found, (step as? Flow.Overview)?.busy) },
             queuedNote = GnosisPayTexts.queuedNote(chain.transfers),
             step = stepOf(step, found, chain),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GnosisPayUiState.Loading)
 
-    private fun queuedRow(queued: QueuedDelayTransfer, found: GnosisPayReading.Found): QueuedRow {
+    private fun queuedRow(queued: QueuedDelayTransfer, found: GnosisPayReading.Found, busy: String?): QueuedRow {
         val held = found.membersHeld.any { it.address == queued.member }
         val ready = queued.state is DelayTransferState.Ready
         val execute = when {
             queued.state == null || queued.state is DelayTransferState.NotInQueue ||
                 queued.state is DelayTransferState.Expired -> null
             !held -> ActionItem(false, GnosisPayTexts.EXECUTE_NEEDS_MEMBER)
-            found.sending == GnosisPaySending.RETIRED_MODULE -> ActionItem(false, GnosisPayTexts.sendReason(found.sending))
+            found.sending == GnosisPaySending.RETIRED_MODULE ->
+                ActionItem(false, GnosisPayTexts.sendReason(found.sending))
             !ready -> ActionItem(false, GnosisPayTexts.whyNotYet(queued.state))
             else -> ActionItem(true, null)
+        }.let { action ->
+            // While its execution is being quoted: greyed out, saying so.
+            val checking = action?.enabled == true && busy == queued.queuedBy
+            if (checking) ActionItem(false, GnosisPayTexts.CHECKING) else action
         }
         return QueuedRow(
             id = queued.queuedBy,
@@ -188,7 +215,7 @@ class GnosisPayViewModel(
     }
 
     private fun stepOf(step: Flow, found: GnosisPayReading.Found, chain: Chain): GnosisPayStep = when (step) {
-        Flow.Overview -> GnosisPayStep.Overview
+        is Flow.Overview -> GnosisPayStep.Overview(error = step.error)
         is Flow.Compose -> GnosisPayStep.Compose(
             assets = GnosisPayTexts.assets(safe.network, chain.native, chain.holdings),
             asset = step.asset,
@@ -212,6 +239,7 @@ class GnosisPayViewModel(
     fun startSend() {
         val found = latest ?: return
         if (found.sending != GnosisPaySending.AVAILABLE) return
+        request++
         flowState.value = Flow.Compose(asset = null, to = "", amount = "")
     }
 
@@ -238,15 +266,17 @@ class GnosisPayViewModel(
         val decimals = (asset as? TransferAsset.Erc20Token)?.token?.decimals ?: NATIVE_DECIMALS
         val amount = UInt256.parseUnits(compose.amount, decimals) ?: return showCompose(GnosisPayTexts.BAD_AMOUNT)
         val modules = found.safeModules
-        val transfer = when (val plan = DelayTransfer.of(safe.address, found.delay.address, modules, asset, to, amount)) {
+        val plan = DelayTransfer.of(safe.address, found.delay.address, modules, asset, to, amount)
+        val transfer = when (plan) {
             is DelayTransferPlan.Planned -> plan.transfer
             else -> return showCompose(GnosisPayTexts.planRefused(plan))
         }
         flowState.value = compose.copy(quoting = true, error = null)
+        val mine = ++request
         viewModelScope.launch {
             val quoting = safely { quoteDelayQueue(member, transfer, fee) }
-            // Left meanwhile (Back): the answer is no one's.
-            if (flowState.value !is Flow.Compose) return@launch
+            // Left meanwhile (Back, a new Send): the answer is no one's.
+            if (request != mine || flowState.value !is Flow.Compose) return@launch
             flowState.value = when (quoting) {
                 is DelayQuoting.Quoted -> Flow.Review(quoting.quote, member, unlockStep())
                 null -> compose.copy(quoting = false, error = GnosisPayTexts.QUOTE_FAILED)
@@ -255,18 +285,27 @@ class GnosisPayViewModel(
         }
     }
 
-    /** Execute the queued transfer [id] (its queueing's hash): its execution quoted and shown for review. */
+    /**
+     * Execute the queued transfer [id] (its queueing's hash): its execution quoted and shown for
+     * review, once its row offers it (a member's key held here, the current module, ready); a quote
+     * refused says why on the overview.
+     */
     fun execute(id: String, fee: FeeLevel = FeeLevel.entries.first()) {
         val found = latest ?: return
+        val overview = flowState.value as? Flow.Overview ?: return
+        if (overview.busy != null) return
         val queued = latestQueued.firstOrNull { it.queuedBy == id } ?: return
         if (found.membersHeld.none { it.address == queued.member }) return
-        if (flowState.value != Flow.Overview) return
+        if (found.sending == GnosisPaySending.RETIRED_MODULE || queued.state !is DelayTransferState.Ready) return
+        flowState.value = Flow.Overview(busy = id)
+        val mine = ++request
         viewModelScope.launch {
             val quoting = safely { quoteDelayExecution(queued.member, queued.transfer, fee) }
+            if (request != mine || flowState.value !is Flow.Overview) return@launch
             flowState.value = when (quoting) {
                 is DelayQuoting.Quoted -> Flow.Review(quoting.quote, queued.member, unlockStep())
-                // The overview says why: its row's state is read again.
-                else -> Flow.Overview
+                null -> Flow.Overview(error = GnosisPayTexts.QUOTE_FAILED)
+                else -> Flow.Overview(error = GnosisPayTexts.quoteRefused(quoting))
             }
         }
     }
@@ -298,7 +337,7 @@ class GnosisPayViewModel(
             val current = flowState.value as? Flow.Review ?: return@launch
             when (sending) {
                 is TransferSending.Sent -> {
-                    flowState.value = Flow.Overview
+                    flowState.value = Flow.Overview()
                     sentHash.value = sending.hash
                 }
                 is TransferSending.NotSigned -> flowState.value = current.copy(
@@ -310,14 +349,15 @@ class GnosisPayViewModel(
                 )
                 // Maybe taken: its record is what its status retries from, byte for byte.
                 is TransferSending.NotSent -> if (sending.transfer.maybeSent) {
-                    flowState.value = Flow.Overview
+                    flowState.value = Flow.Overview()
                     sentHash.value = sending.transfer.hash
                 } else {
                     val what = if (review.quote.step == DelayStep.QUEUE) "queueing" else "execution"
-                    flowState.value = current.copy(signing = false, error = notSentItem(sending.broadcast, false, what).message)
+                    val why = notSentItem(sending.broadcast, false, what).message
+                    flowState.value = current.copy(signing = false, error = why)
                 }
                 is TransferSending.RejectionUnverified -> {
-                    flowState.value = Flow.Overview
+                    flowState.value = Flow.Overview()
                     sentHash.value = sending.transfer.hash
                 }
                 null -> flowState.value = current.copy(signing = false, error = GnosisPayTexts.SEND_FAILED)
@@ -334,8 +374,9 @@ class GnosisPayViewModel(
     fun back(): Boolean {
         val current = flowState.value
         if (current is Flow.Review && current.signing) return true
-        if (current == Flow.Overview) return false
-        flowState.value = Flow.Overview
+        if (current is Flow.Overview) return false
+        request++
+        flowState.value = Flow.Overview()
         return true
     }
 

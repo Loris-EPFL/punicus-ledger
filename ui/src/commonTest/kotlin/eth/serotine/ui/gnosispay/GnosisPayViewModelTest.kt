@@ -88,14 +88,16 @@ class GnosisPayViewModelTest {
         override fun observeKind(network: Network, address: Address): Flow<KindReading> = flowOf(
             KindReading.Verified(
                 AddressKind.Safe(
-                    SafeState("1.3.0", false, listOf(Address.of("0x" + "0".repeat(39) + "2")), 1, 3, listOf(delay), null),
+                    SafeState("1.3.0", false, listOf(sentinel), 1, 3, listOf(delay), null),
                 ),
                 40,
             ),
         )
     }
 
-    private var queueAnswer: DelayQueueReading = DelayQueueReading.Read(DelayQueue(0, 0, 90_000, 111_600, null, 0), 41, 0)
+    private val sentinel = Address.of("0x" + "0".repeat(39) + "2")
+    private var queueAnswer: DelayQueueReading =
+        DelayQueueReading.Read(DelayQueue(0, 0, 90_000, 111_600, null, 0), 41, 0)
     private val delays = object : DelayModules {
         override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> = flowOf(
             DelayReading.Verified(
@@ -138,13 +140,14 @@ class GnosisPayViewModelTest {
         return viewModel
     }
 
-    private suspend fun GnosisPayViewModel.ready() = uiState.first { it is GnosisPayUiState.Ready } as GnosisPayUiState.Ready
+    private suspend fun GnosisPayViewModel.ready() =
+        uiState.first { it is GnosisPayUiState.Ready } as GnosisPayUiState.Ready
 
     @Test
     fun theOverviewSaysWhatTheDelayMakesATransferDoAndOffersSend() = runTest {
         val state = viewModel().ready()
 
-        assertEquals(GnosisPayStep.Overview, state.step)
+        assertEquals(GnosisPayStep.Overview(), state.step)
         assertTrue(state.waits.contains("25 h") && state.waits.contains("31 h"), state.waits)
         assertEquals(ActionItem(enabled = true, reason = null), state.send)
         assertEquals("Card owner", state.members.single().label)
@@ -182,7 +185,7 @@ class GnosisPayViewModelTest {
         assertTrue(recorded.action is SentAction.DelayQueue)
         assertEquals(member, recorded.account)
         assertEquals(listOf("correct horse"), signer.passwords)
-        assertEquals(GnosisPayStep.Overview, viewModel.ready().step)
+        assertEquals(GnosisPayStep.Overview(), viewModel.ready().step)
     }
 
     @Test
@@ -228,5 +231,14 @@ class GnosisPayViewModelTest {
         viewModel.execute(row.id)
         val review = viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.step is GnosisPayStep.Review }
         assertTrue(((review as GnosisPayUiState.Ready).step as GnosisPayStep.Review).title.startsWith("Execute"))
+    }
+
+    @Test
+    fun aPeriodIsSaidInHoursAndMinutesRoundedUp() {
+        assertEquals("25 h", GnosisPayTexts.period(90_000))
+        assertEquals("31 h", GnosisPayTexts.period(111_600))
+        assertEquals("3 min", GnosisPayTexts.period(180))
+        assertEquals("1 h", GnosisPayTexts.period(3_599))
+        assertEquals("1 h 30 min", GnosisPayTexts.period(5_400))
     }
 }

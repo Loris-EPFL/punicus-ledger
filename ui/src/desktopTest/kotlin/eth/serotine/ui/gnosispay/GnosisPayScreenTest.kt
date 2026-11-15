@@ -27,10 +27,10 @@ class GnosisPayScreenTest {
         members = listOf(MemberRow("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB", "Card owner", heldHere = true)),
         send = ActionItem(enabled = true, reason = null),
         queued = listOf(
-            QueuedRow("0xabc", "1 XDAI to 0x1111…1111", "Ready to execute", ActionItem(enabled = true, reason = null)),
+            QueuedRow("0xabc", "1 XDAI to 0x1111…1111", "Ready to execute", ActionItem(enabled = true, null)),
         ),
         queuedNote = null,
-        step = GnosisPayStep.Overview,
+        step = GnosisPayStep.Overview(),
     )
 
     private fun show(state: GnosisPayUiState) = rule.setContent {

@@ -486,7 +486,7 @@ class AppGraph(
             observeGnosisPay = observeGnosisPay(),
         )
 
-    /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it (docs/gnosis-pay.md). */
+    /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it. */
     fun gnosisPayViewModel(safe: AccountId): GnosisPayViewModel = GnosisPayViewModel(
         safe,
         ObserveAccount(accounts),
@@ -504,7 +504,15 @@ class AppGraph(
             safe.network,
             outbox,
         ),
-        QuoteDelayExecution(delayModules, transactionInputs, nativeBalances, tokenBalances, sentTransfers, safe.network, outbox),
+        QuoteDelayExecution(
+            delayModules,
+            transactionInputs,
+            nativeBalances,
+            tokenBalances,
+            sentTransfers,
+            safe.network,
+            outbox,
+        ),
         SendDelayCall(signer, broadcaster, sentTransfers),
         DescribeKeyStore(keys),
     )

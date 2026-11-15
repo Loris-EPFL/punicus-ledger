@@ -1371,7 +1371,10 @@ private object NoDelayModules : eth.serotine.domain.repository.DelayModules {
         module: eth.serotine.domain.model.Address,
     ): kotlinx.coroutines.flow.Flow<eth.serotine.domain.repository.DelayReading> =
         kotlinx.coroutines.flow.flowOf(
-            eth.serotine.domain.repository.DelayReading.Verified(eth.serotine.domain.repository.DelayFinding.NotDelay, 1),
+            eth.serotine.domain.repository.DelayReading.Verified(
+                eth.serotine.domain.repository.DelayFinding.NotDelay,
+                1,
+            ),
         )
 
     override suspend fun queue(
@@ -1379,5 +1382,7 @@ private object NoDelayModules : eth.serotine.domain.repository.DelayModules {
         delay: eth.serotine.domain.model.Address,
         hash: eth.serotine.domain.model.Digest,
     ): eth.serotine.domain.repository.DelayQueueReading =
-        eth.serotine.domain.repository.DelayQueueReading.Unavailable(eth.serotine.domain.repository.ReadUnavailable.NO_ENGINE)
+        eth.serotine.domain.repository.DelayQueueReading.Unavailable(
+            eth.serotine.domain.repository.ReadUnavailable.NO_ENGINE,
+        )
 }

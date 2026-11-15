@@ -167,7 +167,7 @@ class AccountDetailViewModel(
     private val clock: () -> Long = ::epochSecondsNow,
     /** Whether Send from another wallet is offered (issue #255), asked anew for each state built. Null: never. */
     private val offerHandoff: OfferHandoff? = null,
-    /** Whether a Safe is a Gnosis Pay account (docs/gnosis-pay.md), which its Owners tab then opens. Null: never asked. */
+    /** Whether a Safe is a Gnosis Pay account (docs/gnosis-pay.md), which its Owners tab opens. Null: never asked. */
     observeGnosisPay: ObserveGnosisPay? = null,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
@@ -974,10 +974,10 @@ internal fun AccountDetailUiState.withAmountsHidden(hidden: Boolean): AccountDet
 /** What a Safe's Owners tab says of it as a Gnosis Pay account; null when it is none, or not read yet. */
 private fun gnosisPayEntry(reading: GnosisPayReading): String? {
     val found = reading as? GnosisPayReading.Found ?: return null
-    val who = if (found.sending == GnosisPaySending.AVAILABLE) {
-        "Its controlling key is on this device: transfers go through its Delay module."
-    } else {
-        "Controlled through its Delay module, by a key that cannot send from here yet."
+    val who = when (found.sending) {
+        GnosisPaySending.AVAILABLE -> "Its controlling key is on this device: transfers go through its Delay module."
+        GnosisPaySending.RETIRED_MODULE -> "Its Delay module runs retired code, so Punicus sends nothing through it."
+        else -> "Controlled through its Delay module, by a key that cannot send from here yet."
     }
     return "Gnosis Pay account. $who"
 }

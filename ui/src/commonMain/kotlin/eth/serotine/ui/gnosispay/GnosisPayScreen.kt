@@ -40,6 +40,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnlockFields
@@ -91,6 +93,8 @@ fun GnosisPayRoute(
             opened(it)
         }
     }
+    // The password goes when the screen is no longer shown: the app in the background, or the screen left.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     DisposableEffect(viewModel) { onDispose { viewModel.onHidden() } }
     GnosisPayScreen(
         state = state,
@@ -144,7 +148,9 @@ fun GnosisPayScreen(
             TopAppBar(
                 title = { Text("Gnosis Pay") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
                 },
             )
         },
@@ -164,7 +170,7 @@ fun GnosisPayScreen(
                     }
                     is GnosisPayUiState.Unavailable -> Text(state.message)
                     is GnosisPayUiState.Ready -> when (val step = state.step) {
-                        GnosisPayStep.Overview -> Overview(state, actions) { unavailable = it }
+                        is GnosisPayStep.Overview -> Overview(state, step, actions) { unavailable = it }
                         is GnosisPayStep.Compose -> Compose(state, step, actions)
                         is GnosisPayStep.Review -> Review(step, actions)
                     }
@@ -176,7 +182,12 @@ fun GnosisPayScreen(
 }
 
 @Composable
-private fun Overview(state: GnosisPayUiState.Ready, actions: GnosisPayActions, onUnavailable: (String) -> Unit) {
+private fun Overview(
+    state: GnosisPayUiState.Ready,
+    step: GnosisPayStep.Overview,
+    actions: GnosisPayActions,
+    onUnavailable: (String) -> Unit,
+) {
     Text(state.label, style = MaterialTheme.typography.titleLarge)
     Mono(state.address)
     Card(Modifier.fillMaxWidth()) {
@@ -211,6 +222,7 @@ private fun Overview(state: GnosisPayUiState.Ready, actions: GnosisPayActions, o
         },
     ) { Text("Send through the Delay") }
     Text("Queued from this device", style = MaterialTheme.typography.titleSmall)
+    step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     if (state.queued.isEmpty()) Text("Nothing is waiting.", style = MaterialTheme.typography.bodyMedium)
     state.queued.forEach { row ->
         Card(Modifier.fillMaxWidth()) {
@@ -219,7 +231,9 @@ private fun Overview(state: GnosisPayUiState.Ready, actions: GnosisPayActions, o
                 Text(row.status)
                 row.execute?.let { execute ->
                     OutlinedButton(
-                        onClick = { if (execute.enabled) actions.onExecute(row.id) else execute.reason?.let(onUnavailable) },
+                        onClick = {
+                            if (execute.enabled) actions.onExecute(row.id) else execute.reason?.let(onUnavailable)
+                        },
                         modifier = Modifier.testTag("$GNOSIS_PAY_EXECUTE_TAG-${row.id}"),
                     ) { Text(if (execute.enabled) "Execute" else "Execute (not yet)") }
                 }

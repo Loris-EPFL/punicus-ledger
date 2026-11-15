@@ -40,10 +40,13 @@ sealed interface GnosisPayUiState {
     ) : GnosisPayUiState
 }
 
-/** One member of the Delay: its EIP-55 [address], its name in the wallet ([label]), and whether its key is held here. */
+/** One member of the Delay: its EIP-55 [address], its name in the wallet ([label]), and whether its key is here. */
 data class MemberRow(val address: String, val label: String?, val heldHere: Boolean)
 
-/** An action shown either way: [enabled], or greyed out with the [reason] a tap on it says (owner ruling, 2026-10-18, #55). */
+/**
+ * An action shown either way: [enabled], or greyed out with the [reason] a tap on it says (owner
+ * ruling, 2026-10-18, #55).
+ */
 data class ActionItem(val enabled: Boolean, val reason: String?)
 
 /**
@@ -56,8 +59,8 @@ data class QueuedRow(val id: String, val title: String, val status: String, val 
 /** Where the screen is in a transfer through the Delay. */
 sealed interface GnosisPayStep {
 
-    /** The account, its queued transfers, and Send. */
-    data object Overview : GnosisPayStep
+    /** The account, its queued transfers, and Send; [error] why the last Execute was not quoted. */
+    data class Overview(val error: String? = null) : GnosisPayStep
 
     /**
      * The transfer form: the Safe's [assets] to choose from, the [asset] chosen (its contract, or
@@ -90,5 +93,5 @@ sealed interface GnosisPayStep {
     ) : GnosisPayStep
 }
 
-/** One asset of the Safe to send: its [contract] (null: the network's currency), its [symbol] and its [balance] as read. */
+/** One asset of the Safe to send: its [contract] (null: the network's currency), [symbol] and [balance] as read. */
 data class AssetItem(val contract: String?, val symbol: String, val balance: String)

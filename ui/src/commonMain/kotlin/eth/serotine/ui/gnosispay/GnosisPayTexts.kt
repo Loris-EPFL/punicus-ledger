@@ -34,10 +34,12 @@ internal object GnosisPayTexts {
     fun period(seconds: Long): String {
         val hours = seconds / 3_600
         val minutes = (seconds % 3_600 + 59) / 60
+        // Minutes rounded up, carried into the hours when they make a whole one.
+        val (h, m) = if (minutes == 60L) hours + 1 to 0L else hours to minutes
         return when {
-            hours == 0L -> "$minutes min"
-            minutes == 0L || minutes == 60L -> "${hours + if (minutes == 60L) 1 else 0} h"
-            else -> "$hours h $minutes min"
+            h == 0L -> "$m min"
+            m == 0L -> "$h h"
+            else -> "$h h $m min"
         }
     }
 
@@ -71,7 +73,8 @@ internal object GnosisPayTexts {
     }
 
     const val EXECUTE_NEEDS_MEMBER =
-        "This transfer was queued by an account whose key is no longer on this device, so it cannot be executed from here."
+        "This transfer was queued by an account whose key is no longer on this device, so it cannot be " +
+            "executed from here."
 
     fun queuedNote(reading: DelayTransfersReading?): String? = when (reading) {
         null -> null
@@ -142,9 +145,11 @@ internal object GnosisPayTexts {
     fun assetOf(contract: String?, holdings: TokenHoldings?): TransferAsset? {
         if (contract == null) return TransferAsset.Native
         val address = Address.parse(contract) ?: return null
-        return holdings?.holdings?.firstOrNull { it.token.address == address }?.let { TransferAsset.Erc20Token(it.token) }
+        val holding = holdings?.holdings?.firstOrNull { it.token.address == address } ?: return null
+        return TransferAsset.Erc20Token(holding.token)
     }
 
+    const val CHECKING = "Its execution is being checked on chain."
     const val NO_ASSET = "Choose the asset to send."
     const val BAD_ADDRESS = "Enter the recipient's address: 0x and 40 hex digits. Gnosis Chain resolves no names."
     const val BAD_AMOUNT = "Enter an amount, in the asset's units."

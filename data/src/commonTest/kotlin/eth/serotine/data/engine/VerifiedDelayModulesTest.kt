@@ -288,6 +288,8 @@ class VerifiedDelayModulesTest {
                     expirationSeconds = 111_600,
                     entry = DelayEntry(3, Digest.of(second), 1_003),
                     searched = 2,
+                    // The next entry's time too, whatever its hash: an expired one blocks all behind it.
+                    headCreatedAt = 1_002,
                 ),
                 blockNumber = 7,
                 headTime = 5_000,

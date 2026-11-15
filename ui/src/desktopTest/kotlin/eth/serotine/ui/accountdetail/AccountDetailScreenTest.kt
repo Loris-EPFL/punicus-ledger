@@ -680,7 +680,14 @@ class AccountDetailScreenTest {
             ready.copy(
                 kind = AccountKind.SAFE,
                 control = Control.WATCH_ONLY,
-                safe = SafeDetails.Checking,
+                safe = SafeDetails.Shown(
+                    title = "Safe 1.3.0 · nonce 1",
+                    signers = "1 of 1 owners must sign",
+                    owners = listOf(OwnerRow(GNOSIS_PAY_PLACEHOLDER, null, heldHere = false)),
+                    modules = emptyList(),
+                    guard = null,
+                    checkedAt = "Verified at block 1",
+                ),
                 segment = DetailSegment.OWNERS,
                 gnosisPay = "Gnosis Pay account. Its controlling key is on this device.",
             ),

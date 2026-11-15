@@ -37,7 +37,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
@@ -91,6 +93,7 @@ const val GNOSIS_PAY_SIGN_TAG = "gnosis-pay-sign"
  * shown drops the password typed and has its quote made again when it is shown. [lightClient] is
  * Gnosis Chain's: the strip above the screen in Detailed view, the sync line in simple mode.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun GnosisPayRoute(
     viewModel: GnosisPayViewModel,
@@ -118,6 +121,10 @@ fun GnosisPayRoute(
     // The password goes when the screen is no longer shown: the app in the background, or the screen left.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
+    // The system's back steps as the top bar's does: from the form or the review to the overview,
+    // and it waits while a signature runs (the ViewModel holds it), never leaving the screen under it.
+    val stepped = (state as? GnosisPayUiState.Ready)?.step.let { it != null && it !is GnosisPayStep.Overview }
+    BackHandler(enabled = stepped) { viewModel.back() }
     DisposableEffect(viewModel) { onDispose { viewModel.onHidden() } }
     GnosisPayScreen(
         state = state,

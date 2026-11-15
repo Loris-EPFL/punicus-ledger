@@ -94,4 +94,19 @@ class GnosisPayEntryTest {
     fun anyOtherSafeKeepsItsOwnersAsTheyAre() {
         assertEquals(card, card.withGnosisPayOwner())
     }
+
+    @Test
+    fun aPlaceholderBesideRealOwnersIsNotSaidToLeaveNoOneToSign() {
+        val shown = card.safe as SafeDetails.Shown
+        val mixed = card.copy(
+            gnosisPay = "Gnosis Pay account.",
+            safe = shown.copy(owners = shown.owners + OwnerRow("0x" + "33".repeat(20), null, heldHere = false)),
+        )
+
+        assertEquals(mixed, mixed.withGnosisPayOwner())
+        assertEquals(false, mixed.placeholderOwned)
+        // Send keeps the generic reason, and still offers the Gnosis Pay screen beside it.
+        assertEquals(true, mixed.sendOffersGnosisPay)
+        assertEquals(false, mixed.sendReason == GNOSIS_PAY_SEND)
+    }
 }

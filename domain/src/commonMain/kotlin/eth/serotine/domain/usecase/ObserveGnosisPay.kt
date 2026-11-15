@@ -148,6 +148,7 @@ sealed interface GnosisPayReading {
         val sending: GnosisPaySending
             get() = when {
                 delay.generation == DelayGeneration.RETIRED -> GnosisPaySending.RETIRED_MODULE
+                delay.expirationSeconds in 1..DELAY_EXPIRY_MARGIN_SECONDS -> GnosisPaySending.WINDOW_TOO_SHORT
                 membersHeld.isNotEmpty() -> GnosisPaySending.AVAILABLE
                 !accountsRead -> GnosisPaySending.ACCOUNTS_UNREADABLE
                 membersWatchedHere.isNotEmpty() -> GnosisPaySending.MEMBER_WATCHED_HERE
@@ -167,6 +168,12 @@ enum class GnosisPaySending {
 
     /** Its Delay is a proxy of the retired mastercopy: nothing is sent through it (owner's decisions, 2026-11-15). */
     RETIRED_MODULE,
+
+    /**
+     * Its Delay's expiration is no longer than [DELAY_EXPIRY_MARGIN_SECONDS]: an execution could
+     * not be mined before it, so nothing is queued.
+     */
+    WINDOW_TOO_SHORT,
 
     /** A member's key is held here, but not as an account on the Safe's network: adding it there sends. */
     MEMBER_ON_ANOTHER_NETWORK,

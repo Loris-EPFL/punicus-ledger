@@ -175,8 +175,11 @@ class GnosisPayTransfersTest {
         assertTrue(quote.call.transaction.value.isZero)
         assertEquals(transfer().queueData().toHex(), quote.call.transaction.data.toHex())
         assertEquals(Network.GNOSIS.chainId, quote.call.transaction.chainId)
-        // Run from the member, against the Delay.
-        assertEquals(member to delay, inputs.simulated.single().let { it.first to it.second })
+        // The Safe's own transfer first, as it would be executed; then the member's call of the Delay.
+        assertEquals(
+            listOf(safe to recipient, member to delay),
+            inputs.simulated.map { it.first to it.second },
+        )
         assertEquals(UInt256.of("2000000000000000000"), quote.safeBalance)
     }
 
@@ -308,17 +311,60 @@ class GnosisPayTransfersTest {
     @Test
     fun aCallThatRevertsOrReturnsFalseIsNotQuoted() = runTest {
         funded()
+        // The Safe's own transfer runs; the member's call is what answers.
+        var memberRun: Simulation = Simulation.Reverted(100)
+        inputs.simulationOf = { from, _ -> if (from == safe) Simulation.Succeeded("", 100) else memberRun }
         // Not a member: moduleOnly reverts.
-        inputs.simulation = Simulation.Reverted(100)
         assertEquals(
             DelayQuoting.NotQuoted(CallRefusal.Reverts(100)),
             queueing()(member, transfer(), FeeLevel.entries.first()),
         )
-        inputs.simulation = Simulation.Succeeded("0".repeat(64), 100)
+        memberRun = Simulation.Succeeded("0".repeat(64), 100)
         assertEquals(
             DelayQuoting.NotQuoted(CallRefusal.Reverts(100)),
             queueing()(member, transfer(), FeeLevel.entries.first()),
         )
+    }
+
+    @Test
+    fun xdaiTheRecipientDoesNotTakeIsNeverQueued() = runTest {
+        funded()
+        // The Safe's own transfer of xDAI reverts: a contract without a payable receive.
+        inputs.simulationOf = { from, _ ->
+            if (from == safe) Simulation.Reverted(100) else Simulation.Succeeded("", 100)
+        }
+
+        assertEquals(DelayQuoting.SafeCallReverts(100), queueing()(member, transfer(), FeeLevel.entries.first()))
+        assertEquals(safe to recipient, inputs.simulated.single().let { it.first to it.second })
+    }
+
+    @Test
+    fun anExpiredHeadATooShortWindowOrAFullQueueQueuesNothing() = runTest {
+        funded()
+        val ours = transfer()
+        // Another entry at the head, expired: nothing behind it can be executed until it is skipped.
+        answers[ours.hash] = DelayQueueReading.Read(
+            DelayQueue(5, 6, 90_000, 111_600, null, 1, headCreatedAt = 0),
+            120,
+            90_000 + 111_600 + 1,
+        )
+        assertEquals(DelayQuoting.HeadExpired, queueing()(member, ours, FeeLevel.entries.first()))
+
+        // An expiration within the margin: no execution could be mined in time.
+        answers[ours.hash] = DelayQueueReading.Read(DelayQueue(5, 5, 180, 300, null, 0), 120, 1_000)
+        assertEquals(DelayQuoting.WindowTooShort(300), queueing()(member, ours, FeeLevel.entries.first()))
+
+        // Eight waiting, as deep as the queue is read: a ninth could not be found again.
+        answers[ours.hash] = DelayQueueReading.Read(DelayQueue(5, 13, 90_000, 111_600, null, 8, 900), 120, 1_000)
+        assertEquals(DelayQuoting.QueueTooLong(8), queueing()(member, ours, FeeLevel.entries.first()))
+    }
+
+    @Test
+    fun aTransferStillCoolingDownIsWaitingWhateverItsWindow() {
+        val hash = transfer().hash
+        // A 5-minute expiration, within the margin: still cooling down, it waits; it never reads as expired.
+        val queue = DelayQueue(5, 6, 180, 300, DelayEntry(5, hash, 1_000), 1)
+        assertEquals(DelayTransferState.Waiting(1_180, 1_480, 0), queue.state(1_100))
     }
 
     @Test
@@ -375,7 +421,10 @@ class GnosisPayTransfersTest {
         val executing = sentBy(SentAction.DelayExecution(ours), 990, 9)
         history.entries.value = listOf(HistoryEntry(executing, SentOutcome.NotSeen))
 
-        assertEquals(DelayQuoting.ExecutionOnItsWay(executing.hash), execution()(member, ours, FeeLevel.entries.first()))
+        assertEquals(
+            DelayQuoting.ExecutionOnItsWay(executing.hash),
+            execution()(member, ours, FeeLevel.entries.first()),
+        )
         assertTrue(inputs.simulated.isEmpty())
     }
 
@@ -464,7 +513,8 @@ class GnosisPayTransfersTest {
             HistoryEntry(sentBy(SentAction.DelayQueue(recent), now - 50, 3), SentOutcome.NonceUsed),
         )
         answers[old.hash] = DelayQueueReading.Read(queueOf(DelayEntry(5, old.hash, 1_000)), 120, now)
-        answers[recent.hash] = DelayQueueReading.Read(queueOf(DelayEntry(6, recent.hash, now - 90), queued = 2), 120, now)
+        answers[recent.hash] =
+            DelayQueueReading.Read(queueOf(DelayEntry(6, recent.hash, now - 90), queued = 2), 120, now)
         asked.clear()
 
         val reading = ReadDelayTransfers(history, delays) { now }(AccountId(Network.GNOSIS, safe), delay)

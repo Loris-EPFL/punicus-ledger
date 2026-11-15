@@ -310,6 +310,27 @@ class GnosisPayViewModelTest {
     }
 
     @Test
+    fun aQuoteThatLandsWhileTheScreenIsHiddenIsMadeAgainWhenShown() = runTest {
+        val viewModel = viewModel()
+        viewModel.ready()
+        viewModel.startSend()
+        viewModel.onAssetChange(null)
+        viewModel.onToChange(recipient.hex)
+        viewModel.onAmountChange("1.5")
+        // Hidden before the review exists: the quote lands as made while hidden.
+        viewModel.onHidden()
+        viewModel.review()
+        viewModel.onPasswordChange("correct horse")
+        viewModel.sign()
+        assertEquals(emptyList(), signer.passwords, "a quote made while hidden is never signed as it was")
+
+        viewModel.onShown()
+        viewModel.onPasswordChange("correct horse")
+        viewModel.sign()
+        assertEquals(listOf("correct horse"), signer.passwords)
+    }
+
+    @Test
     fun aWrongPasswordSaysSoAndStaysOnTheReview() = runTest {
         signer.answer = Signing.WrongPassword
         val viewModel = viewModel()

@@ -22,6 +22,7 @@ import eth.serotine.domain.usecase.GnosisPayReading
 import eth.serotine.domain.usecase.GnosisPaySending
 import eth.serotine.domain.usecase.TokenHoldings
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.platform.formatDateTime
@@ -68,6 +69,9 @@ internal object GnosisPayTexts {
         GnosisPaySending.ACCOUNTS_UNREADABLE ->
             "The wallet's list of accounts cannot be read right now, so whether the controlling key is here " +
                 "cannot be told. Try again in a moment."
+        GnosisPaySending.WINDOW_TOO_SHORT ->
+            "This account's Delay module gives a transfer too short a window to be executed in: an execution " +
+                "sent once it is ready could not be mined before it expires. Punicus queues nothing through it."
         GnosisPaySending.NO_MEMBER_KEY ->
             "The key of the account that controls this Gnosis Pay account is not on this device. Import its " +
                 "recovery phrase to send from here; until then the account is watched."
@@ -102,7 +106,9 @@ internal object GnosisPayTexts {
 
     fun amount(amount: UInt256, asset: TransferAsset, network: Network): String = when (asset) {
         TransferAsset.Native -> "${amount.formatUnits(NATIVE_DECIMALS)} ${network.nativeSymbol}"
-        is TransferAsset.Erc20Token -> "${amount.formatUnits(asset.token.decimals)} ${asset.token.symbol}"
+        // Clipped as every screen clips a symbol: the contract's own claim, as long as it likes.
+        is TransferAsset.Erc20Token ->
+            "${amount.formatUnits(asset.token.decimals)} ${displaySymbol(asset.token.symbol)}"
     }
 
     /** Where a queued transfer stands, after how its queueing ended. */
@@ -149,16 +155,19 @@ internal object GnosisPayTexts {
         val tokens = holdings.holdings.mapNotNull { holding ->
             val verified = holding.reading as? TokenBalanceReading.Verified ?: return@mapNotNull null
             val units = UInt256.parse(verified.units.decimal)?.takeIf { !it.isZero } ?: return@mapNotNull null
+            val symbol = displaySymbol(holding.token.symbol)
             AssetItem(
                 Eip55.format(holding.token.address),
-                holding.token.symbol,
-                "${units.formatUnits(holding.token.decimals)} ${holding.token.symbol}",
-                warning = "Not the built-in ${holding.token.symbol}: another contract"
-                    .takeIf { holding.sharesBuiltInSymbol },
+                symbol,
+                "${units.formatUnits(holding.token.decimals)} $symbol",
+                warning = notBuiltIn(symbol).takeIf { holding.sharesBuiltInSymbol },
             )
         }
         return listOf(AssetItem(null, network.nativeSymbol, nativeBalance)) + tokens
     }
+
+    /** What a token the user added says when it takes a built-in token's symbol. */
+    fun notBuiltIn(symbol: String): String = "Not the built-in $symbol: another contract"
 
     /** The asset of [contract] (null: the network's currency) among [holdings]; null when it is none of them. */
     fun assetOf(contract: String?, holdings: TokenHoldings?): TransferAsset? {
@@ -203,10 +212,17 @@ internal object GnosisPayTexts {
         is DelayQuoting.AlreadyQueued -> "The same transfer is queued already and waits in the Delay module. " +
             "Execute it, or let it expire, before queuing it again."
         DelayQuoting.SameCallExpired -> "The same transfer is still in the Delay module's queue, expired. It stays " +
-            "there until someone skips it with the module's skipExpired, which Punicus does not offer yet. Change " +
-            "the amount or the recipient to queue a new one."
-        is DelayQuoting.QueueTooLong -> "The Delay module's queue holds more than the ${quoting.searched} entries " +
-            "Punicus reads, so whether this transfer is among them cannot be told. Nothing was queued."
+            "there until someone skips it with the module's skipExpired, which Punicus does not offer yet, and it " +
+            "holds back every transfer queued after it."
+        DelayQuoting.HeadExpired -> "The next entry in the Delay module's queue has expired. Until someone skips it " +
+            "with the module's skipExpired, which Punicus does not offer yet, nothing behind it can be executed: a " +
+            "transfer queued now would wait, expire and move nothing, its fees paid."
+        is DelayQuoting.WindowTooShort -> sendReason(GnosisPaySending.WINDOW_TOO_SHORT).orEmpty()
+        is DelayQuoting.SafeCallReverts -> "The account's own transfer reverts, run as a verified call" +
+            (quoting.blockNumber?.let { " at block ${grouped(it)}" } ?: "") + ": the recipient does not accept it. " +
+            "It would be queued, wait, and then fail. Nothing was signed."
+        is DelayQuoting.QueueTooLong -> "The Delay module's queue already holds ${quoting.searched} entries or more, " +
+            "as deep as Punicus reads it: one queued now could not be found again to execute. Nothing was queued."
         is DelayQuoting.ExecutionOnItsWay -> EXECUTING
         DelayQuoting.TokenRefuses -> "The token refuses this transfer from the account: it answers false. The " +
             "Delay would spend its entry and move nothing."
@@ -252,6 +268,7 @@ internal object GnosisPayTexts {
         found: GnosisPayReading.Found,
         member: Address,
         network: Network,
+        sharesBuiltInSymbol: Boolean = false,
     ): List<Pair<String, String>> {
         val transfer = quote.transfer
         val symbol = network.nativeSymbol
@@ -271,6 +288,7 @@ internal object GnosisPayTexts {
             "From" to eip55(transfer.safe),
             "To" to eip55(transfer.recipient),
             "Amount" to amount(transfer.amount, transfer.asset, network),
+        ) + tokenLines(transfer.asset, sharesBuiltInSymbol) + listOf(
             "Through" to "Delay module ${eip55(transfer.delay)}",
             "Signed by" to eip55(member),
             "Fee" to maxFee,
@@ -283,6 +301,17 @@ internal object GnosisPayTexts {
         ) + listOfNotNull(
             call.simulationBlock?.let { "Simulated" to "Run as a verified call at block ${grouped(it)}" },
         )
+    }
+
+    /** A token transfer's contract, and the warning when it shares a built-in token's symbol; none for xDAI. */
+    private fun tokenLines(asset: TransferAsset, sharesBuiltInSymbol: Boolean): List<Pair<String, String>> {
+        val token = (asset as? TransferAsset.Erc20Token)?.token ?: return emptyList()
+        val contract = "Token contract" to eip55(token.address)
+        return if (sharesBuiltInSymbol) {
+            listOf(contract, "Warning" to notBuiltIn(displaySymbol(token.symbol)))
+        } else {
+            listOf(contract)
+        }
     }
 
     private fun feeLevel(level: FeeLevel): String = when (level) {

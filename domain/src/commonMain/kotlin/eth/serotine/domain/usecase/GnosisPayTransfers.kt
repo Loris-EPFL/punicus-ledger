@@ -89,8 +89,9 @@ fun DelayQueue.state(headTime: Long): DelayTransferState {
     val expiresAt = if (expirationSeconds == 0L) null else readyAt + expirationSeconds
     val ahead = (found.nonce - txNonce).toInt()
     return when {
-        expiresAt != null && headTime + DELAY_EXPIRY_MARGIN_SECONDS > expiresAt -> DelayTransferState.Expired(expiresAt)
+        // Still cooling down is waiting, whatever the window: never said to have expired before it opened.
         headTime < readyAt -> DelayTransferState.Waiting(readyAt, expiresAt, ahead)
+        expiresAt != null && headTime + DELAY_EXPIRY_MARGIN_SECONDS > expiresAt -> DelayTransferState.Expired(expiresAt)
         ahead == 0 -> DelayTransferState.Ready(expiresAt)
         else -> DelayTransferState.Behind(ahead, expiresAt)
     }
@@ -162,8 +163,28 @@ sealed interface DelayQuoting {
     data object SameCallExpired : DelayQuoting
 
     /**
-     * The queue holds more entries than Punicus reads ([searched], [DelayModules.MAX_QUEUE_READ]):
-     * whether one of them is the same call cannot be told, so nothing is queued.
+     * The Delay's next entry expired: `executeNextTx` reverts on it, so a transfer queued now would
+     * wait behind it until the Delay's `skipExpired` removes it, which Punicus does not offer yet.
+     */
+    data object HeadExpired : DelayQuoting
+
+    /**
+     * The Delay's expiration ([expirationSeconds]) is no longer than [DELAY_EXPIRY_MARGIN_SECONDS]:
+     * an execution sent once the cooldown has passed could not be mined in time, so none would be
+     * offered, and nothing is queued.
+     */
+    data class WindowTooShort(val expirationSeconds: Long) : DelayQuoting
+
+    /**
+     * The Safe's own transfer reverts, run as a verified call at [blockNumber] from the Safe: the
+     * recipient does not take it (a contract without a payable `receive`), or the token refuses.
+     */
+    data class SafeCallReverts(val blockNumber: Long?) : DelayQuoting
+
+    /**
+     * The queue holds as many entries as Punicus reads ([searched], [DelayModules.MAX_QUEUE_READ]),
+     * or more: one more could not be found again, nor whether one of them is the same call be told,
+     * so nothing is queued.
      */
     data class QueueTooLong(val searched: Int) : DelayQuoting
 
@@ -249,18 +270,19 @@ private class DelayCallQuoter(
         if (needed == null || safeHolds.amount < needed) {
             return@cancellingReads DelayQuoting.SafeInsufficient(alreadyQueued)
         }
-        // The token's own answer to the Safe's call: one that answers false instead of reverting
-        // would let the Delay spend its entry and move nothing.
-        if (transfer.asset is TransferAsset.Erc20Token) {
-            when (val run = inputs.simulate(network, transfer.safe, transfer.to, UInt256.ZERO, transfer.data)) {
-                is Simulation.Succeeded ->
-                    if (Erc20.returnedFalse(run.returnHex)) return@cancellingReads DelayQuoting.TokenRefuses
-                is Simulation.Reverted ->
-                    return@cancellingReads DelayQuoting.NotQuoted(CallRefusal.Reverts(run.blockNumber))
-                Simulation.Refused -> return@cancellingReads DelayQuoting.NotQuoted(CallRefusal.Refused)
-                is Simulation.Unavailable ->
-                    return@cancellingReads DelayQuoting.NotQuoted(CallRefusal.Unavailable(run.reason, QuoteFigure.RUN))
+        // The Safe's own call, run as it would be executed: xDAI to a contract that does not take it
+        // reverts, and a token that answers false instead of reverting would let the Delay spend its
+        // entry and move nothing. Either would be queued, waited for and fail.
+        when (val run = inputs.simulate(network, transfer.safe, transfer.to, transfer.value, transfer.data)) {
+            is Simulation.Succeeded -> {
+                val refuses = transfer.asset is TransferAsset.Erc20Token && Erc20.returnedFalse(run.returnHex)
+                if (refuses) return@cancellingReads DelayQuoting.TokenRefuses
             }
+            is Simulation.Reverted ->
+                return@cancellingReads DelayQuoting.SafeCallReverts(run.blockNumber)
+            Simulation.Refused -> return@cancellingReads DelayQuoting.NotQuoted(CallRefusal.Refused)
+            is Simulation.Unavailable ->
+                return@cancellingReads DelayQuoting.NotQuoted(CallRefusal.Unavailable(run.reason, QuoteFigure.RUN))
         }
         val native = when (val read = NativeRead.of(memberNative.await())) {
             is NativeRead.Before -> read
@@ -347,13 +369,18 @@ class QuoteDelayQueue(
         val waiting = entries.waitingQueueings(network, transfer.safe, transfer.delay, clock(), read.queue)
         // A mined one is in the queue just read, or gone: only one on its way is the history's to tell.
         val sameCall = waiting.firstOrNull { it.queued.sameCall(transfer) && it.entry.onItsWay(clock()) }
+        val queue = read.queue
         when {
-            read.queue.entry != null -> return if (read.queue.state(read.headTime) is DelayTransferState.Expired) {
+            queue.expirationSeconds in 1..DELAY_EXPIRY_MARGIN_SECONDS ->
+                return DelayQuoting.WindowTooShort(queue.expirationSeconds)
+            queue.entry != null -> return if (queue.state(read.headTime) is DelayTransferState.Expired) {
                 DelayQuoting.SameCallExpired
             } else {
                 DelayQuoting.AlreadyQueued(sameCall?.entry?.transfer?.hash)
             }
-            !read.queue.searchedAll -> return DelayQuoting.QueueTooLong(read.queue.searched)
+            queue.headExpired(read.headTime) -> return DelayQuoting.HeadExpired
+            // As deep as the queue is searched: an entry past it could not be found again to execute.
+            queue.waiting >= DelayModules.MAX_QUEUE_READ -> return DelayQuoting.QueueTooLong(queue.searched)
             sameCall != null -> return DelayQuoting.AlreadyQueued(sameCall.entry.transfer.hash)
         }
         val alreadyQueued = waiting.filter { it.queued.asset.sameAsset(transfer.asset) }
@@ -477,8 +504,6 @@ class ReadDelayTransfers(
             .sortedByDescending { it.entry.transfer.sentAt }
             // One row per call: the queue holds one entry of a hash, which the newest queueing of it made.
             .distinctBy { it.queued.hash }
-            // The queue is searched this deep, so no older one could be found in it anyway.
-            .take(DelayModules.MAX_QUEUE_READ)
             .mapNotNull { (entry, transfer) ->
                 val onItsWay = entry.onItsWay(now)
                 val bound = window
@@ -559,14 +584,12 @@ private fun List<HistoryEntry>.waitingQueueings(
     queue: DelayQueue,
 ): List<Queueing> {
     val window = if (queue.expirationSeconds == 0L) null else queue.cooldownSeconds + queue.expirationSeconds
-    val candidates = candidateQueueings(network, safe, delay)
-    if (window == null) {
-        // Entries that never expire: no age tells which still wait, so the newest that the queue's
-        // depth could hold count, and those on their way.
-        val newest = candidates.sortedByDescending { it.entry.transfer.sentAt }.take(DelayModules.MAX_QUEUE_READ)
-        return candidates.filter { it.entry.onItsWay(now) || it in newest }
+    // Entries that never expire (no window): no age tells which still wait, so every one counts.
+    // That may count one executed elsewhere; it never counts too little, which would queue a transfer
+    // the Safe cannot pay.
+    return candidateQueueings(network, safe, delay).filter { (entry, _) ->
+        entry.onItsWay(now) || window == null || entry.transfer.sentAt >= now - window
     }
-    return candidates.filter { (entry, _) -> entry.onItsWay(now) || entry.transfer.sentAt >= now - window }
 }
 
 /**

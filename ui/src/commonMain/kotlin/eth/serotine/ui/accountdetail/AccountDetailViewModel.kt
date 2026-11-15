@@ -975,11 +975,13 @@ internal fun AccountDetailUiState.withAmountsHidden(hidden: Boolean): AccountDet
  * A Gnosis Pay account's Owners tab, its owner said for what it is: account-kit swaps the user's key
  * out for the placeholder `0x…02`, which no key controls (docs/gnosis-pay.md, *How the account is
  * set up*), so no owner signs, and the account is controlled through its Delay module instead.
- * Any other account, or a Safe whose owners are other, as it is.
+ * Only when every verified owner is that placeholder; any other account, or owners beside it, as
+ * they are.
  */
 internal fun AccountDetailUiState.Ready.withGnosisPayOwner(): AccountDetailUiState.Ready {
     val shown = safe as? SafeDetails.Shown ?: return this
-    if (gnosisPay == null || shown.owners.none { it.address == GNOSIS_PAY_PLACEHOLDER }) return this
+    // Said only when every verified owner is the placeholder: the tab lists the owners beside it.
+    if (!placeholderOwned) return this
     return copy(
         safe = shown.copy(
             signers = "No owner can sign: its one owner is a placeholder no key controls",
@@ -989,9 +991,6 @@ internal fun AccountDetailUiState.Ready.withGnosisPayOwner(): AccountDetailUiSta
         ),
     )
 }
-
-/** The owner account-kit leaves on a Gnosis Pay account, as [Eip55.format] gives it. */
-private const val GNOSIS_PAY_PLACEHOLDER = "0x0000000000000000000000000000000000000002"
 
 /** What the Owners tab calls that owner. */
 internal const val GNOSIS_PAY_PLACEHOLDER_LABEL = "Placeholder: no key controls it"

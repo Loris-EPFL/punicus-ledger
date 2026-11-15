@@ -187,20 +187,24 @@ class VerifiedDelayModules internal constructor(
             if (txNonce > queueNonce) return Read.Stopped(Ended.NOT_A_DELAYS_ANSWER)
             val cooldown = number(TX_COOLDOWN) ?: return stopped
             val expiration = number(TX_EXPIRATION) ?: return stopped
+            // The next entry's time, whatever its hash: an expired one blocks all behind it.
+            val headCreatedAt = if (txNonce < queueNonce) number(txCreatedAt(txNonce)) ?: return stopped else null
             val last = minOf(queueNonce, txNonce + DelayModules.MAX_QUEUE_READ)
             var nonce = txNonce
             while (nonce < last) {
                 val hex = answer(txHash(nonce)) ?: return stopped
                 val entryHash = Digest.parse(hex) ?: return Read.Stopped(Ended.NOT_A_DELAYS_ANSWER)
                 if (entryHash == wanted) {
-                    val createdAt = number(txCreatedAt(nonce)) ?: return stopped
+                    val createdAt = (if (nonce == txNonce) headCreatedAt else number(txCreatedAt(nonce)))
+                        ?: return stopped
                     val entry = DelayEntry(nonce, entryHash, createdAt)
                     val searched = (nonce - txNonce + 1).toInt()
-                    return done(DelayQueue(txNonce, queueNonce, cooldown, expiration, entry, searched))
+                    return done(DelayQueue(txNonce, queueNonce, cooldown, expiration, entry, searched, headCreatedAt))
                 }
                 nonce++
             }
-            return done(DelayQueue(txNonce, queueNonce, cooldown, expiration, null, (last - txNonce).toInt()))
+            val searched = (last - txNonce).toInt()
+            return done(DelayQueue(txNonce, queueNonce, cooldown, expiration, null, searched, headCreatedAt))
         }
 
         /**

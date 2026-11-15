@@ -129,6 +129,14 @@ class GnosisPayViewModel(
     private val flowState = MutableStateFlow<Flow>(Flow.Overview())
 
     /**
+     * Whether the screen is shown, and how many times it was hidden: a quote or a signature that
+     * began before a hide it did not see lands as made while hidden, and is made again before
+     * anything is signed (as on Send: the one-minute check alone would miss a device asleep).
+     */
+    private var shown = true
+    private var hides = 0
+
+    /**
      * The request the screen waits on: each quote takes the next number, and Back, Send or a new
      * quote moves it on, so that an answer arriving late for a step left is no one's.
      */
@@ -263,7 +271,13 @@ class GnosisPayViewModel(
         )
         is Flow.Review -> GnosisPayStep.Review(
             title = GnosisPayTexts.reviewTitle(step.quote, safe.network),
-            lines = GnosisPayTexts.reviewLines(step.quote, found, step.member, safe.network),
+            lines = GnosisPayTexts.reviewLines(
+                step.quote,
+                found,
+                step.member,
+                safe.network,
+                sharesBuiltInSymbol = sharesBuiltInSymbol(step.quote.transfer.asset, chain.holdings),
+            ),
             fee = step.quote.call.level,
             unlock = step.unlock,
             signing = step.signing || step.requoting,
@@ -271,6 +285,12 @@ class GnosisPayViewModel(
             note = step.note,
             checking = step.requoting,
         )
+    }
+
+    /** Whether [asset] is a token the user added that takes a built-in token's symbol, among [holdings]. */
+    private fun sharesBuiltInSymbol(asset: TransferAsset, holdings: TokenHoldings): Boolean {
+        val token = (asset as? TransferAsset.Erc20Token)?.token ?: return false
+        return holdings.holdings.any { it.token.address == token.address && it.sharesBuiltInSymbol }
     }
 
     /** Send: the transfer form, when a member's key is held here. */
@@ -318,12 +338,17 @@ class GnosisPayViewModel(
         val mine = ++request
         viewModelScope.launch {
             val quotedAt = timeSource.markNow()
+            val hidesAtQuote = hides
             val quoting = safely { quoteDelayQueue(member, transfer, fee) }
             val unlock = if (quoting is DelayQuoting.Quoted) unlockStep() else UnlockStep()
             // Left meanwhile (Back, a new Send), the unlock's check included: the answer is no one's.
             if (request != mine || flowState.value !is Flow.Compose) return@launch
+            if (quoting is DelayQuoting.Quoted) {
+                val hidden = hides != hidesAtQuote || !shown
+                val review = Flow.Review(quoting.quote, member, unlock, quotedAt, form = compose, hidden = hidden)
+                return@launch landed(review)
+            }
             flowState.value = when (quoting) {
-                is DelayQuoting.Quoted -> Flow.Review(quoting.quote, member, unlock, quotedAt, form = compose)
                 null -> compose.copy(quoting = false, error = GnosisPayTexts.QUOTE_FAILED)
                 else -> compose.copy(quoting = false, error = GnosisPayTexts.quoteRefused(quoting))
             }
@@ -346,11 +371,15 @@ class GnosisPayViewModel(
         val mine = ++request
         viewModelScope.launch {
             val quotedAt = timeSource.markNow()
+            val hidesAtQuote = hides
             val quoting = safely { quoteDelayExecution(queued.member, queued.transfer, fee) }
             val unlock = if (quoting is DelayQuoting.Quoted) unlockStep() else UnlockStep()
             if (request != mine || flowState.value !is Flow.Overview) return@launch
+            if (quoting is DelayQuoting.Quoted) {
+                val hidden = hides != hidesAtQuote || !shown
+                return@launch landed(Flow.Review(quoting.quote, queued.member, unlock, quotedAt, hidden = hidden))
+            }
             flowState.value = when (quoting) {
-                is DelayQuoting.Quoted -> Flow.Review(quoting.quote, queued.member, unlock, quotedAt)
                 null -> Flow.Overview(error = GnosisPayTexts.QUOTE_FAILED)
                 else -> Flow.Overview(error = GnosisPayTexts.quoteRefused(quoting))
             }
@@ -400,6 +429,7 @@ class GnosisPayViewModel(
         val mine = ++request
         viewModelScope.launch {
             val quotedAt = timeSource.markNow()
+            val hidesAtQuote = hides
             val level = review.quote.call.level
             val quoting = safely {
                 when (review.quote.step) {
@@ -414,17 +444,18 @@ class GnosisPayViewModel(
                 null -> GnosisPayTexts.QUOTE_FAILED
                 else -> GnosisPayTexts.quoteRefused(quoting)
             }
-            flowState.value = when {
-                quoting is DelayQuoting.Quoted -> current.copy(
-                    quote = quoting.quote,
-                    quotedAt = quotedAt,
-                    hidden = false,
-                    requoting = false,
-                    note = note,
+            if (quoting is DelayQuoting.Quoted) {
+                return@launch landed(
+                    current.copy(
+                        quote = quoting.quote,
+                        quotedAt = quotedAt,
+                        hidden = hides != hidesAtQuote || !shown,
+                        requoting = false,
+                        note = note,
+                    ),
                 )
-                current.form != null -> current.form.copy(quoting = false, error = why)
-                else -> Flow.Overview(error = why)
             }
+            flowState.value = current.form?.copy(quoting = false, error = why) ?: Flow.Overview(error = why)
         }
     }
 
@@ -432,8 +463,11 @@ class GnosisPayViewModel(
         // The password leaves the state now: it is in the unlock, which the signer zeroes after use.
         val signing = review.copy(signing = true, unlock = review.unlock.copy(password = WalletPassword.EMPTY))
         flowState.value = signing
+        val hidesAtSign = hides
         viewModelScope.launch {
             val sending = safely { sendDelayCall(review.quote, unlock) }
+            // Hidden while it signed: a review it leaves open is made again before the next signature.
+            val hiddenMeanwhile = hides != hidesAtSign || !shown
             // Whatever it became, the queued transfers are read again now rather than at the next poll.
             sends.value++
             val current = flowState.value as? Flow.Review ?: return@launch
@@ -442,11 +476,14 @@ class GnosisPayViewModel(
                     flowState.value = Flow.Overview()
                     sentHash.value = sending.hash
                 }
-                is TransferSending.NotSigned -> flowState.value = current.copy(
-                    signing = false,
-                    unlock = current.unlock.copy(
-                        error = notSignedText(sending.signing, GnosisPayTexts.SEND_FAILED),
-                        biometrics = current.unlock.biometrics && biometricsStillOffered(sending.signing),
+                is TransferSending.NotSigned -> landed(
+                    current.copy(
+                        signing = false,
+                        hidden = current.hidden || hiddenMeanwhile,
+                        unlock = current.unlock.copy(
+                            error = notSignedText(sending.signing, GnosisPayTexts.SEND_FAILED),
+                            biometrics = current.unlock.biometrics && biometricsStillOffered(sending.signing),
+                        ),
                     ),
                 )
                 // Maybe taken: its record is what its status retries from, byte for byte.
@@ -456,13 +493,19 @@ class GnosisPayViewModel(
                 } else {
                     val what = if (review.quote.step == DelayStep.QUEUE) "queueing" else "execution"
                     val why = notSentItem(sending.broadcast, false, what).message
-                    flowState.value = current.copy(signing = false, error = why)
+                    landed(current.copy(signing = false, error = why, hidden = current.hidden || hiddenMeanwhile))
                 }
                 is TransferSending.RejectionUnverified -> {
                     flowState.value = Flow.Overview()
                     sentHash.value = sending.transfer.hash
                 }
-                null -> flowState.value = current.copy(signing = false, error = GnosisPayTexts.SEND_FAILED)
+                null -> landed(
+                    current.copy(
+                        signing = false,
+                        error = GnosisPayTexts.SEND_FAILED,
+                        hidden = current.hidden || hiddenMeanwhile,
+                    ),
+                )
             }
         }
     }
@@ -487,6 +530,8 @@ class GnosisPayViewModel(
      * is made again before anything is signed.
      */
     fun onHidden() {
+        shown = false
+        hides++
         val review = flowState.value as? Flow.Review ?: return
         if (review.signing) return
         flowState.value = review.copy(unlock = review.unlock.copy(password = WalletPassword.EMPTY), hidden = true)
@@ -494,8 +539,18 @@ class GnosisPayViewModel(
 
     /** The screen is shown again: a quote made before it was hidden is made again now. */
     fun onShown() {
+        shown = true
         val review = flowState.value as? Flow.Review ?: return
         if (review.hidden && !review.signing && !review.requoting) requote(review, note = null)
+    }
+
+    /**
+     * [review] as the state; one made while the screen was hidden, with the screen shown again
+     * meanwhile, is made again at once, as [onShown] would have.
+     */
+    private fun landed(review: Flow.Review) {
+        flowState.value = review
+        if (review.hidden && shown && !review.signing && !review.requoting) requote(review, note = null)
     }
 
     private fun showCompose(error: String) {

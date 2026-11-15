@@ -40,6 +40,36 @@ private val ready = QueuedRow(
     execute = ActionItem(enabled = true, reason = null),
 )
 
+/** The lines GnosisPayTexts.reviewLines gives a queueing of 50 EURe, in its order. */
+private val queueLines = listOf(
+    "From" to "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+    "To" to "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+    "Amount" to "50 EURe",
+    "Token contract" to "0xcB444e90D8198415266c6a2724b7900fb12FC56E",
+    "Through" to "Delay module 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+    "Signed by" to "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+    "Fee" to "0.0002 XDAI at most, normal (fees at block 43,000,511)",
+    "Signer's XDAI" to "0.42 XDAI now, at least 0.4198 XDAI after (block 43,000,512)",
+    "What happens" to "Queued now. It waits 3 min, then needs a second transaction to execute it, within 30 min.",
+    "Account balance" to "1,250 EURe (block 43,000,512)",
+    "Simulated" to "Run as a verified call at block 43,000,512",
+)
+
+private val review = GnosisPayStep.Review(
+    title = "Queue 50 EURe to 0xD1220A…9aDb",
+    lines = queueLines,
+    fee = FeeLevel.NORMAL,
+    unlock = UnlockStep(),
+)
+
+private val compose = GnosisPayStep.Compose(
+    assets = listOf(AssetItem(null, "XDAI", "0.42 XDAI")),
+    asset = null,
+    to = "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+    amount = "12.5",
+    sender = "Card owner",
+)
+
 @Composable
 private fun GnosisPayPreview(state: GnosisPayUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
@@ -128,15 +158,7 @@ private fun GnosisPayReviewPreview() = GnosisPayPreview(
     overview.copy(
         step = GnosisPayStep.Review(
             title = "Queue 50 EURe to 0xD1220A…9aDb",
-            lines = listOf(
-                "From" to "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
-                "To" to "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
-                "Amount" to "50 EURe",
-                "Fee" to "0.0002 XDAI at most, normal (fees at block 43,000,511)",
-                "Signer's XDAI" to "0.42 XDAI now, at least 0.4198 XDAI after (block 43,000,512)",
-                "What happens" to "Queued now. It waits 3 min, then needs a second transaction to execute it, " +
-                    "within 30 min.",
-            ),
+            lines = queueLines,
             fee = FeeLevel.NORMAL,
             unlock = UnlockStep(),
         ),
@@ -150,15 +172,77 @@ private fun GnosisPayReviewRequotedPreview() = GnosisPayPreview(
         step = GnosisPayStep.Review(
             title = "Execute 12.5 XDAI to 0x5aAeb6…eAed",
             lines = listOf(
+                "From" to "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
                 "To" to "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
                 "Amount" to "12.5 XDAI",
+                "Through" to "Delay module 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+                "Signed by" to "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
                 "Fee" to "0.0003 XDAI at most, normal (fees at block 43,000,530)",
+                "Signer's XDAI" to "0.4198 XDAI now, at least 0.4195 XDAI after (block 43,000,531)",
                 "What happens" to "Executes the transfer: the account's funds move now.",
+                "Account balance" to "12.5 XDAI (block 43,000,531)",
+                "Simulated" to "Run as a verified call at block 43,000,531",
             ),
             fee = FeeLevel.NORMAL,
             unlock = UnlockStep(),
             note = "The quote was over a minute old, so it was made again: check it, then sign.",
         ),
+    ),
+)
+
+@Preview
+@Composable
+private fun GnosisPayComposeQuotingPreview() = GnosisPayPreview(overview.copy(step = compose.copy(quoting = true)))
+
+@Preview
+@Composable
+private fun GnosisPayReviewSigningPreview() = GnosisPayPreview(overview.copy(step = review.copy(signing = true)))
+
+@Preview
+@Composable
+private fun GnosisPayReviewCheckingPreview() =
+    GnosisPayPreview(overview.copy(step = review.copy(signing = true, checking = true)))
+
+@Preview
+@Composable
+private fun GnosisPayReviewWrongPasswordPreview() = GnosisPayPreview(
+    overview.copy(step = review.copy(unlock = UnlockStep(error = "Wrong password. Nothing was signed."))),
+)
+
+@Preview
+@Composable
+private fun GnosisPayReviewNotSentPreview() = GnosisPayPreview(
+    overview.copy(
+        step = review.copy(
+            error = "No peer took the queueing. Nothing new was signed; try again.",
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun GnosisPayReviewBiometricsPreview() =
+    GnosisPayPreview(overview.copy(step = review.copy(unlock = UnlockStep(biometrics = true))))
+
+@Preview
+@Composable
+private fun GnosisPayQueuedUnverifiedPreview() = GnosisPayPreview(
+    overview.copy(
+        queued = listOf(
+            ready.copy(
+                status = "Executing: waiting for a block",
+                execute = ActionItem(
+                    enabled = false,
+                    reason = "Its execution was sent from this device and waits for a block.",
+                ),
+            ),
+            waiting.copy(
+                status = "Where it stands cannot be verified right now",
+                execute = ActionItem(false, "Where this transfer stands cannot be verified right now."),
+            ),
+        ),
+        queuedNote = "Where the queued transfers stand cannot be verified right now: no peer served the proof " +
+            "this time. Punicus keeps checking.",
     ),
 )
 
@@ -185,6 +269,13 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("compose-error") { GnosisPayComposeErrorPreview() },
     ScreenPreview("review") { GnosisPayReviewPreview() },
     ScreenPreview("review-requoted") { GnosisPayReviewRequotedPreview() },
+    ScreenPreview("compose-quoting") { GnosisPayComposeQuotingPreview() },
+    ScreenPreview("review-signing") { GnosisPayReviewSigningPreview() },
+    ScreenPreview("review-checking") { GnosisPayReviewCheckingPreview() },
+    ScreenPreview("review-wrong-password") { GnosisPayReviewWrongPasswordPreview() },
+    ScreenPreview("review-not-sent") { GnosisPayReviewNotSentPreview() },
+    ScreenPreview("review-biometrics") { GnosisPayReviewBiometricsPreview() },
+    ScreenPreview("queued-unverified") { GnosisPayQueuedUnverifiedPreview() },
     ScreenPreview("loading") { GnosisPayLoadingPreview() },
     ScreenPreview("unavailable") { GnosisPayUnavailablePreview() },
 )

@@ -32,7 +32,9 @@ interface DelayModules {
      * current mastercopy; its avatar, target and owner, which must be [safe] (else
      * [DelayQueueReading.NotTheSafes]); its next entry to execute and its next to be added, its
      * cooldown and expiration; and the first entry of that hash from the next to execute on,
-     * searched through at most [MAX_QUEUE_READ] entries, with the time it was queued. With them,
+     * searched through at most [MAX_QUEUE_READ] entries, with the time it was queued; and the time
+     * the next entry to execute was queued, whatever its hash, which tells whether it expired and
+     * so blocks every entry behind it. With them,
      * the time of the verified head they were read at, which is when "now" is for the cooldown.
      * The one read that what is quoted or sent through a Delay rests on. Blocks on the engine,
      * bounded by it; never throws. A [network] no adapter serves here is refused
@@ -67,7 +69,8 @@ sealed interface DelayQueueReading {
  * A Delay's queue at one block, as far as one call's place in it goes: [txNonce], the next entry
  * to execute, and [queueNonce], the next to be added; [cooldownSeconds] and [expirationSeconds]
  * (0: for ever) as they are at that block; [entry], the first entry of the call's hash from
- * [txNonce] on, or null when none was found among the [searched] entries from [txNonce] on.
+ * [txNonce] on, or null when none was found among the [searched] entries from [txNonce] on; and
+ * [headCreatedAt], when the entry at [txNonce] was queued, null when the queue is empty.
  */
 data class DelayQueue(
     val txNonce: Long,
@@ -76,6 +79,7 @@ data class DelayQueue(
     val expirationSeconds: Long,
     val entry: DelayEntry?,
     val searched: Int,
+    val headCreatedAt: Long? = entry?.takeIf { it.nonce == txNonce }?.createdAt,
 ) {
     init {
         require(txNonce in 0..queueNonce) { "a Delay's next entry is within its queue" }
@@ -86,6 +90,20 @@ data class DelayQueue(
     /** Whether every entry from [txNonce] on was searched. */
     val searchedAll: Boolean
         get() = searched.toLong() == queueNonce - txNonce
+
+    /** How many entries wait from [txNonce] on. */
+    val waiting: Long
+        get() = queueNonce - txNonce
+
+    /**
+     * Whether the entry at [txNonce] expired by [headTime] (unix seconds): `executeNextTx` then
+     * reverts on it, so every entry behind it waits until the Delay's `skipExpired` removes it.
+     * Never, with no expiration or an empty queue.
+     */
+    fun headExpired(headTime: Long): Boolean {
+        val createdAt = headCreatedAt ?: return false
+        return expirationSeconds != 0L && headTime > createdAt + cooldownSeconds + expirationSeconds
+    }
 }
 
 /** Entry [nonce] of a Delay's queue: the [hash] of the call it holds, queued at [createdAt] (unix seconds). */

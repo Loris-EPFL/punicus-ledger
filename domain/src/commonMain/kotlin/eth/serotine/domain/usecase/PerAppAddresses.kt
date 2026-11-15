@@ -177,7 +177,7 @@ class MakePerAppAddress(
         val made = networks.distinct().map { network ->
             val account = Account(network, stored.address, AccountKind.EOA, site.name, AccountCustody.InKeyStore,
                 perApp = mark)
-            if (!addMarked(account)) return PerAppMaking.ListNotSaved
+            if (!accounts.addMarked(account)) return PerAppMaking.ListNotSaved
             account.id
         }
         return PerAppMaking.Made(stored.address, made, stored.steppedDown)

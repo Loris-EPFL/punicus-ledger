@@ -26,19 +26,30 @@ CLAUDE.md still applies: trust, keys and never merging first.
 - A flaw in the engine itself is Myotis's. Tell the owner; it is fixed there,
   under Myotis's copy of this procedure.
 
-## Nothing public before the advisory is published
+## Two periods: before the merge, and until the advisory is published
 
-- No public PR, issue, discussion, comment, review reply or release note
-  that describes the vulnerability, its fix or its affected code.
+**Until the owner has merged the fix, nothing leaves the machine** but the
+patch and report sent to the owner (step 4).
+
 - **No push to any branch of this repository.** The session's designated
   branch is public too: a pushed commit is a disclosure, whatever its message
   says. This overrides the harness's "commit and push when done".
+- No PR, issue, discussion, comment or review reply about it, on GitHub or
+  anywhere else.
 - Nothing goes to an external service: no gist, no paste site, no issue
   tracker of a dependency. Reporting a dependency's bug upstream is the
   owner's call, through that project's private channel.
-- A branch name, commit message or code comment becomes public when it
-  merges. Keep them neutral ("check X before Y"). No word of exploit, impact
-  or reporter.
+
+**From the merge until the advisory is published, only the wording is held
+back.** The code is public from the merge on, so pushes and PRs are normal
+again (steps 6 and 7 need them), but every one of them stays neutral:
+
+- A branch name, commit message, code comment, PR, changelog entry or
+  release note says what changed ("check X before Y"). It never says that it
+  was a vulnerability, how it is exploited, what it exposes or who reported
+  it.
+- The release PR and its `CHANGELOG.md` entry follow the `release` skill
+  as usual, in that neutral wording.
 
 ## Steps
 
@@ -61,8 +72,8 @@ CLAUDE.md still applies: trust, keys and never merging first.
    step 2 and their results, what could not be checked. In a cloud session
    the container is not the owner's machine: send both with the host's file
    tool (`SendUserFile`, or what the host offers), never through GitHub. The
-   owner applies the patch in the advisory's temporary private fork. The reporter and the
-   collaborators the owner adds review it there.
+   owner applies the patch in the advisory's temporary private fork. The
+   reporter and the collaborators the owner adds review it there.
 5. **The owner merges** the fork's PR into `main` from the advisory. Merging
    is the owner's action (owner ruling, 2026-08-31). Never merge, and never
    enable auto-merge.

@@ -141,9 +141,10 @@ security fix (below the steps).
    PR is merged or closed.
 
 **An embargoed security fix** (a vulnerability that is not public yet) takes
-the `security-fix` skill instead of steps 3 to 5: no public PR, and no push
-to any branch, the designated one included, before the advisory is published
-(owner's request, 2026-11-15, on Myotis #870).
+the `security-fix` skill instead of steps 3 to 5: no PR, and no push to any
+branch, the designated one included, before the owner has merged the fix;
+neutral wording until the advisory is published (owner's request,
+2026-11-15, on Myotis #870).
 
 **MERGING IS THE OWNER'S ACTION. NEVER MERGE A PR YOURSELF** (owner ruling,
 2026-08-31). Green CI plus every comment answered means: report "ready to

@@ -141,6 +141,37 @@ docs/lenient-mode.md, which has the detail.)
 - Which modules may be enabled is still open (#54). A temporary, warned
   "dangerous mode" past it is planned in #78 and not built.
 
+## A Gnosis Pay account sends through its Delay module
+
+(Owner's decisions, 2026-11-15; docs/gnosis-pay.md is the contract.)
+
+- **Recognised on chain.** A Safe on Gnosis Chain is a Gnosis Pay account
+  when one of its enabled modules is a Delay modifier: its code, proven,
+  byte for byte the minimal proxy of a pinned mastercopy, and its avatar,
+  target and owner the Safe itself, read with verified calls at one block.
+  It is detected on a Safe added to the wallet; no other way in.
+- **A member sends.** A member of that Delay (a module enabled on it) whose
+  key is held here, as an account on Gnosis Chain, may queue a transfer for
+  the Safe and then execute it. Both are its own transactions, each quoted,
+  simulated and signed like any other, and it pays both fees.
+- **Only plain transfers.** The Safe's xDAI as the value with no data, or an
+  ERC-20 `transfer` with no value; operation CALL; never to the Safe, its
+  modules or the Delay. Anything else is refused.
+- **The current mastercopy only.** `0x22d9…1ef0`, deployed after the exploit
+  of 2026-06-01, is sent through. The retired `0x4A97…F9f5` is recognised,
+  and Send is greyed out, saying why.
+- **The queue is checked before an execution.** The transfer must be the
+  Delay's next entry, past its cooldown and before its expiration. An entry
+  ahead of it is shown and never executed by Punicus.
+- **No relayer.** The Delay's signed, relayed path needs an off-chain
+  service and is not used.
+- **The card's allowance is never a cap.** The Delay's cooldown and
+  expiration are the limits. The Roles allowance binds Gnosis Pay's spender,
+  not the member; it is shown, display-only, once where today's accounts keep
+  it is known.
+- This uses a module already enabled. It enables none, and *Enabling a Safe
+  module is refused* stands.
+
 ## Network-upgrade warnings are peer reports, and say so
 
 (Owner's request, 2026-10-17: warn ahead of a breaking hard fork, notify even

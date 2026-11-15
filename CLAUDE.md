@@ -219,6 +219,10 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
 - A Safe transaction that sets a fallback handler other than the pinned one,
   or none (owner ruling, 2026-10-18, #63), or enables a module (owner ruling,
   2026-10-18, on #54), is shown and never signed, approved or executed.
+- A Gnosis Pay account sends through its own Delay module: a member whose
+  key is held here queues a plain transfer, then executes it after the
+  cooldown; the current mastercopy only, no relayer, the queue checked
+  first (owner's decisions, 2026-11-15; docs/gnosis-pay.md).
 - Network-upgrade warnings are peer reports and say so (owner's request,
   2026-10-17).
 - A parameter that can change the answer is APPLIED or REFUSED, never

@@ -105,8 +105,12 @@ allprojects {
             // gives the walk the graph lint resolves, so ONE lock state is right
             // for both. Only the lint tasks: realizing every task would configure
             // host-specific ones on all five pin hosts. (Ported from Myotis's
-            // root build, its #734, where this walk was first proven.)
-            project.tasks.names.filter { it.startsWith("lint") }.forEach { project.tasks.named(it).get() }
+            // root build, its #734, where this walk was first proven.) The same for
+            // the KMP Android library's host-test task (`withHostTest {}` in :data and
+            // :ui): configuring it creates AGP's `androidApis` configuration, which a
+            // build of those modules resolves and a walk without it never sees.
+            project.tasks.names.filter { it.startsWith("lint") || it == "testAndroidHostTest" }
+                .forEach { project.tasks.named(it).get() }
             val buildscriptConfs = project.buildscript.configurations.filter { it.isCanBeResolved }
             val confs = buildscriptConfs + project.configurations.filter { it.isCanBeResolved }
             // Lock state as committed: every configuration named in a lockfile

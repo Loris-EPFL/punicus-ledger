@@ -14,6 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -38,7 +39,7 @@ class VerifiedDelayModulesTest {
     private val fake = FakeChain()
 
     /** The block hash each call answers at, by the call's number; one block by default. */
-    private var hashOfCall: (Int) -> String = { "0x" + "b1".repeat(32) }
+    private var hashOfCall: (Int) -> String? = { "0x" + "b1".repeat(32) }
     private var calls = 0
 
     /** [fake], every call labelled with block 7 and the hash [hashOfCall] gives. */
@@ -67,7 +68,10 @@ class VerifiedDelayModulesTest {
         answer(VerifiedDelayModules.TX_NONCE, word("0"))
         answer(VerifiedDelayModules.QUEUE_NONCE, word("0"))
         answer(
-            VerifiedDelayModules.getModulesPaginated(VerifiedDelayModules.SENTINEL, VerifiedDelayModules.PAGE_SIZE),
+            VerifiedDelayModules.getModulesPaginated(
+                VerifiedDelayModules.SENTINEL,
+                VerifiedDelayModules.MAX_MEMBERS + 1,
+            ),
             word("40") + word("1") + word(members.size.toString(16)) + members.joinToString("") { word(it.hex) },
         )
     }
@@ -80,10 +84,10 @@ class VerifiedDelayModulesTest {
 
     @Test
     fun theCallsAreTheDelaysOwnGetters() {
-        // cast calldata "getModulesPaginated(address,uint256)" 0x0000000000000000000000000000000000000001 10
+        // cast calldata "getModulesPaginated(address,uint256)" 0x0000000000000000000000000000000000000001 51
         assertEquals(
-            "cc2f8452" + word("1") + word("a"),
-            VerifiedDelayModules.getModulesPaginated(VerifiedDelayModules.SENTINEL, 10).toHex(),
+            "cc2f8452" + word("1") + word("33"),
+            VerifiedDelayModules.getModulesPaginated(VerifiedDelayModules.SENTINEL, 51).toHex(),
         )
         // cast sig "txCooldown()", "queueNonce()"
         assertEquals("dcafac09", VerifiedDelayModules.TX_COOLDOWN.toHex())
@@ -170,6 +174,37 @@ class VerifiedDelayModulesTest {
         // It moves under every read.
         calls = 0
         hashOfCall = { call -> "0x" + (call % 2).toString().repeat(64) }
+        assertEquals(DelayReading.Unavailable(ReadUnavailable.UNPROVEN), delays().settled())
+    }
+
+    @Test
+    fun anEngineThatNamesNoHashIsHeldToTheBlockNumber() = runTest {
+        fake.snapshot = running(head = 7)
+        gnosisPayDelay()
+        hashOfCall = { null }
+
+        assertTrue(delays().settled() is DelayReading.Verified)
+    }
+
+    @Test
+    fun aCallWithNoAnswerIsAskedAgainAfterAPause() = runTest {
+        fake.snapshot = running(head = 7)
+        gnosisPayDelay()
+        val avatar = requireNotNull(fake.calls.remove(delay to VerifiedDelayModules.AVATAR.toHex()))
+        val delays = delays()
+        val reading = async { delays.settled() }
+        // The first read finds no answer; the peer is back before the next one.
+        testScheduler.advanceTimeBy(500)
+        fake.calls[delay to VerifiedDelayModules.AVATAR.toHex()] = avatar
+
+        assertTrue(reading.await() is DelayReading.Verified)
+    }
+
+    @Test
+    fun aListTooLongToReadIsUnproven() = runTest {
+        fake.snapshot = running(head = 7)
+        gnosisPayDelay(members = (1..51).map { Address.of("0x" + it.toString(16).padStart(40, '0')) })
+
         assertEquals(DelayReading.Unavailable(ReadUnavailable.UNPROVEN), delays().settled())
     }
 

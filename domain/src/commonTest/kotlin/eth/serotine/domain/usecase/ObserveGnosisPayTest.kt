@@ -33,7 +33,7 @@ class ObserveGnosisPayTest {
     private val sentinelOwner = Address.of("0x" + "0".repeat(39) + "2")
     private val gnosisPay = AccountId(Network.GNOSIS, safe)
 
-    /** A Gnosis Pay Safe as account-kit sets one up: the sentinel `0x…02` its one owner, the Roles and Delay modules on. */
+    /** A Gnosis Pay Safe as account-kit sets one up: the sentinel `0x…02` its one owner, Roles and Delay on. */
     private fun safeWith(modules: List<Address>) = KindReading.Verified(
         AddressKind.Safe(SafeState("1.3.0", l2 = false, listOf(sentinelOwner), 1, 7, modules, guard = null)),
         40,
@@ -44,8 +44,8 @@ class ObserveGnosisPayTest {
         override fun observeKind(network: Network, address: Address): Flow<KindReading> = kind
     }
 
-    private fun delayOf(generation: DelayGeneration = DelayGeneration.CURRENT, members: List<Address> = listOf(member)) =
-        DelayModule(delay, generation, 90_000, 111_600, txNonce = 2, queueNonce = 3, members = members)
+    private fun delayOf(generation: DelayGeneration = DelayGeneration.CURRENT) =
+        DelayModule(delay, generation, 90_000, 111_600, txNonce = 2, queueNonce = 3, members = listOf(member))
 
     private val readings = mutableMapOf<Address, MutableStateFlow<DelayReading>>(
         roles to MutableStateFlow(DelayReading.Verified(DelayFinding.NotDelay, 41)),
@@ -64,7 +64,12 @@ class ObserveGnosisPayTest {
 
     private val card = Account(Network.GNOSIS, safe, AccountKind.SAFE, "Card", AccountCustody.Watched)
 
-    private fun observe(vararg accounts: Account) = ObserveGnosisPay(kinds, delays, ListAccountRepository(card, *accounts))
+    private val wallet = ListAccountRepository(card)
+
+    private fun observe(vararg accounts: Account): ObserveGnosisPay {
+        wallet.accounts.value = listOf(card) + accounts
+        return ObserveGnosisPay(kinds, delays, wallet)
+    }
 
     /** The first reading past [GnosisPayReading.Checking]: the modules' readers deliver after the Safe's state. */
     private suspend fun Flow<GnosisPayReading>.settled() = first { it != GnosisPayReading.Checking }
@@ -87,7 +92,8 @@ class ObserveGnosisPayTest {
 
     @Test
     fun aMemberWatchedOrNotInTheWalletSendsNothing() = runTest {
-        val watched = observe(eoa(Network.GNOSIS, AccountCustody.Watched))(gnosisPay).settled() as GnosisPayReading.Found
+        val watched =
+            observe(eoa(Network.GNOSIS, AccountCustody.Watched))(gnosisPay).settled() as GnosisPayReading.Found
         assertEquals(GnosisPaySending.NO_MEMBER_KEY, watched.sending)
 
         val absent = observe()(gnosisPay).settled() as GnosisPayReading.Found
@@ -114,7 +120,8 @@ class ObserveGnosisPayTest {
 
     @Test
     fun theRetiredMastercopyIsShownAndNeverSentThrough() = runTest {
-        readings.getValue(delay).value = DelayReading.Verified(DelayFinding.Wired(delayOf(DelayGeneration.RETIRED)), 41)
+        readings.getValue(delay).value =
+            DelayReading.Verified(DelayFinding.Wired(delayOf(DelayGeneration.RETIRED)), 41)
         val reading = observe(eoa(Network.GNOSIS))(gnosisPay).settled() as GnosisPayReading.Found
 
         assertEquals(GnosisPaySending.RETIRED_MODULE, reading.sending)
@@ -132,6 +139,39 @@ class ObserveGnosisPayTest {
 
         assertEquals(delay, reading.delay.address)
         assertEquals(GnosisPaySending.AVAILABLE, reading.sending)
+    }
+
+    @Test
+    fun aRetiredDelayWaitsWhileAModuleThatCouldBeACurrentOneIsUnread() = runTest {
+        val retired = Address.of("0x" + "dd".repeat(20))
+        readings[retired] = MutableStateFlow(
+            DelayReading.Verified(DelayFinding.Wired(delayOf(DelayGeneration.RETIRED).copy(address = retired)), 41),
+        )
+        readings.getValue(delay).value = DelayReading.Syncing
+        kind.value = safeWith(listOf(retired, delay))
+
+        val observe = observe(eoa(Network.GNOSIS))
+        assertEquals(GnosisPayReading.Checking, observe(gnosisPay).first())
+
+        readings.getValue(delay).value = DelayReading.Verified(DelayFinding.NotDelay, 41)
+        val reading = observe(gnosisPay).settled() as GnosisPayReading.Found
+        assertEquals(retired, reading.delay.address)
+        assertEquals(GnosisPaySending.RETIRED_MODULE, reading.sending)
+    }
+
+    @Test
+    fun aListThatCannotBeReadSaysSoRatherThanNoKey() = runTest {
+        val observe = observe(eoa(Network.GNOSIS, AccountCustody.Watched))
+        wallet.unreadable = true
+
+        val reading = observe(gnosisPay).settled() as GnosisPayReading.Found
+        assertEquals(GnosisPaySending.ACCOUNTS_UNREADABLE, reading.sending)
+    }
+
+    @Test
+    fun aSafeOnAnotherNetworkIsNeverRead() = runTest {
+        assertEquals(GnosisPayReading.NotGnosisPay, observe()(AccountId(Network.ETHEREUM, safe)).first())
+        assertEquals(emptyList(), asked)
     }
 
     @Test

@@ -3,6 +3,7 @@ package eth.serotine.data.keys
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AppIsolation
 import eth.serotine.domain.model.PerAppPath
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -20,7 +21,7 @@ import kotlinx.serialization.Serializable
  * The envelope also names the account of the seed it is filed for ([SealedSeed.path]): its [SealedSeed.index],
  * BIP-44's `m/44'/60'/0'/0/index` (0, the first, when absent), or a per-app address's [SealedSeed.perApp],
  * `m/44'/60'/a'/b'/c'` (docs/keys-and-signing.md, *Per-app addresses*). And it names its phrase
- * ([SealedSeed.phrase], the first account's address), absent from envelopes sealed before it existed. None of
+ * ([SealedSeed.phraseAccount], the first account's address), absent from envelopes sealed before it existed. None of
  * these is bound as additional data, so envelopes sealed before they existed still open: signing derives the key
  * at that path, and refuses one that is not the account the envelope is filed under or whose phrase is not the one
  * named, so a path or a phrase edited on disk signs nothing.
@@ -113,7 +114,7 @@ internal object Envelope {
                 seed = EnvelopeCrypto.aesGcmSeal(dek, seedNonce, seed, seedAad(address)).toHex(),
                 index = (path as? AccountPath.Ordinary)?.index ?: 0,
                 perApp = (path as? AccountPath.PerApp)?.path?.let { PerAppIndices(it.account, it.change, it.index) },
-                phrase = phrase,
+                phraseAccount = phrase,
             )
         } finally {
             kek.fill(0)
@@ -133,7 +134,7 @@ internal object Envelope {
             sealed.hardware == (hardware?.tag ?: NO_HARDWARE) &&
             withinBounds(sealed.opsLimit, sealed.memLimitBytes) &&
             sealed.path() != null &&
-            (sealed.phrase == null || Address.parse(sealed.phrase)?.hex == sealed.phrase) &&
+            (sealed.phraseAccount == null || Address.parse(sealed.phraseAccount)?.hex == sealed.phraseAccount) &&
             (address == null || sealed.address == address) &&
             hexOfLength(sealed.salt, SALT_BYTES) &&
             hexOfLength(sealed.dekNonce, NONCE_BYTES) &&
@@ -312,8 +313,8 @@ internal object Envelope {
  * An envelope as it is stored: everything hex, nothing secret in the clear. [index] is the account
  * of the seed it is filed for, left out when it is the first (0), as every envelope sealed before
  * further accounts could be derived is. [perApp] is a per-app address's path instead, left out for
- * an ordinary account; [phrase] the address of the phrase's first account, left out by envelopes
- * sealed before it was written.
+ * an ordinary account; [phraseAccount] (stored as `phrase`) the address of the phrase's first
+ * account, left out by envelopes sealed before it was written.
  */
 @Serializable
 internal class SealedSeed(
@@ -329,7 +330,7 @@ internal class SealedSeed(
     val seed: String,
     val index: Int = 0,
     val perApp: PerAppIndices? = null,
-    val phrase: String? = null,
+    @SerialName("phrase") val phraseAccount: String? = null,
 ) {
     /**
      * The account's path in its seed, or null when it is out of range or both [index] and [perApp] name one: such an

@@ -568,7 +568,7 @@ class EnvelopeKeyStoreTest {
     private fun SealedSeed.with(
         index: Int = this.index,
         perApp: PerAppIndices? = this.perApp,
-        phrase: String? = this.phrase,
+        phrase: String? = this.phraseAccount,
     ) = SealedSeed(
         version, address, hardware, salt, opsLimit, memLimitBytes, dekNonce, dek, seedNonce, seed,
         index, perApp, phrase,
@@ -587,7 +587,9 @@ class EnvelopeKeyStoreTest {
     fun aPerAppAddressIsSealedInAnEnvelopeOfItsOwnThatNamesItsPathAndPhraseAndSigns() = runTest {
         val store = store()
         store.importMnemonic(hardhat, password)
-        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(hardhatAddress)).phrase, "every new envelope names it")
+        val first = sealedIn(envelopeOf(hardhatAddress))
+        assertEquals(hardhatAddress.hex, first.phraseAccount, "every new envelope names it")
+        assertTrue("\"phrase\":" in envelopeOf(hardhatAddress).readText(), "stored under the name the contract gives")
 
         assertEquals(
             PerAppDerivation.Stored(exampleAddress, examplePath, hardhatAddress, KeyProtection.PASSWORD_ONLY),
@@ -597,7 +599,7 @@ class EnvelopeKeyStoreTest {
         assertEquals(listOf(1_336_343_364, 399_755_631, 110_655_970), sealed.perApp!!.let { listOf(it.a, it.b, it.c) })
         assertEquals(0, sealed.index)
         assertFalse("index" in envelopeOf(exampleAddress).readText(), "a per-app envelope names no index")
-        assertEquals(hardhatAddress.hex, sealed.phrase)
+        assertEquals(hardhatAddress.hex, sealed.phraseAccount)
 
         val signed = store.sign(exampleAddress, digest, Unlock.WithPassword(password))
         assertIs<Signing.Signed>(signed)
@@ -607,7 +609,7 @@ class EnvelopeKeyStoreTest {
             KeyDerivation.Stored(hardhatSecond, 1, KeyProtection.PASSWORD_ONLY),
             store.deriveAccount(exampleAddress, password, held = setOf(hardhatAddress)),
         )
-        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(hardhatSecond)).phrase)
+        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(hardhatSecond)).phraseAccount)
     }
 
     @Test
@@ -715,13 +717,63 @@ class EnvelopeKeyStoreTest {
             store.derivePerApp(hardhatAddress, host("example.com"), password),
         )
         assertEquals(before, envelopeOf(hardhatAddress).readText())
-        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(exampleAddress)).phrase, "the new one names it")
+        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(exampleAddress)).phraseAccount, "the new one names it")
 
         // A per-app envelope naming another phrase is not kept: it is sealed again, naming its own.
         rewrite(exampleAddress) { it.with(phrase = abandonAddress.hex) }
         assertIs<PerAppDerivation.Stored>(store.derivePerApp(hardhatAddress, host("example.com"), password))
-        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(exampleAddress)).phrase)
+        assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(exampleAddress)).phraseAccount)
         assertIs<Signing.Signed>(store.sign(exampleAddress, digest, Unlock.WithPassword(password)))
+    }
+
+    @Test
+    fun aKeptPerAppEnvelopeWhoseSeedIsDamagedIsSealedAgain() = runTest {
+        val store = store()
+        store.importMnemonic(hardhat, password)
+        store.derivePerApp(hardhatAddress, host("example.com"), password)
+        // The wrapped DEK is intact, so the password check passes; the seed behind it does not open.
+        rewrite(exampleAddress) { sealed ->
+            val flipped = (if (sealed.seed[0] == '0') '1' else '0') + sealed.seed.drop(1)
+            SealedSeed(
+                sealed.version, sealed.address, sealed.hardware, sealed.salt, sealed.opsLimit, sealed.memLimitBytes,
+                sealed.dekNonce, sealed.dek, sealed.seedNonce, flipped, sealed.index, sealed.perApp,
+                sealed.phraseAccount,
+            )
+        }
+        assertEquals(Signing.Unavailable, store.sign(exampleAddress, digest, Unlock.WithPassword(password)))
+
+        assertEquals(
+            PerAppDerivation.Stored(exampleAddress, examplePath, hardhatAddress, KeyProtection.PASSWORD_ONLY),
+            store.derivePerApp(hardhatAddress, host("example.com"), password),
+        )
+        assertIs<Signing.Signed>(store.sign(exampleAddress, digest, Unlock.WithPassword(password)), "repaired")
+    }
+
+    @Test
+    fun aPerAppDerivationSaysALostHardwareKeyAndAnEnvelopeThatCannotBeWritten() = runTest {
+        var provisioned = true
+        val store = store(FakeHardware(provisioned = { provisioned }))
+        store.importMnemonic(hardhat, password)
+        // Something that is not a file stands where the new envelope goes.
+        envelopeOf(exampleAddress).mkdir()
+
+        assertEquals(PerAppDerivation.NotSaved, store.derivePerApp(hardhatAddress, host("example.com"), password))
+        provisioned = false
+        assertEquals(PerAppDerivation.Unavailable, store.derivePerApp(hardhatAddress, host("example.com"), password))
+    }
+
+    @Test
+    fun aPerAppDerivationShortOfMemoryToOpenStoresNothing() = runTest {
+        val stretch = ShortOfMemory(memoryAvailable = 256 * mib)
+        val store = store(stretch)
+        store.importMnemonic(hardhat, password)
+        stretch.memoryAvailable = 32 * mib
+
+        assertEquals(
+            PerAppDerivation.NotEnoughMemory(MemoryStep.CHECK_PASSWORD),
+            store.derivePerApp(hardhatAddress, host("example.com"), password),
+        )
+        assertFalse(envelopeOf(exampleAddress).exists())
     }
 
     @Test

@@ -188,7 +188,7 @@ class EnvelopeKeyStore internal constructor(
             // already, if it opens under the password. One that does not is sealed again, as an
             // import does: the seed is at hand.
             val path = AccountPath.Ordinary(index)
-            val kept = kept(address, path, unsealed.phrase, password)
+            val kept = kept(address, path, unsealed.phrase, seed, password)
             if (kept != null) {
                 // Its seal may have stepped down a tier, unsaid when its account did not reach the list.
                 val steppedDown = kept.opsLimit != costs(protection).first().opsLimit
@@ -236,7 +236,7 @@ class EnvelopeKeyStore internal constructor(
             val phrase = unsealed.phrase
             // Made before (its account never reached the list, or removed and asked for again with its envelope
             // left): kept if it opens under the password at this path. One that does not is sealed again.
-            val kept = kept(account.hex, path, phrase, password)
+            val kept = kept(account.hex, path, phrase, seed, password)
             if (kept != null) {
                 val steppedDown = kept.opsLimit != costs(protection).first().opsLimit
                 return PerAppDerivation.Stored(account, perApp, phrase, protection, steppedDown)
@@ -345,21 +345,33 @@ class EnvelopeKeyStore internal constructor(
         val path = sealed.path()
         // The first account's key is the one just checked: no derivation more.
         val phrase = if (path == AccountPath.Ordinary(0)) account else firstAddressOf(seed)
-        return phrase.takeIf { sealed.phrase == null || it.hex == sealed.phrase }
+        return phrase.takeIf { sealed.phraseAccount == null || it.hex == sealed.phraseAccount }
     }
 
     /**
-     * The envelope stored for [address], when it is one this device opens, at [path] of [phrase], under [password]: an
-     * account derived before, to keep rather than seal again. Throws [Argon2idOutOfMemory] when checking is short of
+     * The envelope stored for [address], when it is one this device opens, at [path] of [phrase], under [password],
+     * holding [seed]: an account derived before, to keep rather than seal again. One whose seed is damaged behind an
+     * intact wrapped DEK is not kept, since it could not sign. Throws [Argon2idOutOfMemory] when opening is short of
      * memory.
      */
-    private fun kept(address: String, path: AccountPath, phrase: Address, password: ByteArray): SealedSeed? {
+    private fun kept(
+        address: String,
+        path: AccountPath,
+        phrase: Address,
+        seed: ByteArray,
+        password: ByteArray,
+    ): SealedSeed? {
         val existing = Path(directory, "$address$SEED_SUFFIX")
         val kept = (if (SystemFileSystem.exists(existing)) read(existing) else null) ?: return null
-        val opens = Envelope.canOpen(kept, hardware, address) && kept.path() == path &&
-            (kept.phrase == null || kept.phrase == phrase.hex) &&
-            Envelope.verify(kept, password, hardware, stretch) == Envelope.Opened.Verified
-        return kept.takeIf { opens }
+        val fits = Envelope.canOpen(kept, hardware, address) && kept.path() == path &&
+            (kept.phraseAccount == null || kept.phraseAccount == phrase.hex)
+        if (!fits) return null
+        val opened = Envelope.open(kept, password, hardware, stretch) as? Envelope.Opened.Seed ?: return null
+        try {
+            return kept.takeIf { opened.bytes.contentEquals(seed) }
+        } finally {
+            opened.bytes.fill(0)
+        }
     }
 
     override suspend fun newMnemonic(): NewMnemonic = withContext(dispatcher) {

@@ -185,8 +185,9 @@ that can fail (locked, biometric invalidated, hardware missing) says so in
 its KDoc and returns it as a result the UI shows as state.
 
 **What exists today**: the key-store port
-`KeyStore` and the signer port `Signer` in `:domain`, both implemented by
-`EnvelopeKeyStore` in `eth.serotine.data.keys`.
+`KeyStore`, the per-app port `PerAppKeys` (`derivePerApp`) and the signer
+port `Signer` in `:domain`, all implemented by `EnvelopeKeyStore` in
+`eth.serotine.data.keys`.
 
 - **Create.** `newMnemonic()` makes a 12-word BIP-39 mnemonic from 128 bits of
   the platform's secure randomness (`EnvelopeCrypto.randomBytes`), zeroing the
@@ -412,8 +413,12 @@ its KDoc and returns it as a result the UI shows as state.
   - **Every envelope of a phrase names the phrase** by its first account's
     address (`phrase`, `m/44'/60'/0'/0/0`): a public value, checked against
     the seed when the envelope opens, so that D3 and D9 can tell phrases
-    apart before the unlock. An envelope stored before carries none; its
-    phrase is learnt at its next unlock.
+    apart before the unlock. An envelope stored before carries none, and is
+    left as it is: rewritten, an older build of the app could no longer
+    read it. Its phrase is learnt when a per-app address is next derived
+    from it (`PerAppDerivation.Stored.phrase`), and part 3 keeps it with the account,
+    app-private like the per-site memory. The first account of a phrase
+    needs none: its address is the phrase's.
   - **Restored on request** (D9, owner's request, 2026-11-14): a host (or
     its site) and a phrase, the wallet password, and the address is derived again into an
     envelope of its own. The private key is not shown or exported: that

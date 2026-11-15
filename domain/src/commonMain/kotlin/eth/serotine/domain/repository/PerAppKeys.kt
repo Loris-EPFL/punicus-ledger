@@ -9,8 +9,8 @@ import eth.serotine.domain.model.WalletPassword
  * The key store's per-app addresses (issue #252; docs/keys-and-signing.md, *Per-app addresses*): an address of its own
  * for each site (the registrable domain of a dApp's host, [AppHost.site]), derived from a stored phrase's seed at
  * `m/44'/60'/a'/b'/c'` ([eth.serotine.domain.model.AppIsolation.pathOf]). A port of its own beside [KeyStore], so that
- * what does not make per-app addresses need not know of them. No key leaves it: the address is derived and sealed
- * inside the adapter, never shown or exported.
+ * what does not make per-app addresses need not know of them. No key leaves it: the key is derived and sealed inside
+ * the adapter, never shown or exported; only the address and its path are returned.
  */
 interface PerAppKeys {
 

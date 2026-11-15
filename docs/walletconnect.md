@@ -213,8 +213,10 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   New account from the same phrase does.
   - It is made from a recovery phrase held here. **Which phrase:** each
     phrase is known by the address of its first account
-    (`m/44'/60'/0'/0/0`), which every envelope of that phrase records, a
-    public value checked against the seed when the envelope opens; so the
+    (`m/44'/60'/0'/0/0`), which every envelope of that phrase sealed since
+    part 2 records (an older envelope's is learnt when a per-app address is
+    derived from it, and kept with its account), a public value checked against the seed
+    when the envelope opens; so the
     phrases can be told apart and listed before the unlock, whether or not
     that first account is still in the wallet. With one phrase, D3 asks
     nothing. With several, D3 shows which phrase the new address comes from

@@ -14,7 +14,8 @@ reporting:
    version or commit, how to reproduce it, and what an attacker gains (for
    example, access to key material, or a transaction signed that the user did
    not approve).
-3. Submit. Only you and the maintainer can see the report. The discussion
+3. Submit. Only you, the maintainer and anyone the maintainer adds to the
+   advisory to help fix it can see the report. The discussion
    stays in that private advisory, and the advisory is published once a fixed
    release is out.
 

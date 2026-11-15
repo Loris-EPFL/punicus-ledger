@@ -813,6 +813,13 @@ class MyotisHost private constructor(
                     ?: return NameAnswer(null, -1, verified = false, error = "the light client is not running")
                 return nameAnswerOf { handle.ens().resolveAddress(name, EnsRoot.FINALIZED) }
             }
+
+            // The engine resolves the name back to the address itself; EngineNames keeps only a finalized answer.
+            override fun reverseName(addressHex: String): ReverseNameAnswer {
+                val handle = (state as? ChainState.Running)?.handle
+                    ?: return ReverseNameAnswer(null, -1, verified = false, error = "the light client is not running")
+                return reverseNameAnswerOf { handle.ens().reverseResolve(addressHex) }
+            }
         }
     }
 

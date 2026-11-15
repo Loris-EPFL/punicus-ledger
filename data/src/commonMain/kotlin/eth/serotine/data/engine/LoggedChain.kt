@@ -113,6 +113,11 @@ internal class LoggedChain(
             inner.resolveName(name)
         }
 
+    override fun reverseName(addressHex: String): ReverseNameAnswer =
+        request("ens.reverseResolve", { "address=$addressHex" }, { it.error }) {
+            inner.reverseName(addressHex)
+        }
+
     override fun setLogIndexConfig(configJson: String): Boolean =
         request("setLogIndexConfig", { "config=$configJson" }, { if (it) null else "not taken" }) {
             inner.setLogIndexConfig(configJson)

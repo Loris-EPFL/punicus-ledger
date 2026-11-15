@@ -54,6 +54,13 @@ internal interface TransactingChain : VerifiedChain {
 
     /** [name]'s address, resolved against beacon-finalized state. */
     fun resolveName(name: String): NameAnswer
+
+    /**
+     * The primary name of [addressHex] (`0x` and 40 hex digits), reverse-resolved and resolved back to
+     * it by the engine (issue #274); an engine that reads no reverse records answers that it does not.
+     */
+    fun reverseName(addressHex: String): ReverseNameAnswer =
+        ReverseNameAnswer(null, -1, verified = false, error = "this engine reads no primary names")
 }
 
 /** An engine's gas estimate. */
@@ -87,6 +94,18 @@ internal data class NameAnswer(
     val verified: Boolean,
     val error: String?,
     val offchain: Boolean = false,
+)
+
+/**
+ * An engine's reverse ENS answer: [name] null with [error] null is a verified "no primary name" (none set,
+ * or one that does not resolve back); [verified] says it ran against beacon-finalized state, at
+ * [blockNumber].
+ */
+internal data class ReverseNameAnswer(
+    val name: String?,
+    val blockNumber: Long,
+    val verified: Boolean,
+    val error: String?,
 )
 
 /** Why reads cannot be verified now, from [snapshot], or null when they can (at its readable head). */

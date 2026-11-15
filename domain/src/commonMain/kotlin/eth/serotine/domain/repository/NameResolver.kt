@@ -15,6 +15,36 @@ interface NameResolver {
      * another network's. A [network] no adapter serves here is refused ([ReadUnavailable.NO_ENGINE]).
      */
     suspend fun resolve(network: Network, name: String): NameResolution
+
+    /**
+     * The primary name [address] gives itself in [network]'s registry (its reverse record, issue #274),
+     * kept only when that name resolves back to [address] in the same finalized state: anyone can set a
+     * reverse record naming any name, and only the round trip makes it the address's. A [network] no
+     * adapter serves here, and an adapter that reads no reverse records, refuse it
+     * ([ReadUnavailable.NO_ENGINE]); that is this default.
+     */
+    suspend fun primaryName(network: Network, address: Address): PrimaryName =
+        PrimaryName.Unavailable(ReadUnavailable.NO_ENGINE)
+}
+
+/** The outcome of [NameResolver.primaryName]. */
+sealed interface PrimaryName {
+
+    /** [address]'s primary name is [name] (lower case), round-tripped in the finalized state of [blockNumber]. */
+    data class Named(val name: String, val blockNumber: Long) : PrimaryName
+
+    /** A verified answer: no primary name is set, or the one set does not resolve back to the address. */
+    data object None : PrimaryName
+
+    /**
+     * A name is set, round-tripped, but holds characters this wallet does not check yet (anything but
+     * ASCII letters, digits and inner hyphens, as [NameResolver.resolve] refuses them): not shown, since a
+     * look-alike could pass for another name.
+     */
+    data object NotShowable : PrimaryName
+
+    /** No verified answer right now, for [reason]. */
+    data class Unavailable(val reason: ReadUnavailable) : PrimaryName
 }
 
 /** The outcome of [NameResolver.resolve]. */

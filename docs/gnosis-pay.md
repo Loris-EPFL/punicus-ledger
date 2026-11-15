@@ -91,9 +91,19 @@ key is held here. The member pays both fees in xDAI.
 3. **Execute.** `executeNextTx` with the same four fields, sent by the
    member. Before it is quoted, the Delay's verified state must show the
    transfer as the next entry (`txHash(txNonce)` equal to its hash), its
-   cooldown passed and its expiration not reached. An entry ahead of it, not
-   expired, is shown, and Punicus waits: it never executes a transaction it
-   did not queue.
+   cooldown passed and at least five minutes left before its expiration, so
+   that the transaction is mined while the window is open. An entry ahead of
+   it is shown, and Punicus waits: it never executes a transaction it did not
+   queue. An expired entry ahead is skipped by the Delay's `skipExpired`,
+   which Punicus does not offer yet.
+
+Every quote first proves, fresh, that the Delay is still the Safe's own of
+the current mastercopy. The queue is searched from its next entry for the
+transfer's hash, through at most 8 entries; one further back is said to be
+further back, never gone. A transfer identical to one queued from here and
+not yet executed is refused, so no two of this wallet's entries share a
+hash. The queued transfers are found again in the history of what this
+wallet sent: each queueing with no successful execution of it after.
 
 **Only plain transfers** are queued: the Safe's xDAI as the value with no
 data, or an ERC-20 `transfer(to, amount)` with no value; operation CALL;

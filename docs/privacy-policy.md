@@ -4,7 +4,7 @@ Punicus is a wallet app for Ethereum accounts and Safe accounts. It runs on
 your device. This page says what it keeps there and what reaches anyone else.
 Its developer runs no server for Punicus and receives nothing from the app.
 
-Last updated: 2026-11-14.
+Last updated: 2026-11-15.
 
 ## What Punicus does not do
 
@@ -106,3 +106,6 @@ its history is in the repository's commits.
 ## Contact
 
 Questions: open an issue at <https://github.com/biafra23/punicus/issues>.
+
+A security issue, a leak among them, is reported privately instead, never in
+a public issue: see [Reporting a security issue](../README.md#reporting-a-security-issue).

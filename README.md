@@ -189,7 +189,8 @@ reporting:
 
 A problem in the embedded light client itself (how chain data is fetched or
 verified) belongs to [Myotis](https://github.com/biafra23/myotis); report it
-there in the same way. When unsure, report it here.
+through [its advisory form](https://github.com/biafra23/myotis/security/advisories/new)
+in the same way. When unsure, report it here.
 
 ## License
 

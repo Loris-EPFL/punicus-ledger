@@ -33,7 +33,7 @@ and to the test that holds it.
 - [10. The files, backups and transfers](#10-the-files-backups-and-transfers)
 - [11. Removing an account deletes its key](#11-removing-an-account-deletes-its-key)
 - [12. What this protects against, and what it does not](#12-what-this-protects-against-and-what-it-does-not)
-- [13. Secrets that are not keys](#13-secrets-that-are-not-keys)
+- [13. Other sensitive things the app keeps](#13-other-sensitive-things-the-app-keeps)
 - [14. Not built yet](#14-not-built-yet)
 - [15. Check it yourself](#15-check-it-yourself)
 
@@ -72,6 +72,7 @@ and to the test that holds it.
 - **What it does not do**: it cannot stop malware that has taken over the
   app while you use it, it cannot make a weak password strong where no chip
   is used, and it cannot prove that what you approved is what was signed.
+  It does not yet keep recovery words you copy off the clipboard.
   [Section 12](#12-what-this-protects-against-and-what-it-does-not) goes
   through each case.
 
@@ -212,8 +213,8 @@ cannot, because **no phone or computer chip can sign with secp256k1**:
 | Platform | Security chip | What it can sign or encrypt with | secp256k1 |
 |---|---|---|---|
 | Android (from 10, API 29) | Keystore in the TEE; StrongBox where the phone has a secure element | TEE: P-256/384/521, Curve25519 (from API 33), RSA, AES, HMAC. StrongBox: P-256, RSA, AES, HMAC | no |
-| iPhone, iPad | Secure Enclave | P-256 only | no |
-| Mac (Apple silicon or T2) | Secure Enclave | P-256 only | no |
+| iPhone, iPad | Secure Enclave | P-256 (ECDSA, ECDH); ML-KEM and ML-DSA from iOS 26 | no |
+| Mac (Apple silicon or T2) | Secure Enclave | as the iPhone | no |
 | Windows | TPM 2.0 | RSA, P-256, P-384 | no |
 | Linux | TPM 2.0 where there is one | as the TPM | no |
 
@@ -720,9 +721,9 @@ val keyStore = EnvelopeKeyStore(
 
 ### iPhone and iPad
 
-The Secure Enclave can only do P-256 operations: it has no HMAC and no
-AES. So the design is different. The first time a wallet stores a key, the
-app makes a P-256 key inside the enclave, makes 32 random bytes as `S_hw`,
+The Secure Enclave has no HMAC and no AES: its keys are P-256 (and, from
+iOS 26, ML-KEM and ML-DSA). So the design is different. The first time a
+wallet stores a key, the app makes a P-256 key inside the enclave, makes 32 random bytes as `S_hw`,
 and encrypts them to that key (ECIES). It stores both in
 `secure-enclave.json` beside the envelopes: the key as the enclave's own
 encrypted *handle*, which only this device's enclave can use, and `S_hw`
@@ -756,6 +757,8 @@ only as its handle), usable when unlocked, on this device only
 fun createEnclaveKey(): SecKeyRef =
     createEnclaveKey(kSecAttrAccessibleWhenUnlockedThisDeviceOnly, kSecAccessControlPrivateKeyUsage)
 
+// … createBiometricEnclaveKey(), shown in section 7
+
 private fun createEnclaveKey(accessible: CFStringRef?, flags: ULong): SecKeyRef = owning {
     val access = own(
         call("SecAccessControlCreateWithFlags") { error ->
@@ -786,6 +789,8 @@ one ([IosSecureEnclaveSecret.kt](../data/src/iosMain/kotlin/eth/serotine/data/ke
 ```kotlin
 override val everyGuessNeedsDevice: Boolean = false
 
+// … isProvisioned(): whether the state file exists
+
 override fun mix(input: ByteArray): ByteArray = locked {
     when {
         SystemFileSystem.exists(Path(stateFile)) -> unwrap()
@@ -793,6 +798,8 @@ override fun mix(input: ByteArray): ByteArray = locked {
         else -> create()
     }
 }
+
+// … stateLost(): envelopes sealed under the enclave exist, but no state file
 
 private fun unwrap(): ByteArray {
     val state = SystemFileSystem.source(Path(stateFile)).buffered().use { source ->
@@ -895,6 +902,8 @@ handle ([MacSecurity.kt](../data/src/desktopMain/kotlin/eth/serotine/data/keys/M
 ```kotlin
 fun createEnclaveKey(): Pointer = createEnclaveKey(access = null)
 
+// … createBiometricEnclaveKey(), see section 7
+
 private fun createEnclaveKey(access: Pointer?): Pointer = owning { own ->
     val bits = own(number(256))
     val privateAttributes = own(
@@ -984,10 +993,24 @@ yet, even if it has one.*
 
 The chip's key can disappear: a cleared Keystore, a factory reset, an OS
 upgrade that loses it, a deleted `secure-enclave.json`. The envelopes sealed
-with it then cannot be opened any more. The app checks for this before
-anything could create a new key, and reports the key store as unavailable
-instead of making a new key, which would only answer "wrong password"
-forever. The way back is the recovery phrase.
+with it then cannot be opened any more. Before it describes the key store,
+adds an account, stores a key or signs with the password, the app asks
+whether the chip's key still exists. If it does not, the app reports the key
+store as unavailable instead of making a new key, which would only answer
+"wrong password" forever.
+
+One path does not ask first yet: turning biometric unlock on reads where
+the chip's key lives before it asks whether the key exists, and on Android
+that read makes a new key when the old one is gone (security audit of
+2026-11-01, finding N3, open). It is hard to reach from the app, since the
+Security screen offers no switch while the key store reads as unavailable,
+but the key store itself does not keep the promise on that path yet.
+
+The way back is the recovery phrase. While the envelopes of the lost key
+exist, restoring is refused too, so first remove the accounts whose keys
+are on this device: that deletes their envelopes and needs no password.
+Once the last one is gone, restore the phrase. A proper reset flow is not
+built yet (section 14).
 
 <details>
 <summary><b>Show the code</b>: <code>hardwareKeyLost</code></summary>
@@ -1216,13 +1239,22 @@ The steps are the same everywhere; the libraries under them differ:
 ### What zeroing can and cannot reach
 
 Zeroing works on the copies the code holds. Some copies are out of its
-reach, and the contract says so rather than pretending:
+reach, and this page names them rather than pretending. The contract names
+the typed strings, the JDK's AES copy and the garbage collector's copies
+(rule 7); the bindings' scratch space is in the KDoc of `Bip32.kt`; the
+clipboard is an open finding of the security audit; and paging follows from
+what the code does not do.
 
 - **The text you type.** The password field and the recovery-word fields
   hold their text as strings, which cannot be overwritten in Kotlin. The
   normalized copy made from the password before it becomes bytes is a
-  string too. They go when the screen is left, and the screens are under
-  the protections of section 9.
+  string too. The app's copies go when the screen is left, and the screens
+  are under the protections of section 9.
+- **The clipboard.** The restore screen's recovery-phrase field offers Copy
+  and Cut, as any text field does that is not a password field. Words
+  copied there go to the system clipboard, where a keyboard's clipboard
+  history, or a clipboard synced to your other devices, keeps them after
+  the screen is left (security audit of 2026-11-01, finding S7, open).
 - **The JDK's AES copy** (Android and the desktop). The cipher copies the
   key it is given and keeps its own key schedule until the garbage
   collector takes them. On iOS, libsodium works on the caller's arrays.
@@ -1604,9 +1636,11 @@ flowchart LR
 ```
 
 Creating an account uses both directions: the words go out to be shown,
-and come back, with the password, to be stored. Restoring uses only the way
-back. Everything the key store derives from the words (the seed, the keys)
-stays inside it: what comes back up is an address.
+and come back, with the password, to be stored. (Whether the exception
+covers this one screen using both directions is the owner's open question,
+#40; the code is built as if it does.) Restoring uses only the way back.
+Everything the key store derives from the words (the seed, the keys) stays
+inside it: what comes back up is an address.
 
 **Creating an account** makes 128 random bits with the platform's secure
 random generator, turns them into 12 words, and zeroes the bits. Nothing is
@@ -1845,8 +1879,13 @@ an installed wallet's keys behind.
 
 **Only you can read the folder.** Where the file system has owner
 permissions (Android, macOS, Linux, iOS), the folder is created readable by
-this user alone (`rwx------`) and each file too (`rw-------`). On Windows
-the folder sits in the user's own profile.
+this user alone (`rwx------`) and each file the key store writes too
+(`rw-------`). On Windows the folder sits in the user's own profile. On a
+computer, the data folder around the key folder, which holds the account
+list and the histories but no key, is not made owner-only yet (security
+audit of 2026-11-01, finding S5, open). Where your home folder lets other
+users in, another user of the same computer may read which accounts you
+hold and what they sent, never a key.
 
 **A crash never leaves half a file.** Each file is written to a temporary
 file, flushed to the disk, then moved over the old one in one step, and the
@@ -2036,16 +2075,17 @@ The order, list first and key second, is the use case's
 | Another program running as you on a Mac | It can read the files and have the enclave decrypt `S_hw` without a prompt, then guess the password at the full Argon2id cost. Biometric unlock would need your finger in a prompt naming that program. | **Only as strong as the password** |
 | Malware that controls Punicus while you use it (a rooted or jailbroken phone, a compromised computer) | Nothing on the device can stop code that runs as the app: it can read what you type and the memory during a signature, and use the chip as the app does. On Android it still cannot take the guessing off the phone. | **No** |
 | A defective or compromised Punicus that shows one thing and signs another | Key storage cannot help: the chip and the fingerprint prove that you approved *a* signature, not *which* transaction. For a Safe holding value, an independent co-signer that decodes the transaction itself, and policies on chain, close most of this. | **No**, by design of every phone wallet: see docs/keys-and-signing.md, *What key storage does not do* |
+| You copy the recovery words in or out of the restore field | Nothing yet: the field offers Copy and Cut like any field that is not a password field, and the system clipboard keeps what it is given, in a keyboard's clipboard history or synced to your other devices (security audit of 2026-11-01, finding S7, open). | **No**, not blocked yet: type the words, do not copy them |
 | Someone sees your recovery words | They are the master secret: with them, anyone can restore every account of the phrase anywhere. | **No**: keep the paper safe |
 | You forget the wallet password | The envelopes cannot be opened without it; that is the point. Removing the accounts deletes their envelopes without the password; once the last one is gone, restoring the phrase sets a new password. A proper reset flow is not built yet. | Recoverable **with the recovery phrase** |
-| The chip's key is lost (a factory reset, a cleared key store) | The app says the key store is unavailable instead of guessing. | Recoverable **with the recovery phrase** |
+| The chip's key is lost (a factory reset, a cleared key store) | The app says the key store is unavailable instead of guessing (turning biometric unlock on does not ask first yet: N3, section 5). Restoring is refused while the stranded envelopes exist: removing the accounts whose keys are on this device deletes them without the password, and then restoring the phrase works again. A proper reset flow is not built yet. | Recoverable **with the recovery phrase** |
 | Laboratory attacks on the chip itself | Out of scope: that is the chip maker's part. | |
 
-## 13. Secrets that are not keys
+## 13. Other sensitive things the app keeps
 
-A few other things Punicus keeps are sensitive but cannot move funds on
-their own. They are not under the wallet password, and they are not mixed
-with the envelopes.
+Two other things Punicus keeps are sensitive, but neither can sign anything
+new. They are not under the wallet password, and they are not mixed with
+the envelopes.
 
 - **Lenient mode's outbox** (docs/keys-and-signing.md, *The outbox's seal
   key*). A transaction signed while the light client catches up waits,
@@ -2061,15 +2101,18 @@ with the envelopes.
   logged, and not under the wallet password (owner rulings, 2026-11-03,
   #22). No account key ever reaches the WalletConnect layer: a signature for
   a dApp goes through the same signer port as any other.
-- **Privacy Pools note secrets** (docs/keys-and-signing.md, *Privacy Pools
-  note secrets*). Not built yet. They are derived from the recovery phrase
-  and will be key material under every rule of this page: inside the key
-  store, inside one call, zeroed afterwards (owner rulings, 2026-11-11).
 
 ## 14. Not built yet
 
 What the contract plans and the app does not do yet:
 
+- **Privacy Pools note secrets** (docs/keys-and-signing.md, *Privacy Pools
+  note secrets*; docs/privacy-pools.md). They are key material, not an
+  exception to it: derived from the envelope's seed inside an unlock, they
+  will exist only inside the key store, inside one call, as byte arrays
+  zeroed before it returns, and in the native prover that call hands them
+  to, like every key on this page (owner rulings, 2026-11-11: D2 and D11 on
+  #288, D11 amended on #290).
 - **The TPM on Windows and Linux** (rule 9). Until then, the password alone
   protects the envelopes there, and the app says so.
 - **Changing the wallet password**, re-locking every envelope's DEK as one
@@ -2099,6 +2142,13 @@ Secure Enclave tests (`MacSecureEnclaveSecretTest`, `MacBiometricKeyTest`)
 use the real enclave and are skipped on other computers; the Android
 Keystore classes need a device and have no unit test.
 
+Three findings of the security audit of 2026-11-01 that touch this page are
+still open, and the page says so where each applies: N3, turning biometric
+unlock on with a lost chip key (section 5); S7, the clipboard (sections 6
+and 12); S5, the desktop's data folder around the key folder (section 10).
+Each has an acceptance test in the tree, marked `@Ignore` until its fix
+lands. None of them is counted below as holding a claim.
+
 | Claim | Code | Test |
 |---|---|---|
 | Both factors are needed to open an envelope | `Envelope.kek` | `EnvelopeTest.bothFactorsAreNeeded` |
@@ -2114,7 +2164,7 @@ Keystore classes need a device and have no unit test.
 | Short of memory, a seal steps down a tier, never below 64 MiB, and says so | `sealAtTierThatFits`, `PasswordOnlyTier` | `EnvelopeKeyStoreTest.aSealShortOfMemoryStepsDownATierAndSaysSo`, `aDeviceWithLittleMemoryStartsAtItsTierAndNeverGoesBelowTheFloor`, `EnvelopeTest.argon2idShortOfMemoryLeavesBeforeAnythingIsMade` |
 | The first password is at least eight characters; later ones must match | `EnvelopeKeyStore.import` | `EnvelopeKeyStoreTest.aTooShortFirstPasswordIsRefused`, `laterImportsMustUseTheSamePassword` |
 | A mistyped password costs at most three Argon2id runs | `passwordIsWrong`, `MAX_PASSWORD_CHECKS` | `EnvelopeKeyStoreTest.aMistypedPasswordIsCheckedAgainstAtMostThreeEnvelopes` |
-| A lost hardware key is said, never taken for a wrong password | `hardwareKeyLost` | `EnvelopeKeyStoreTest.aLostHardwareKeyMakesTheKeyStoreUnavailableNotAWrongPassword`, `aLostHardwareKeyIsSaidNotTakenForAWrongPassword`, `EnvelopeKeyStoreLostHardwareKeyTest` |
+| A lost hardware key is said, never taken for a wrong password (turning biometric unlock on: not yet, N3) | `hardwareKeyLost` | `EnvelopeKeyStoreTest.aLostHardwareKeyMakesTheKeyStoreUnavailableNotAWrongPassword`, `aLostHardwareKeyIsSaidNotTakenForAWrongPassword`. N3's acceptance test, `EnvelopeKeyStoreLostHardwareKeyTest`, is ignored until its fix |
 | The key folder and files are readable by this user alone | `createPrivateDirectory`, `writeDurably` | `EnvelopeKeyStoreTest.theDirectoryAndTheEnvelopesAreThisUsersAlone` |
 | A crashed write leaves no half file, and its leftover is swept | `writeDurably`, `sweepTemporaries` | `EnvelopeKeyStoreTest.aCrashedWritesTemporaryIsSweptAway`, `aCreateOnlyWriteNeverReplacesAFile` |
 | The digest is signed as given; the signature recovers to the account | `signWith` | `EnvelopeKeyStoreTest.aStoredAccountsKeySignsTheDigestAsGivenAndNothingElse`, `everyRecoveryIdRecoversTheSigner` |
@@ -2144,6 +2194,8 @@ for f in ~/.local/share/serotine/keys/0x*.seed; do python3 -m json.tool < "$f"; 
 (Feed one file at a time, on standard input: given two paths, `json.tool`
 writes over the second one.)
 
-The folder shows `drwx------`, each file `-rw-------`, and the JSON has the
-shape of section 3: a salt, a cost, two nonces and two ciphertexts, and no
-seed, key or word in the clear.
+The folder shows `drwx------` and each `.seed` file `-rw-------`. The empty
+`.deja-dup-ignore` marker beside them is made under your umask, often
+`-rw-r--r--`: it holds nothing, and the folder keeps others out. The JSON
+has the shape of section 3: a salt, a cost, two nonces and two ciphertexts,
+and no seed, key or word in the clear.

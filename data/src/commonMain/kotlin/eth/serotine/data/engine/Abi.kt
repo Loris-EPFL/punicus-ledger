@@ -178,6 +178,29 @@ internal object Abi {
         return value.takeIf { it <= MAX_TEXT_BYTES }?.toInt()
     }
 
+    /**
+     * One page of a Zodiac module list, `getModulesPaginated`'s `(address[] array, address next)`
+     * in [returnedHex]: exactly the head (the array's offset, 0x40, then `next`), its length and
+     * that many address words, nothing more. Null when it is anything else, a word that is no
+     * address among them, or a page longer than [MAX_PAGE].
+     */
+    fun addressPage(returnedHex: String): AddressPage? {
+        if (returnedHex.length % WORD_HEX_DIGITS != 0 || !returnedHex.all { it in HEX }) return null
+        val words = returnedHex.chunked(WORD_HEX_DIGITS)
+        if (words.size < 3 || uint256(words[0]) != (2 * WORD).toString()) return null
+        val next = address(words[1]) ?: return null
+        val length = uint256(words[2])?.toIntOrNull()?.takeIf { it in 0..MAX_PAGE } ?: return null
+        if (words.size != 3 + length) return null
+        val addresses = words.drop(3).map { address(it) ?: return null }
+        return AddressPage(addresses, next)
+    }
+
+    /** A page of a module list ([addressPage]): its [addresses], and where the next page starts. */
+    data class AddressPage(val addresses: List<Address>, val next: Address)
+
+    /** More entries than any page asked for here. */
+    private const val MAX_PAGE = 100
+
     /** The unsigned big-endian [bytes] as a decimal integer, by long division in base 10. */
     internal fun toDecimal(bytes: ByteArray): String {
         var number = bytes.map { it.toInt() and 0xff }.dropWhile { it == 0 }

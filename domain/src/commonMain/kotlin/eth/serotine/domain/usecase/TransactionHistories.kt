@@ -181,8 +181,9 @@ class FollowSentTransactions(
 
 /**
  * The transactions of the account at [address] in the history (issue #85), newest first: those
- * it sent, and for a Safe the approvals and executions of its transactions and its deployment,
- * whichever account of this wallet sent them.
+ * it sent, and for a Safe the approvals and executions of its transactions, its deployment and,
+ * for a Gnosis Pay account, the transfers queued and executed through its Delay, whichever account
+ * of this wallet sent them.
  */
 class ObserveAccountHistory(private val history: TransactionHistory) {
     operator fun invoke(account: AccountId): Flow<HistoryList> = history.observe().map { list ->
@@ -241,6 +242,9 @@ class ObserveSentTo(private val history: TransactionHistory) {
         is SentAction.Transfer -> action.to
         is SentAction.SafeApproval -> action.request.recipient()
         is SentAction.SafeExecution -> action.request.recipient()
+        // A Gnosis Pay account's transfer, queued or executed from here: the user chose its recipient.
+        is SentAction.DelayQueue -> action.transfer.recipient
+        is SentAction.DelayExecution -> action.transfer.recipient
         // A dApp's call names no recipient the app decoded itself: it vouches for no sender.
         is SentAction.TokenApproval, is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap,
         is SentAction.SafeDeployment, is SentAction.CowCancellation, is SentAction.DappCall,
@@ -265,6 +269,8 @@ fun HistoryEntry.concerns(id: AccountId): Boolean {
         is SentAction.SafeApproval -> action.request.safe == id.address
         is SentAction.SafeExecution -> action.request.safe == id.address
         is SentAction.SafeDeployment -> action.safe == id.address
+        is SentAction.DelayQueue -> action.transfer.safe == id.address
+        is SentAction.DelayExecution -> action.transfer.safe == id.address
     }
 }
 

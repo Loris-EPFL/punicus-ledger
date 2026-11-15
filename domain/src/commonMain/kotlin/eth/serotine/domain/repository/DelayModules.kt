@@ -1,6 +1,7 @@
 package eth.serotine.domain.repository
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import kotlinx.coroutines.flow.Flow
 
@@ -21,7 +22,58 @@ interface DelayModules {
      * ([ReadUnavailable.NO_ENGINE]), never answered from another network. Never fails.
      */
     fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading>
+
+    /**
+     * The queue of the Delay at [delay] on [network] as it is now (docs/gnosis-pay.md, *Sending*):
+     * its next entry to execute and its next to be added, its cooldown and expiration, and each
+     * entry from the next to execute on, at most [MAX_QUEUE_READ] of them, with its hash
+     * (`txHash(n)`) and the time it was queued (`txCreatedAt(n)`), all read with verified calls at
+     * one block; and the time of the verified head they were read at, which is when "now" is for
+     * the cooldown. Read fresh at every call, never from a reading kept before. Blocks on the
+     * engine, bounded by it; never throws. A [network] no adapter serves here is refused
+     * ([ReadUnavailable.NO_ENGINE]).
+     */
+    suspend fun queue(network: Network, delay: Address): DelayQueueReading
+
+    companion object {
+        /** Entries read past the next to execute: a queue longer than this is read up to here. */
+        const val MAX_QUEUE_READ = 16
+    }
 }
+
+/** One answer of [DelayModules.queue]. */
+sealed interface DelayQueueReading {
+
+    /** [queue], read at block [blockNumber], whose verified head was produced at [headTime] (unix seconds). */
+    data class Read(val queue: DelayQueue, val blockNumber: Long, val headTime: Long) : DelayQueueReading
+
+    /** No verified answer can be had right now, for the reason [reason] gives. */
+    data class Unavailable(val reason: ReadUnavailable) : DelayQueueReading
+}
+
+/**
+ * A Delay's queue at one block: [txNonce], the next entry to execute, and [queueNonce], the next to
+ * be added; [cooldownSeconds] and [expirationSeconds] (0: for ever) as they are at that block; and
+ * [entries], from [txNonce] on in order, at most [DelayModules.MAX_QUEUE_READ].
+ */
+data class DelayQueue(
+    val txNonce: Long,
+    val queueNonce: Long,
+    val cooldownSeconds: Long,
+    val expirationSeconds: Long,
+    val entries: List<DelayEntry>,
+) {
+    init {
+        require(txNonce in 0..queueNonce) { "a Delay's next entry is within its queue" }
+        require(entries.map { it.nonce } == (txNonce until txNonce + entries.size).toList()) {
+            "a queue's entries are read in order from the next to execute"
+        }
+        require(entries.size <= queueNonce - txNonce) { "a queue holds no entry past its end" }
+    }
+}
+
+/** Entry [nonce] of a Delay's queue: the [hash] of the call it holds, queued at [createdAt] (unix seconds). */
+data class DelayEntry(val nonce: Long, val hash: Digest, val createdAt: Long)
 
 /** One answer of [DelayModules.observeDelay]. */
 sealed interface DelayReading {

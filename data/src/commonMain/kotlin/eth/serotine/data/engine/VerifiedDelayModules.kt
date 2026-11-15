@@ -3,11 +3,15 @@ package eth.serotine.data.engine
 import eth.serotine.data.keys.fromHex
 import eth.serotine.data.safe.DelayDeployments
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.DelayEntry
 import eth.serotine.domain.repository.DelayFinding
 import eth.serotine.domain.repository.DelayGeneration
 import eth.serotine.domain.repository.DelayModule
 import eth.serotine.domain.repository.DelayModules
+import eth.serotine.domain.repository.DelayQueue
+import eth.serotine.domain.repository.DelayQueueReading
 import eth.serotine.domain.repository.DelayReading
 import eth.serotine.domain.repository.ReadUnavailable
 import kotlin.time.Duration
@@ -41,8 +45,8 @@ import kotlinx.coroutines.flow.map
  */
 class VerifiedDelayModules internal constructor(
     private val served: Network,
-    chain: VerifiedChain?,
-    dispatcher: CoroutineDispatcher,
+    private val chain: VerifiedChain?,
+    private val dispatcher: CoroutineDispatcher,
     pollInterval: Duration,
     private val mastercopies: Map<Address, DelayGeneration> = DelayDeployments.of(served),
 ) : DelayModules {
@@ -82,6 +86,7 @@ class VerifiedDelayModules internal constructor(
                 Read.Refused -> return REFUSED
                 is Read.At ->
                     return EngineReading.Proven(finding(read, safe, module, generation), read.block, read.hash)
+                is Read.Queue -> error("the settings' read gives no queue")
             }
         }
         return null
@@ -167,6 +172,29 @@ class VerifiedDelayModules internal constructor(
             return members
         }
 
+        /**
+         * The queue from its next entry on, at most [DelayModules.MAX_QUEUE_READ] entries, each its
+         * `txHash(n)` and `txCreatedAt(n)`, with the nonces and periods, all at the one block.
+         */
+        fun queue(): Read {
+            val txNonce = number(TX_NONCE) ?: return ended
+            val queueNonce = number(QUEUE_NONCE) ?: return ended
+            if (txNonce > queueNonce) return Read.NotADelaysAnswer
+            val cooldown = number(TX_COOLDOWN) ?: return ended
+            val expiration = number(TX_EXPIRATION) ?: return ended
+            val last = minOf(queueNonce, txNonce + DelayModules.MAX_QUEUE_READ)
+            val entries = (txNonce until last).map { nonce ->
+                val hash = answer(txHash(nonce))?.let { Digest.parse(it) ?: return Read.NotADelaysAnswer } ?: return ended
+                val createdAt = number(txCreatedAt(nonce)) ?: return ended
+                DelayEntry(nonce, hash, createdAt)
+            }
+            return Read.Queue(
+                DelayQueue(txNonce, queueNonce, cooldown, expiration, entries),
+                checkNotNull(block),
+                hash,
+            )
+        }
+
         fun read(): Read {
             val avatar = address(AVATAR) ?: return ended
             val target = address(TARGET) ?: return ended
@@ -208,6 +236,9 @@ class VerifiedDelayModules internal constructor(
             val hash: String?,
         ) : Read
 
+        /** The queue as [DelayModules.queue] gives it, at [block]. */
+        data class Queue(val queue: DelayQueue, val block: Long, val hash: String?) : Read
+
         /** Two calls answered at two blocks: read again. */
         data object Straddled : Read
 
@@ -219,6 +250,32 @@ class VerifiedDelayModules internal constructor(
 
         /** The engine refuses the calls on this build. */
         data object Refused : Read
+    }
+
+    /**
+     * The queue of the Delay at [delay], read fresh: only a proxy of the current mastercopy, its code
+     * proven first, is read (owner's decisions, 2026-11-15: nothing is sent through another); the
+     * getters at one block, read again at once while they straddle two or a call gives no answer,
+     * [READ_TRIES] reads in all; the head's time read before them.
+     */
+    override suspend fun queue(network: Network, delay: Address): DelayQueueReading {
+        if (network != served) return DelayQueueReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        return chain.askVerified(dispatcher, DelayQueueReading::Unavailable) { verified ->
+            val unproven = DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
+            val headTime = (verified.snapshot() as? EngineSnapshot.Running)?.headTimestamp ?: return@askVerified unproven
+            val code = verified.proveCode(delay) ?: return@askVerified unproven
+            if (proxies[code.codeHex.lowercase()] != DelayGeneration.CURRENT) return@askVerified unproven
+            for (attempt in 1..READ_TRIES) {
+                when (val read = Getters(verified, delay).queue()) {
+                    is Read.Queue -> return@askVerified DelayQueueReading.Read(read.queue, read.block, headTime)
+                    Read.Straddled, Read.NoAnswer -> Unit
+                    Read.NotADelaysAnswer -> return@askVerified unproven
+                    Read.Refused -> return@askVerified DelayQueueReading.Unavailable(ReadUnavailable.REFUSED)
+                    is Read.At -> error("the queue's read gives no settings")
+                }
+            }
+            unproven
+        }
     }
 
     override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> {
@@ -241,6 +298,12 @@ class VerifiedDelayModules internal constructor(
         val TX_EXPIRATION: ByteArray = "605df59c".fromHex()
         val TX_NONCE: ByteArray = "c66323e5".fromHex()
         val QUEUE_NONCE: ByteArray = "de8dd91d".fromHex()
+
+        /** `txHash(uint256 nonce)`: the hash of queue entry [nonce]. */
+        fun txHash(nonce: Long): ByteArray = ("427e232f" + nonce.toString(16).padStart(64, '0')).fromHex()
+
+        /** `txCreatedAt(uint256 nonce)`: when queue entry [nonce] was queued. */
+        fun txCreatedAt(nonce: Long): ByteArray = ("258148cc" + nonce.toString(16).padStart(64, '0')).fromHex()
 
         /** `getModulesPaginated(address start, uint256 pageSize)`. */
         fun getModulesPaginated(start: Address, pageSize: Int): ByteArray =

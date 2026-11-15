@@ -1,6 +1,7 @@
 package eth.serotine.domain.repository
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import kotlinx.coroutines.flow.Flow
 
@@ -23,7 +24,72 @@ interface DelayModules {
      * ([ReadUnavailable.NO_ENGINE]), never answered from another network. Never fails.
      */
     fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading>
+
+    /**
+     * Where the call of hash [hash] stands in the queue of the Delay at [delay], enabled on the Safe
+     * at [safe], on [network], as it is now (docs/gnosis-pay.md, *Sending*), all of it read fresh at
+     * one block, never from a reading kept before: the Delay's code proven to be a proxy of the
+     * current mastercopy; its avatar, target and owner, which must be [safe] (else
+     * [DelayQueueReading.NotTheSafes]); its next entry to execute and its next to be added, its
+     * cooldown and expiration; and the first entry of that hash from the next to execute on,
+     * searched through at most [MAX_QUEUE_READ] entries, with the time it was queued. With them,
+     * the time of the verified head they were read at, which is when "now" is for the cooldown.
+     * The one read that what is quoted or sent through a Delay rests on. Blocks on the engine,
+     * bounded by it; never throws. A [network] no adapter serves here is refused
+     * ([ReadUnavailable.NO_ENGINE]).
+     */
+    suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading
+
+    companion object {
+        /** Entries searched from the next to execute on: an entry further back is not looked for. */
+        const val MAX_QUEUE_READ = 8
+    }
 }
+
+/** One answer of [DelayModules.queue]. */
+sealed interface DelayQueueReading {
+
+    /** [queue], read at block [blockNumber], whose verified head was produced at [headTime] (unix seconds). */
+    data class Read(val queue: DelayQueue, val blockNumber: Long, val headTime: Long) : DelayQueueReading
+
+    /**
+     * The Delay is not [safe]'s own of the current mastercopy, as proven now: a proxy of the
+     * retired one ([generation] RETIRED), one whose avatar, target or owner is another address,
+     * or (with [generation] null) no proxy of a pinned mastercopy at all. Nothing is sent through it.
+     */
+    data class NotTheSafes(val generation: DelayGeneration?, val blockNumber: Long) : DelayQueueReading
+
+    /** No verified answer can be had right now, for the reason [reason] gives. */
+    data class Unavailable(val reason: ReadUnavailable) : DelayQueueReading
+}
+
+/**
+ * A Delay's queue at one block, as far as one call's place in it goes: [txNonce], the next entry
+ * to execute, and [queueNonce], the next to be added; [cooldownSeconds] and [expirationSeconds]
+ * (0: for ever) as they are at that block; [entry], the first entry of the call's hash from
+ * [txNonce] on, or null when none was found among the [searched] entries from [txNonce] on.
+ */
+data class DelayQueue(
+    val txNonce: Long,
+    val queueNonce: Long,
+    val cooldownSeconds: Long,
+    val expirationSeconds: Long,
+    val entry: DelayEntry?,
+    val searched: Int,
+) {
+    init {
+        require(txNonce in 0..queueNonce) { "a Delay's next entry is within its queue" }
+        require(searched in 0..(queueNonce - txNonce)) { "a queue holds no entry past its end" }
+        require(entry == null || entry.nonce == txNonce + searched - 1) { "the search ends at the entry found" }
+    }
+
+    /** Whether every entry from [txNonce] on was searched. */
+    val searchedAll: Boolean
+        get() = searched.toLong() == queueNonce - txNonce
+}
+
+/** Entry [nonce] of a Delay's queue: the [hash] of the call it holds, queued at [createdAt] (unix seconds). */
+data class DelayEntry(val nonce: Long, val hash: Digest, val createdAt: Long)
 
 /** One answer of [DelayModules.observeDelay]. */
 sealed interface DelayReading {

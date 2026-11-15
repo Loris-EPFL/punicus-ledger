@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
@@ -12,6 +13,7 @@ import eth.serotine.domain.repository.DelayFinding
 import eth.serotine.domain.repository.DelayGeneration
 import eth.serotine.domain.repository.DelayModule
 import eth.serotine.domain.repository.DelayModules
+import eth.serotine.domain.repository.DelayQueueReading
 import eth.serotine.domain.repository.DelayReading
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
@@ -57,6 +59,9 @@ class ObserveGnosisPayTest {
             asked += Triple(network, safe, module)
             return readings.getValue(module)
         }
+
+        override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading =
+            DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
     }
 
     private fun eoa(network: Network, custody: AccountCustody = AccountCustody.InKeyStore, address: Address = member) =

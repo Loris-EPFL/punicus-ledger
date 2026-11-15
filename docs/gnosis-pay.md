@@ -91,9 +91,33 @@ key is held here. The member pays both fees in xDAI.
 3. **Execute.** `executeNextTx` with the same four fields, sent by the
    member. Before it is quoted, the Delay's verified state must show the
    transfer as the next entry (`txHash(txNonce)` equal to its hash), its
-   cooldown passed and its expiration not reached. An entry ahead of it, not
-   expired, is shown, and Punicus waits: it never executes a transaction it
-   did not queue.
+   cooldown passed and at least five minutes left before its expiration, so
+   that the transaction is mined while the window is open. An entry ahead of
+   it is shown, and Punicus waits: it never executes a transaction it did not
+   queue. An expired entry ahead is skipped by the Delay's `skipExpired`,
+   which Punicus does not offer yet.
+
+Every quote rests on one read of the Delay, fresh and at one block: its
+code a proxy of the current mastercopy; its avatar, target and owner the
+Safe; its nonces and periods; and its queue, searched from the next entry
+for the transfer's hash through at most 8 entries. An entry further back is
+said to be further back, never gone. A call is told by what the Delay tells
+apart: the Safe, the Delay and the call's hash. A transfer whose call still
+has an entry in the queue, whoever queued it, or whose queueing from here is
+not mined yet, is refused, so no two entries share a hash. The Safe must
+hold the amount beside what transfers of the same asset queued from here
+still move. For a token, the Safe's own `transfer` is run first and must not
+answer false: a token that answers false instead of reverting would let the
+Delay spend its entry and move nothing.
+
+The queued transfers are found again in the history of what this wallet
+sent, and the queue decides which still wait: a queueing not mined yet is
+listed while it is on its way; once mined, only while the queue holds an
+entry of its call (or may, further back, or cannot be read). One executed by
+anyone, skipped, or never mined leaves the list, whether or not this device
+saw how. The list is this device's: after a reinstall, or on another device,
+a transfer queued before is not found, though the Delay's `TransactionAdded`
+log holds its fields (open, the owner's to decide).
 
 **Only plain transfers** are queued: the Safe's xDAI as the value with no
 data, or an ERC-20 `transfer(to, amount)` with no value; operation CALL;

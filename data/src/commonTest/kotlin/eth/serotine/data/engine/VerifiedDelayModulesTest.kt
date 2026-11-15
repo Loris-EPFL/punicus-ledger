@@ -3,10 +3,15 @@ package eth.serotine.data.engine
 import eth.serotine.data.keys.toHex
 import eth.serotine.data.safe.DelayDeployments
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.DelayEntry
 import eth.serotine.domain.repository.DelayFinding
 import eth.serotine.domain.repository.DelayGeneration
 import eth.serotine.domain.repository.DelayModule
+import eth.serotine.domain.repository.DelayModules
+import eth.serotine.domain.repository.DelayQueue
+import eth.serotine.domain.repository.DelayQueueReading
 import eth.serotine.domain.repository.DelayReading
 import eth.serotine.domain.repository.ReadUnavailable
 import kotlin.test.Test
@@ -253,6 +258,114 @@ class VerifiedDelayModulesTest {
                 .observeDelay(Network.GNOSIS, safe, delay)
                 .first(),
         )
+    }
+
+    /** The queue of the Delay holding [hashes] from entry 2 on, each queued at 1000 + its nonce. */
+    private fun queued(vararg hashes: String, txNonce: Long = 2) {
+        answer(VerifiedDelayModules.TX_NONCE, word(txNonce.toString(16)))
+        answer(VerifiedDelayModules.QUEUE_NONCE, word((txNonce + hashes.size).toString(16)))
+        hashes.forEachIndexed { at, hash ->
+            val nonce = txNonce + at
+            answer(VerifiedDelayModules.txHash(nonce), hash)
+            answer(VerifiedDelayModules.txCreatedAt(nonce), word((1_000 + nonce).toString(16)))
+        }
+    }
+
+    @Test
+    fun theQueueIsSearchedFromItsNextEntryForTheCallsHashAtOneBlock() = runTest {
+        fake.snapshot = running(head = 7, headTimestamp = 5_000)
+        gnosisPayDelay()
+        val first = "ab".repeat(32)
+        val second = "cd".repeat(32)
+        queued(first, second)
+
+        assertEquals(
+            DelayQueueReading.Read(
+                DelayQueue(
+                    txNonce = 2,
+                    queueNonce = 4,
+                    cooldownSeconds = 90_000,
+                    expirationSeconds = 111_600,
+                    entry = DelayEntry(3, Digest.of(second), 1_003),
+                    searched = 2,
+                ),
+                blockNumber = 7,
+                headTime = 5_000,
+            ),
+            delays().queue(Network.GNOSIS, safe, delay, Digest.of(second)),
+        )
+        // Not there: the whole queue searched, nothing found.
+        val missing = delays().queue(Network.GNOSIS, safe, delay, Digest.of("ef".repeat(32))) as DelayQueueReading.Read
+        assertEquals(null, missing.queue.entry)
+        assertTrue(missing.queue.searchedAll)
+        // cast calldata "txHash(uint256)" 2
+        assertEquals("427e232f" + word("2"), VerifiedDelayModules.txHash(2).toHex())
+    }
+
+    @Test
+    fun aQueueIsReadOnlyOfTheCurrentMastercopysProxy() = runTest {
+        fake.snapshot = running(head = 7, headTimestamp = 5_000)
+        gnosisPayDelay()
+        val first = Digest.of("ab".repeat(32))
+        queued(first.hex)
+        fake.codes[delay] = ProvenCode(DelayDeployments.proxyCode(retired), blockNumber = 7)
+        assertEquals(
+            DelayQueueReading.NotTheSafes(DelayGeneration.RETIRED, 7),
+            delays().queue(Network.GNOSIS, safe, delay, first),
+        )
+
+        fake.codes[delay] = ProvenCode(DelayDeployments.proxyCode(rolesMastercopy), blockNumber = 7)
+        assertEquals(
+            DelayQueueReading.NotTheSafes(null, 7),
+            delays().queue(Network.GNOSIS, safe, delay, first),
+        )
+    }
+
+    @Test
+    fun aQueueIsTheSafesOnlyWhenItsOwnerIsAtTheQueuesBlock() = runTest {
+        fake.snapshot = running(head = 7, headTimestamp = 5_000)
+        gnosisPayDelay(owner = member)
+        queued("ab".repeat(32))
+
+        assertEquals(
+            DelayQueueReading.NotTheSafes(DelayGeneration.CURRENT, 7),
+            delays().queue(Network.GNOSIS, safe, delay, Digest.of("ab".repeat(32))),
+        )
+    }
+
+    @Test
+    fun aQueueReadThatStraddlesTwoBlocksIsMadeAgain() = runTest {
+        fake.snapshot = running(head = 7, headTimestamp = 5_000)
+        gnosisPayDelay()
+        queued("ab".repeat(32))
+        // The head moves once, under the first read.
+        hashOfCall = { call -> if (call == 2) "0x" + "b2".repeat(32) else "0x" + "b1".repeat(32) }
+
+        assertTrue(delays().queue(Network.GNOSIS, safe, delay, Digest.of("ab".repeat(32))) is DelayQueueReading.Read)
+        // It moves under every read.
+        calls = 0
+        hashOfCall = { call -> "0x" + (call % 2).toString().repeat(64) }
+        assertEquals(
+            DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN),
+            delays().queue(Network.GNOSIS, safe, delay, Digest.of("ab".repeat(32))),
+        )
+
+        assertEquals(
+            DelayQueueReading.Unavailable(ReadUnavailable.NO_ENGINE),
+            delays().queue(Network.ETHEREUM, safe, delay, Digest.of("ab".repeat(32))),
+        )
+    }
+
+    @Test
+    fun aLongQueueIsSearchedUpToItsBound() = runTest {
+        fake.snapshot = running(head = 7, headTimestamp = 5_000)
+        gnosisPayDelay()
+        queued(*Array(DelayModules.MAX_QUEUE_READ + 3) { "ab".repeat(32) })
+
+        val read = delays().queue(Network.GNOSIS, safe, delay, Digest.of("cd".repeat(32))) as DelayQueueReading.Read
+        assertEquals(null, read.queue.entry)
+        assertEquals(DelayModules.MAX_QUEUE_READ, read.queue.searched)
+        assertEquals(false, read.queue.searchedAll)
     }
 
     @Test

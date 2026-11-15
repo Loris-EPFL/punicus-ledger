@@ -3,6 +3,8 @@ package eth.serotine.data.transfers
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrderUid
+import eth.serotine.domain.model.DelayTransfer
+import eth.serotine.domain.model.DelayTransferPlan
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
@@ -217,7 +219,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(wrap, unwrap), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":9,"""), "written as format 9: $text")
+        assertTrue(text.startsWith("""{"version":10,"""), "written as format 10: $text")
     }
 
     @Test
@@ -241,7 +243,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(cancellation), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":9,"""), "written as format 9: $text")
+        assertTrue(text.startsWith("""{"version":10,"""), "written as format 10: $text")
     }
 
     @Test
@@ -257,7 +259,36 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(call), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":9,"""), "written as format 9: $text")
+        assertTrue(text.startsWith("""{"version":10,"""), "written as format 10: $text")
+    }
+
+    @Test
+    fun aGnosisPayTransferQueuedAndExecutedIsRecordedWithWhatItMoves() = runTest {
+        val safe = Address.of("0x188416e7d22a45e1c5f69c628d9c05bee54bd4fb")
+        val delay = Address.of("0xfc85bcbc2ce6aec1be9d94c77c872269ebddb6c7")
+        val plan = DelayTransfer.of(safe, delay, listOf(delay), TransferAsset.Erc20Token(usdc), bob, UInt256.of(7))
+        val delayed = (plan as DelayTransferPlan.Planned).transfer
+        val queued = transfer(7).copy(action = SentAction.DelayQueue(delayed))
+        val executed = transfer(8).copy(action = SentAction.DelayExecution(delayed))
+
+        record().record(queued)
+        record().record(executed)
+
+        assertEquals(listOf(queued, executed), stored())
+        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
+        assertTrue(text.startsWith("""{"version":10,"""), "written as format 10: $text")
+    }
+
+    @Test
+    fun aDelayCallThatIsNoPlainTransferIsPassedOver() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        // To the Safe itself: never a transfer the Delay may queue.
+        val call = """"delay":{"kind":"queue","safe":"${alice.hex}","delay":"${bob.hex}",""" +
+            """"recipient":"${alice.hex}","amount":"1"}"""
+        val entry = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff",$call,"maxCost":"1","sentAt":1800000008}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":10,"transfers":[$entry]}""") }
+
+        assertEquals(emptyList(), stored())
     }
 
     @Test

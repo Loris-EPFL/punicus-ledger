@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.SigningRequest
@@ -271,6 +272,8 @@ class ActivityDetailViewModel(
                 fields += DetailField("Value", rows.amount(action.value, TransferAsset.Native))
                 fields += DetailField("For the dApp", "${action.dapp} (stated by the dApp, not verified)")
             }
+            is SentAction.DelayQueue -> fields += delayFields(action.transfer, names, rows)
+            is SentAction.DelayExecution -> fields += delayFields(action.transfer, names, rows)
         }
         fields += DetailField("Transaction hash", transfer.hash, DetailKind.HASH)
         fields += DetailField("Nonce", transfer.nonce.toString())
@@ -286,6 +289,16 @@ class ActivityDetailViewModel(
         DetailField("Safe transaction hash", "0x${request.hash.hex}", DetailKind.HASH),
         addressOf("Safe transaction to", request.tx.to, names),
     )
+
+    /** What a Gnosis Pay account's [transfer] through its Delay concerns: the account, the Delay, whom and what. */
+    private fun delayFields(transfer: DelayTransfer, names: Map<Address, String>, rows: ActivityRows) =
+        mutableListOf<DetailField>().apply {
+            this += addressOf("Gnosis Pay account", transfer.safe, names)
+            this += addressOf("Delay module", transfer.delay, names)
+            this += addressOf("To", transfer.recipient, names)
+            this += DetailField("Amount", rows.amount(transfer.amount, transfer.asset))
+            addContract("Token contract", transfer.asset, names)
+        }
 
     /** The contract of [asset], when it is a token, named by its symbol. */
     private fun MutableList<DetailField>.addContract(label: String, asset: TransferAsset, names: Map<Address, String>) {

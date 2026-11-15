@@ -13,6 +13,7 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
@@ -44,8 +45,11 @@ class DesktopOutboxTest {
         enclaveSecret(state, madeOn, mac, usable = { usable }, secretAt = { hardware })
 
     private fun assertNotLost(block: () -> Unit) {
-        val failure = assertFailsWith<IllegalStateException> { block() }
+        // Any failure first, then its kind: OutboxKeyGone is no IllegalStateException, so
+        // assertFailsWith<IllegalStateException> would reject it without saying why.
+        val failure = assertFails { block() }
         assertFalse(failure is OutboxKeyGone, "it may pass: the outbox stays unreadable, never deleted")
+        assertTrue(failure is IllegalStateException, "a failure that may pass, not $failure")
     }
 
     @AfterTest

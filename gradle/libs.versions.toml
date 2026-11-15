@@ -11,9 +11,12 @@
 # last 8.x line; 9.x changes the KMP Android target to its own plugin, a
 # migration for both repositories at once.
 agp = "8.13.2"
-# Kotlin 2.2.21 is the floor for the iOS target on Xcode 26 (Myotis's reason to
-# pin it); Compose Multiplatform 1.9.x pairs with Kotlin 2.2.20+.
-kotlin = "2.2.21"
+# Kotlin 2.4.21, Myotis's own pin since its #837: the engine library from Myotis 0.1.21
+# on carries Kotlin 2.4 metadata, which an older host compiler cannot read. (2.2.21 is
+# the floor for the iOS target on Xcode 26.) Compose Multiplatform stays 1.9.3, which
+# pairs with Kotlin 2.2.20+: Myotis's 1.12.2 needs AGP 9 here, a migration of its own,
+# and nothing in the engine library needs it.
+kotlin = "2.4.21"
 compose-multiplatform = "1.9.3"
 # The multiplatform lifecycle (ViewModel + collectAsStateWithLifecycle). 2.9.6 is
 # the version Compose Multiplatform 1.9.3's own artifacts depend on — pin the
@@ -39,7 +42,7 @@ material-icons-core = "1.7.3"
 # ACINQ's Kotlin Multiplatform binding of bitcoin-core's libsecp256k1: JNI on
 # Android and the JVM, cinterop on iOS — the native secp256k1 that
 # docs/keys-and-signing.md (rule 7) requires. 0.22.0 is the last release built with
-# Kotlin 2.2.21, our pin; 0.23.0 moves its stdlib to 2.3.
+# Kotlin 2.2.21; 0.23.0 moves its stdlib to 2.3.
 secp256k1-kmp = "0.22.0"
 # The persistent account list (eth.serotine.data.account): multiplatform file I/O and
 # JSON. kotlinx-io 0.8.2 and kotlinx-serialization 1.9.0 are the last releases built
@@ -68,7 +71,7 @@ myotis = "0.1.20"
 kotlincrypto = "0.8.0"
 # Ktor, the app's one HTTP client (CLAUDE.md, *Platform & language direction*), used only
 # for CoW Protocol's order API (docs/swaps.md, *What CoW learns*). 3.3.3 is the last
-# release built with Kotlin 2.2.21, our pin, and coroutines 1.10.2; 3.4.0 moves its stdlib
+# release built with Kotlin 2.2.21 and coroutines 1.10.2; 3.4.0 moves its stdlib
 # to 2.3. Engines: CIO (Ktor's own, no OkHttp beneath it) on Android and the desktop,
 # Darwin (NSURLSession) on iOS; neither retries a request behind the caller's back.
 ktor = "3.3.3"

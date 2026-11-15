@@ -10,15 +10,17 @@
 # own Android target plugin, com.android.kotlin.multiplatform.library, in place of
 # com.android.library + androidTarget(). It needs Gradle 9.6 or newer.
 agp = "9.5.1"
-# Kotlin 2.4.21: the Myotis engine library from 0.1.21 is built with it, and a host
-# compiler older than the library's metadata cannot read it. (2.2.21 was the floor
+# Kotlin 2.4.21: Myotis's own pin since its #837, and the engine library is built with
+# it from Myotis 0.1.21 on (the `myotis` pin below is still 0.1.20, which 2.4 reads);
+# a host compiler older than the library's metadata cannot read it. (2.2.21 was the floor
 # for the iOS target on Xcode 26.) Compose Multiplatform 1.12.x pairs with it, and
 # brings androidx Compose 1.12, which needs AGP 9.1+ and compileSdk 37.
 kotlin = "2.4.21"
 compose-multiplatform = "1.12.2"
 # The multiplatform lifecycle (ViewModel + collectAsStateWithLifecycle). 2.9.6 is
-# the version Compose Multiplatform 1.12.2's own artifacts depend on (as 1.9.3's
-# did) — pin the same so the two never resolve apart.
+# the JetBrains lifecycle Compose Multiplatform 1.12.2's own artifacts depend on (as
+# 1.9.3's did) — pin the same so the two never resolve apart. On Android, Compose's
+# androidx artifacts bring androidx lifecycle 2.11, which the Android variant resolves.
 lifecycle = "2.9.6"
 activity-compose = "1.9.3"
 # QR code scanning on Android (Connect a dApp): CameraX shows the camera and hands its frames to
@@ -45,8 +47,8 @@ material-icons-core = "1.7.3"
 secp256k1-kmp = "0.22.0"
 # The persistent account list (eth.serotine.data.account): multiplatform file I/O and
 # JSON. kotlinx-io 0.8.2 is built for Kotlin 2.2, which the 2.4 compiler reads.
-# kotlinx-serialization 1.12.0 is the release Myotis's iOS module (from 0.1.21)
-# depends on, so every target resolves the same one; the serialization compiler
+# kotlinx-serialization 1.12.0 is the release Myotis's iOS module depends on from
+# 0.1.21 (the engine pin below moves there next), so every target resolves the same one; the serialization compiler
 # plugin is Kotlin's own, at the Kotlin pin.
 kotlinx-io = "0.8.2"
 kotlinx-serialization = "1.12.0"

@@ -259,7 +259,7 @@ class VerifiedDelayModulesTest {
     }
 
     @Test
-    fun theQueueIsReadFromItsNextEntryAtOneBlock() = runTest {
+    fun theQueueIsSearchedFromItsNextEntryForTheCallsHashAtOneBlock() = runTest {
         fake.snapshot = running(head = 7, headTimestamp = 5_000)
         gnosisPayDelay()
         val first = "ab".repeat(32)
@@ -273,16 +273,18 @@ class VerifiedDelayModulesTest {
                     queueNonce = 4,
                     cooldownSeconds = 90_000,
                     expirationSeconds = 111_600,
-                    entries = listOf(
-                        DelayEntry(2, Digest.of(first), 1_002),
-                        DelayEntry(3, Digest.of(second), 1_003),
-                    ),
+                    entry = DelayEntry(3, Digest.of(second), 1_003),
+                    searched = 2,
                 ),
                 blockNumber = 7,
                 headTime = 5_000,
             ),
-            delays().queue(Network.GNOSIS, delay),
+            delays().queue(Network.GNOSIS, delay, Digest.of(second)),
         )
+        // Not there: the whole queue searched, nothing found.
+        val missing = delays().queue(Network.GNOSIS, delay, Digest.of("ef".repeat(32))) as DelayQueueReading.Read
+        assertEquals(null, missing.queue.entry)
+        assertTrue(missing.queue.searchedAll)
         // cast calldata "txHash(uint256)" 2
         assertEquals("427e232f" + word("2"), VerifiedDelayModules.txHash(2).toHex())
     }
@@ -291,28 +293,36 @@ class VerifiedDelayModulesTest {
     fun aQueueIsReadOnlyOfTheCurrentMastercopysProxy() = runTest {
         fake.snapshot = running(head = 7, headTimestamp = 5_000)
         gnosisPayDelay()
-        queued("ab".repeat(32))
+        val first = Digest.of("ab".repeat(32))
+        queued(first.hex)
         fake.codes[delay] = ProvenCode(DelayDeployments.proxyCode(retired), blockNumber = 7)
-        assertEquals(DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN), delays().queue(Network.GNOSIS, delay))
+        assertEquals(
+            DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN),
+            delays().queue(Network.GNOSIS, delay, first),
+        )
 
         fake.codes[delay] = ProvenCode(DelayDeployments.proxyCode(rolesMastercopy), blockNumber = 7)
-        assertEquals(DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN), delays().queue(Network.GNOSIS, delay))
+        assertEquals(
+            DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN),
+            delays().queue(Network.GNOSIS, delay, first),
+        )
 
         assertEquals(
             DelayQueueReading.Unavailable(ReadUnavailable.NO_ENGINE),
-            delays().queue(Network.ETHEREUM, delay),
+            delays().queue(Network.ETHEREUM, delay, first),
         )
     }
 
     @Test
-    fun aLongQueueIsReadUpToItsBound() = runTest {
+    fun aLongQueueIsSearchedUpToItsBound() = runTest {
         fake.snapshot = running(head = 7, headTimestamp = 5_000)
         gnosisPayDelay()
         queued(*Array(DelayModules.MAX_QUEUE_READ + 3) { "ab".repeat(32) })
 
-        val read = delays().queue(Network.GNOSIS, delay) as DelayQueueReading.Read
-        assertEquals(DelayModules.MAX_QUEUE_READ, read.queue.entries.size)
-        assertEquals(2L + DelayModules.MAX_QUEUE_READ + 3, read.queue.queueNonce)
+        val read = delays().queue(Network.GNOSIS, delay, Digest.of("cd".repeat(32))) as DelayQueueReading.Read
+        assertEquals(null, read.queue.entry)
+        assertEquals(DelayModules.MAX_QUEUE_READ, read.queue.searched)
+        assertEquals(false, read.queue.searchedAll)
     }
 
     @Test

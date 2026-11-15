@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
@@ -59,7 +60,7 @@ class ObserveGnosisPayTest {
             return readings.getValue(module)
         }
 
-        override suspend fun queue(network: Network, delay: Address): DelayQueueReading =
+        override suspend fun queue(network: Network, delay: Address, hash: Digest): DelayQueueReading =
             DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
     }
 

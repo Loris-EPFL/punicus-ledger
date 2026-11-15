@@ -24,20 +24,21 @@ interface DelayModules {
     fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading>
 
     /**
-     * The queue of the Delay at [delay] on [network] as it is now (docs/gnosis-pay.md, *Sending*):
-     * its next entry to execute and its next to be added, its cooldown and expiration, and each
-     * entry from the next to execute on, at most [MAX_QUEUE_READ] of them, with its hash
-     * (`txHash(n)`) and the time it was queued (`txCreatedAt(n)`), all read with verified calls at
-     * one block; and the time of the verified head they were read at, which is when "now" is for
-     * the cooldown. Read fresh at every call, never from a reading kept before. Blocks on the
-     * engine, bounded by it; never throws. A [network] no adapter serves here is refused
-     * ([ReadUnavailable.NO_ENGINE]).
+     * Where the call of hash [hash] stands in the queue of the Delay at [delay] on [network], as
+     * it is now (docs/gnosis-pay.md, *Sending*): the queue's next entry to execute and its next to
+     * be added, its cooldown and expiration, and the first entry of that hash from the next to
+     * execute on, searched through at most [MAX_QUEUE_READ] entries, with the time it was queued;
+     * all read with verified calls at one block, and the time of the verified head they were
+     * read at, which is when "now" is for the cooldown. Only a Delay proven to be a proxy of the
+     * current mastercopy is read. Read fresh at every call, never from a reading kept before.
+     * Blocks on the engine, bounded by it; never throws. A [network] no adapter serves here is
+     * refused ([ReadUnavailable.NO_ENGINE]).
      */
-    suspend fun queue(network: Network, delay: Address): DelayQueueReading
+    suspend fun queue(network: Network, delay: Address, hash: Digest): DelayQueueReading
 
     companion object {
-        /** Entries read past the next to execute: a queue longer than this is read up to here. */
-        const val MAX_QUEUE_READ = 16
+        /** Entries searched from the next to execute on: an entry further back is not looked for. */
+        const val MAX_QUEUE_READ = 8
     }
 }
 
@@ -52,24 +53,28 @@ sealed interface DelayQueueReading {
 }
 
 /**
- * A Delay's queue at one block: [txNonce], the next entry to execute, and [queueNonce], the next to
- * be added; [cooldownSeconds] and [expirationSeconds] (0: for ever) as they are at that block; and
- * [entries], from [txNonce] on in order, at most [DelayModules.MAX_QUEUE_READ].
+ * A Delay's queue at one block, as far as one call's place in it goes: [txNonce], the next entry
+ * to execute, and [queueNonce], the next to be added; [cooldownSeconds] and [expirationSeconds]
+ * (0: for ever) as they are at that block; [entry], the first entry of the call's hash from
+ * [txNonce] on, or null when none was found among the [searched] entries from [txNonce] on.
  */
 data class DelayQueue(
     val txNonce: Long,
     val queueNonce: Long,
     val cooldownSeconds: Long,
     val expirationSeconds: Long,
-    val entries: List<DelayEntry>,
+    val entry: DelayEntry?,
+    val searched: Int,
 ) {
     init {
         require(txNonce in 0..queueNonce) { "a Delay's next entry is within its queue" }
-        require(entries.map { it.nonce } == (txNonce until txNonce + entries.size).toList()) {
-            "a queue's entries are read in order from the next to execute"
-        }
-        require(entries.size <= queueNonce - txNonce) { "a queue holds no entry past its end" }
+        require(searched in 0..(queueNonce - txNonce)) { "a queue holds no entry past its end" }
+        require(entry == null || entry.nonce == txNonce + searched - 1) { "the search ends at the entry found" }
     }
+
+    /** Whether every entry from [txNonce] on was searched. */
+    val searchedAll: Boolean
+        get() = searched.toLong() == queueNonce - txNonce
 }
 
 /** Entry [nonce] of a Delay's queue: the [hash] of the call it holds, queued at [createdAt] (unix seconds). */

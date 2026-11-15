@@ -79,31 +79,34 @@ class VerifiedDelayModules internal constructor(
     ): EngineReading<DelayFinding>? {
         for (attempt in 1..READ_TRIES) {
             currentCoroutineContext().ensureActive()
-            when (val read = Getters(chain, module).read()) {
-                Read.Straddled -> Unit
-                Read.NoAnswer -> if (attempt < READ_TRIES) delay(RETRY_PAUSE)
-                Read.NotADelaysAnswer -> return null
-                Read.Refused -> return REFUSED
-                is Read.At ->
-                    return EngineReading.Proven(finding(read, safe, module, generation), read.block, read.hash)
-                is Read.Queue -> error("the settings' read gives no queue")
+            when (val read = Getters(chain, module).settings()) {
+                is Read.Done ->
+                    return EngineReading.Proven(finding(read.value, safe, module, generation), read.block, read.hash)
+                is Read.Stopped -> when (read.ended) {
+                    Ended.STRADDLED -> Unit
+                    Ended.NO_ANSWER -> if (attempt < READ_TRIES) delay(RETRY_PAUSE)
+                    Ended.NOT_A_DELAYS_ANSWER -> return null
+                    Ended.REFUSED -> return REFUSED
+                }
             }
         }
         return null
     }
 
-    /** What [read] makes of the Delay at [module]: [safe]'s own when its avatar, target and owner are [safe]. */
-    private fun finding(read: Read.At, safe: Address, module: Address, generation: DelayGeneration): DelayFinding {
-        if (read.avatar != safe || read.target != safe || read.owner != safe) return DelayFinding.NotWired(generation)
+    /** What [settings] make of the Delay at [module]: [safe]'s own when its avatar, target and owner are [safe]. */
+    private fun finding(settings: Settings, safe: Address, module: Address, generation: DelayGeneration): DelayFinding {
+        if (settings.avatar != safe || settings.target != safe || settings.owner != safe) {
+            return DelayFinding.NotWired(generation)
+        }
         return DelayFinding.Wired(
             DelayModule(
                 module,
                 generation,
-                read.cooldown,
-                read.expiration,
-                read.txNonce,
-                read.queueNonce,
-                read.members,
+                settings.cooldown,
+                settings.expiration,
+                settings.txNonce,
+                settings.queueNonce,
+                settings.members,
             ),
         )
     }
@@ -118,43 +121,46 @@ class VerifiedDelayModules internal constructor(
         private var hash: String? = null
         private var first = true
 
-        /** How the read ended early; set once, with a null from the step that ended it. */
-        var ended: Read = Read.NoAnswer
-            private set
+        /** How the read ended early; set with the null of the step that ended it. */
+        private var ended: Ended = Ended.NO_ANSWER
 
-        private fun <T> end(read: Read): T? {
-            ended = read
+        private fun <T> end(why: Ended): T? {
+            ended = why
             return null
         }
+
+        private fun <T> done(value: T): Read<T> = Read.Done(value, checkNotNull(block), hash)
+
+        private val stopped: Read<Nothing> get() = Read.Stopped(ended)
 
         /** What [data] returned, at the one block of this read. */
         private fun answer(data: ByteArray): String? {
             val returned = when (val outcome = chain.call(module, data)) {
-                null -> return end(Read.NoAnswer)
+                null -> return end(Ended.NO_ANSWER)
                 is CallOutcome.Returned -> outcome
                 // A pinned Delay's getters never revert.
-                is CallOutcome.Reverted -> return end(Read.NotADelaysAnswer)
-                CallOutcome.Refused -> return end(Read.Refused)
+                is CallOutcome.Reverted -> return end(Ended.NOT_A_DELAYS_ANSWER)
+                CallOutcome.Refused -> return end(Ended.REFUSED)
             }
-            val at = returned.blockNumber ?: return end(Read.NoAnswer)
+            val at = returned.blockNumber ?: return end(Ended.NO_ANSWER)
             if (first) {
                 first = false
                 block = at
                 hash = returned.blockHash
             } else if (block != at || hash != returned.blockHash) {
-                return end(Read.Straddled)
+                return end(Ended.STRADDLED)
             }
             return returned.hex
         }
 
         private fun address(data: ByteArray): Address? {
             val hex = answer(data) ?: return null
-            return Abi.address(hex) ?: end(Read.NotADelaysAnswer)
+            return Abi.address(hex) ?: end(Ended.NOT_A_DELAYS_ANSWER)
         }
 
         private fun number(data: ByteArray): Long? {
             val hex = answer(data) ?: return null
-            return Abi.uint256(hex)?.toLongOrNull() ?: end(Read.NotADelaysAnswer)
+            return Abi.uint256(hex)?.toLongOrNull() ?: end(Ended.NOT_A_DELAYS_ANSWER)
         }
 
         /**
@@ -164,114 +170,115 @@ class VerifiedDelayModules internal constructor(
          */
         private fun members(): List<Address>? {
             val hex = answer(getModulesPaginated(SENTINEL, MAX_MEMBERS + 1)) ?: return null
-            val page = Abi.addressPage(hex) ?: return end(Read.NotADelaysAnswer)
+            val page = Abi.addressPage(hex) ?: return end(Ended.NOT_A_DELAYS_ANSWER)
             val members = page.addresses
             if (members.size > MAX_MEMBERS || members.toSet().size != members.size || page.next != SENTINEL) {
-                return end(Read.NotADelaysAnswer)
+                return end(Ended.NOT_A_DELAYS_ANSWER)
             }
             return members
         }
 
         /**
-         * The queue from its next entry on, at most [DelayModules.MAX_QUEUE_READ] entries, each its
-         * `txHash(n)` and `txCreatedAt(n)`, with the nonces and periods, all at the one block.
+         * Where the call of hash [wanted] stands: the nonces and periods, then `txHash(n)` from the
+         * next entry on until the first of that hash, at most [DelayModules.MAX_QUEUE_READ] of them,
+         * and that one's `txCreatedAt(n)`, all at the one block.
          */
-        fun queue(): Read {
-            val txNonce = number(TX_NONCE) ?: return ended
-            val queueNonce = number(QUEUE_NONCE) ?: return ended
-            if (txNonce > queueNonce) return Read.NotADelaysAnswer
-            val cooldown = number(TX_COOLDOWN) ?: return ended
-            val expiration = number(TX_EXPIRATION) ?: return ended
+        fun queue(wanted: Digest): Read<DelayQueue> {
+            val txNonce = number(TX_NONCE) ?: return stopped
+            val queueNonce = number(QUEUE_NONCE) ?: return stopped
+            // A pinned Delay keeps its next entry within its queue.
+            if (txNonce > queueNonce) return Read.Stopped(Ended.NOT_A_DELAYS_ANSWER)
+            val cooldown = number(TX_COOLDOWN) ?: return stopped
+            val expiration = number(TX_EXPIRATION) ?: return stopped
             val last = minOf(queueNonce, txNonce + DelayModules.MAX_QUEUE_READ)
-            val entries = (txNonce until last).map { nonce ->
-                val hash = answer(txHash(nonce))?.let { Digest.parse(it) ?: return Read.NotADelaysAnswer } ?: return ended
-                val createdAt = number(txCreatedAt(nonce)) ?: return ended
-                DelayEntry(nonce, hash, createdAt)
+            var nonce = txNonce
+            while (nonce < last) {
+                val hex = answer(txHash(nonce)) ?: return stopped
+                val entryHash = Digest.parse(hex) ?: return Read.Stopped(Ended.NOT_A_DELAYS_ANSWER)
+                if (entryHash == wanted) {
+                    val createdAt = number(txCreatedAt(nonce)) ?: return stopped
+                    val entry = DelayEntry(nonce, entryHash, createdAt)
+                    val searched = (nonce - txNonce + 1).toInt()
+                    return done(DelayQueue(txNonce, queueNonce, cooldown, expiration, entry, searched))
+                }
+                nonce++
             }
-            return Read.Queue(
-                DelayQueue(txNonce, queueNonce, cooldown, expiration, entries),
-                checkNotNull(block),
-                hash,
-            )
+            return done(DelayQueue(txNonce, queueNonce, cooldown, expiration, null, (last - txNonce).toInt()))
         }
 
-        fun read(): Read {
-            val avatar = address(AVATAR) ?: return ended
-            val target = address(TARGET) ?: return ended
-            val owner = address(OWNER) ?: return ended
-            val cooldown = number(TX_COOLDOWN) ?: return ended
-            val expiration = number(TX_EXPIRATION) ?: return ended
-            val txNonce = number(TX_NONCE) ?: return ended
-            val queueNonce = number(QUEUE_NONCE) ?: return ended
+        /** The Delay's settings and members. */
+        fun settings(): Read<Settings> {
+            val avatar = address(AVATAR) ?: return stopped
+            val target = address(TARGET) ?: return stopped
+            val owner = address(OWNER) ?: return stopped
+            val cooldown = number(TX_COOLDOWN) ?: return stopped
+            val expiration = number(TX_EXPIRATION) ?: return stopped
+            val txNonce = number(TX_NONCE) ?: return stopped
+            val queueNonce = number(QUEUE_NONCE) ?: return stopped
             // A pinned Delay keeps its next entry within its queue.
-            if (txNonce > queueNonce) return Read.NotADelaysAnswer
-            val members = members() ?: return ended
-            return Read.At(
-                avatar,
-                target,
-                owner,
-                cooldown,
-                expiration,
-                txNonce,
-                queueNonce,
-                members,
-                checkNotNull(block),
-                hash,
-            )
+            if (txNonce > queueNonce) return Read.Stopped(Ended.NOT_A_DELAYS_ANSWER)
+            val members = members() ?: return stopped
+            return done(Settings(avatar, target, owner, cooldown, expiration, txNonce, queueNonce, members))
         }
     }
 
-    /** How one read of the getters ended. */
-    private sealed interface Read {
-        data class At(
-            val avatar: Address,
-            val target: Address,
-            val owner: Address,
-            val cooldown: Long,
-            val expiration: Long,
-            val txNonce: Long,
-            val queueNonce: Long,
-            val members: List<Address>,
-            val block: Long,
-            val hash: String?,
-        ) : Read
+    /** A Delay's settings, as its getters answer them at one block. */
+    private data class Settings(
+        val avatar: Address,
+        val target: Address,
+        val owner: Address,
+        val cooldown: Long,
+        val expiration: Long,
+        val txNonce: Long,
+        val queueNonce: Long,
+        val members: List<Address>,
+    )
 
-        /** The queue as [DelayModules.queue] gives it, at [block]. */
-        data class Queue(val queue: DelayQueue, val block: Long, val hash: String?) : Read
+    /** How one read of the getters ended: [Done] with what it read at [Done.block], or [Stopped]. */
+    private sealed interface Read<out T> {
+        data class Done<T>(val value: T, val block: Long, val hash: String?) : Read<T>
+        data class Stopped(val ended: Ended) : Read<Nothing>
+    }
 
+    /** Why a read of the getters stopped short. */
+    private enum class Ended {
         /** Two calls answered at two blocks: read again. */
-        data object Straddled : Read
+        STRADDLED,
 
         /** A call gave no verified answer this time. */
-        data object NoAnswer : Read
+        NO_ANSWER,
 
         /** A call answered what no pinned Delay's getter answers: unproven, not read again. */
-        data object NotADelaysAnswer : Read
+        NOT_A_DELAYS_ANSWER,
 
         /** The engine refuses the calls on this build. */
-        data object Refused : Read
+        REFUSED,
     }
 
     /**
-     * The queue of the Delay at [delay], read fresh: only a proxy of the current mastercopy, its code
-     * proven first, is read (owner's decisions, 2026-11-15: nothing is sent through another); the
-     * getters at one block, read again at once while they straddle two or a call gives no answer,
-     * [READ_TRIES] reads in all; the head's time read before them.
+     * Where the call of hash [hash] stands in the queue of the Delay at [delay], read fresh: only a
+     * proxy of the current mastercopy, its code proven first, is read (owner's decisions,
+     * 2026-11-15: nothing is sent through another); the getters at one block, read again at once
+     * while they straddle two or a call gives no answer, [READ_TRIES] reads in all; the head's time
+     * read before them, so that a cooldown is never judged over before it is, and an expiration
+     * judged with the margin the use case keeps.
      */
-    override suspend fun queue(network: Network, delay: Address): DelayQueueReading {
+    override suspend fun queue(network: Network, delay: Address, hash: Digest): DelayQueueReading {
         if (network != served) return DelayQueueReading.Unavailable(ReadUnavailable.NO_ENGINE)
         return chain.askVerified(dispatcher, DelayQueueReading::Unavailable) { verified ->
             val unproven = DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
-            val headTime = (verified.snapshot() as? EngineSnapshot.Running)?.headTimestamp ?: return@askVerified unproven
+            val headTime = (verified.snapshot() as? EngineSnapshot.Running)?.headTimestamp
+                ?: return@askVerified unproven
             val code = verified.proveCode(delay) ?: return@askVerified unproven
             if (proxies[code.codeHex.lowercase()] != DelayGeneration.CURRENT) return@askVerified unproven
-            for (attempt in 1..READ_TRIES) {
-                when (val read = Getters(verified, delay).queue()) {
-                    is Read.Queue -> return@askVerified DelayQueueReading.Read(read.queue, read.block, headTime)
-                    Read.Straddled, Read.NoAnswer -> Unit
-                    Read.NotADelaysAnswer -> return@askVerified unproven
-                    Read.Refused -> return@askVerified DelayQueueReading.Unavailable(ReadUnavailable.REFUSED)
-                    is Read.At -> error("the queue's read gives no settings")
+            repeat(READ_TRIES) {
+                when (val read = Getters(verified, delay).queue(hash)) {
+                    is Read.Done -> return@askVerified DelayQueueReading.Read(read.value, read.block, headTime)
+                    is Read.Stopped -> when (read.ended) {
+                        Ended.STRADDLED, Ended.NO_ANSWER -> Unit
+                        Ended.NOT_A_DELAYS_ANSWER -> return@askVerified unproven
+                        Ended.REFUSED -> return@askVerified DelayQueueReading.Unavailable(ReadUnavailable.REFUSED)
+                    }
                 }
             }
             unproven

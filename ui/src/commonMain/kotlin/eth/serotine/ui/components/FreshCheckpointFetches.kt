@@ -46,27 +46,43 @@ class FreshCheckpointFetches(
 
     /** Asks for [network]'s fresh checkpoint; [useUnconfirmed] is the user's "Use it anyway". One at a time. */
     fun fetch(network: Network, useUnconfirmed: Boolean) {
-        val current = fetches.value[network]
-        if (current == CheckpointFetchState.Fetching || current == CheckpointFetchState.Applied) return
-        fetches.update { it + (network to CheckpointFetchState.Fetching) }
+        // The check and the mark in one update: two callers can never both start a fetch.
+        var starts = false
+        fetches.update { current ->
+            val state = current[network]
+            starts = state != CheckpointFetchState.Fetching && state != CheckpointFetchState.Applied
+            if (starts) current + (network to CheckpointFetchState.Fetching) else current
+        }
+        if (!starts) return
         scope.launch {
-            val outcome = try {
-                askServers(network, useUnconfirmed)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                FreshCheckpoint.Refused("the checkpoint servers could not be asked (${e.message ?: e})")
-            }
-            when (outcome) {
-                is FreshCheckpoint.Applied -> {
-                    fetches.update { it + (network to CheckpointFetchState.Applied) }
-                    onApplied(network, applied(network, outcome))
+            var said = false
+            try {
+                val outcome = try {
+                    askServers(network, useUnconfirmed)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    FreshCheckpoint.Refused(
+                        "the checkpoint servers could not be asked" + e.message?.let { " ($it)" }.orEmpty(),
+                    )
                 }
-                is FreshCheckpoint.Refused -> {
-                    val refused = CheckpointFetchState.Refused(outcome.reason, outcome.unconfirmed)
-                    fetches.update { it + (network to refused) }
+                when (outcome) {
+                    is FreshCheckpoint.Applied -> {
+                        fetches.update { it + (network to CheckpointFetchState.Applied) }
+                        onApplied(network, applied(network, outcome))
+                    }
+                    is FreshCheckpoint.Refused -> {
+                        val refused = CheckpointFetchState.Refused(outcome.reason, outcome.unconfirmed)
+                        fetches.update { it + (network to refused) }
+                    }
+                    FreshCheckpoint.NotRefused -> fetches.update { it - network }
                 }
-                FreshCheckpoint.NotRefused -> fetches.update { it - network }
+                said = true
+            } finally {
+                // Ended without an outcome (cancelled, or an Error): never left "Fetching" for good.
+                if (!said) {
+                    fetches.update { if (it[network] == CheckpointFetchState.Fetching) it - network else it }
+                }
             }
         }
     }
@@ -76,8 +92,9 @@ class FreshCheckpointFetches(
      * goes. A fetch still running stays, and says its outcome when it ends.
      */
     fun settled(network: Network) {
-        if (fetches.value[network].let { it != null && it != CheckpointFetchState.Fetching }) {
-            fetches.update { it - network }
+        fetches.update { current ->
+            val state = current[network]
+            if (state != null && state != CheckpointFetchState.Fetching) current - network else current
         }
     }
 

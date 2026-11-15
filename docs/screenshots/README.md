@@ -25,6 +25,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 20 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
+| [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 10 |
 | [Send from another wallet](#handoff) | `handoff/` | 18 |
 | [Import recovery phrase](#mnemonic-import) | `mnemonic-import/` | 12 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
@@ -393,6 +394,22 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="derive-account/added-dark.png"><img src="derive-account/added-dark.png" width="206" alt="added-dark"></a>
 <a href="derive-account/unavailable.png"><img src="derive-account/unavailable.png" width="206" alt="unavailable"></a>
 <a href="derive-account/loading.png"><img src="derive-account/loading.png" width="206" alt="loading"></a>
+
+<a name="gnosis-pay"></a>
+## Gnosis Pay account
+
+`gnosis-pay/`, 10 states: `overview`, `overview-dark`, `queued`, `execute-refused`, `watched`, `compose`, `compose-error`, `review`, `loading`, `unavailable`
+
+<a href="gnosis-pay/overview.png"><img src="gnosis-pay/overview.png" width="206" alt="overview"></a>
+<a href="gnosis-pay/overview-dark.png"><img src="gnosis-pay/overview-dark.png" width="206" alt="overview-dark"></a>
+<a href="gnosis-pay/queued.png"><img src="gnosis-pay/queued.png" width="206" alt="queued"></a>
+<a href="gnosis-pay/execute-refused.png"><img src="gnosis-pay/execute-refused.png" width="206" alt="execute-refused"></a>
+<a href="gnosis-pay/watched.png"><img src="gnosis-pay/watched.png" width="206" alt="watched"></a>
+<a href="gnosis-pay/compose.png"><img src="gnosis-pay/compose.png" width="206" alt="compose"></a>
+<a href="gnosis-pay/compose-error.png"><img src="gnosis-pay/compose-error.png" width="206" alt="compose-error"></a>
+<a href="gnosis-pay/review.png"><img src="gnosis-pay/review.png" width="206" alt="review"></a>
+<a href="gnosis-pay/loading.png"><img src="gnosis-pay/loading.png" width="206" alt="loading"></a>
+<a href="gnosis-pay/unavailable.png"><img src="gnosis-pay/unavailable.png" width="206" alt="unavailable"></a>
 
 <a name="handoff"></a>
 ## Send from another wallet

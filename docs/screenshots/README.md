@@ -10,7 +10,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 
 | Screen | Folder | States |
 |---|---|---|
-| [Account detail](#account-detail) | `account-detail/` | 44 |
+| [Account detail](#account-detail) | `account-detail/` | 45 |
 | [Accounts](#accounts) | `accounts/` | 41 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 11 |
 | [Add on networks (dialog)](#add-on-networks-dialog) | `add-on-networks-dialog/` | 5 |
@@ -67,7 +67,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="account-detail"></a>
 ## Account detail
 
-`account-detail/`, 44 states: `assets`, `assets-dark`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`
+`account-detail/`, 45 states: `assets`, `assets-dark`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`
 
 <a href="account-detail/assets.png"><img src="account-detail/assets.png" width="206" alt="assets"></a>
 <a href="account-detail/assets-dark.png"><img src="account-detail/assets-dark.png" width="206" alt="assets-dark"></a>
@@ -86,6 +86,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="account-detail/loading.png"><img src="account-detail/loading.png" width="206" alt="loading"></a>
 <a href="account-detail/list-unavailable.png"><img src="account-detail/list-unavailable.png" width="206" alt="list-unavailable"></a>
 <a href="account-detail/ens-name-moved.png"><img src="account-detail/ens-name-moved.png" width="206" alt="ens-name-moved"></a>
+<a href="account-detail/ens-names.png"><img src="account-detail/ens-names.png" width="206" alt="ens-names"></a>
 <a href="account-detail/activity.png"><img src="account-detail/activity.png" width="206" alt="activity"></a>
 <a href="account-detail/activity-dark.png"><img src="account-detail/activity-dark.png" width="206" alt="activity-dark"></a>
 <a href="account-detail/waiting-swap.png"><img src="account-detail/waiting-swap.png" width="206" alt="waiting-swap"></a>

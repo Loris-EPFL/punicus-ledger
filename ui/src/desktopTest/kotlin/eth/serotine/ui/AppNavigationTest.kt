@@ -385,6 +385,7 @@ class AppNavigationTest {
         nfts = FakeNftContracts(),
         ensNfts = FakeEnsNfts(),
         addedNfts = MemoryAddedNfts(),
+        seenEnsNames = MemorySeenEnsNames(),
         safeTxQueue = safeTxQueue,
         signingRequests = codec,
         signatureRecovery = recovery,

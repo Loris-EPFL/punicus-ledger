@@ -24,11 +24,15 @@ import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAmountsHidden
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
+import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNetworkLive
+import eth.serotine.domain.usecase.AccountNames
+import eth.serotine.domain.usecase.AddEnsName
 import eth.serotine.domain.usecase.AddNft
+import eth.serotine.domain.usecase.EnsNameAddition
 import eth.serotine.domain.usecase.NftAddition
 import eth.serotine.domain.usecase.NftHoldings
 import eth.serotine.domain.usecase.RemoveAddedNft
@@ -151,6 +155,10 @@ class AccountDetailViewModel(
     observeNfts: ObserveNfts,
     /** Adds an NFT by contract and token id, once the account is proven to hold it. */
     private val proveAndAddNft: AddNft,
+    /** Adds an ENS name by the name alone, once the account is proven to hold it (#274). */
+    private val addEnsName: AddEnsName,
+    /** The ENS names that point to the account, its primary name first (#274): shown under its header. */
+    observeAccountNames: ObserveAccountNames,
     /** Takes an added NFT off the account's list. */
     private val removeAddedNft: RemoveAddedNft,
     /**
@@ -263,6 +271,9 @@ class AccountDetailViewModel(
             }
         }
 
+    /** The names that point to the account (#274); none until read. */
+    private val accountNames = observeAccountNames(account).onStart { emit(AccountNames.NONE) }
+
     /** A Safe's queue, with the tokens its transfers are shown in; none for any other account. */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val queue = isSafe.flatMapLatest { isSafe ->
@@ -360,14 +371,14 @@ class AccountDetailViewModel(
             safe,
             queue,
             combine(
-                combine(view, ensName, ::Pair),
+                combine(view, ensName, accountNames, ::Triple),
                 activityState,
                 combine(networkOn, networkBlocked, swapVenue, ::Triple),
                 ::Triple,
             ),
         ) { lookup, value, safe, queue, (named, activity, networkState) ->
             val (networkOn, networkBlocked, swapVenue) = networkState
-            val (view, ensName) = named
+            val (view, ensName, pointing) = named
             val rows = rows(value, off = network.displayName.takeUnless { networkOn })
             val state = when (lookup) {
                 is AccountLookup.Found -> AccountDetailUiState.Ready(
@@ -398,6 +409,7 @@ class AccountDetailViewModel(
                         ?.let { "${it.state.threshold}/${it.state.owners.size}" },
                     queue = queueOf(queue, safe),
                     nameNote = ensNameNote(lookup.account, ensName),
+                    ensNames = ensNamesLine(pointing, lookup.account.ensName),
                     // Not the last one read while another tab is shown: that tab's state says Loading.
                     activity = if (view.segment == DetailSegment.ACTIVITY) {
                         activity.ordered(view.activityOrder)
@@ -501,11 +513,22 @@ class AccountDetailViewModel(
 
     /**
      * Adds the token [tokenId] (decimal, or `0x` hex) of the contract at [contract], once the account is
-     * proven to hold it; the dialog says why when nothing was added, and closes when it was.
+     * proven to hold it; the dialog says why when nothing was added, and closes when it was. A [contract]
+     * that is no address and holds a dot is an ENS name ("alice.eth", "0xbow.eth" too), added by the
+     * name alone (#274); a token id typed beside it is refused, never dropped.
      */
     fun addNft(contract: String, tokenId: String) {
         // Parsed as typed text is: a mixed-case address must match its EIP-55 checksum (Address's KDoc).
         val typed = Eip55.parse(contract)
+        // The address first, then the dot, as ResolveRecipient takes a name: an address never holds a dot.
+        if (typed == AddressInput.NotAnAddress && '.' in contract) {
+            if (tokenId.isNotBlank()) {
+                addingNft.value = AddNftForm(error = "Leave the token id empty for an ENS name.")
+            } else {
+                addByName(contract.trim())
+            }
+            return
+        }
         val address = (typed as? AddressInput.Valid)?.address
         val id = parseTokenId(tokenId)
         val error = when {
@@ -536,6 +559,41 @@ class AccountDetailViewModel(
             }
             if (outcome is NftAddition.Added) {
                 view.update { it.copy(message = "NFT added. It is listed once this account's NFTs are read.") }
+            }
+        }
+    }
+
+    /** Adds the ENS name [name], once the account is proven to hold it, as [addNft] adds a token. */
+    private fun addByName(name: String) {
+        addingNft.value = AddNftForm(busy = true)
+        addingJob?.cancel()
+        addingJob = viewModelScope.launch {
+            val outcome = addEnsName(account, name)
+            addingNft.value = when (outcome) {
+                EnsNameAddition.Added -> null
+                EnsNameAddition.AlreadyAdded -> AddNftForm(error = "That name is kept for this account already.")
+                EnsNameAddition.NotAName -> AddNftForm(
+                    error = if (account.network.ensNames) {
+                        "That is not an ENS name: labels and dots, like alice.eth."
+                    } else {
+                        "${account.network.displayName} has no ENS names: add the NFT by its contract and token id."
+                    },
+                )
+                EnsNameAddition.NotHeld -> AddNftForm(
+                    error = "Nothing verified says this account holds ${name.trim().lowercase()}." +
+                        if (account.network == Network.SEPOLIA) {
+                            " A name registered on ENSv2 is added only by its contract and token id."
+                        } else {
+                            ""
+                        },
+                )
+                is EnsNameAddition.Unavailable -> AddNftForm(
+                    error = "Whether this account holds it cannot be proven right now. Try again in a moment.",
+                )
+                EnsNameAddition.NotSaved -> AddNftForm(error = "The name could not be saved. Nothing was added.")
+            }
+            if (outcome == EnsNameAddition.Added) {
+                view.update { it.copy(message = "Name added. It is listed once this account's NFTs are read.") }
             }
         }
     }
@@ -951,4 +1009,17 @@ internal fun AccountDetailUiState.withAmountsHidden(hidden: Boolean): AccountDet
             )
         },
     )
+}
+
+/**
+ * The line under an account's header that names the ENS names pointing to it (#274): its primary name
+ * first, said as such, then the others seen pointing here; null when there are none. The name the
+ * account's label follows ([followed]) is left out: the title shows it already.
+ */
+internal fun ensNamesLine(names: AccountNames, followed: String?): String? {
+    val shown = listOfNotNull(names.primary?.takeIf { it != followed }?.let { "$it (primary name)" }) +
+        names.pointing.filter { it != followed }
+    if (shown.isEmpty()) return null
+    val what = if (shown.size == 1) "ENS name pointing here" else "ENS names pointing here"
+    return "$what: ${shown.joinToString(", ")}"
 }

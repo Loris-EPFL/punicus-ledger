@@ -190,8 +190,22 @@ of a stale feed.)
 - **Older NFTs are added by contract and id.** The index covers the account
   from its start only. The list says so, and offers "Add an NFT": a contract
   and a token id, kept once the account is proven to hold it.
+- **ENS names are also found by name** (owner ruling, 2026-11-15, #274, on
+  #299; it amends the line above for ENS names):
+  - Every verified resolution that lands on one of the user's accounts keeps
+    that name for the account as a candidate. A name that lands on an
+    address not in the wallet is not kept.
+  - The tokens a candidate can be (the .eth registrar's, id = labelhash; the
+    NameWrapper's, id = namehash) are worked out locally by hashing. They are
+    checked like an added NFT and listed only while a verified call shows
+    them held.
+  - "Add an NFT" also takes an ENS name alone. It is kept once a token of it
+    is proven held.
+  - A name that merely points to the account, held or not, is never listed
+    as an NFT. The account shows it separately, as a name pointing here.
 - ENS tokens are decoded on chain (the NameWrapper's `names`, the registrar's
-  labels from logs), never through ENS's metadata service.
+  labels from logs, or a name kept above whose hash is the token id), never
+  through ENS's metadata service.
 - **ENSv2 too** (owner ruling, 2026-11-06, #246): on Sepolia, which runs on
   ENSv2, its .eth registry is a built-in collection, pinned by its code hash.
   A label comes from its label store and is checked by hashing. A redeploy

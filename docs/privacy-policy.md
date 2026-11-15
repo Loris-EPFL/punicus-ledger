@@ -108,4 +108,4 @@ its history is in the repository's commits.
 Questions: open an issue at <https://github.com/biafra23/punicus/issues>.
 
 A security issue, a leak among them, is reported privately instead, never in
-a public issue: see [Reporting a security issue](../README.md#reporting-a-security-issue).
+a public issue: see [SECURITY.md](../SECURITY.md).

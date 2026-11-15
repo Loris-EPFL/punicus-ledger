@@ -37,7 +37,8 @@ What the app does today:
   a secret of its secure hardware (the Android Keystore, the Secure Enclave
   of an iPhone or a Mac); Windows and Linux stand on the password alone for
   now, and the app says so. Biometric unlock (Android, Face ID or Touch
-  ID on iOS, and Touch ID on a Mac) is an opt-in, bound to a hardware key (docs/keys-and-signing.md).
+  ID on iOS, and Touch ID on a Mac) is an opt-in, bound to a hardware key (docs/keys-and-signing.md;
+  in plain words, with the code: [docs/how-keys-are-protected.md](docs/how-keys-are-protected.md)).
 - **Verified balances.** ETH and token balances, token metadata and prices are
   read through the embedded light client and labelled with the block they were
   proven at; while no fresh verified head exists, the last proven balance stays
@@ -133,7 +134,9 @@ simulator needs none.
 The dependency rule, the MVVM contract and how to add a feature:
 [docs/architecture.md](docs/architecture.md). How keys are held, what the
 user chooses between, and what a hardware key can and cannot guarantee:
-[docs/keys-and-signing.md](docs/keys-and-signing.md). The rules every change
+[docs/keys-and-signing.md](docs/keys-and-signing.md), and the same explained
+in plain words with the code that does it:
+[docs/how-keys-are-protected.md](docs/how-keys-are-protected.md). The rules every change
 goes through (review, PR, CI, release): [CLAUDE.md](CLAUDE.md), the short
 form, with the full text under [`.claude/`](.claude/). The screens
 and the rules they follow: [docs/wallet-ux.md](docs/wallet-ux.md); swaps:

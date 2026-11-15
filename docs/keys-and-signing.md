@@ -7,7 +7,9 @@ owner's key-storage discussion of 2026-10-15. **This page is the contract**
 for the key-store and signing adapters; the *Trust* section of CLAUDE.md is
 the summary a reviewer holds a diff against. Platform facts below were
 checked in October 2026 and carry their sources at the end; re-check them
-before relying on one in code.
+before relying on one in code. docs/how-keys-are-protected.md explains this
+page in plain words, with the code that implements it; where the two
+differ, this page wins and that one is fixed.
 
 ## What the platforms can hold
 

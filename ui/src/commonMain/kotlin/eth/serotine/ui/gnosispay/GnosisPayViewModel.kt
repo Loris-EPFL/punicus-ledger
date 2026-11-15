@@ -51,11 +51,11 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -65,6 +65,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The Gnosis Pay account [safe]'s screen (docs/gnosis-pay.md): what its Delay lets this wallet do,
@@ -151,19 +152,21 @@ class GnosisPayViewModel(
 
     /** The transfers queued from here, read again every [pollInterval] for the Delay the account has now. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val queued = combine(
-        reading.map { (it as? GnosisPayReading.Found)?.delay?.address }.distinctUntilChanged(),
-        sends,
-    ) { module, _ -> module }
+    private val queued = reading
+        .map { (it as? GnosisPayReading.Found)?.delay?.address }
+        .distinctUntilChanged()
         .flatMapLatest { module ->
             if (module == null) {
                 flowOf(null)
             } else {
                 flow<DelayTransfersReading?> {
                     while (true) {
+                        val seen = sends.value
                         // A read that throws is no answer this time; the next poll asks again.
                         safely { readDelayTransfers(safe, module) }?.let { emit(it) }
-                        delay(pollInterval)
+                        // The next poll, or a send since this read, whichever comes first; the list
+                        // stays as read meanwhile.
+                        withTimeoutOrNull(pollInterval) { sends.first { it != seen } }
                     }
                 }.onStart { emit(null) }
             }
@@ -221,6 +224,7 @@ class GnosisPayViewModel(
         val ready = queued.state is DelayTransferState.Ready
         // Shown greyed out whenever it cannot be done, saying why (owner ruling, 2026-10-18, #55).
         val execute = when {
+            queued.executing != null -> ActionItem(false, GnosisPayTexts.EXECUTING)
             queued.state == null -> ActionItem(false, GnosisPayTexts.EXECUTE_UNVERIFIED)
             queued.state is DelayTransferState.NotInQueue -> ActionItem(false, GnosisPayTexts.EXECUTE_NOT_MINED)
             queued.state is DelayTransferState.Expired -> ActionItem(false, GnosisPayTexts.whyNotYet(queued.state))
@@ -237,7 +241,11 @@ class GnosisPayViewModel(
         return QueuedRow(
             id = queued.queuedBy,
             title = GnosisPayTexts.transferTitle(queued.transfer, safe.network),
-            status = GnosisPayTexts.status(queued.state, queued.queueOutcome),
+            status = if (queued.executing != null) {
+                GnosisPayTexts.EXECUTING_STATUS
+            } else {
+                GnosisPayTexts.status(queued.state, queued.queueOutcome)
+            },
             execute = execute,
         )
     }

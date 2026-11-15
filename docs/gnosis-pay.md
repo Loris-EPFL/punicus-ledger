@@ -111,7 +111,12 @@ for the transfer's hash through at most 8 entries. An entry further back is
 said to be further back, never gone. A call is told by what the Delay tells
 apart: the Safe, the Delay and the call's hash. A transfer whose call still
 has an entry in the queue, whoever queued it, or whose queueing from here is
-not mined yet, is refused, so no two entries share a hash. The Safe must
+not mined yet, is refused, so no two entries share a hash. So is one whose
+entry expired and was never skipped (it waits for `skipExpired`), and any
+transfer while the queue holds more entries than are read, since whether one
+of them is the same call cannot be told. An execution is refused while one
+of the same call, sent from here, is not mined yet: a second would revert
+once the first is. The Safe must
 hold the amount beside what transfers of the same asset queued from here
 still move. For a token, the Safe's own `transfer` is run first and must not
 answer false: a token that answers false instead of reverting would let the
@@ -122,7 +127,10 @@ sent, and the queue decides which still wait: a queueing not mined yet is
 listed while it is on its way; once mined, only while the queue holds an
 entry of its call (or may, further back, or cannot be read), and no longer
 than its cooldown, its expiration and a day after its queueing, so that the
-poll's reads follow the window, not the history. One executed by
+poll's reads follow the window, not the history. A call queued twice is
+one row, the newest queueing's, and at most the 8 newest calls are read,
+as deep as the queue is searched; with no expiration, those 8 are also the
+ones a new quote counts as still moving the Safe's funds. One executed by
 anyone, skipped, or never mined leaves the list, whether or not this device
 saw how. The list is this device's: after a reinstall, or on another device,
 a transfer queued before is not found, though the Delay's `TransactionAdded`

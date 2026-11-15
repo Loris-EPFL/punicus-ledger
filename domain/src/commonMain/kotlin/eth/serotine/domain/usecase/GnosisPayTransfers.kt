@@ -154,6 +154,25 @@ sealed interface DelayQuoting {
      */
     data class AlreadyQueued(val queuedBy: String?) : DelayQuoting
 
+    /**
+     * An entry of the same call is still in the Delay's queue, expired: it stays there until the
+     * Delay's `skipExpired` removes it, which Punicus does not offer yet, and a new entry of the
+     * same hash could not be told from it.
+     */
+    data object SameCallExpired : DelayQuoting
+
+    /**
+     * The queue holds more entries than Punicus reads ([searched], [DelayModules.MAX_QUEUE_READ]):
+     * whether one of them is the same call cannot be told, so nothing is queued.
+     */
+    data class QueueTooLong(val searched: Int) : DelayQuoting
+
+    /**
+     * An execution of the transfer from here ([sentAs], its transaction hash) is on its way, not
+     * mined yet: a second one would revert once the first is mined, its fee paid.
+     */
+    data class ExecutionOnItsWay(val sentAs: String) : DelayQuoting
+
     /** The token answers false to the Safe's `transfer`: the Delay would spend its entry and move nothing. */
     data object TokenRefuses : DelayQuoting
 
@@ -328,8 +347,14 @@ class QuoteDelayQueue(
         val waiting = entries.waitingQueueings(network, transfer.safe, transfer.delay, clock(), read.queue)
         // A mined one is in the queue just read, or gone: only one on its way is the history's to tell.
         val sameCall = waiting.firstOrNull { it.queued.sameCall(transfer) && it.entry.onItsWay(clock()) }
-        if (read.queue.entry != null || !read.queue.searchedAll || sameCall != null) {
-            return DelayQuoting.AlreadyQueued(sameCall?.entry?.transfer?.hash)
+        when {
+            read.queue.entry != null -> return if (read.queue.state(read.headTime) is DelayTransferState.Expired) {
+                DelayQuoting.SameCallExpired
+            } else {
+                DelayQuoting.AlreadyQueued(sameCall?.entry?.transfer?.hash)
+            }
+            !read.queue.searchedAll -> return DelayQuoting.QueueTooLong(read.queue.searched)
+            sameCall != null -> return DelayQuoting.AlreadyQueued(sameCall.entry.transfer.hash)
         }
         val alreadyQueued = waiting.filter { it.queued.asset.sameAsset(transfer.asset) }
             .map { it.queued.amount }
@@ -348,13 +373,14 @@ class QuoteDelayQueue(
  */
 class QuoteDelayExecution(
     delays: DelayModules,
+    private val history: TransactionHistory,
     inputs: TransactionInputs,
     nativeBalances: NativeBalances,
     tokenBalances: TokenBalances,
     sentTransfers: SentTransfers,
-    network: Network,
+    private val network: Network,
     outbox: Outbox,
-    clock: () -> Long = ::epochSecondsNow,
+    private val clock: () -> Long = ::epochSecondsNow,
 ) {
     private val quoter =
         DelayCallQuoter(delays, inputs, nativeBalances, tokenBalances, sentTransfers, network, clock, outbox)
@@ -364,6 +390,10 @@ class QuoteDelayExecution(
             is DelayCallQuoter.Fresh.Read -> fresh.reading
             is DelayCallQuoter.Fresh.Refused -> return fresh.quoting
         }
+        val entries = (history.observe().first() as? HistoryList.Loaded)?.entries
+            ?: return DelayQuoting.HistoryUnreadable
+        // Until it is mined the queue still shows the entry next: the history tells it is on its way.
+        entries.executionOnItsWay(network, transfer, clock())?.let { return DelayQuoting.ExecutionOnItsWay(it) }
         val state = read.queue.state(read.headTime)
         if (state !is DelayTransferState.Ready) return DelayQuoting.NotReady(state)
         return quoter.quote(member, transfer, DelayStep.EXECUTE, level)
@@ -388,7 +418,8 @@ class SendDelayCall(
 /**
  * A transfer this wallet queued for a Gnosis Pay account: [transfer], queued by [member] in the
  * transaction [queuedBy] at [queuedAt] (unix seconds) and how that ended ([queueOutcome]), and where
- * it stands in the Delay's queue now ([state]; null when the queue could not be read).
+ * it stands in the Delay's queue now ([state]; null when the queue could not be read), and
+ * [executing], the hash of its execution from here while that is on its way, not mined yet.
  */
 data class QueuedDelayTransfer(
     val transfer: DelayTransfer,
@@ -397,6 +428,7 @@ data class QueuedDelayTransfer(
     val queuedAt: Long,
     val queueOutcome: SentOutcome,
     val state: DelayTransferState?,
+    val executing: String? = null,
 )
 
 /** What [ReadDelayTransfers] gives. */
@@ -443,6 +475,10 @@ class ReadDelayTransfers(
         var window: Long? = null
         val transfers = entries.candidateQueueings(safe.network, safe.address, delay)
             .sortedByDescending { it.entry.transfer.sentAt }
+            // One row per call: the queue holds one entry of a hash, which the newest queueing of it made.
+            .distinctBy { it.queued.hash }
+            // The queue is searched this deep, so no older one could be found in it anyway.
+            .take(DelayModules.MAX_QUEUE_READ)
             .mapNotNull { (entry, transfer) ->
                 val onItsWay = entry.onItsWay(now)
                 val bound = window
@@ -469,6 +505,7 @@ class ReadDelayTransfers(
                     entry.transfer.sentAt,
                     entry.outcome,
                     state,
+                    entries.executionOnItsWay(safe.network, transfer, now),
                 )
             }
             .reversed()
@@ -522,10 +559,25 @@ private fun List<HistoryEntry>.waitingQueueings(
     queue: DelayQueue,
 ): List<Queueing> {
     val window = if (queue.expirationSeconds == 0L) null else queue.cooldownSeconds + queue.expirationSeconds
-    return candidateQueueings(network, safe, delay).filter { (entry, _) ->
-        entry.onItsWay(now) || window == null || entry.transfer.sentAt >= now - window
+    val candidates = candidateQueueings(network, safe, delay)
+    if (window == null) {
+        // Entries that never expire: no age tells which still wait, so the newest that the queue's
+        // depth could hold count, and those on their way.
+        val newest = candidates.sortedByDescending { it.entry.transfer.sentAt }.take(DelayModules.MAX_QUEUE_READ)
+        return candidates.filter { it.entry.onItsWay(now) || it in newest }
     }
+    return candidates.filter { (entry, _) -> entry.onItsWay(now) || entry.transfer.sentAt >= now - window }
 }
+
+/**
+ * The hash of an execution of [transfer]'s call from here on [network] that is on its way, not
+ * mined yet and taken within [FOLLOW_SECONDS]; null when there is none.
+ */
+private fun List<HistoryEntry>.executionOnItsWay(network: Network, transfer: DelayTransfer, now: Long): String? =
+    firstOrNull {
+        val execution = (it.transfer.action as? SentAction.DelayExecution)?.transfer ?: return@firstOrNull false
+        it.transfer.network == network && execution.sameCall(transfer) && it.onItsWay(now)
+    }?.transfer?.hash
 
 /** Whether this queueing is not mined yet, and was taken recently enough to still be. */
 private fun HistoryEntry.onItsWay(now: Long): Boolean =

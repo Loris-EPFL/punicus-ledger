@@ -141,7 +141,7 @@ class GnosisPayViewModelTest {
             ObserveTokenHoldings(ObserveKnownTokens(ListCatalog(), MemoryUserTokens(), FakeMetadata()), tokens),
             ReadDelayTransfers(history, delays) { 1_200 },
             QuoteDelayQueue(delays, history, inputs, balances, tokens, sent, Network.GNOSIS, outbox),
-            QuoteDelayExecution(delays, inputs, balances, tokens, sent, Network.GNOSIS, outbox),
+            QuoteDelayExecution(delays, history, inputs, balances, tokens, sent, Network.GNOSIS, outbox),
             SendDelayCall(signer, FakeBroadcaster(), sent),
             DescribeKeyStore(FakeKeys()),
             timeSource = time,
@@ -348,6 +348,27 @@ class GnosisPayViewModelTest {
             .let { (it as GnosisPayUiState.Ready).queued.single() }
 
         assertEquals(ActionItem(false, GnosisPayTexts.EXECUTE_UNVERIFIED), row.execute)
+    }
+
+    @Test
+    fun anExecutionOnItsWayGreysExecuteOutSayingSo() = runTest {
+        val transfer = queuedTransfer()
+        val executing = SentTransfer(
+            Network.GNOSIS,
+            member,
+            4,
+            SignedTransfer(byteArrayOf(4, 5, 6)),
+            SentAction.DelayExecution(transfer),
+            UInt256.ZERO,
+            1_190,
+        )
+        history.entries.value += HistoryEntry(executing, SentOutcome.NotSeen)
+        val viewModel = viewModel()
+        val row = viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.queued?.isNotEmpty() == true }
+            .let { (it as GnosisPayUiState.Ready).queued.single() }
+
+        assertEquals(ActionItem(false, GnosisPayTexts.EXECUTING), row.execute)
+        assertEquals(GnosisPayTexts.EXECUTING_STATUS, row.status)
     }
 
     /** One transfer queued from here 200 s ago, at the head's time of 1,200, ready to execute. */

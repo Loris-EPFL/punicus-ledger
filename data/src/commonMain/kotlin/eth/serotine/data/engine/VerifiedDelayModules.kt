@@ -271,29 +271,50 @@ class VerifiedDelayModules internal constructor(
      */
     override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading {
         if (network != served) return DelayQueueReading.Unavailable(ReadUnavailable.NO_ENGINE)
-        return chain.askVerified(dispatcher, DelayQueueReading::Unavailable) { verified ->
-            val unproven = DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
-            val headTime = (verified.snapshot() as? EngineSnapshot.Running)?.headTimestamp
-                ?: return@askVerified unproven
-            val code = verified.proveCode(delay) ?: return@askVerified unproven
-            val generation = proxies[code.codeHex.lowercase()]
-            if (generation != DelayGeneration.CURRENT) {
-                return@askVerified DelayQueueReading.NotTheSafes(generation, code.blockNumber)
+        val unproven = DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
+        // Each try is one verified read; a lost peer is asked again after RETRY_PAUSE, as readDelay
+        // does, never in a tight loop.
+        for (attempt in 1..READ_TRIES) {
+            when (val tried = chain.askVerified(dispatcher, { QueueTry.Final(DelayQueueReading.Unavailable(it)) }) {
+                queueOnce(it, safe, delay, hash)
+            }) {
+                is QueueTry.Final -> return tried.reading
+                QueueTry.Straddled -> Unit
+                // Qualified: the parameter `delay` is the module's address.
+                QueueTry.NoAnswer -> if (attempt < READ_TRIES) kotlinx.coroutines.delay(RETRY_PAUSE)
             }
-            repeat(READ_TRIES) {
-                when (val read = Getters(verified, delay).queue(safe, hash)) {
-                    is Read.Done -> return@askVerified read.value
-                        ?.let { DelayQueueReading.Read(it, read.block, headTime) }
-                        ?: DelayQueueReading.NotTheSafes(DelayGeneration.CURRENT, read.block)
-                    is Read.Stopped -> when (read.ended) {
-                        Ended.STRADDLED, Ended.NO_ANSWER -> Unit
-                        Ended.NOT_A_DELAYS_ANSWER -> return@askVerified unproven
-                        Ended.REFUSED -> return@askVerified DelayQueueReading.Unavailable(ReadUnavailable.REFUSED)
-                    }
-                }
-            }
-            unproven
         }
+        return unproven
+    }
+
+    /** One try of [queue]: the code proven, then the getters read at one block. */
+    private fun queueOnce(verified: VerifiedChain, safe: Address, delay: Address, hash: Digest): QueueTry {
+        val unproven = QueueTry.Final(DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN))
+        val headTime = (verified.snapshot() as? EngineSnapshot.Running)?.headTimestamp ?: return unproven
+        val code = verified.proveCode(delay) ?: return unproven
+        val generation = proxies[code.codeHex.lowercase()]
+        if (generation != DelayGeneration.CURRENT) {
+            return QueueTry.Final(DelayQueueReading.NotTheSafes(generation, code.blockNumber))
+        }
+        return when (val read = Getters(verified, delay).queue(safe, hash)) {
+            is Read.Done -> QueueTry.Final(
+                read.value?.let { DelayQueueReading.Read(it, read.block, headTime) }
+                    ?: DelayQueueReading.NotTheSafes(DelayGeneration.CURRENT, read.block),
+            )
+            is Read.Stopped -> when (read.ended) {
+                Ended.STRADDLED -> QueueTry.Straddled
+                Ended.NO_ANSWER -> QueueTry.NoAnswer
+                Ended.NOT_A_DELAYS_ANSWER -> unproven
+                Ended.REFUSED -> QueueTry.Final(DelayQueueReading.Unavailable(ReadUnavailable.REFUSED))
+            }
+        }
+    }
+
+    /** How one try of [queue] ended. */
+    private sealed interface QueueTry {
+        data class Final(val reading: DelayQueueReading) : QueueTry
+        data object Straddled : QueueTry
+        data object NoAnswer : QueueTry
     }
 
     override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> {

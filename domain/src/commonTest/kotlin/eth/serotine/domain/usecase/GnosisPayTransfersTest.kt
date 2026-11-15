@@ -228,6 +228,23 @@ class GnosisPayTransfersTest {
     }
 
     @Test
+    fun anExpiredEntryOfTheSameCallOrAQueueDeeperThanReadIsSaidForWhatItIs() = runTest {
+        funded()
+        val ours = transfer()
+        // Expired, never skipped: it stays in the queue, and the same hash cannot be queued beside it.
+        answers[ours.hash] = DelayQueueReading.Read(
+            DelayQueue(5, 6, 90_000, 111_600, DelayEntry(5, ours.hash, 900), 1),
+            120,
+            900 + 90_000 + 111_600 + 1,
+        )
+        assertEquals(DelayQuoting.SameCallExpired, queueing()(member, ours, FeeLevel.entries.first()))
+
+        // More entries than are read: whether one is this call cannot be told.
+        answers[ours.hash] = DelayQueueReading.Read(DelayQueue(5, 25, 90_000, 111_600, null, 8), 120, 1_000)
+        assertEquals(DelayQuoting.QueueTooLong(8), queueing()(member, ours, FeeLevel.entries.first()))
+    }
+
+    @Test
     fun theSameCallIsTheSameWhateverTheTokensDisplayMetadata() = runTest {
         funded()
         tokens.of(safe, eure.address).value = TokenBalanceReading.Verified(TokenUnits.of("5000000000000000000"), 100)
@@ -315,7 +332,7 @@ class GnosisPayTransfersTest {
     }
 
     private fun execution() =
-        QuoteDelayExecution(delays, inputs, native, tokens, sent, Network.GNOSIS, ListOutbox()) { 1_000 }
+        QuoteDelayExecution(delays, history, inputs, native, tokens, sent, Network.GNOSIS, ListOutbox()) { 1_000 }
 
     /** The queue holding [hash] at entry [nonce], read at a head produced at 95000. */
     private fun answering(nonce: Long, queued: Int = (nonce - 4).toInt()) {
@@ -347,6 +364,19 @@ class GnosisPayTransfersTest {
         assertEquals(ours.hash, asked.last())
         assertEquals(ours.executeData().toHex(), quote.call.transaction.data.toHex())
         assertEquals(delay, quote.call.transaction.to)
+    }
+
+    @Test
+    fun anExecutionFromHereOnItsWayIsNotSentAgain() = runTest {
+        funded()
+        val ours = transfer()
+        answering(nonce = 5)
+        // Sent and not mined yet: the queue still has the entry next, and a second would revert.
+        val executing = sentBy(SentAction.DelayExecution(ours), 990, 9)
+        history.entries.value = listOf(HistoryEntry(executing, SentOutcome.NotSeen))
+
+        assertEquals(DelayQuoting.ExecutionOnItsWay(executing.hash), execution()(member, ours, FeeLevel.entries.first()))
+        assertTrue(inputs.simulated.isEmpty())
     }
 
     @Test
@@ -440,7 +470,9 @@ class GnosisPayTransfersTest {
         val reading = ReadDelayTransfers(history, delays) { now }(AccountId(Network.GNOSIS, safe), delay)
             as DelayTransfersReading.Read
 
-        assertEquals(listOf(recent, recent), reading.transfers.map { it.transfer })
+        // One row per call: the newest queueing of it, whose entry the queue holds.
+        assertEquals(listOf(recent), reading.transfers.map { it.transfer })
+        assertEquals(now - 50, reading.transfers.single().queuedAt)
         assertEquals(listOf(recent.hash), asked)
     }
 }

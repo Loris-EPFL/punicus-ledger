@@ -81,6 +81,11 @@ internal object GnosisPayTexts {
         "Where this transfer stands in the Delay module cannot be verified right now, so it is not executed. " +
             "Punicus keeps checking."
 
+    const val EXECUTING = "Its execution was sent from this device and waits for a block. A second one would " +
+        "fail once the first is mined, its fee paid."
+
+    const val EXECUTING_STATUS = "Executing: waiting for a block"
+
     const val EXECUTE_NOT_MINED = "Its queueing is not in a block yet. The cooldown starts once it is."
 
     fun queuedNote(reading: DelayTransfersReading?): String? = when (reading) {
@@ -197,6 +202,12 @@ internal object GnosisPayTexts {
         }
         is DelayQuoting.AlreadyQueued -> "The same transfer is queued already and waits in the Delay module. " +
             "Execute it, or let it expire, before queuing it again."
+        DelayQuoting.SameCallExpired -> "The same transfer is still in the Delay module's queue, expired. It stays " +
+            "there until someone skips it with the module's skipExpired, which Punicus does not offer yet. Change " +
+            "the amount or the recipient to queue a new one."
+        is DelayQuoting.QueueTooLong -> "The Delay module's queue holds more than the ${quoting.searched} entries " +
+            "Punicus reads, so whether this transfer is among them cannot be told. Nothing was queued."
+        is DelayQuoting.ExecutionOnItsWay -> EXECUTING
         DelayQuoting.TokenRefuses -> "The token refuses this transfer from the account: it answers false. The " +
             "Delay would spend its entry and move nothing."
         DelayQuoting.HistoryUnreadable ->

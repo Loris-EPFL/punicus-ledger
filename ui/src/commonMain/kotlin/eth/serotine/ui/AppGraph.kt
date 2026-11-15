@@ -506,6 +506,7 @@ class AppGraph(
         ),
         QuoteDelayExecution(
             delayModules,
+            transactionHistory,
             transactionInputs,
             nativeBalances,
             tokenBalances,

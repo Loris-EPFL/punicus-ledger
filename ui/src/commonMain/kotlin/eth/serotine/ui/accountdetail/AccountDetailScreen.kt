@@ -110,6 +110,9 @@ import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+/** Test tag of a Gnosis Pay account's entry in its Owners tab, for UI tests. */
+const val ACCOUNT_GNOSIS_PAY_TAG = "account-gnosis-pay"
+
 /** Test tag of the account's total, for UI tests. */
 const val ACCOUNT_TOTAL_TAG = "account-total"
 
@@ -174,6 +177,7 @@ fun AccountDetailRoute(
     modifier: Modifier = Modifier,
     onAddOnNetwork: () -> Unit = {},
     onSafeSettings: () -> Unit = {},
+    onGnosisPay: () -> Unit = {},
     onDerive: () -> Unit = {},
     onContinueSwap: (sell: String) -> Unit = {},
     onSendElsewhere: (contract: String?) -> Unit = {},
@@ -214,6 +218,7 @@ fun AccountDetailRoute(
             onTurnOnNetwork = viewModel::turnOnNetwork,
             onAddOnNetwork = onAddOnNetwork,
             onSafeSettings = onSafeSettings,
+            onGnosisPay = onGnosisPay,
             onContinueSwap = onContinueSwap,
             onSendElsewhere = onSendElsewhere,
             onDismissWaiting = viewModel::dismissWaiting,
@@ -250,6 +255,7 @@ fun AccountDetailRoute(
             onTurnOnNetwork = viewModel::turnOnNetwork,
             onAddOnNetwork = onAddOnNetwork,
             onSafeSettings = onSafeSettings,
+            onGnosisPay = onGnosisPay,
             onContinueSwap = onContinueSwap,
             onSendElsewhere = onSendElsewhere,
             onDismissWaiting = viewModel::dismissWaiting,
@@ -313,6 +319,7 @@ fun AccountDetailScreen(
     onTurnOnNetwork: () -> Unit = {},
     onAddOnNetwork: () -> Unit = {},
     onSafeSettings: () -> Unit = {},
+    onGnosisPay: () -> Unit = {},
     onContinueSwap: (sell: String) -> Unit = {},
     onDismissWaiting: (sell: String) -> Unit = {},
     onDerive: () -> Unit = {},
@@ -519,6 +526,7 @@ fun AccountDetailScreen(
                     onContinueSwap = continueSwap,
                     onDismissWaiting = onDismissWaiting,
                     onSafeSettings = safeSettings,
+                    onGnosisPay = onGnosisPay,
                     simple = chrome is AccountChrome.Refresh,
                     onToggleUnlistedNfts = onToggleUnlistedNfts,
                     nftActions = nftsShown,
@@ -558,6 +566,7 @@ private fun Details(
     onContinueSwap: (String) -> Unit,
     onDismissWaiting: (String) -> Unit,
     onSafeSettings: () -> Unit,
+    onGnosisPay: () -> Unit,
     /** Simple mode's chrome: the network on the blockie, the freshness line and the "can't check" banner. */
     simple: Boolean,
     onToggleUnlistedNfts: () -> Unit,
@@ -676,7 +685,15 @@ private fun Details(
                 onDismiss = onDismissWaiting,
                 continueAvailable = state.canSwap,
             )
-            state.segment == DetailSegment.OWNERS -> item { SafeOwners(checkNotNull(state.safe), state.safeSettingsReason == null, onSafeSettings) }
+            state.segment == DetailSegment.OWNERS -> item {
+                SafeOwners(
+                    checkNotNull(state.safe),
+                    state.safeSettingsReason == null,
+                    onSafeSettings,
+                    state.gnosisPay,
+                    onGnosisPay,
+                )
+            }
             else -> item { SafeQueueList(checkNotNull(state.queue), onOpenSafeTx, onImportRequest) }
         }
     }
@@ -1107,8 +1124,19 @@ private fun QueueItem(row: QueueRow, onClick: () -> Unit) {
  * (the network off), a tap then saying why.
  */
 @Composable
-private fun SafeOwners(safe: SafeDetails, settingsAvailable: Boolean, onSafeSettings: () -> Unit) {
+private fun SafeOwners(
+    safe: SafeDetails,
+    settingsAvailable: Boolean,
+    onSafeSettings: () -> Unit,
+    gnosisPay: String? = null,
+    onGnosisPay: () -> Unit = {},
+) {
     Column(Modifier.testTag(ACCOUNT_OWNERS_TAG), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // A Gnosis Pay account: its own screen, where a transfer goes through its Delay module.
+        gnosisPay?.let { note ->
+            Text(note)
+            OutlinedButton(onClick = onGnosisPay, modifier = Modifier.testTag(ACCOUNT_GNOSIS_PAY_TAG)) { Text("Gnosis Pay") }
+        }
         OutlinedButton(
             onClick = onSafeSettings,
             modifier = Modifier.testTag(ACCOUNT_SAFE_SETTINGS_TAG).unavailable(!settingsAvailable),

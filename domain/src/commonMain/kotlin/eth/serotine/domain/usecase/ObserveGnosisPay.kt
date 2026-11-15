@@ -109,6 +109,7 @@ class ObserveGnosisPay(
             membersHeldElsewhere = elsewhere,
             accountsRead = loaded != null,
             membersWatchedHere = watchedHere,
+            safeModules = state.modules,
         )
     }
 }
@@ -131,7 +132,8 @@ sealed interface GnosisPayReading {
      * [membersHeldElsewhere], members whose key is held here only under an account on another
      * network, one entry per address; [accountsRead] false when the wallet's list could not be read,
      * so which members are held cannot be told; [membersWatchedHere], the members of
-     * [membersHeldElsewhere] that are in the wallet on the Safe's network as watched entries.
+     * [membersHeldElsewhere] that are in the wallet on the Safe's network as watched entries; and
+     * [safeModules], every module the Safe's verified state lists, which no transfer may go to.
      */
     data class Found(
         val delay: DelayModule,
@@ -140,6 +142,7 @@ sealed interface GnosisPayReading {
         val membersHeldElsewhere: List<Account>,
         val accountsRead: Boolean = true,
         val membersWatchedHere: List<Account> = emptyList(),
+        val safeModules: List<Address> = emptyList(),
     ) : GnosisPayReading {
         /** Whether a transfer can be queued through [delay] from this wallet, or what is missing. */
         val sending: GnosisPaySending

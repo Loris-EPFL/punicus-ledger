@@ -383,6 +383,7 @@ class AppNavigationTest {
         signingRequests = codec,
         signatureRecovery = recovery,
         safeApprovals = FakeApprovals(),
+        delayModules = NoDelayModules,
         safeReleases = FakeReleases(),
         uniswap = object : UniswapV3Chain {
             // Pinned and unproven here: Swap is offered, and no quote is ever proven.
@@ -1361,3 +1362,27 @@ class AppNavigationTest {
 
 /** The route of an Activity detail, as the back stack names it. */
 private const val DETAIL_ROUTE = "activity/{chain}/{address}/tx/{hash}?log={log}"
+
+/** A wallet with no Gnosis Pay account: every module is some other module. */
+private object NoDelayModules : eth.serotine.domain.repository.DelayModules {
+    override fun observeDelay(
+        network: eth.serotine.domain.model.Network,
+        safe: eth.serotine.domain.model.Address,
+        module: eth.serotine.domain.model.Address,
+    ): kotlinx.coroutines.flow.Flow<eth.serotine.domain.repository.DelayReading> =
+        kotlinx.coroutines.flow.flowOf(
+            eth.serotine.domain.repository.DelayReading.Verified(
+                eth.serotine.domain.repository.DelayFinding.NotDelay,
+                1,
+            ),
+        )
+
+    override suspend fun queue(
+        network: eth.serotine.domain.model.Network,
+        delay: eth.serotine.domain.model.Address,
+        hash: eth.serotine.domain.model.Digest,
+    ): eth.serotine.domain.repository.DelayQueueReading =
+        eth.serotine.domain.repository.DelayQueueReading.Unavailable(
+            eth.serotine.domain.repository.ReadUnavailable.NO_ENGINE,
+        )
+}

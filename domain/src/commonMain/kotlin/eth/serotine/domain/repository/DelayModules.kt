@@ -14,8 +14,10 @@ import kotlinx.coroutines.flow.Flow
  */
 interface DelayModules {
     /**
-     * What the module at [module], enabled on the Safe at [safe], is on [network], re-emitted
-     * when the verified head moves; consecutive equal readings are not repeated. The [safe] is
+     * What the module at [module], enabled on the Safe at [safe], is on [network], read again
+     * every few verified heads as the adapter says, a reading kept until then served to every
+     * subscriber; consecutive equal readings are not repeated. What a Delay holds that an execution
+     * depends on is not taken from here. The [safe] is
      * applied, never ignored: a Delay whose avatar, target or owner is another address is
      * [DelayFinding.NotWired], not this Safe's. A [network] no adapter serves here is refused
      * ([ReadUnavailable.NO_ENGINE]), never answered from another network. Never fails.

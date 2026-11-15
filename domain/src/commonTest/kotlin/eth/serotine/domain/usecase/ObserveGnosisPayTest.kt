@@ -111,6 +111,15 @@ class ObserveGnosisPayTest {
     }
 
     @Test
+    fun aMemberWatchedHereWhoseKeyIsHeldElsewhereSaysSo() = runTest {
+        val watchedHere = eoa(Network.GNOSIS, AccountCustody.Watched)
+        val reading = observe(watchedHere, eoa(Network.ETHEREUM))(gnosisPay).settled() as GnosisPayReading.Found
+
+        assertEquals(listOf(watchedHere), reading.membersWatchedHere)
+        assertEquals(GnosisPaySending.MEMBER_WATCHED_HERE, reading.sending)
+    }
+
+    @Test
     fun aKeyThatIsNoMembersSendsNothing() = runTest {
         val stranger = eoa(Network.GNOSIS, address = Address.of("0x" + "22".repeat(20)))
         val reading = observe(stranger)(gnosisPay).settled() as GnosisPayReading.Found

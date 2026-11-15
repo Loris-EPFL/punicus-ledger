@@ -35,7 +35,8 @@ import kotlinx.coroutines.flow.map
  *
  * A call the engine refuses is [ReadUnavailable.REFUSED]; one that reverts, answers something
  * that is not what the getter returns, or lists more than [MAX_MEMBERS] members, is unproven: a
- * pinned Delay's getters do neither. Polled, cached and refused as [ProvenReads] describes, keyed
+ * pinned Delay's getters do neither. A Delay that is another's is told by its first three getters
+ * alone. Polled, cached and refused as [ProvenReads] describes, keyed
  * by the Safe and the module: the Safe's own Delay's reading stands for [DELAY_KEPT_FOR_HEADS]
  * heads, any other for [NOT_DELAY_KEPT_FOR_HEADS].
  */
@@ -75,7 +76,9 @@ class VerifiedDelayModules internal constructor(
     ): EngineReading<DelayFinding>? {
         for (attempt in 1..READ_TRIES) {
             currentCoroutineContext().ensureActive()
-            when (val read = Getters(chain, module).read()) {
+            when (val read = Getters(chain, module).read(safe)) {
+                // Another's Delay is told by its first three getters: nothing more of it is read.
+                is Read.Foreign -> return EngineReading.Proven(DelayFinding.NotWired(generation), read.block, read.hash)
                 Read.Straddled -> Unit
                 Read.NoAnswer -> if (attempt < READ_TRIES) delay(RETRY_PAUSE)
                 Read.NotADelaysAnswer -> return null
@@ -167,10 +170,15 @@ class VerifiedDelayModules internal constructor(
             return members
         }
 
-        fun read(): Read {
+        /**
+         * The Delay's settings and members; or, once its avatar, target or owner is not [safe],
+         * [Read.Foreign] at once, at the block of those three.
+         */
+        fun read(safe: Address): Read {
             val avatar = address(AVATAR) ?: return ended
             val target = address(TARGET) ?: return ended
             val owner = address(OWNER) ?: return ended
+            if (avatar != safe || target != safe || owner != safe) return Read.Foreign(checkNotNull(block), hash)
             val cooldown = number(TX_COOLDOWN) ?: return ended
             val expiration = number(TX_EXPIRATION) ?: return ended
             val txNonce = number(TX_NONCE) ?: return ended
@@ -207,6 +215,9 @@ class VerifiedDelayModules internal constructor(
             val block: Long,
             val hash: String?,
         ) : Read
+
+        /** A Delay whose avatar, target or owner is not the Safe asked about, read at [block]. */
+        data class Foreign(val block: Long, val hash: String?) : Read
 
         /** Two calls answered at two blocks: read again. */
         data object Straddled : Read
@@ -263,8 +274,11 @@ class VerifiedDelayModules internal constructor(
         val RETRY_PAUSE = 1.seconds
 
         /**
-         * Heads a Delay's reading stands, about a minute of Gnosis Chain's: what a screen shows. A
-         * quote, a review and a check before sending subscribe anew and read it fresh ([ProvenReads]).
+         * Heads the Safe's own Delay's reading stands, about a minute of Gnosis Chain's. A kept reading
+         * is served to every subscriber within them, a new one included ([ProvenReads]): a change the
+         * Safe's own transactions make to the Delay (its owner, its members) shows up to that late, and
+         * its nonces are a screen's, never what an execution is checked against. That check reads the
+         * queue with calls of its own, at one block, when it is made (docs/gnosis-pay.md, *Sending*).
          */
         const val DELAY_KEPT_FOR_HEADS = 12L
 

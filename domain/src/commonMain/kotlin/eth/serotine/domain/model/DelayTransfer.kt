@@ -30,8 +30,9 @@ data class DelayTransfer private constructor(
     /**
      * The Delay's hash of the call, `keccak256(abi.encodePacked(to, value, data, operation))` with
      * operation CALL (0): what its queue holds (`txHash(n)`) and what `executeNextTx` checks.
+     * Computed once: the queued list compares it for every queueing at every poll.
      */
-    val hash: Digest get() = Digest.of(keccak256(to.toBytes() + value.toBytes32() + data + byteArrayOf(CALL)).toHex())
+    val hash: Digest = Digest.of(keccak256(to.toBytes() + value.toBytes32() + data + byteArrayOf(CALL)).toHex())
 
     /** `execTransactionFromModule(to, value, data, CALL)`: what a member sends the Delay to queue it. */
     fun queueData(): ByteArray = moduleCall(QUEUE)

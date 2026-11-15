@@ -195,6 +195,10 @@ class GnosisPayViewModel(
     )
 
     val uiState: StateFlow<GnosisPayUiState> = combine(observeAccount(safe), chain, flowState) { lookup, chain, step ->
+        // What the intents act on is this reading's, or nothing: never one an earlier reading left.
+        latest = null
+        latestHoldings = null
+        latestQueued = emptyList()
         val account = when (lookup) {
             AccountLookup.NotInList -> return@combine GnosisPayUiState.Gone
             AccountLookup.ListUnavailable -> return@combine GnosisPayUiState.Unavailable(LIST_UNREADABLE)

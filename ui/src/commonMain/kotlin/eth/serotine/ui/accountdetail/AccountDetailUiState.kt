@@ -88,6 +88,12 @@ sealed interface AccountDetailUiState {
          * menu offers it, and so does the greyed-out Send's explanation.
          */
         val handoff: HandoffChoice? = null,
+        /**
+         * For a Safe that is a Gnosis Pay account (docs/gnosis-pay.md), what its Owners tab says of it
+         * beside the entry that opens its own screen, where a transfer goes through its Delay module;
+         * null for any other account, and before it is read.
+         */
+        val gnosisPay: String? = null,
     ) : AccountDetailUiState {
 
         /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */

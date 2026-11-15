@@ -20,7 +20,10 @@ import eth.serotine.domain.usecase.DecodedSafeTx
 import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.HasSwapVenue
+import eth.serotine.domain.usecase.GnosisPayReading
+import eth.serotine.domain.usecase.GnosisPaySending
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveGnosisPay
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAmountsHidden
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
@@ -164,6 +167,8 @@ class AccountDetailViewModel(
     private val clock: () -> Long = ::epochSecondsNow,
     /** Whether Send from another wallet is offered (issue #255), asked anew for each state built. Null: never. */
     private val offerHandoff: OfferHandoff? = null,
+    /** Whether a Safe is a Gnosis Pay account (docs/gnosis-pay.md), which its Owners tab then opens. Null: never asked. */
+    observeGnosisPay: ObserveGnosisPay? = null,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
     private val address: Address = account.address
@@ -242,6 +247,16 @@ class AccountDetailViewModel(
         // Never holding the screen back: a Safe's read takes a dozen proofs.
         if (isSafe) {
             observeSafe(account).map<SafeReading, SafeReading?> { it }.onStart { emit(SafeReading.Checking) }
+        } else {
+            flowOf(null)
+        }
+    }
+
+    /** A Safe's Gnosis Pay entry: what its Owners tab says of it, or null when it is none (or not read yet). */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val gnosisPay = isSafe.flatMapLatest { isSafe ->
+        if (isSafe && observeGnosisPay != null) {
+            observeGnosisPay(account).map { reading -> gnosisPayEntry(reading) }.onStart { emit(null) }
         } else {
             flowOf(null)
         }
@@ -424,6 +439,9 @@ class AccountDetailViewModel(
             .map { it.finish(clock()) }
             .combine(nfts) { state, nfts ->
                 if (state is AccountDetailUiState.Ready) state.copy(nfts = nfts) else state
+            }
+            .combine(gnosisPay) { state, entry ->
+                if (state is AccountDetailUiState.Ready) state.copy(gnosisPay = entry) else state
             }
             // Masked last, on the finished state (the Activity masks its own, as it is built).
             .combine(amountsHidden) { state, hidden -> state.withAmountsHidden(hidden) }
@@ -951,4 +969,15 @@ internal fun AccountDetailUiState.withAmountsHidden(hidden: Boolean): AccountDet
             )
         },
     )
+}
+
+/** What a Safe's Owners tab says of it as a Gnosis Pay account; null when it is none, or not read yet. */
+private fun gnosisPayEntry(reading: GnosisPayReading): String? {
+    val found = reading as? GnosisPayReading.Found ?: return null
+    val who = if (found.sending == GnosisPaySending.AVAILABLE) {
+        "Its controlling key is on this device: transfers go through its Delay module."
+    } else {
+        "Controlled through its Delay module, by a key that cannot send from here yet."
+    }
+    return "Gnosis Pay account. $who"
 }

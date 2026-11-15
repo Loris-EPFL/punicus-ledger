@@ -48,33 +48,34 @@ import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.repository.FeeLevel
-import eth.serotine.ui.addnetwork.AddOnNetworksRoute
 import eth.serotine.ui.accountdetail.AccountDetailRoute
 import eth.serotine.ui.accounts.AccountAction
 import eth.serotine.ui.accounts.AccountsRoute
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activitydetail.ActivityDetailRoute
+import eth.serotine.ui.addnetwork.AddOnNetworksRoute
 import eth.serotine.ui.addtoken.AddTokenRoute
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.SerotineIcons
+import eth.serotine.ui.connections.ConnectionsRoute
 import eth.serotine.ui.coworder.CowOrderRoute
 import eth.serotine.ui.coworder.SwapAgain
 import eth.serotine.ui.createaccount.CreateAccountRoute
 import eth.serotine.ui.createsafe.CreateSafeRoute
-import eth.serotine.ui.connections.ConnectionsRoute
 import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.dappproposal.DappProposalRoute
 import eth.serotine.ui.dapprequest.DappRequestRoute
 import eth.serotine.ui.dapprequest.DappRequestsWaitingViewModel
 import eth.serotine.ui.dapptransaction.DappTransactionRoute
-import eth.serotine.ui.pairdapp.PairDappRoute
 import eth.serotine.ui.debug.DebugRoute
 import eth.serotine.ui.debug.DebugViewModel
 import eth.serotine.ui.deriveaccount.DeriveAccountRoute
+import eth.serotine.ui.gnosispay.GnosisPayRoute
 import eth.serotine.ui.handoff.HandoffRoute
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.mode.LocalInterfaceMode
+import eth.serotine.ui.pairdapp.PairDappRoute
 import eth.serotine.ui.platform.LocalScreenCaptureDebugSwitch
 import eth.serotine.ui.platform.ScreenCaptureWarnings
 import eth.serotine.ui.receive.ReceiveRoute
@@ -95,8 +96,8 @@ import eth.serotine.ui.swap.SwapFill
 import eth.serotine.ui.swap.SwapRoute
 import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.tokens.TokensRoute
-import eth.serotine.ui.transferstatus.SendAgain
 import eth.serotine.ui.transferstatus.SafeTxAgain
+import eth.serotine.ui.transferstatus.SendAgain
 import eth.serotine.ui.transferstatus.TransferStatusRoute
 import eth.serotine.ui.update.UpdateRequiredRoute
 import eth.serotine.ui.update.UpdateRequiredUiState
@@ -385,6 +386,7 @@ private fun Destinations(
                     onOpenSafeTx = { hash -> navController.openSafeTx(account, hash) },
                     onImportRequest = { navController.importRequest(account) },
                     onSafeSettings = { navController.safeSettings(account) },
+                    onGnosisPay = { navController.gnosisPay(account) },
                     onOpenActivity = { key -> navController.openActivityDetail(account, key) },
                     onContinueSwap = { sell -> navController.continueSwap(account, sell) },
                     onSendElsewhere = { contract -> navController.sendElsewhere(account, contract) },
@@ -812,6 +814,20 @@ private fun Destinations(
                 LaunchedEffect(Unit) { navController.popBackStack(SAFE_SETTINGS_ROUTE, inclusive = true) }
             }
         }
+        composable(GNOSIS_PAY_ROUTE) { entry ->
+            val account = entry.account()
+            if (account != null) {
+                GnosisPayRoute(
+                    viewModel = viewModel { graph.gnosisPayViewModel(account) },
+                    onBack = { navController.popBackStack(GNOSIS_PAY_ROUTE, inclusive = true) },
+                    onGone = { navController.popBackStack(GNOSIS_PAY_ROUTE, inclusive = true) },
+                    // Sent: its status, over this screen, which back returns to.
+                    onSent = { sent -> navController.navigate(transferRoute(account.network, sent)) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(GNOSIS_PAY_ROUTE, inclusive = true) }
+            }
+        }
         composable(SAFE_IMPORT_ROUTE) { entry ->
             val account = entry.account()
             if (account != null) {
@@ -1135,6 +1151,12 @@ private fun NavController.safeSettings(safe: AccountId) {
     navigate("${Destination.SAFE}/${safe.route}/${Destination.SAFE_SETTINGS}")
 }
 
+/** Opens the Gnosis Pay account [safe]'s screen (docs/gnosis-pay.md), once. */
+private fun NavController.gnosisPay(safe: AccountId) {
+    if (currentDestination?.route == GNOSIS_PAY_ROUTE) return
+    navigate("${Destination.SAFE}/${safe.route}/${Destination.GNOSIS_PAY}")
+}
+
 /**
  * Opens the Safe transaction [hash] (`0x` and 64 hex digits) of the Safe [safe]; in place of the
  * destination [replacing] when set (the proposal or import that led to it), so back from it returns
@@ -1248,6 +1270,7 @@ private object Destination {
     const val PROPOSE = "propose"
     const val IMPORT = "import"
     const val SAFE_SETTINGS = "settings"
+    const val GNOSIS_PAY = "gnosis-pay"
     const val UPDATE_REQUIRED = "update-required"
     const val COW_ORDER = "cow-order"
 }
@@ -1354,6 +1377,9 @@ private const val SAFE_SWAP_ROUTE =
 
 /** A Safe's settings, and the changes of them proposed. */
 private const val SAFE_SETTINGS_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.SAFE_SETTINGS}"
+
+/** A Gnosis Pay account: its Delay module, its queued transfers, and Send through the Delay. */
+private const val GNOSIS_PAY_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.GNOSIS_PAY}"
 
 /** Import a signing request for a Safe. */
 private const val SAFE_IMPORT_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.IMPORT}"

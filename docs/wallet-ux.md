@@ -1590,6 +1590,28 @@ they are helpful." The rulings (owner rulings, 2026-11-05, #246; the
 - **A hardware P-256 owner** signs through the passkey signer, under
   docs/keys-and-signing.md (*A Safe owned by a hardware P-256 key*).
 
+### A Gnosis Pay account
+
+A Safe on Gnosis Chain whose own Delay module a member controls
+(docs/gnosis-pay.md; owner's decisions, 2026-11-15). Its Owners tab says
+"Gnosis Pay account" and opens **Gnosis Pay**, a screen of its own:
+
+- The account, its Delay module, and what the Delay makes a transfer do, in
+  that account's own figures: "A transfer waits 25 h in the Delay module,
+  then can be executed for 31 h."
+- Who controls it: each member, and whether its key is on this device.
+- **Send through the Delay**, greyed out with its reason where it cannot be
+  done here: no member's key, the member on another network only, the member
+  watched here while held elsewhere, the account list unreadable, or the
+  retired module.
+- **Queued from this device**: each transfer queued here and not executed,
+  with where it stands ("Waits until …", "Ready to execute until …",
+  "Expired …: nothing moved"). Execute is offered once it is the next entry
+  and its cooldown has passed, greyed out with the time until then.
+- Send is a form (the Safe's assets, the recipient's address, the amount),
+  then a review of the member's transaction with the unlock that signs it.
+  A transaction sent opens its status (screen 9).
+
 ## Co-signing a Safe transaction
 
 The ruling (CLAUDE.md, *Data sources*, 2026-10-16): no off-chain service.

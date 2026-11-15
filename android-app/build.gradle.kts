@@ -3,6 +3,7 @@
 // come out of it: the release one (eth.serotine) and the debug one (eth.serotine.debug,
 // its own label and amber icon), see the build types below.
 
+import org.gradle.api.artifacts.component.ModuleComponentSelector
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -135,6 +136,23 @@ kotlin {
 // without it too; nothing in this app runs it. The -android artifact is what androidx's
 // ui-tooling redirects to on Android, named too so a direct dependency on it is cut as
 // well. The APK workflow checks the built manifests for it (android-apk.yml).
+// JNA's classes come from its AAR alone here, the one the libsodium bindings ask for.
+// :data drops the engine's edge to the JNA jar (data/build.gradle.kts), but an edge
+// exclude holds only while every path to the module carries it, and with the lock's
+// constraints in force the jar came back beside the AAR: duplicate classes in the dex
+// merge (the `gradle pins` runs of #281). Every edge to JNA in these classpaths takes
+// the AAR artifact, so the graph is the same with and without the locks.
+configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
+    resolutionStrategy.dependencySubstitution.all {
+        val selector = requested
+        if (selector is ModuleComponentSelector &&
+            selector.group == "net.java.dev.jna" && selector.module == "jna"
+        ) {
+            artifactSelection { selectArtifact("aar", "aar", null) }
+        }
+    }
+}
+
 configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
     exclude(group = "org.jetbrains.compose.ui", module = "ui-tooling")
     exclude(group = "androidx.compose.ui", module = "ui-tooling")

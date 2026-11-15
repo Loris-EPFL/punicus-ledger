@@ -176,6 +176,12 @@ for funding, from ecosystem grants and from sponsors.
 
 You can support it through [GitHub Sponsors](https://github.com/sponsors/biafra23).
 
+## Reporting a security issue
+
+Please do **not** report a security issue in a public issue, pull request or
+discussion. Report it privately through GitHub's private vulnerability
+reporting, as described in [SECURITY.md](SECURITY.md).
+
 ## License
 
 GNU General Public License v3.0 — see [LICENSE](LICENSE).

@@ -46,6 +46,9 @@ compare links at the bottom. Check the entry against the merged PRs since the
 last tag (`git log --first-parent <last tag>..main`): every change a user or a
 packager would notice, under Added, Changed, Fixed, Removed or Security, with
 its PR and issue numbers. The GitHub release notes may link to the entry.
+Before you write it, ask the owner whether any merge since the last tag is an
+embargoed security fix: its entry and the release notes then stay neutral
+until the advisory is published (the `security-fix` skill, steps 8 and 9).
 
 ## 3. Bump the embedded Myotis engine? Ask
 

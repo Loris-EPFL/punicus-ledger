@@ -550,9 +550,9 @@ class EnvelopeKeyStoreTest {
     // The fixed vectors of docs/keys-and-signing.md for Hardhat's phrase, computed independently of this code.
     private val perAppVectors = mapOf(
         "example.com" to "0xD95Eed45757974E165fd937990362A47aeC0C4c9",
-        "app.uniswap.org" to "0x71324bAd1dFD6129fb591115e7156211a5592148",
+        "app.uniswap.org" to "0x9fa669087fa85CFc61545E7c649f1b5C69088D52",
         "walletbeat.eth.limo" to "0xb25C58C595AD12B8A6C5e980f5e0457716A8F37b",
-        "app.safe.global" to "0x126d22A926D830F06023094e0A4Ac5bc50703A6e",
+        "app.safe.global" to "0x7144Bb0e35F67cAC626CA72Aef48bbBAbA648Ff4",
         "localhost" to "0xb95bA35cf5b2bA6D0E44f640837e97E6945FDF09",
     )
     private val exampleAddress = Address.of(perAppVectors.getValue("example.com"))
@@ -623,6 +623,11 @@ class EnvelopeKeyStoreTest {
             store.derivePerApp(hardhatSecond, host("example.com"), password),
         )
         assertEquals(before, envelopeOf(exampleAddress).readText(), "not sealed again")
+        assertEquals(
+            PerAppDerivation.Stored(exampleAddress, examplePath, hardhatAddress, KeyProtection.PASSWORD_ONLY),
+            store.derivePerApp(hardhatAddress, host("www.example.com"), password),
+            "one site, one address",
+        )
         assertEquals(
             Address.of(perAppVectors.getValue("app.uniswap.org")),
             (store.derivePerApp(hardhatSecond, host("app.uniswap.org"), password) as PerAppDerivation.Stored).address,

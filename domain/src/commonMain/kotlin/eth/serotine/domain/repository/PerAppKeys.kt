@@ -7,15 +7,15 @@ import eth.serotine.domain.model.WalletPassword
 
 /**
  * The key store's per-app addresses (issue #252; docs/keys-and-signing.md, *Per-app addresses*): an address of its
- * own for each dApp host, derived from a stored phrase's seed at `m/44'/60'/a'/b'/c'` ([eth.serotine.domain.model
- * .AppIsolation.pathOf]). A port of its own beside [KeyStore], so that what does not make per-app addresses need not
- * know of them. No key leaves it: the address is derived and sealed inside the adapter, never shown or exported.
+ * own for each site (the registrable domain of a dApp's host, [AppHost.site]), derived from a stored phrase's seed at
+ * `m/44'/60'/a'/b'/c'` ([eth.serotine.domain.model.AppIsolation.pathOf]). A port of its own beside [KeyStore], so
+ * that what does not make per-app addresses need not know of them. No key leaves it: the address is derived and sealed inside the adapter, never shown or exported.
  */
 interface PerAppKeys {
 
     /**
-     * [host]'s per-app address of the phrase that [from]'s envelope holds: that envelope opened with [password] (which
-     * checks it), its seed checked against [from], the address derived and sealed in an envelope of its own, filed
+     * The per-app address of [host]'s site, of the phrase that [from]'s envelope holds: that envelope opened with
+     * [password] (which checks it), its seed checked against [from], the address derived and sealed in an envelope of its own, filed
      * under it and naming its path and its phrase. An envelope already stored for that address that opens under
      * [password] at that path is kept, not sealed again: deriving it again after the phrase's restore (D9), or after
      * a connection that never reached the account list, gives the same address. Only an account whose envelope holds

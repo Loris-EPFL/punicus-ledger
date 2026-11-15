@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 /**
@@ -56,6 +57,8 @@ data class PerAppChoice(
 
 /** The phrases of the wallet's accounts held here, each named by its first account in [listed] ([PhraseSource]). */
 fun phraseSources(listed: List<Account>, phrases: Map<Address, Address>): List<PhraseSource> {
+    // An older envelope's further account, whose phrase is learnt only when it is opened, stands for one of its own:
+    // it may be one listed already, which then shows twice, and either gives the same addresses.
     val held = listed.filter { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore }
     val seen = HashSet<Address>()
     return held.mapNotNull { account ->
@@ -89,7 +92,10 @@ fun perAppNetworks(
     return open.filter { it.testnet == testnet && it !in there }
 }
 
-/** The per-app choice for the dApp stating [url] (screen D3), re-emitted as the wallet and the memory change. */
+/**
+ * The per-app choice for the dApp stating [url] (screen D3), re-emitted as the wallet and the memory change. The
+ * envelopes are read for their phrases once per change of the account list, not on every emission.
+ */
 class ObservePerAppChoice(
     private val accounts: AccountRepository,
     private val keys: PerAppKeys,
@@ -99,13 +105,16 @@ class ObservePerAppChoice(
     operator fun invoke(url: String): Flow<PerAppChoice> {
         val host = AppHost.ofUrl(url)
         val site = (host as? AppHostResult.Host)?.host?.site
-        return combine(accounts.observeAccounts(), sites.observe(), networks.observe()) { list, memory, enabled ->
-            val listed = (list as? AccountList.Loaded)?.accounts.orEmpty()
+        val listedWithPhrases = accounts.observeAccounts()
+            .map { list -> (list as? AccountList.Loaded)?.accounts.orEmpty() }
+            .distinctUntilChanged()
+            .map { listed -> listed to keys.phrases() }
+        return combine(listedWithPhrases, sites.observe(), networks.observe()) { (listed, phrases), memory, enabled ->
             val perApp = listed.mapNotNull { it.perApp }
             PerAppChoice(
                 host = host,
                 site = site,
-                sources = phraseSources(listed, keys.phrases()),
+                sources = phraseSources(listed, phrases),
                 made = if (site == null) emptyList() else listed.filter { it.perApp?.site == site },
                 remembered = site?.let { memory[it] }.orEmpty(),
                 enabled = enabled,
@@ -119,8 +128,11 @@ class ObservePerAppChoice(
  * Makes the per-app address of [host]'s site (issue #252; docs/walletconnect.md, *Per-app addresses*): derived from
  * the phrase [from]'s envelope holds, opened with the wallet password ([PerAppKeys.derivePerApp]), and added on each
  * of the networks given as an [AccountKind.EOA] held in the key store, named after its site and marked as a per-app
- * address ([PerAppAccount]). A site whose path is another held site's is refused before anything is derived
- * ([AppIsolation.collision]): every per-app address on this device, of any phrase, is weighed.
+ * address ([PerAppAccount]); an entry of that address already listed and not marked so (watched, say) is replaced by
+ * the marked one, keeping its name. A site whose path is that of another site's per-app address in the account list,
+ * of any phrase, is refused before anything is derived ([AppIsolation.collision]). An envelope left in the key store
+ * without its account cannot be weighed, since its site is not stored: one of the same path is taken for the same
+ * site, as making it again after a removal needs.
  *
  * The key store first, then the account list, as one step a cancelled caller does not cut in half, under the app's
  * [WalletChanges], as [DeriveAccount] does. The password goes to the key store alone.
@@ -165,26 +177,43 @@ class MakePerAppAddress(
         val made = networks.distinct().map { network ->
             val account = Account(network, stored.address, AccountKind.EOA, site.name, AccountCustody.InKeyStore,
                 perApp = mark)
-            when (accounts.add(account)) {
-                AccountAdd.Added -> account.id
-                AccountAdd.NotSaved -> return PerAppMaking.ListNotSaved
-                AccountAdd.AlreadyPresent -> {
-                    // Watched before (the user's own per-app address, watched from another device): held from here
-                    // on. Its entry keeps its name and is not marked.
-                    val existing = (accounts.observeAccounts().first() as? AccountList.Loaded)
-                        ?.accounts?.firstOrNull { it.id == account.id }
-                    if (existing?.custody == AccountCustody.Watched &&
-                        accounts.setCustody(account.id, AccountCustody.InKeyStore) != AccountChange.Changed
-                    ) {
-                        return PerAppMaking.ListNotSaved
-                    }
-                    account.id
-                }
-            }
+            if (!addMarked(account)) return PerAppMaking.ListNotSaved
+            account.id
         }
         return PerAppMaking.Made(stored.address, made, stored.steppedDown)
     }
 }
+
+/**
+ * [account] in the list, marked: added, or kept when it is there marked already; an entry of its address there not
+ * marked so (the user's own per-app address watched before, say) is replaced by it, under the entry's name. False when
+ * the list could not be saved.
+ */
+private suspend fun AccountRepository.addMarked(account: Account): Boolean {
+    repeat(MARK_ATTEMPTS) {
+        when (add(account)) {
+            AccountAdd.Added -> return true
+            AccountAdd.NotSaved -> return false
+            AccountAdd.AlreadyPresent -> {
+                val existing = (observeAccounts().first() as? AccountList.Loaded)?.accounts
+                    ?.firstOrNull { it.id == account.id }
+                    ?: return@repeat // removed meanwhile: add again
+                if (existing.perApp == account.perApp && existing.custody == AccountCustody.InKeyStore) return true
+                when (remove(account.id)) {
+                    AccountChange.Changed, AccountChange.NotFound -> Unit
+                    AccountChange.NotSaved -> return false
+                }
+                val named = account.copy(label = existing.label, ensName = existing.ensName)
+                if (add(named) == AccountAdd.NotSaved) return false
+                return true
+            }
+        }
+    }
+    return false
+}
+
+/** How often [addMarked] tries again when another writer changes the entry meanwhile. */
+private const val MARK_ATTEMPTS = 3
 
 /** The outcome of [MakePerAppAddress]. */
 sealed interface PerAppMaking {

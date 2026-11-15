@@ -182,4 +182,35 @@ class PerAppAddressesTest {
         assertIs<PerAppMaking.Made>(result)
         assertEquals(listOf(AccountId(Network.GNOSIS, made.address)), result.accounts)
     }
+
+    @Test
+    fun aWatchedEntryOfTheAddressIsReplacedByTheMarkedOneUnderItsName() = runTest {
+        val keys = FakePerAppKeys(address = address('7'))
+        val watchedOwn = account(Network.ETHEREUM, '7', custody = AccountCustody.Watched).copy(label = "Mine")
+        val accounts = ListAccountRepository(first, watchedOwn)
+        val made = MakePerAppAddress(keys, accounts, WalletChanges())(
+            first.id,
+            testHost("app.uniswap.org"),
+            listOf(Network.ETHEREUM),
+            WalletPassword("correct horse"),
+        )
+        assertIs<PerAppMaking.Made>(made)
+        val entry = accounts.accounts.value.single { it.address == address('7') }
+        assertEquals("Mine", entry.label)
+        assertEquals(AccountCustody.InKeyStore, entry.custody)
+        assertEquals(testHost("uniswap.org"), entry.perApp?.site)
+    }
+
+    @Test
+    fun anotherSitesPerAppAddressIsNotOfferedNorApproved() = runTest {
+        val site = testHost("uniswap.org")
+        val mark = PerAppAccount(site, AppIsolation.pathOf(site), first.address)
+        val perApp = account(Network.ETHEREUM, '6', perApp = mark)
+        val asking = proposal(optional = setOf("eip155:1"))
+        val elsewhere = asking.copy(dapp = DappMetadata("Other", "https://app.other.example", ""))
+        assertEquals(DappOffer.OFFERED, dappOffer(perApp, enabled.value, asking))
+        assertEquals(DappOffer.OTHER_SITE, dappOffer(perApp, enabled.value, elsewhere))
+        assertEquals(DappOffer.OFFERED, dappOffer(first, enabled.value, elsewhere), "an ordinary account is")
+    }
 }
+

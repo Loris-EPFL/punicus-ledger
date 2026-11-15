@@ -569,4 +569,41 @@ class DappViewModelsTest {
         runCurrent()
         assertEquals(other.address, keys.derived.single().first)
     }
+
+    @Test
+    fun theSitesAddressOnMoreNetworksComesFromThePhraseItWasMadeFrom() = runTest {
+        main()
+        val other = account(Network.ETHEREUM, '5')
+        val mark = PerAppAccount(uniswap, AppIsolation.pathOf(uniswap), other.address)
+        val perApp = Account(
+            Network.ETHEREUM, keys.address, AccountKind.EOA, "uniswap.org", AccountCustody.InKeyStore, perApp = mark,
+        )
+        keys.phrases = mapOf(
+            ethereumHeld.address to ethereumHeld.address,
+            other.address to other.address,
+            perApp.address to other.address,
+        )
+        val wallet = FakeAccounts(ethereumHeld, other, perApp)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(perAppProposal()), emptyList())
+        val vm = perAppViewModel(wallet)
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        val offered = vm.uiState.value.newAddress!!
+        assertEquals("uniswap.org's address on more networks", offered.title)
+        assertFalse(offered.chosen, "the site has an address: nothing new is ticked")
+        assertNull(offered.phrase, "its own phrase: nothing to choose")
+
+        vm.toggle(DappProposalViewModel.NEW_KEY)
+        vm.onPasswordChange("correct horse")
+        vm.toggle(DappProposalViewModel.NEW_KEY)
+        assertEquals("", vm.uiState.value.password.text, "unticked, the password goes")
+        vm.toggle(DappProposalViewModel.NEW_KEY)
+        vm.onPasswordChange("correct horse")
+        vm.approve()
+        runCurrent()
+        assertEquals(other.address, keys.derived.single().first)
+        val marked = wallet.accounts.value.filter { it.perApp != null }
+        assertEquals(listOf(Network.ETHEREUM, Network.GNOSIS), marked.map { it.network })
+    }
 }
+

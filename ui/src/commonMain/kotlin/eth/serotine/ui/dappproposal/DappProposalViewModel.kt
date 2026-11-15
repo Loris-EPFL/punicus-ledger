@@ -25,6 +25,7 @@ import eth.serotine.domain.usecase.missingRequired
 import eth.serotine.domain.usecase.perAppNetworks
 import eth.serotine.domain.usecase.RejectDappProposal
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.components.spokenList
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -164,9 +165,10 @@ class DappProposalViewModel(
     /** What Approve acts on, as the state last shown has it: the keys chosen, and the new address chosen, if any. */
     private data class Plan(val chosen: Set<String>, val newAddress: NewAddress?)
 
-    private val local = MutableStateFlow(Local())
+    /** The state shown and what Approve acts on, computed together so that the two never disagree. */
+    private class Shown(val state: DappProposalUiState, val plan: Plan)
 
-    private var plan = Plan(emptySet(), null)
+    private val local = MutableStateFlow(Local())
 
     private val overviews = observeDappConnections()
 
@@ -175,14 +177,17 @@ class DappProposalViewModel(
         .distinctUntilChanged()
         .flatMapLatest { url -> observePerAppChoice(url.orEmpty()) }
 
-    val uiState: StateFlow<DappProposalUiState> = combine(overviews, choices, local) { overview, perApp, local ->
+    private val shown: StateFlow<Shown> = combine(overviews, choices, local) { overview, perApp, local ->
         val proposal = (overview.connections as? DappConnections.On)?.proposals?.find { it.id == id }
             // No longer waiting: the screen leaves, unless an answer that did not take says why first.
-            ?: return@combine if (local.notice != null && !local.done) {
-                DappProposalUiState(loading = false, ended = true, notice = local.notice)
-            } else {
-                DappProposalUiState(loading = false, gone = true, done = local.done)
-            }
+            ?: return@combine Shown(
+                if (local.notice != null && !local.done) {
+                    DappProposalUiState(loading = false, ended = true, notice = local.notice)
+                } else {
+                    DappProposalUiState(loading = false, gone = true, done = local.done)
+                },
+                NO_PLAN,
+            )
         val offered = overview.accounts.filter { it.offerTo(proposal) == DappOffer.OFFERED }.map { it.account.id }
         // Preselected until the user changes the choice: what was approved for the site last, or else the site's
         // per-app addresses; and a new address while the site has none (docs/walletconnect.md, *Per-app addresses*).
@@ -206,19 +211,18 @@ class DappProposalViewModel(
                 name = choice.account.label,
                 address = shortAddress(choice.account.address.hex),
                 chosen = offer == DappOffer.OFFERED && keyOf(choice.account.id) in wanted,
-                unavailable = offerLine(offer, choice.account.network),
+                unavailable = offerLine(offer, choice.account.network, choice.account.perApp?.site?.name),
                 network = choice.account.network.displayName,
                 perAppSite = choice.account.perApp?.site?.name,
             )
         }
         val chosenKeys = options.filter { it.chosen }.map { it.key }.toSet()
-        plan = Plan(chosenKeys, making)
         val chosenIds = overview.accounts.map { it.account.id }.filter { keyOf(it) in chosenKeys } +
             making?.networks.orEmpty().map { AccountId(it, PLACEHOLDER) }
         val chosenKinds = chosenIds.map { it.network.testnet }.toSet()
         val held = Network.entries
             .filter { it in proposal.networks && (chosenKinds.isEmpty() || it.testnet in chosenKinds) }
-        DappProposalUiState(
+        val state = DappProposalUiState(
             loading = false,
             name = proposal.dapp.name,
             url = proposal.dapp.url,
@@ -238,7 +242,11 @@ class DappProposalViewModel(
             phrases = if (local.choosingPhrase) phraseOptions(perApp, local) else null,
             password = local.password,
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DappProposalUiState())
+        Shown(state, Plan(chosenKeys, making))
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Shown(DappProposalUiState(), NO_PLAN))
+
+    val uiState: StateFlow<DappProposalUiState> =
+        shown.map { it.state }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DappProposalUiState())
 
     /**
      * The new address's row, and what Approve makes when it is chosen (null when it is not, or cannot be made); or
@@ -255,10 +263,17 @@ class DappProposalViewModel(
         if (networks.isEmpty() && choice.made.isNotEmpty()) return null
         val site = choice.site
         val host = (choice.host as? AppHostResult.Host)?.host
-        val source = choice.sources.firstOrNull { keyOf(it.from.id) == local.phrase } ?: choice.sources.firstOrNull()
+        // The site's address on more networks comes from the phrase it was made from, whichever is chosen.
+        val madeFrom = choice.made.firstNotNullOfOrNull { it.perApp?.phrase }
+        val source = if (madeFrom != null) {
+            choice.sources.firstOrNull { it.phrase == madeFrom }
+        } else {
+            sourceOf(choice, local)
+        }
         val unavailable = when {
             proposal.refusal != null -> refusalLine(proposal.refusal!!)
             host == null || site == null -> hostLine(choice.host)
+            source == null && madeFrom != null -> PHRASE_GONE
             source == null -> NO_PHRASE
             choice.collision != null -> collisionLine(choice.collision!!)
             networks.isEmpty() -> NO_NETWORK
@@ -267,8 +282,9 @@ class DappProposalViewModel(
         val named = site?.name ?: "this dApp"
         val title = if (choice.made.isEmpty()) "New address for $named" else "$named's address on more networks"
         val hostPart = if (host != null && site != null && host != site) "${host.name}, site ${site.name}" else named
-        val where = if (networks.isEmpty()) hostPart else "$hostPart · On ${namesOf(networks)}"
-        val several = choice.sources.size > 1
+        val names = spokenList(networks.map { it.displayName })
+        val where = if (networks.isEmpty()) hostPart else "$hostPart · On $names"
+        val several = choice.sources.size > 1 && madeFrom == null
         val option = NewAddressOption(
             title = title,
             where = where,
@@ -285,8 +301,12 @@ class DappProposalViewModel(
         return option to making
     }
 
+    /** The phrase the user chose for a new address, or the default: that of the first account in the list. */
+    private fun sourceOf(choice: PerAppChoice, local: Local) =
+        choice.sources.firstOrNull { keyOf(it.from.id) == local.phrase } ?: choice.sources.firstOrNull()
+
     private fun phraseOptions(choice: PerAppChoice, local: Local): List<PhraseOption> {
-        val chosen = choice.sources.firstOrNull { keyOf(it.from.id) == local.phrase } ?: choice.sources.firstOrNull()
+        val chosen = sourceOf(choice, local)
         return choice.sources.map {
             PhraseOption(keyOf(it.from.id), it.from.label, shortAddress(it.from.address.hex), it == chosen)
         }
@@ -297,7 +317,7 @@ class DappProposalViewModel(
      * address that cannot be made, says why instead.
      */
     fun toggle(key: String) {
-        val state = uiState.value
+        val (state, plan) = shown.value.let { it.state to it.plan }
         // The choice as shown, preselection included, from here on the user's.
         val current = local.value.chosen ?: if (plan.newAddress != null) plan.chosen + NEW_KEY else plan.chosen
         val unavailable = if (key == NEW_KEY) {
@@ -307,7 +327,9 @@ class DappProposalViewModel(
         }
         // One chosen before it became unavailable can always be unchosen.
         if (key in current) {
-            local.update { it.copy(chosen = current - key, notice = null) }
+            // Unticking the new address drops a typed password: nothing needs it any more.
+            val password = if (key == NEW_KEY) WalletPassword.EMPTY else local.value.password
+            local.update { it.copy(chosen = current - key, notice = null, password = password) }
             return
         }
         if (unavailable != null) {
@@ -322,7 +344,7 @@ class DappProposalViewModel(
 
     /** Opens the list of phrases a new address can come from. */
     fun choosePhrase() {
-        if (uiState.value.newAddress?.changeable == true) local.update { it.copy(choosingPhrase = true) }
+        if (shown.value.state.newAddress?.changeable == true) local.update { it.copy(choosingPhrase = true) }
     }
 
     /** The new address comes from the phrase the account [key] names; null closes the list unchanged. */
@@ -339,7 +361,7 @@ class DappProposalViewModel(
     }
 
     fun approve() {
-        val state = uiState.value
+        val (state, plan) = shown.value.let { it.state to it.plan }
         val proposal = id ?: return
         if (state.busy) return
         state.refusal?.let { reason ->
@@ -408,6 +430,11 @@ class DappProposalViewModel(
         /** The new per-app address's row, as [toggle] names it. */
         const val NEW_KEY = "new"
 
+        private val NO_PLAN = Plan(emptySet(), null)
+
+        const val PHRASE_GONE = "This site's address came from a recovery phrase no longer held on this device, so " +
+            "it cannot be added on more networks here."
+
         /** Stands for the new address on its networks while it is not made yet: only its network is ever read. */
         private val PLACEHOLDER = Address.of("0x" + "0".repeat(40))
 
@@ -456,13 +483,6 @@ class DappProposalViewModel(
             PerAppMaking.ListUnreadable -> ACCOUNTS_UNREADABLE
             PerAppMaking.ListNotSaved -> "The new address is stored, but your account list could not be saved. " +
                 "Approve again to add it."
-        }
-
-        /** [networks] by name, as a sentence lists them. */
-        private fun namesOf(networks: List<Network>): String {
-            val names = networks.map { it.displayName }
-            if (names.size == 1) return names.single()
-            return names.dropLast(1).joinToString(", ") + " and " + names.last()
         }
 
         /**
@@ -524,8 +544,11 @@ class DappProposalViewModel(
                 "This dApp requires a chain that is not an Ethereum one, so it can only be rejected."
         }
 
-        /** Why an account on [network] is not offered, for [offer]; null when it is. */
-        fun offerLine(offer: DappOffer, network: Network): String? = when (offer) {
+        /**
+         * Why an account on [network] is not offered, for [offer]; null when it is. [site] is the site it is the
+         * per-app address of, when it is one.
+         */
+        fun offerLine(offer: DappOffer, network: Network, site: String? = null): String? = when (offer) {
             DappOffer.OFFERED -> null
             DappOffer.NOT_ASKED -> "This dApp did not ask for ${network.displayName}."
             DappOffer.OTHER_FUNDS -> if (network.testnet) {
@@ -535,6 +558,8 @@ class DappProposalViewModel(
             }
             DappOffer.NETWORK_OFF -> "${network.displayName} is off. Turn it on in Settings, under Networks."
             DappOffer.NO_KEY -> "This account is watched: there is no key for it on this device."
+            DappOffer.OTHER_SITE -> "This is the per-app address of ${site ?: "another site"}. It is offered to that " +
+                "site alone, so that the two sites cannot link your activity."
         }
 
         fun approvalLine(approval: DappApproval): String? = when (approval) {

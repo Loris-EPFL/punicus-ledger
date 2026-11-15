@@ -417,8 +417,9 @@ port `Signer` in `:domain`, all implemented by `EnvelopeKeyStore` in
     left as it is: rewritten, an older build of the app could no longer
     read it. Its phrase is learnt when a per-app address is next derived
     from it (`PerAppDerivation.Stored.phrase`), and kept with the per-app
-    account made (`PerAppAccount.phrase`, in the account list); until then
-    D3 lists such an account as a phrase of its own. The first account of a
+    account made (`PerAppAccount.phrase`, in the account list); D3 lists the
+    older account itself as a phrase of its own, which gives the same
+    addresses. The first account of a
     phrase needs none: its address is the phrase's. `PerAppKeys.phrases()`
     reads them from the envelopes without the unlock.
   - **Restored on request** (D9, owner's request, 2026-11-14): a host (or

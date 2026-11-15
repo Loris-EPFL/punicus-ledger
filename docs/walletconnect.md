@@ -215,8 +215,9 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     phrase is known by the address of its first account
     (`m/44'/60'/0'/0/0`), which every envelope of that phrase sealed since
     part 2 records (an older envelope's is learnt when a per-app address is
-    derived from it, and kept with the per-app account made; until then that
-    account stands for a phrase of its own), a public value checked against
+    derived from it, and kept with the per-app account made; D3 still lists
+    that older account as a phrase of its own, which gives the same
+    addresses), a public value checked against
     the seed when the envelope opens; so the
     phrases can be told apart and listed before the unlock, whether or not
     that first account is still in the wallet. With one phrase, D3 asks
@@ -241,7 +242,12 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     with none, that of the networks the dApp requires; with neither, real
     funds when one of them is on, else Sepolia. A site whose address is on
     every such network already shows it among the accounts, and no new
-    address is offered.
+    address is offered; added on more networks, it comes from the phrase it
+    was made from.
+  - **Another site's per-app address** is greyed out among the accounts, a
+    tap saying it is offered to its own site alone; ApproveDappProposal
+    refuses it too. Using it for another site is an alias (part 4), which
+    asks first.
 - **Remembered per site.** The addresses last approved for a site are kept,
   app-private like a session's state (ruling 8), and preselected when a host
   of that site connects again (WalletBeat's *per-app account persistence*). After a

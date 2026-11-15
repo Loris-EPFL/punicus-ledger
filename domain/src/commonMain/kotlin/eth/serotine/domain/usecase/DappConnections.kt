@@ -46,6 +46,12 @@ enum class DappOffer {
 
     /** An EOA watched with no key on this device: it can sign nothing here. */
     NO_KEY,
+
+    /**
+     * The per-app address of another site than the dApp's (issue #252): offered only to its own site, so that the two
+     * cannot link the user's activity. Using one for another site is an alias, which asks first (part 4 of #252).
+     */
+    OTHER_SITE,
 }
 
 /** One of the wallet's accounts, and whether a dApp may be offered it, whatever the proposal asks. */
@@ -65,9 +71,13 @@ private fun proposalOffer(account: Account, proposal: DappProposal, chosen: Coll
     return when {
         account.network !in proposal.askedNetworks -> DappOffer.NOT_ASKED
         kinds.any { it != account.network.testnet } -> DappOffer.OTHER_FUNDS
+        account.perApp != null && account.perApp.site != siteOf(proposal) -> DappOffer.OTHER_SITE
         else -> null
     }
 }
+
+/** The site of the host [proposal]'s dApp states ([AppHost.site]), or null when it states none. */
+fun siteOf(proposal: DappProposal): AppHost? = (AppHost.ofUrl(proposal.dapp.url) as? AppHostResult.Host)?.host?.site
 
 /** The connections, and every account of the wallet with whether a dApp may be offered it. */
 data class DappOverview(
@@ -144,9 +154,7 @@ class ApproveDappProposal(
         } && missingRequired(asked, chosen).isEmpty()
         if (!valid) return DappApproval.InvalidAccounts
         val approval = sessions.approve(proposal, chosen)
-        if (approval is DappApproval.Approved) {
-            (AppHost.ofUrl(asked.dapp.url) as? AppHostResult.Host)?.let { sites.remember(it.host.site, chosen) }
-        }
+        if (approval is DappApproval.Approved) siteOf(asked)?.let { sites.remember(it, chosen) }
         return approval
     }
 }

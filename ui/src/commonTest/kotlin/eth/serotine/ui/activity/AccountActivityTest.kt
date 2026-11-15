@@ -17,6 +17,8 @@ import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenTransfers
+import eth.serotine.domain.model.DelayTransfer
+import eth.serotine.domain.model.DelayTransferPlan
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.CowOrderEnd
@@ -632,6 +634,24 @@ class AccountActivityTest {
         val rows = assertIs<ActivityUiState.Shown>(activity(treasury.address).value).rows
 
         assertEquals(listOf("Executed transaction 4: Send 0.000000000000000001 ETH"), rows.map { it.title })
+    }
+
+    @Test
+    fun aGnosisPayTransferExecutedFromHereIsOneRow() = runTest {
+        // The Safe's Delay ran its transfer: its module event and the transfer it made are the sent row's.
+        val delay = Address.of("0x" + "de".repeat(20))
+        val plan = DelayTransfer.of(treasury.address, delay, listOf(delay), TransferAsset.Native, bob, UInt256.ONE)
+        val executed = sent(10, SentAction.DelayExecution((plan as DelayTransferPlan.Planned).transfer), 100)
+        history.entries.value = listOf(HistoryEntry(executed, SentOutcome.Included(9_410_000, succeeded = true)))
+        treasuryIndexed(9_400_000L..9_420_000L)
+        val moduleSuccess = "0x6895c13664aa4f67288b25d7a21d7aaa34916e355fb9b6fae0a139a9085becb8"
+        val delayTopic = "0x" + "00".repeat(12) + delay.hex.removePrefix("0x")
+        index.logs = listOf(safeLog(9_410_000, listOf(moduleSuccess, delayTopic), tx = executed.hash))
+
+        val rows = assertIs<ActivityUiState.Shown>(activity(treasury.address).value).rows
+
+        assertEquals(1, rows.size, rows.map { it.title }.toString())
+        assertEquals(true, rows.single().title.startsWith("Executed "), rows.single().title)
     }
 
     @Test

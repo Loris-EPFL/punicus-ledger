@@ -106,7 +106,8 @@ class GnosisPayViewModelTest {
             ),
         )
 
-        override suspend fun queue(network: Network, delay: Address, hash: Digest): DelayQueueReading = queueAnswer
+        override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading =
+            queueAnswer
     }
 
     private val balances = FakeBalances()

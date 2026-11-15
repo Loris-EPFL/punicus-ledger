@@ -1379,6 +1379,7 @@ private object NoDelayModules : eth.serotine.domain.repository.DelayModules {
 
     override suspend fun queue(
         network: eth.serotine.domain.model.Network,
+        safe: eth.serotine.domain.model.Address,
         delay: eth.serotine.domain.model.Address,
         hash: eth.serotine.domain.model.Digest,
     ): eth.serotine.domain.repository.DelayQueueReading =

@@ -7,7 +7,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BalanceReading
-import eth.serotine.domain.repository.DelayFinding
+import eth.serotine.domain.repository.DelayGeneration
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.TokenBalanceReading
@@ -168,14 +168,23 @@ internal object GnosisPayTexts {
 
     fun quoteRefused(quoting: DelayQuoting): String = when (quoting) {
         is DelayQuoting.Quoted -> ""
-        is DelayQuoting.NotTheSafesDelay -> when (val finding = quoting.finding) {
-            is DelayFinding.Wired -> "The account's Delay module now runs the retired code: nothing is sent through it."
+        is DelayQuoting.NotTheSafesDelay -> when (quoting.generation) {
+            DelayGeneration.RETIRED ->
+                "The account's Delay module now runs the retired code: nothing is sent through it."
             else -> "The Delay module is no longer this account's own, as verified now: nothing is sent through it."
         }
-        DelayQuoting.SafeInsufficient -> "The account holds less than that. The transfer would be queued, wait, " +
-            "and then fail, its fees paid."
-        is DelayQuoting.AlreadyQueued -> "The same transfer is queued already and waits for its execution. " +
-            "Execute or let that one expire before queuing it again."
+        is DelayQuoting.SafeInsufficient -> if (quoting.alreadyQueued.isZero) {
+            "The account holds less than that. The transfer would be queued, wait, and then fail, its fees paid."
+        } else {
+            "The account holds less than that beside what transfers queued from here will move. It would be " +
+                "queued, wait, and then fail, its fees paid."
+        }
+        is DelayQuoting.AlreadyQueued -> "The same transfer is queued already and waits in the Delay module. " +
+            "Execute it, or let it expire, before queuing it again."
+        DelayQuoting.TokenRefuses -> "The token refuses this transfer from the account: it answers false. The " +
+            "Delay would spend its entry and move nothing."
+        DelayQuoting.HistoryUnreadable ->
+            "The record of what this wallet sent cannot be read right now, so what is already queued cannot be told."
         is DelayQuoting.NotQuoted -> refusalText(quoting.refusal)
         is DelayQuoting.NotReady -> whyNotYet(quoting.state)
     }

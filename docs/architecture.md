@@ -47,7 +47,7 @@ rule in code.
   port for: secp256k1 recovery (`SignatureRecovery`), JSON
   (`SigningRequestCodec`).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`,
-  `KeyStore` and `Signer`, `KnownUpgradeStore`, `TokenCatalog`, `UserTokens`,
+  `KeyStore`, `PerAppKeys` and `Signer`, `KnownUpgradeStore`, `TokenCatalog`, `UserTokens`,
   `DisplayCurrencySetting`, `DebugScreenSetting`, `DebugLog` (in memory, written by the
   engine adapter through `LogSink`), `SentTransfers`, and `NativeBalances`, `TokenBalances`,
   `TokenMetadata`, `PriceFeeds`, `AddressKinds`, `LightClient`,

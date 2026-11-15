@@ -475,9 +475,33 @@ private fun AccountDetailSafeOwnersPreview() = AccountDetailPreview(treasury.cop
 @Preview
 @Composable
 private fun AccountDetailGnosisPayOwnersPreview() = AccountDetailPreview(
+    // As account-kit leaves one: its one owner the placeholder 0x…02, the Roles and Delay modules on,
+    // controlled by a member of the Delay whose key is on this device, not by any owner.
     treasury.copy(
         label = "Card",
         network = NetworkLabel(100, "Gnosis Chain", testnet = false),
+        control = Control.WATCH_ONLY,
+        total = "€1,250.00",
+        totalNote = null,
+        assets = listOf(
+            usdc.copy(symbol = "EURe", name = "Monerium EURe", icon = null, amount = "1,250 EURe", value = "€1,250.00"),
+        ),
+        safe = SafeDetails.Shown(
+            title = "Safe 1.3.0 · nonce 1",
+            signers = "No owner can sign: its one owner is a placeholder no key controls",
+            owners = listOf(
+                OwnerRow("0x0000000000000000000000000000000000000002", GNOSIS_PAY_PLACEHOLDER_LABEL, heldHere = false),
+            ),
+            modules = listOf(
+                "0x5c7516E3E2581d1274D28e97cCcC3eda87aF796D",
+                "0xfC85bCbc2Ce6aEC1be9d94C77c872269EbDDb6c7",
+            ),
+            guard = null,
+            checkedAt = "Verified at block 43,000,512",
+        ),
+        kindNote = "Safe",
+        threshold = "1/1",
+        queue = SafeQueue.Shown(rows = emptyList()),
         segment = DetailSegment.OWNERS,
         gnosisPay = "Gnosis Pay account. Its controlling key is on this device: transfers go through its Delay module.",
     ),

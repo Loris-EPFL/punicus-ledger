@@ -30,7 +30,7 @@ internal object GnosisPayTexts {
 
     fun eip55(address: Address): String = Eip55.format(address)
 
-    /** A period of [seconds] as a sentence says it: "25 h", "3 min", "1 h 30 min". */
+    /** A period of [seconds] as a sentence says it: "3 min", "30 min", "25 h", "1 h 30 min". */
     fun period(seconds: Long): String {
         val hours = seconds / 3_600
         val minutes = (seconds % 3_600 + 59) / 60

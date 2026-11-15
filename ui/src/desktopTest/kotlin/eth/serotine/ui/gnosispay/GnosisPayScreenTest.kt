@@ -22,7 +22,7 @@ class GnosisPayScreenTest {
         label = "Card",
         address = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
         delay = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
-        waits = "A transfer waits 25 h in the Delay module, then can be executed for 31 h.",
+        waits = "A transfer waits 3 min in the Delay module, then can be executed for 30 min.",
         checkedAt = "Verified by the light client at block 1",
         members = listOf(MemberRow("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB", "Card owner", heldHere = true)),
         send = ActionItem(enabled = true, reason = null),

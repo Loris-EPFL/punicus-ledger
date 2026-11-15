@@ -97,11 +97,11 @@ class GnosisPayViewModelTest {
 
     private val sentinel = Address.of("0x" + "0".repeat(39) + "2")
     private var queueAnswer: DelayQueueReading =
-        DelayQueueReading.Read(DelayQueue(0, 0, 90_000, 111_600, null, 0), 41, 0)
+        DelayQueueReading.Read(DelayQueue(0, 0, 180, 1_800, null, 0), 41, 0)
     private val delays = object : DelayModules {
         override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> = flowOf(
             DelayReading.Verified(
-                DelayFinding.Wired(DelayModule(delay, DelayGeneration.CURRENT, 90_000, 111_600, 0, 0, listOf(member))),
+                DelayFinding.Wired(DelayModule(delay, DelayGeneration.CURRENT, 180, 1_800, 0, 0, listOf(member))),
                 41,
             ),
         )
@@ -149,7 +149,7 @@ class GnosisPayViewModelTest {
         val state = viewModel().ready()
 
         assertEquals(GnosisPayStep.Overview(), state.step)
-        assertTrue(state.waits.contains("25 h") && state.waits.contains("31 h"), state.waits)
+        assertTrue(state.waits.contains("3 min") && state.waits.contains("30 min"), state.waits)
         assertEquals(ActionItem(enabled = true, reason = null), state.send)
         assertEquals("Card owner", state.members.single().label)
         assertTrue(state.members.single().heldHere)
@@ -219,9 +219,9 @@ class GnosisPayViewModelTest {
         )
         history.entries.value = listOf(HistoryEntry(queueing, SentOutcome.NonceUsed))
         queueAnswer = DelayQueueReading.Read(
-            DelayQueue(0, 1, 90_000, 111_600, DelayEntry(0, transfer.hash, 1_000), 1),
+            DelayQueue(0, 1, 180, 1_800, DelayEntry(0, transfer.hash, 1_000), 1),
             41,
-            95_000,
+            1_200,
         )
         val viewModel = viewModel()
         val row = viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.queued?.isNotEmpty() == true }
@@ -236,8 +236,10 @@ class GnosisPayViewModelTest {
 
     @Test
     fun aPeriodIsSaidInHoursAndMinutesRoundedUp() {
+        // What Gnosis Pay accounts carry, and the outlier the tests' real account has.
+        assertEquals("3 min", GnosisPayTexts.period(180))
+        assertEquals("30 min", GnosisPayTexts.period(1_800))
         assertEquals("25 h", GnosisPayTexts.period(90_000))
-        assertEquals("31 h", GnosisPayTexts.period(111_600))
         assertEquals("3 min", GnosisPayTexts.period(180))
         assertEquals("1 h", GnosisPayTexts.period(3_599))
         assertEquals("1 h 30 min", GnosisPayTexts.period(5_400))

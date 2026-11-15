@@ -35,10 +35,12 @@ transaction:
   its settlement address within an allowance. That allowance binds the
   spender, not the members.
 
-Read on Gnosis Chain on 2026-11-15, the accounts set up since June 2026 carry
-a cooldown of 90000 s (25 hours) and an expiration of 111600 s (31 hours
-after the cooldown), not the 3 minutes Gnosis Pay's older documentation
-names. The screens show each account's own figures, never a constant.
+Read on Gnosis Chain on 2026-11-15, Gnosis Pay accounts carry a cooldown of
+180 s (3 minutes) and an expiration of 1800 s (30 minutes after the
+cooldown): every one of 40 accounts set up recently on the current
+mastercopy, and 30 of 30 sampled on the retired one. A few differ (the
+account the tests read, `0x1884…d4fb`, has 90000 s and 111600 s), so the
+screens show each account's own figures, never a constant.
 
 ## The mastercopies
 

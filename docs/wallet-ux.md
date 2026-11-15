@@ -1597,8 +1597,8 @@ A Safe on Gnosis Chain whose own Delay module a member controls
 "Gnosis Pay account" and opens **Gnosis Pay**, a screen of its own:
 
 - The account, its Delay module, and what the Delay makes a transfer do, in
-  that account's own figures: "A transfer waits 25 h in the Delay module,
-  then can be executed for 31 h."
+  that account's own figures: "A transfer waits 3 min in the Delay module,
+  then can be executed for 30 min."
 - Who controls it: each member, and whether its key is on this device.
 - **Send through the Delay**, greyed out with its reason where it cannot be
   done here: no member's key, the member on another network only, the member

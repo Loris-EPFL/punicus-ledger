@@ -16,7 +16,7 @@ private val overview = GnosisPayUiState.Ready(
     label = "Card",
     address = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
     delay = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
-    waits = "A transfer waits 25 h in the Delay module, then can be executed for 31 h. After that it expires, " +
+    waits = "A transfer waits 3 min in the Delay module, then can be executed for 30 min. After that it expires, " +
         "and nothing moves.",
     checkedAt = "Verified by the light client at block 43,000,512",
     members = listOf(MemberRow("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB", "Card owner", heldHere = true)),
@@ -127,8 +127,8 @@ private fun GnosisPayReviewPreview() = GnosisPayPreview(
                 "To" to "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
                 "Amount" to "50 EURe",
                 "Fee" to "0.0002 XDAI at most",
-                "What happens" to "Queued now. It waits 25 h, then needs a second transaction to execute it, " +
-                    "within 31 h.",
+                "What happens" to "Queued now. It waits 3 min, then needs a second transaction to execute it, " +
+                    "within 30 min.",
             ),
             fee = FeeLevel.entries.first(),
             unlock = UnlockStep(),

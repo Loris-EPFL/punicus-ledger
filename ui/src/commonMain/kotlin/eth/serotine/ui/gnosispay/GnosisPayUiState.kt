@@ -21,7 +21,7 @@ sealed interface GnosisPayUiState {
 
     /**
      * The account [label] at [address] (EIP-55), its Delay module at [delay], what its Delay
-     * makes a transfer wait ([waits]: "A transfer waits 25 h, then can be executed for 31 h"),
+     * makes a transfer wait ([waits]: "A transfer waits 3 min, then can be executed for 30 min"),
      * where that was verified ([checkedAt]), its [members], Send ([send]: greyed out with its
      * reason when it cannot be done here), the transfers queued from here ([queued]) with
      * [queuedNote] saying what could not be read, and the [step] the screen is at.

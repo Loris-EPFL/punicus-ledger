@@ -10,7 +10,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 
 | Screen | Folder | States |
 |---|---|---|
-| [Account detail](#account-detail) | `account-detail/` | 44 |
+| [Account detail](#account-detail) | `account-detail/` | 45 |
 | [Accounts](#accounts) | `accounts/` | 38 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 11 |
 | [Add on networks (dialog)](#add-on-networks-dialog) | `add-on-networks-dialog/` | 5 |
@@ -25,7 +25,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 20 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
-| [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 10 |
+| [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 11 |
 | [Send from another wallet](#handoff) | `handoff/` | 18 |
 | [Import recovery phrase](#mnemonic-import) | `mnemonic-import/` | 12 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
@@ -68,7 +68,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="account-detail"></a>
 ## Account detail
 
-`account-detail/`, 44 states: `assets`, `assets-dark`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`
+`account-detail/`, 45 states: `assets`, `assets-dark`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`
 
 <a href="account-detail/assets.png"><img src="account-detail/assets.png" width="206" alt="assets"></a>
 <a href="account-detail/assets-dark.png"><img src="account-detail/assets-dark.png" width="206" alt="assets-dark"></a>
@@ -114,6 +114,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="account-detail/nft-adding.png"><img src="account-detail/nft-adding.png" width="206" alt="nft-adding"></a>
 <a href="account-detail/activity-queued.png"><img src="account-detail/activity-queued.png" width="206" alt="activity-queued"></a>
 <a href="account-detail/activity-queued-conflict-dark.png"><img src="account-detail/activity-queued-conflict-dark.png" width="206" alt="activity-queued-conflict-dark"></a>
+<a href="account-detail/gnosis-pay-owners.png"><img src="account-detail/gnosis-pay-owners.png" width="206" alt="gnosis-pay-owners"></a>
 
 <a name="accounts"></a>
 ## Accounts
@@ -398,7 +399,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="gnosis-pay"></a>
 ## Gnosis Pay account
 
-`gnosis-pay/`, 10 states: `overview`, `overview-dark`, `queued`, `execute-refused`, `watched`, `compose`, `compose-error`, `review`, `loading`, `unavailable`
+`gnosis-pay/`, 11 states: `overview`, `overview-dark`, `queued`, `execute-refused`, `watched`, `compose`, `compose-error`, `review`, `review-requoted`, `loading`, `unavailable`
 
 <a href="gnosis-pay/overview.png"><img src="gnosis-pay/overview.png" width="206" alt="overview"></a>
 <a href="gnosis-pay/overview-dark.png"><img src="gnosis-pay/overview-dark.png" width="206" alt="overview-dark"></a>
@@ -408,6 +409,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="gnosis-pay/compose.png"><img src="gnosis-pay/compose.png" width="206" alt="compose"></a>
 <a href="gnosis-pay/compose-error.png"><img src="gnosis-pay/compose-error.png" width="206" alt="compose-error"></a>
 <a href="gnosis-pay/review.png"><img src="gnosis-pay/review.png" width="206" alt="review"></a>
+<a href="gnosis-pay/review-requoted.png"><img src="gnosis-pay/review-requoted.png" width="206" alt="review-requoted"></a>
 <a href="gnosis-pay/loading.png"><img src="gnosis-pay/loading.png" width="206" alt="loading"></a>
 <a href="gnosis-pay/unavailable.png"><img src="gnosis-pay/unavailable.png" width="206" alt="unavailable"></a>
 

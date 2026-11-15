@@ -23,7 +23,7 @@ import eth.serotine.domain.repository.DelayGeneration
  *   proxies of it: `0xfc85bcbc2ce6aec1be9d94c77c872269ebddb6c7`, the Delay of the Safe
  *   `0x188416e7d22a45e1c5f69c628d9c05bee54bd4fb` (Safe 1.3.0, its one owner the sentinel `0x…02`,
  *   the Roles and Delay modules on; avatar, target and owner the Safe; a cooldown of 90000 s and
- *   an expiration of 111600 s).
+ *   an expiration of 111600 s, where most Gnosis Pay accounts have 180 s and 1800 s).
  * - `0x4A97…F9f5` holds 17319 bytes: the retired one, recognised and never sent through (owner's
  *   decisions, 2026-11-15).
  * Those reads were a public node's (rpc.gnosischain.com) and Sourcify's, a debugging source only

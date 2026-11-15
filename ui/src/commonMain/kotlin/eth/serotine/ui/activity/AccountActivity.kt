@@ -180,7 +180,9 @@ class AccountActivity(
             val fills = orders.filter { it.end is CowOrderEnd.Filled }
                 .groupBy { (it.end as CowOrderEnd.Filled).transactionHash.lowercase() }
             val safeRows = safeEvents
-                .filterNot { it.transactionHash in seenInBlocks && it.event.saidBySentRow() }
+                .filterNot { event ->
+                    seenInBlocks[event.transactionHash]?.let { event.event.saidBySentRow(it) } == true
+                }
                 .map { rows.eventRow(it, parties) to it }
             // ETH a Safe received is its own event too: the network's log of it is left out beside it.
             val received = safeEvents.mapNotNullTo(HashSet()) { event ->
@@ -292,12 +294,14 @@ class AccountActivity(
     )
 
     /**
-     * What the sent row of a transaction that logged this event says once it names the block: its
-     * execution, its approval, its deployment. A failure, and any change of the Safe's settings,
-     * it does not.
+     * What [entry], the sent row of a transaction that logged this event, says once it names the
+     * block: its execution, its approval, its deployment, and a Gnosis Pay transfer it executed
+     * through the Delay that ran it. A failure, and any change of the Safe's settings, it does not.
      */
-    private fun SafeEvent.saidBySentRow(): Boolean = when (this) {
+    private fun SafeEvent.saidBySentRow(entry: HistoryEntry): Boolean = when (this) {
         is SafeEvent.Executed -> succeeded
+        is SafeEvent.ModuleExecuted ->
+            succeeded && (entry.transfer.action as? SentAction.DelayExecution)?.transfer?.delay == module
         is SafeEvent.Approved, is SafeEvent.SetUp -> true
         else -> false
     }
@@ -338,6 +342,13 @@ class AccountActivity(
             } else {
                 return false
             }
+            // A Gnosis Pay transfer executed from here: the Safe's own transfer to its recipient.
+            is SentAction.DelayExecution ->
+                if (from == action.transfer.safe && to == action.transfer.recipient) {
+                    action.transfer.asset to action.transfer.amount
+                } else {
+                    return false
+                }
             else -> return false
         }
         val same = when (asset) {

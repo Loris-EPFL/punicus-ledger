@@ -19,6 +19,7 @@ import eth.serotine.domain.repository.DappRequests
 import eth.serotine.domain.repository.DappSessions
 import eth.serotine.domain.repository.DebugLog
 import eth.serotine.domain.repository.DebugScreenSetting
+import eth.serotine.domain.repository.DelayModules
 import eth.serotine.domain.repository.DisplayCurrencySetting
 import eth.serotine.domain.repository.EnsNfts
 import eth.serotine.domain.repository.HistoryStarts
@@ -115,6 +116,7 @@ import eth.serotine.domain.usecase.ObserveDebugTab
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
+import eth.serotine.domain.usecase.ObserveGnosisPay
 import eth.serotine.domain.usecase.ObserveHeavyDownloads
 import eth.serotine.domain.usecase.ObserveInterfaceMode
 import eth.serotine.domain.usecase.ObserveKeptSafe
@@ -154,6 +156,8 @@ import eth.serotine.domain.usecase.QueueTransfer
 import eth.serotine.domain.usecase.QuoteCowCancellation
 import eth.serotine.domain.usecase.QuoteCowSwap
 import eth.serotine.domain.usecase.QuoteDappTransaction
+import eth.serotine.domain.usecase.QuoteDelayExecution
+import eth.serotine.domain.usecase.QuoteDelayQueue
 import eth.serotine.domain.usecase.QuoteSafeApproval
 import eth.serotine.domain.usecase.QuoteSafeDeployment
 import eth.serotine.domain.usecase.QuoteSafeExecution
@@ -161,6 +165,7 @@ import eth.serotine.domain.usecase.QuoteSwap
 import eth.serotine.domain.usecase.QuoteTokenApproval
 import eth.serotine.domain.usecase.QuoteTransfer
 import eth.serotine.domain.usecase.QuoteWrap
+import eth.serotine.domain.usecase.ReadDelayTransfers
 import eth.serotine.domain.usecase.ReadKeptSafeTxOwners
 import eth.serotine.domain.usecase.ReadSafeTxOwners
 import eth.serotine.domain.usecase.RebroadcastTransfer
@@ -176,6 +181,7 @@ import eth.serotine.domain.usecase.ResolveRecipient
 import eth.serotine.domain.usecase.RouteRanking
 import eth.serotine.domain.usecase.SendCowCancellation
 import eth.serotine.domain.usecase.SendDappTransaction
+import eth.serotine.domain.usecase.SendDelayCall
 import eth.serotine.domain.usecase.SendSwap
 import eth.serotine.domain.usecase.SendTokenApproval
 import eth.serotine.domain.usecase.SendTransfer
@@ -215,6 +221,7 @@ import eth.serotine.ui.dapptransaction.DappTransactionViewModel
 import eth.serotine.ui.debug.DebugTabViewModel
 import eth.serotine.ui.debug.DebugViewModel
 import eth.serotine.ui.deriveaccount.DeriveAccountViewModel
+import eth.serotine.ui.gnosispay.GnosisPayViewModel
 import eth.serotine.ui.handoff.HandoffViewModel
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
@@ -329,6 +336,8 @@ class AppGraph(
     private val signatureRecovery: SignatureRecovery,
     /** Owners' approvals of Safe transactions on chain, verified by that light client. */
     private val safeApprovals: SafeApprovals,
+    /** A Gnosis Pay account's Delay modifier and its queue, verified by that light client (docs/gnosis-pay.md). */
+    private val delayModules: DelayModules,
     /** The Safe release a new Safe on a network is created from: pinned singleton, factory and proxy code. */
     private val safeReleases: SafeReleases,
     /** Uniswap v3 on each network: its pinned contracts, proven by their code, and verified calls of them. */
@@ -474,7 +483,41 @@ class AppGraph(
             // A Safe's queue lists the signatures held for it too (lenient mode).
             ObserveOutbox(outbox),
             offerHandoff = OfferHandoff(walletHandoff),
+            observeGnosisPay = observeGnosisPay(),
         )
+
+    /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it. */
+    fun gnosisPayViewModel(safe: AccountId): GnosisPayViewModel = GnosisPayViewModel(
+        safe,
+        ObserveAccount(accounts),
+        observeGnosisPay(),
+        ObserveNativeBalance(nativeBalances),
+        ObserveTokenHoldings(knownTokens(), tokenBalances),
+        ReadDelayTransfers(transactionHistory, delayModules),
+        QuoteDelayQueue(
+            delayModules,
+            transactionHistory,
+            transactionInputs,
+            nativeBalances,
+            tokenBalances,
+            sentTransfers,
+            safe.network,
+            outbox,
+        ),
+        QuoteDelayExecution(
+            delayModules,
+            transactionInputs,
+            nativeBalances,
+            tokenBalances,
+            sentTransfers,
+            safe.network,
+            outbox,
+        ),
+        SendDelayCall(signer, broadcaster, sentTransfers),
+        DescribeKeyStore(keys),
+    )
+
+    private fun observeGnosisPay() = ObserveGnosisPay(addressKinds, delayModules, accounts)
 
     /** Send from another wallet (#255) from [from], with the token at [asset] chosen (null: the network's currency). */
     fun handoffViewModel(from: AccountId, asset: Address?): HandoffViewModel = HandoffViewModel(

@@ -63,7 +63,7 @@ renders them in the build.
   broken preview fails the build.
 - The annotation is the multiplatform
   `org.jetbrains.compose.ui.tooling.preview.Preview`. androidx's does not
-  compile in `commonMain` on Compose Multiplatform 1.9.
+  compile in `commonMain` on Compose Multiplatform 1.12.
 - Sample data is made up: never a real or published seed phrase, key or
   password.
 - Routes and `App` get no previews: they need a ViewModel or an `AppGraph`.

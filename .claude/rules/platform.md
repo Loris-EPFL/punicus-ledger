@@ -95,8 +95,8 @@ final PR, unless a part dispatches the workflow. A first-party referrer
 ## Toolchain pins mirror Myotis's
 
 `gradle/libs.versions.toml` holds one known-good Kotlin/Compose stack for the
-engine library and its host. AGP and Gradle are newer here, for the reason the
-catalog states. Bump both repositories together.
+engine library and its host. AGP and Gradle are Myotis's too (AGP 9.5, Gradle
+9.9), since both moved to Kotlin 2.4. Bump both repositories together.
 
 ## Every Gradle dependency is pinned by version and by hash
 

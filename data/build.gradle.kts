@@ -14,7 +14,10 @@
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.android.library)
+    // AGP 9's Android target for KMP, in place of com.android.library + androidTarget().
+    alias(libs.plugins.android.kotlin.multiplatform.library)
+    // Lint: the KMP Android library plugin registers none of its own.
+    alias(libs.plugins.android.lint)
     alias(libs.plugins.kotlin.serialization)
 }
 
@@ -60,11 +63,17 @@ val generateWalletConnectBuildInfo by tasks.registering {
 kotlin {
     jvmToolchain(21)
 
-    androidTarget {
+    android {
+        namespace = "eth.serotine.data"
+        compileSdk = 37
+        minSdk = 29
         compilerOptions {
             // Java 17 class files for Android (CLAUDE.md, "Platform & language direction").
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
+        // commonTest on the build machine's JVM against the Android variant, as the
+        // com.android.library build's unit tests ran it: the plugin has none unless asked.
+        withHostTest {}
     }
     jvm("desktop")
     // The iOS envelope's own declarations of the libsodium functions it calls: commonized, so
@@ -188,23 +197,11 @@ kotlin {
         }
         iosTest.get().dependsOn(envelopeTest)
         iosTest.get().dependsOn(walletConnectTest)
-        val androidUnitTest by getting {
+        val androidHostTest by getting {
             dependencies {
                 implementation(libs.secp256k1.kmp.jni.jvm)
             }
         }
-    }
-}
-
-android {
-    namespace = "eth.serotine.data"
-    compileSdk = 35
-    defaultConfig {
-        minSdk = 29
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
     }
 }
 

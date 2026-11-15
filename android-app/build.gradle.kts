@@ -7,8 +7,8 @@ import org.gradle.api.artifacts.component.ModuleComponentSelector
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
+    // AGP 9 compiles the Kotlin here itself (built-in Kotlin): no org.jetbrains.kotlin.android.
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.compose.compiler)
 }
@@ -26,7 +26,9 @@ val derivedVersionCode: Int = rootProject.extra["releaseBuildNumber"] as Int
 
 android {
     namespace = "eth.serotine.android"
-    compileSdk = 35
+    // 37: androidx Compose 1.12, which Compose Multiplatform 1.12 brings, requires it.
+    // targetSdk, the behaviour the app opts into, stays 35.
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "eth.serotine"
@@ -128,12 +130,12 @@ kotlin {
     }
 }
 
-// :ui's debug variant carries Compose's ui-tooling, which Android Studio needs to render
-// the screens' previews, and Gradle would hand it on to this app's debug build. Kept out:
-// its PreviewActivity is exported and runs whatever composable an intent names, which no
-// other app on the device may do in a wallet, a debug one included. Out of every runtime
-// classpath, so a build type added later that falls back to :ui's debug variant ships
-// without it too; nothing in this app runs it. The -android artifact is what androidx's
+// :ui keeps Compose's ui-tooling, which Android Studio needs to render the screens'
+// previews, on its own runtime classpath, which Gradle does not hand on to this app. Kept
+// out here as well, so no other path brings it in: its PreviewActivity is exported and
+// runs whatever composable an intent names, which no other app on the device may do in a
+// wallet, a debug one included. Out of every runtime classpath, so a build type added
+// later ships without it too; nothing in this app runs it. The -android artifact is what androidx's
 // ui-tooling redirects to on Android, named too so a direct dependency on it is cut as
 // well. The APK workflow checks the built manifests for it (android-apk.yml).
 // JNA's classes come from its AAR alone here, the one the libsodium bindings ask for.

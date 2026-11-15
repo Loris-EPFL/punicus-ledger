@@ -11,7 +11,10 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.android.library)
+    // AGP 9's Android target for KMP, in place of com.android.library + androidTarget().
+    alias(libs.plugins.android.kotlin.multiplatform.library)
+    // Lint: the KMP Android library plugin registers none of its own.
+    alias(libs.plugins.android.lint)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.compose.compiler)
 }
@@ -138,11 +141,17 @@ val generateUiBuildInfo by tasks.registering {
 kotlin {
     jvmToolchain(21)
 
-    androidTarget {
+    android {
+        namespace = "eth.serotine.ui"
+        compileSdk = 37
+        minSdk = 29
         compilerOptions {
             // Java 17 class files for Android (CLAUDE.md, "Platform & language direction").
             jvmTarget.set(JvmTarget.JVM_17)
         }
+        // commonTest on the build machine's JVM against the Android variant, as the
+        // com.android.library build's unit tests ran it: the plugin has none unless asked.
+        withHostTest {}
     }
     jvm("desktop")
     iosArm64()
@@ -209,22 +218,12 @@ kotlin {
     }
 }
 
-// What Android Studio's preview pane renders with, in the debug variant only. The Android
-// app keeps it out of its APKs (android-app/build.gradle.kts).
+// What Android Studio's preview pane renders with. On this module's own runtime classpath
+// only: the KMP Android library has no debug variant, and a runtime-classpath dependency is
+// not handed on to a consumer, so no APK gets it. The Android app keeps it out all the same
+// (android-app/build.gradle.kts).
 dependencies {
-    debugImplementation(compose.uiTooling)
-}
-
-android {
-    namespace = "eth.serotine.ui"
-    compileSdk = 35
-    defaultConfig {
-        minSdk = 29
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
+    "androidRuntimeClasspath"(compose.uiTooling)
 }
 
 // `-Pscreenshots=<dir>` (relative to the repository root): the preview tests also save every

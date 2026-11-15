@@ -4,20 +4,21 @@
 # means the library's Kotlin metadata never runs ahead of the host's compiler.
 # Bump both together.
 [versions]
-# AGP 8.13 (with Gradle 8.14, gradle/wrapper): its R8 understands Kotlin 2.2
-# metadata. Myotis's AGP 8.7.3 does not — D8 prints a 200-line "error occurred
-# when parsing kotlin metadata" stack trace per dexed class — and Myotis already
-# runs 8.13.2's lint for the same reason (its gradle.properties). AGP 8.13 is the
-# last 8.x line; 9.x changes the KMP Android target to its own plugin, a
-# migration for both repositories at once.
-agp = "8.13.2"
-# Kotlin 2.2.21 is the floor for the iOS target on Xcode 26 (Myotis's reason to
-# pin it); Compose Multiplatform 1.9.x pairs with Kotlin 2.2.20+.
-kotlin = "2.2.21"
-compose-multiplatform = "1.9.3"
+# AGP 9.5 (with Gradle 9.9, gradle/wrapper), as Myotis since its #837: its bundled
+# R8 and lint read Kotlin 2.4 metadata and sources. AGP 9 has built-in Kotlin (no
+# org.jetbrains.kotlin.android plugin) and gives the KMP modules (:data, :ui) their
+# own Android target plugin, com.android.kotlin.multiplatform.library, in place of
+# com.android.library + androidTarget(). It needs Gradle 9.6 or newer.
+agp = "9.5.1"
+# Kotlin 2.4.21: the Myotis engine library from 0.1.21 is built with it, and a host
+# compiler older than the library's metadata cannot read it. (2.2.21 was the floor
+# for the iOS target on Xcode 26.) Compose Multiplatform 1.12.x pairs with it, and
+# brings androidx Compose 1.12, which needs AGP 9.1+ and compileSdk 37.
+kotlin = "2.4.21"
+compose-multiplatform = "1.12.2"
 # The multiplatform lifecycle (ViewModel + collectAsStateWithLifecycle). 2.9.6 is
-# the version Compose Multiplatform 1.9.3's own artifacts depend on — pin the
-# same so the two never resolve apart.
+# the version Compose Multiplatform 1.12.2's own artifacts depend on (as 1.9.3's
+# did) — pin the same so the two never resolve apart.
 lifecycle = "2.9.6"
 activity-compose = "1.9.3"
 # QR code scanning on Android (Connect a dApp): CameraX shows the camera and hands its frames to
@@ -29,24 +30,26 @@ kotlinx-coroutines = "1.10.2"
 # desugar_jdk_libs 2.1.5: the minSdk-29 JDK-API budget in .claude/rules/platform.md
 # was verified against this release's config.
 desugar-jdk-libs = "2.1.5"
-# Multiplatform navigation: JetBrains' build of androidx.navigation. 2.9.2 is the
-# release built against Compose Multiplatform 1.9.3 and lifecycle 2.9.6, the two
-# pins above, so nothing in its graph resolves past them.
+# Multiplatform navigation: JetBrains' build of androidx.navigation. 2.9.2 is built
+# against lifecycle 2.9.6, the pin above, and Compose Multiplatform 1.9.3, which
+# 1.12.2 supersedes; 2.10 moves to lifecycle 2.11, so nothing in 2.9.2's graph
+# resolves past the pins.
 navigation-compose = "2.9.2"
-# The Material icons stopped at 1.7.3 upstream; Compose Multiplatform 1.9.x still
+# The Material icons stopped at 1.7.3 upstream; Compose Multiplatform 1.12.x still
 # consumes that release (material3 no longer brings it along).
 material-icons-core = "1.7.3"
 # ACINQ's Kotlin Multiplatform binding of bitcoin-core's libsecp256k1: JNI on
 # Android and the JVM, cinterop on iOS — the native secp256k1 that
-# docs/keys-and-signing.md (rule 7) requires. 0.22.0 is the last release built with
-# Kotlin 2.2.21, our pin; 0.23.0 moves its stdlib to 2.3.
+# docs/keys-and-signing.md (rule 7) requires. 0.22.0 is built with Kotlin 2.2.21,
+# which the 2.4 compiler reads; moving it is a change of its own.
 secp256k1-kmp = "0.22.0"
 # The persistent account list (eth.serotine.data.account): multiplatform file I/O and
-# JSON. kotlinx-io 0.8.2 and kotlinx-serialization 1.9.0 are the last releases built
-# for Kotlin 2.2 (the next ones need a 2.3 stdlib); the serialization compiler plugin
-# is Kotlin's own, at the Kotlin pin.
+# JSON. kotlinx-io 0.8.2 is built for Kotlin 2.2, which the 2.4 compiler reads.
+# kotlinx-serialization 1.12.0 is the release Myotis's iOS module (from 0.1.21)
+# depends on, so every target resolves the same one; the serialization compiler
+# plugin is Kotlin's own, at the Kotlin pin.
 kotlinx-io = "0.8.2"
-kotlinx-serialization = "1.9.0"
+kotlinx-serialization = "1.12.0"
 # The key envelope's Argon2id (docs/keys-and-signing.md, rule 2), from libsodium (the
 # owner's choice, 2026-10-16). The bindings ship libsodium for Android (an AAR), the
 # desktop JVM (macOS universal, Linux x64/arm64, Windows x64) and iOS; the envelope
@@ -67,16 +70,20 @@ myotis = "0.1.20"
 # 0.8.0 needs a Kotlin 2.2.20 stdlib, below our pin.
 kotlincrypto = "0.8.0"
 # Ktor, the app's one HTTP client (CLAUDE.md, *Platform & language direction*), used only
-# for CoW Protocol's order API (docs/swaps.md, *What CoW learns*). 3.3.3 is the last
-# release built with Kotlin 2.2.21, our pin, and coroutines 1.10.2; 3.4.0 moves its stdlib
-# to 2.3. Engines: CIO (Ktor's own, no OkHttp beneath it) on Android and the desktop,
+# for CoW Protocol's order API (docs/swaps.md, *What CoW learns*). 3.3.3 is built with
+# Kotlin 2.2.21 and coroutines 1.10.2, both of which still hold; moving it is a change of
+# its own. Engines: CIO (Ktor's own, no OkHttp beneath it) on Android and the desktop,
 # Darwin (NSURLSession) on iOS; neither retries a request behind the caller's back.
 ktor = "3.3.3"
 
 [plugins]
 android-application    = { id = "com.android.application",                 version.ref = "agp" }
-android-library        = { id = "com.android.library",                     version.ref = "agp" }
-kotlin-android         = { id = "org.jetbrains.kotlin.android",            version.ref = "kotlin" }
+# AGP 9's Android target for the Kotlin Multiplatform modules (:data, :ui), in place of
+# com.android.library + androidTarget() there.
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+# The KMP Android library plugin registers no lint tasks of its own: the standalone lint
+# plugin gives :data and :ui their Android lint again.
+android-lint           = { id = "com.android.lint",                        version.ref = "agp" }
 kotlin-jvm             = { id = "org.jetbrains.kotlin.jvm",                version.ref = "kotlin" }
 kotlin-multiplatform   = { id = "org.jetbrains.kotlin.multiplatform",      version.ref = "kotlin" }
 compose-compiler       = { id = "org.jetbrains.kotlin.plugin.compose",     version.ref = "kotlin" }

@@ -60,18 +60,19 @@ class AppIsolationTest {
         assertEquals(AppHostResult.NotAName, AppHost.parse(("a".repeat(63) + ".").repeat(4) + "com"))
     }
 
-    // The fixed vectors of docs/keys-and-signing.md, *Per-app addresses*: host → the first twelve bytes of
-    // keccak256("serotine/app-isolation/v1/" ‖ host) → a, b, c. Computed independently of this code.
+    // The fixed vectors of docs/keys-and-signing.md, *Per-app addresses*: host → its site → the first twelve bytes
+    // of keccak256("serotine/app-isolation/v1/" ‖ site) → a, b, c. Computed independently of this code.
     @Test
-    fun thePathIsTheFirst92BitsOfTheTaggedHash() {
+    fun thePathIsTheFirst92BitsOfTheTaggedHashOfTheSite() {
         val vectors = mapOf(
             "example.com" to PerAppPath(1_336_343_364, 399_755_631, 110_655_970), // 3e9bed10be9e4b7869879e28
-            "app.uniswap.org" to PerAppPath(1_516_966_953, 1_787_332_407, 1_989_753_074), // 69ac50a7544439bf69938f21
+            "app.uniswap.org" to PerAppPath(2_078_581_563, 1_827_501_205, 1_513_768_218), // ef928cef676ba4ada3a451a0
             "walletbeat.eth.limo" to PerAppPath(2_058_966_761, 904_126_976, 98_949_316), // eae55ba5af1f10005e5d8c41
-            "app.safe.global" to PerAppPath(1_181_040_959, 1_799_679_872, 2_038_531_148), // 199504ff5a277c07981844c3
+            "app.safe.global" to PerAppPath(1_227_376_802, 158_830_283, 228_636_467), // 24a122884bbc7658da0b7336
             "localhost" to PerAppPath(1_257_319_863, 1_751_139_060, 1_271_328_885), // 2bc4b6df430217a4bc6f075e
         )
         vectors.forEach { (name, path) -> assertEquals(path, AppIsolation.pathOf(host(name)), name) }
+        assertEquals(AppIsolation.pathOf(host("uniswap.org")), AppIsolation.pathOf(host("app.uniswap.org")))
         assertEquals(
             "m/44'/60'/1336343364'/399755631'/110655970'",
             AppIsolation.pathOf(host("example.com")).toString(),
@@ -86,9 +87,49 @@ class AppIsolationTest {
     }
 
     @Test
-    fun theHostItselfIsNoCollisionNorIsAnotherHost() {
+    fun theHostItselfIsNoCollisionNorIsAnotherHostOfItsSiteNorAnotherSite() {
         val example = host("example.com")
-        assertNull(AppIsolation.collision(example, listOf(example, host("app.uniswap.org"))))
+        assertNull(AppIsolation.collision(example, listOf(example, host("www.example.com"), host("app.uniswap.org"))))
         assertNull(AppIsolation.collision(example, emptyList()))
+    }
+
+    private fun site(name: String): String = host(name).site.name
+
+    // The pinned Public Suffix List (owner's decision, 2026-11-15, on PR #297); cases of the list's own
+    // tests/test_psl.txt among them.
+    @Test
+    fun aHostsSiteIsItsRegistrableDomain() {
+        assertEquals("uniswap.org", site("app.uniswap.org"))
+        assertEquals("uniswap.org", site("uniswap.org"))
+        assertEquals("example.com", site("www.example.com"))
+        assertEquals("example.com", site("a.b.c.example.com"))
+        assertEquals("b.co.uk", site("a.b.co.uk"))
+        assertEquals("safe.global", site("app.safe.global"))
+        // Sites hosted for strangers on one domain stay apart.
+        assertEquals("foo.github.io", site("foo.github.io"))
+        assertEquals("foo.github.io", site("www.foo.github.io"))
+        // Every ENS name behind the eth.limo and eth.link gateways is a site of its own (`*.eth.limo`).
+        assertEquals("walletbeat.eth.limo", site("walletbeat.eth.limo"))
+        assertEquals("app.walletbeat.eth.limo", site("app.walletbeat.eth.limo"))
+        assertEquals("uniswap.eth.link", site("uniswap.eth.link"))
+        // A wildcard stands for one label; an exception wins over it.
+        assertEquals("b.c.kobe.jp", site("a.b.c.kobe.jp"))
+        assertEquals("city.kobe.jp", site("www.city.kobe.jp"))
+        assertEquals("www.ck", site("www.ck"))
+        assertEquals("b.test.ck", site("a.b.test.ck"))
+        // An internationalised suffix, in its xn-- form (公司.cn).
+        assertEquals("example.xn--55qx5d.cn", site("www.example.xn--55qx5d.cn"))
+        // No rule: the last label is the suffix.
+        assertEquals("example.unknowntld", site("a.example.unknowntld"))
+    }
+
+    @Test
+    fun aHostWithNoRegistrableDomainIsItsOwnSite() {
+        assertEquals("localhost", site("localhost"))
+        assertEquals("github.io", site("github.io"))
+        assertEquals("com", site("com"))
+        assertEquals("co.uk", site("co.uk"))
+        assertEquals("192.168.1.1", site("192.168.1.1"))
+        assertEquals("127.0.0.1", (AppHost.ofUrl("http://127.0.0.1:8545") as AppHostResult.Host).host.site.name)
     }
 }

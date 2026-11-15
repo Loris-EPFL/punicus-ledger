@@ -16,6 +16,13 @@ import kotlin.jvm.JvmInline
 @JvmInline
 value class AppHost private constructor(val name: String) {
 
+    /**
+     * The site this host belongs to, which its per-app address is made for: its registrable domain by the pinned
+     * Public Suffix List ([PublicSuffixes]), or the host itself when it has none (owner's decision, 2026-11-15, on
+     * PR #297). `app.uniswap.org` and `uniswap.org` are one site; `a.github.io` and `b.github.io` are two.
+     */
+    val site: AppHost get() = PublicSuffixes.siteOf(this)
+
     override fun toString(): String = name
 
     companion object {
@@ -96,8 +103,9 @@ data class PerAppPath(val account: Int, val change: Int, val index: Int) {
 
 /**
  * The path of a per-app address (issue #252; docs/keys-and-signing.md, *Per-app addresses*; the path's width,
- * owner's decision 2026-11-14 on PR #297): `m/44'/60'/a'/b'/c'`, from the first 92 bits of
- * `keccak256("serotine/app-isolation/v1/" ‖ host)` read big-endian: `a` is 2³⁰ plus the first 30 bits, `b`
+ * owner's decision 2026-11-14 on PR #297; the site, owner's decision 2026-11-15 on PR #297): `m/44'/60'/a'/b'/c'`,
+ * from the first 92 bits of `keccak256("serotine/app-isolation/v1/" ‖ site)`, the site being the host's registrable
+ * domain ([AppHost.site]), read big-endian: `a` is 2³⁰ plus the first 30 bits, `b`
  * the next 31, `c` the next 31. A dApp states its host unverified and can search many, so 92 bits keep it from
  * choosing a host that lands on another site's address, and `a ≥ 2³⁰` keeps every per-app address out of the low
  * accounts.
@@ -117,9 +125,9 @@ object AppIsolation {
 
     private const val LOW_31 = 0x7fffffffL
 
-    /** [host]'s path. */
+    /** [host]'s path: its site's ([AppHost.site]), the same for every host of that site. */
     fun pathOf(host: AppHost): PerAppPath {
-        val hash = keccak256((TAG + host.name).encodeToByteArray())
+        val hash = keccak256((TAG + host.site.name).encodeToByteArray())
         fun word(at: Int): Long = (0 until 4).fold(0L) { acc, i -> (acc shl 8) or (hash[at + i].toLong() and 0xff) }
         // The first 96 bits as three big-endian words w0 w1 w2: a takes bits 0..29, b 30..60, c 61..91.
         val w0 = word(0)
@@ -132,13 +140,15 @@ object AppIsolation {
     }
 
     /**
-     * The host among [held], the hosts whose per-app addresses this device holds for one phrase, whose path is
-     * [host]'s, or null. Such a host is refused for [host] ("already used for another app"), never shared
-     * silently: the two would see one address. With 92 bits of the hash this is not expected to happen; the check
-     * stays so that it can never happen silently. [host] itself among [held] is no collision.
+     * The host among [held], the hosts whose per-app addresses this device holds for one phrase, of another site
+     * whose path is [host]'s, or null. Such a host is refused for [host] ("already used for another app"), never
+     * shared silently: the two sites would see one address. With 92 bits of the hash this is not expected to happen;
+     * the check stays so that it can never happen silently. A host of [host]'s own site among [held] is no
+     * collision: one site has one address.
      */
     fun collision(host: AppHost, held: Iterable<AppHost>): AppHost? {
         val path = pathOf(host)
-        return held.firstOrNull { it != host && pathOf(it) == path }
+        val site = host.site
+        return held.firstOrNull { it.site != site && pathOf(it) == path }
     }
 }

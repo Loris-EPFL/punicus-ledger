@@ -66,7 +66,9 @@ import eth.serotine.domain.usecase.RefreshNetworkData
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.ToggleAmountsHidden
+import eth.serotine.domain.usecase.AccountNames
 import eth.serotine.domain.usecase.AddEnsName
+import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.AddNft
 import eth.serotine.domain.usecase.ObserveNfts
 import eth.serotine.domain.usecase.RemoveAddedNft
@@ -223,6 +225,7 @@ class AccountDetailViewModelTest {
         ),
         AddNft(nftContracts, addedNfts),
         AddEnsName(nftContracts, seenEnsNames),
+        ObserveAccountNames(names, seenEnsNames),
         RemoveAddedNft(addedNfts),
         ObserveOutbox(outbox),
         formatTime = { "<$it>" },
@@ -1145,6 +1148,7 @@ class AccountDetailViewModelTest {
         ),
         AddNft(nftContracts, addedNfts),
         AddEnsName(nftContracts, seenEnsNames),
+        ObserveAccountNames(names, seenEnsNames),
         RemoveAddedNft(addedNfts),
         ObserveOutbox(outbox),
         )
@@ -1339,5 +1343,19 @@ class AccountDetailViewModelTest {
     private companion object {
         /** The test's now: an hour after the balances last verified at 1_792_100_000. */
         const val NOW = 1_792_103_600L
+    }
+
+    @Test
+    fun theNamesLineShowsThePrimaryNameAndTheNamesPointingHereButNotTheOneFollowed() {
+        assertEquals(null, ensNamesLine(AccountNames.NONE, null))
+        assertEquals(
+            "ENS names pointing here: daily.eth (primary name), pay.eth",
+            ensNamesLine(AccountNames("daily.eth", listOf("pay.eth"), checked = true), null),
+        )
+        assertEquals(
+            "ENS name pointing here: pay.eth",
+            ensNamesLine(AccountNames("daily.eth", listOf("pay.eth"), checked = true), "daily.eth"),
+        )
+        assertEquals(null, ensNamesLine(AccountNames(null, listOf("pay.eth"), checked = true), "pay.eth"))
     }
 }

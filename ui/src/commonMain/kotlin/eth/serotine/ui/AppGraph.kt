@@ -125,6 +125,7 @@ import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveNetworkOverview
+import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveNfts
 import eth.serotine.domain.usecase.ObserveOutbox
 import eth.serotine.domain.usecase.ObservePortfolio
@@ -479,6 +480,7 @@ class AppGraph(
             ObserveNfts(logIndex, historyStarts, nfts, ensNfts, receipts, addedNfts, seenEnsNames),
             AddNft(nfts, addedNfts),
             AddEnsName(nfts, seenEnsNames),
+            ObserveAccountNames(resolver, seenEnsNames),
             RemoveAddedNft(addedNfts),
             // A Safe's queue lists the signatures held for it too (lenient mode).
             ObserveOutbox(outbox),

@@ -1484,7 +1484,8 @@ they are helpful." The rulings (owner rulings, 2026-11-05, #246; the
   decide, as proposed in the PR that codes it). Every verified resolution
   in the wallet that lands on one of the user's accounts (Watch, the
   duplicate case included; Send; Create Safe's owners; the check of a name
-  an account follows; never a dApp request, which resolves none)
+  an account follows; the account's primary name; never a dApp request,
+  which resolves none)
   keeps that name for the account, with its block, in `ens-names.json`
   (`RememberResolvedNames`, `FileSeenEnsNames`). A name that lands on an
   address not in the wallet is not kept. The tokens each name can be are
@@ -1502,6 +1503,21 @@ they are helpful." The rulings (owner rulings, 2026-11-05, #246; the
   tokens; a token id typed beside a name is refused. ENSv2's names
   (Sepolia) are not found this way: the token id
   carries a version the name does not tell.
+- **Names pointing here, held or not** (issue #274; the owner's choice on
+  #299, 2026-11-14: a name in the NFTs only when the account holds it, a
+  name that merely points here shown too). The account's header has a
+  line "ENS names pointing here: x (primary name), y"
+  (`ObserveAccountNames`). The primary name is the account's reverse
+  record, read through the engine's `reverseResolve`, which resolves the
+  name forward again and takes it only when it points back, in finalized
+  state. The others are the names seen (above) that still resolve to the
+  account, checked again every 10 minutes while the page is open, every 30
+  seconds while one has no verified answer. A name that no longer points
+  here drops out; one without a verified answer keeps its last one, and is
+  left out until it has one. The name the account follows is said by its
+  own line and left out of this one. Nothing in it says the account holds
+  a name. Gnosis Chain has no names, and iOS has no reverse read yet, so
+  no primary name there.
 - **On chain only.** A row shows the collection's name (its `name()`, the
   contract's claim, or the built-in name) and the token id; an ERC-1155
   amount above one shows as "×n", masked while amounts are hidden. The

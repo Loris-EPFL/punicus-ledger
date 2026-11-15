@@ -1,6 +1,7 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.AccountId
+import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.EnsNameTokens
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
@@ -9,6 +10,7 @@ import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NftContracts
 import eth.serotine.domain.repository.NftHolding
+import eth.serotine.domain.repository.PrimaryName
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SeenEnsName
 import eth.serotine.domain.repository.SeenEnsNames
@@ -20,10 +22,10 @@ import kotlinx.coroutines.flow.first
  * [inner] answers, unchanged, and a [NameResolution.Resolved] whose address is an account of
  * [accounts] on that network is kept in [seen] with its block. Every resolution in the wallet goes
  * through it (Watch, the duplicate case included; Send, from a Safe and to another wallet too; Create
- * Safe's owners; the check of a followed name), so a name seen anywhere becomes a candidate the
- * account's NFTs are proven against. No dApp request resolves a name, so what a dApp sends never feeds
- * the list. A name that lands on an address not in the wallet is not kept: the list never records whom
- * the user looked up.
+ * Safe's owners; the check of a followed name; an account's primary name), so a name seen anywhere
+ * becomes a candidate the account's NFTs are proven against. No dApp request resolves a name, so what a
+ * dApp sends never feeds the list. A name that lands on an address not in the wallet is not kept: the
+ * list never records whom the user looked up.
  */
 class RememberResolvedNames(
     private val inner: NameResolver,
@@ -37,13 +39,23 @@ class RememberResolvedNames(
         return resolution
     }
 
-    private suspend fun remember(network: Network, resolved: NameResolution.Resolved) {
-        val normal = EnsNameTokens.normalized(resolved.name) ?: return
+    /** [inner]'s answer, unchanged; a primary name of one of the user's accounts is kept for it too. */
+    override suspend fun primaryName(network: Network, address: Address): PrimaryName {
+        val primary = inner.primaryName(network, address)
+        if (primary is PrimaryName.Named) remember(network, address, primary.name, primary.blockNumber)
+        return primary
+    }
+
+    private suspend fun remember(network: Network, resolved: NameResolution.Resolved) =
+        remember(network, resolved.address, resolved.name, resolved.blockNumber)
+
+    private suspend fun remember(network: Network, address: Address, name: String, blockNumber: Long) {
+        val normal = EnsNameTokens.normalized(name) ?: return
         val list = accounts.observeAccounts().first() as? AccountList.Loaded ?: return
-        val account = AccountId(network, resolved.address)
+        val account = AccountId(network, address)
         if (list.accounts.none { it.id == account }) return
         // Nothing to say if it cannot be kept: the resolution's answer stands either way.
-        seen.remember(account, SeenEnsName(normal, resolved.blockNumber))
+        seen.remember(account, SeenEnsName(normal, blockNumber))
     }
 }
 

@@ -690,6 +690,13 @@ private fun AccountDetailEnsNameMovedPreview() = AccountDetailPreview(
     ),
 )
 
+/** The ENS names that point to the account, its primary name first (#274); the ones it holds are its NFTs. */
+@Preview
+@Composable
+private fun AccountDetailEnsNamesPreview() = AccountDetailPreview(
+    daily.copy(ensNames = "ENS names pointing here: daily-example.eth (primary name), pay-example.eth"),
+)
+
 /**
  * Docs/networks.md's N3: an account on Ethereum, real prices, no testnet note; COW, which no feed
  * prices, at its pool's average, labelled, and counted in the total, which says so (#205).
@@ -854,6 +861,7 @@ internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("loading") { AccountDetailLoadingPreview() },
     ScreenPreview("list-unavailable") { AccountDetailListUnavailablePreview() },
     ScreenPreview("ens-name-moved") { AccountDetailEnsNameMovedPreview() },
+    ScreenPreview("ens-names") { AccountDetailEnsNamesPreview() },
     ScreenPreview("activity") { AccountDetailActivityPreview() },
     ScreenPreview("activity-dark") { AccountDetailActivityDarkPreview() },
     ScreenPreview("waiting-swap") { AccountDetailWaitingSwapPreview() },

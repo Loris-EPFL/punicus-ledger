@@ -116,6 +116,9 @@ const val ACCOUNT_TOTAL_TAG = "account-total"
 /** Test tag of simple mode's freshness line, for UI tests. */
 const val ACCOUNT_FRESHNESS_TAG = "account-freshness"
 
+/** Test tag of the line naming the ENS names that point to the account (#274), for UI tests. */
+const val ACCOUNT_ENS_NAMES_TAG = "account-ens-names"
+
 /** Test tag of simple mode's Refresh button, for UI tests. */
 const val ACCOUNT_REFRESH_TAG = "account-refresh"
 
@@ -628,6 +631,15 @@ private fun Details(
                             "${state.network.name} is off in this wallet: nothing is checked.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                    // The names that point here (#274): their records, never a claim the account holds them.
+                    state.ensNames?.let {
+                        Text(
+                            it,
+                            Modifier.testTag(ACCOUNT_ENS_NAMES_TAG),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     // Why the title is the address: the ENS name it was named by no longer points here.

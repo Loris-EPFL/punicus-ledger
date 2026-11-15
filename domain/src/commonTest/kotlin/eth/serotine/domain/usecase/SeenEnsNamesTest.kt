@@ -17,6 +17,7 @@ import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NftCollectionReading
 import eth.serotine.domain.repository.NftContracts
 import eth.serotine.domain.repository.NftHolding
+import eth.serotine.domain.repository.PrimaryName
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SeenEnsName
 import eth.serotine.domain.repository.SeenEnsNameList
@@ -58,6 +59,26 @@ class SeenEnsNamesTest {
         // The same address on another network is another account, and not in the wallet.
         names.resolve(Network.ETHEREUM, "diskordia.eth")
         assertEquals(1, seen.seen.value.size)
+    }
+
+    @Test
+    fun aPrimaryNameOfAnAccountIsRememberedAndOneUnprovenIsNot() = runTest {
+        var answer: PrimaryName = PrimaryName.Named("diskordia.eth", 12_000_001)
+        val inner = object : NameResolver {
+            override suspend fun resolve(network: Network, name: String): NameResolution = NameResolution.NoAddress
+            override suspend fun primaryName(network: Network, address: Address): PrimaryName = answer
+        }
+        val names = RememberResolvedNames(inner, accounts, seen)
+
+        assertEquals(answer, names.primaryName(Network.SEPOLIA, mine), "the answer is unchanged")
+        assertEquals(
+            listOf(AccountId(Network.SEPOLIA, mine) to SeenEnsName("diskordia.eth", 12_000_001)),
+            seen.seen.value,
+        )
+        names.primaryName(Network.SEPOLIA, stranger)
+        answer = PrimaryName.Unavailable(ReadUnavailable.UNPROVEN)
+        names.primaryName(Network.SEPOLIA, mine)
+        assertEquals(1, seen.seen.value.size, "neither a stranger's name nor an unproven answer is kept")
     }
 
     @Test

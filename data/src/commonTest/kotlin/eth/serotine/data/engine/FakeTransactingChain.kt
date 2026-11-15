@@ -11,6 +11,7 @@ internal class FakeTransactingChain(val base: FakeChain = FakeChain()) : Transac
     var send: SendAnswer = SendAnswer.Unavailable(null)
     var receipt: String? = null
     var name: NameAnswer = NameAnswer(null, -1, verified = false, error = "not set")
+    var reverse: ReverseNameAnswer = ReverseNameAnswer(null, -1, verified = false, error = "not set")
     val sent = mutableListOf<ByteArray>()
     var asked = 0
     val resolved = mutableListOf<String>()
@@ -54,6 +55,8 @@ internal class FakeTransactingChain(val base: FakeChain = FakeChain()) : Transac
         bodiesAsked += number
         bodies[number]
     }
+
+    override fun reverseName(addressHex: String): ReverseNameAnswer = answer { reverse }
 
     override fun resolveName(name: String): NameAnswer = answer {
         resolved += name

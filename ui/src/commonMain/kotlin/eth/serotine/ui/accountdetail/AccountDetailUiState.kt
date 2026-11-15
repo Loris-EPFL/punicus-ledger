@@ -72,6 +72,12 @@ sealed interface AccountDetailUiState {
         val threshold: String? = null,
         val queue: SafeQueue? = null,
         val nameNote: String? = null,
+        /**
+         * The ENS names that point to the account, its primary name first ("ENS names pointing here:
+         * alice.eth (primary name), pay.eth"; #274): facts about the names' records, not about who holds
+         * them, which the NFTs say; null when there are none.
+         */
+        val ensNames: String? = null,
         val activity: ActivityUiState = ActivityUiState.Loading,
         val activityOrder: ActivityOrder = ActivityOrder.NEWEST_FIRST,
         val networkOn: Boolean = true,

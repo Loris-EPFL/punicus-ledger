@@ -35,6 +35,7 @@ import eth.serotine.domain.repository.LogsReading
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
+import eth.serotine.domain.repository.PrimaryName
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.NftCollectionReading
@@ -183,6 +184,9 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
     val names: NameResolver = object : NameResolver {
         override suspend fun resolve(network: Network, name: String): NameResolution =
             of(network)?.names?.resolve(network, name) ?: NameResolution.Unavailable(ReadUnavailable.NO_ENGINE)
+
+        override suspend fun primaryName(network: Network, address: Address): PrimaryName =
+            of(network)?.names?.primaryName(network, address) ?: PrimaryName.Unavailable(ReadUnavailable.NO_ENGINE)
     }
 
     val safeApprovals: SafeApprovals = object : SafeApprovals {

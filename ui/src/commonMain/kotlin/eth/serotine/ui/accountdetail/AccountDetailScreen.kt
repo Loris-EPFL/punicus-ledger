@@ -119,6 +119,9 @@ const val ACCOUNT_TOTAL_TAG = "account-total"
 /** Test tag of simple mode's freshness line, for UI tests. */
 const val ACCOUNT_FRESHNESS_TAG = "account-freshness"
 
+/** Test tag of the line naming the ENS names that point to the account (#274), for UI tests. */
+const val ACCOUNT_ENS_NAMES_TAG = "account-ens-names"
+
 /** Test tag of simple mode's Refresh button, for UI tests. */
 const val ACCOUNT_REFRESH_TAG = "account-refresh"
 
@@ -647,6 +650,15 @@ private fun Details(
                             color = MaterialTheme.colorScheme.tertiary,
                         )
                     }
+                    // The names that point here (#274): their records, never a claim the account holds them.
+                    state.ensNames?.let {
+                        Text(
+                            it,
+                            Modifier.testTag(ACCOUNT_ENS_NAMES_TAG),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     // Why the title is the address: the ENS name it was named by no longer points here.
                     state.nameNote?.let {
                         Text(
@@ -925,7 +937,8 @@ private fun Nfts(nfts: NftSection, onToggle: () -> Unit, actions: NftActions, mo
 
 /**
  * The *Add an NFT* dialog (owner ruling, 2026-11-05, #246: older NFTs are added by contract and id): the
- * contract and the token id, added once the account is proven to hold it; [form] says why when nothing was.
+ * contract and the token id, or an ENS name alone (#274), added once the account is proven to hold it;
+ * [form] says why when nothing was.
  */
 @Composable
 private fun AddNftDialog(form: AddNftForm, actions: NftActions) {
@@ -939,13 +952,14 @@ private fun AddNftDialog(form: AddNftForm, actions: NftActions) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     "For an NFT received before this wallet began following the account. It is added only " +
-                        "once the light client proves the account holds it.",
+                        "once the light client proves the account holds it. For an ENS name, type the name " +
+                        "alone, like alice.eth.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedTextField(
                     value = contract,
                     onValueChange = { contract = it },
-                    label = { Text("Contract address") },
+                    label = { Text("Contract address or ENS name") },
                     singleLine = true,
                     enabled = !form.busy,
                     modifier = Modifier.fillMaxWidth().testTag(ADD_NFT_CONTRACT_TAG),
@@ -953,7 +967,7 @@ private fun AddNftDialog(form: AddNftForm, actions: NftActions) {
                 OutlinedTextField(
                     value = tokenId,
                     onValueChange = { tokenId = it },
-                    label = { Text("Token id") },
+                    label = { Text("Token id (none for an ENS name)") },
                     singleLine = true,
                     enabled = !form.busy,
                     modifier = Modifier.fillMaxWidth().testTag(ADD_NFT_ID_TAG),

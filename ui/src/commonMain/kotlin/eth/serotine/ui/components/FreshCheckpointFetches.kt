@@ -34,7 +34,9 @@ sealed interface CheckpointFetchState {
  */
 class FreshCheckpointFetches(
     private val scope: CoroutineScope,
-    private val fetch: suspend (Network, useUnconfirmed: Boolean) -> FreshCheckpoint,
+    // Not named `fetch`: inside fetch() below, a call `fetch(network, useUnconfirmed)` resolves to
+    // that member function, not to this lambda, and the servers are never asked.
+    private val askServers: suspend (Network, useUnconfirmed: Boolean) -> FreshCheckpoint,
     private val onApplied: (Network, String) -> Unit,
 ) {
     private val fetches = MutableStateFlow<Map<Network, CheckpointFetchState>>(emptyMap())
@@ -49,7 +51,7 @@ class FreshCheckpointFetches(
         fetches.update { it + (network to CheckpointFetchState.Fetching) }
         scope.launch {
             val outcome = try {
-                fetch(network, useUnconfirmed)
+                askServers(network, useUnconfirmed)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -132,7 +132,7 @@ class SettingsViewModel(
     /** The fresh checkpoints asked for, each network's said in its row's warning. */
     private val checkpointFetches = FreshCheckpointFetches(
         viewModelScope,
-        fetch = { network, useUnconfirmed -> freshCheckpoint(network, useUnconfirmed) },
+        askServers = { network, useUnconfirmed -> freshCheckpoint(network, useUnconfirmed) },
         onApplied = { network, said -> checkpointNotes.update { it + (network to said) } },
     )
 

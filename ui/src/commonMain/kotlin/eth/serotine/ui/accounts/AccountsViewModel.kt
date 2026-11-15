@@ -172,7 +172,7 @@ class AccountsViewModel(
     /** The fresh checkpoints asked for, each network's said in its warning; one applied is said once. */
     private val checkpointFetches = FreshCheckpointFetches(
         viewModelScope,
-        fetch = { network, useUnconfirmed -> freshCheckpoint(network, useUnconfirmed) },
+        askServers = { network, useUnconfirmed -> freshCheckpoint(network, useUnconfirmed) },
         onApplied = { _, said -> message.value = said },
     )
 

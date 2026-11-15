@@ -283,7 +283,13 @@ upgrades*).
      Swap opens 24 and is greyed out as Send is: docs/swaps.md, *A Safe's
      swap*).
    - The tabs Assets | Activity: Assets is what follows, Activity is 25,
-     drawn in the tab, read only while the tab is shown.
+     drawn in the tab, read only while the tab is shown. The account a
+     recovery phrase is known by (its first account, `m/44'/60'/0'/0/0`, or,
+     when that one is not in the wallet, the phrase's account listed first)
+     has a third tab, **Per-app** (owner's request, 2026-11-14, on #252):
+     that phrase's per-app addresses, as D9 lists them (docs/walletconnect.md),
+     each opening its account, with Copy, and "Restore a per-app address"
+     with the phrase already chosen.
    - Sorted by value, highest first: assets without a price follow the
      priced ones, by name; a stale price sorts by the value it shows. The
      top bar's menu sorts by name instead ("Sort by name", then "Sort by
@@ -299,6 +305,13 @@ upgrades*).
      counts in the total.
    - Footnote: the price source ("Chainlink, testnet prices") and the block
      the balances were verified at.
+   - A **per-app address** (issue #252; docs/walletconnect.md, *Per-app
+     addresses*) is marked as one under its name: the site it was made for
+     (the registrable domain of the host a dApp stated, not verified); its full path
+     (`m/44'/60'/a'/b'/c'`), so another wallet can find it; and the aliases
+     the user linked to it, each with Remove. Removing an alias asks
+     nothing, as it deletes no key (owner's decision, 2026-11-14, on PR #297);
+     the next connection from that site offers it a new address.
 5. **Asset menu**: Send ‹symbol› (7 with the asset chosen; greyed out as in 3) ·
    Send ‹symbol› from another wallet (7H, as in 3) ·
    Swap ‹symbol› (22 with the asset sold chosen; as Swap in 4) · Copy
@@ -1668,4 +1681,4 @@ Swapping tokens has a page of its own, docs/swaps.md (issue #69). The swap
 screens there are numbered from 22.
 
 dApp connections have a page of their own too, docs/walletconnect.md (issue
-#22; owner rulings, 2026-11-03). Their screens there are numbered D1 to D8.
+#22; owner rulings, 2026-11-03). Their screens there are numbered D1 to D9.

@@ -349,6 +349,107 @@ its KDoc and returns it as a result the UI shows as state.
   nothing. The use case (`DeriveAccount`) adds the account on the network of
   the one it comes from, as one step under the app's `WalletChanges`; Add on
   another network adds it elsewhere.
+- **Per-app addresses** (issue #252; owner's decisions, 2026-11-05; the
+  path widened, the tag closed with `/` and the readings below confirmed by
+  the owner's decisions of 2026-11-14, on PR #297; one address per site,
+  owner's decision, 2026-11-15, on PR #297). An
+  address of its own for each site that connects, so that no dApp learns the
+  user's activity on another (WalletBeat's *App isolation*). The flow is in
+  docs/walletconnect.md (*Per-app addresses*); what the key store does:
+  - **The path** is `m/44'/60'/a'/b'/c'`, every level hardened
+    (`AppIsolation.pathOf` in `:domain`). Read the first 92 bits of
+    `keccak256("serotine/app-isolation/v1/" ‖ site)` big-endian: `a` is 2³⁰
+    plus the first 30 bits, `b` the next 31 bits, `c` the 31 after them.
+    The tag is UTF-8, the site in ASCII.
+  - **The site** is the host's registrable domain (`AppHost.site`): the
+    host in its normal form (`AppHost`: ASCII, lower case, no port, no
+    trailing dot), cut to its public suffix plus one label by the Public
+    Suffix List (owner's decision, 2026-11-15, on PR #297). So
+    `app.uniswap.org`, `swap.uniswap.org` and `uniswap.org` share one
+    address, as do `www.example.com` and `example.com`, while
+    `a.github.io` and `b.github.io` do not, nor do two ENS names behind a
+    gateway: the list holds `*.eth.limo` and `*.eth.link`, so each
+    `<name>.eth.limo` is a site of its own. A host that is itself a public
+    suffix (`localhost`, `github.io`) and an IPv4 address are their own
+    site. The rules are matched as the list's formal algorithm says, both
+    its ICANN and its private sections, every label in its `xn--` form.
+  - **The list is pinned**, in `:domain` (`PublicSuffixRules.kt`, generated
+    by `scripts/public-suffix/generate.py` from the copy beside it, sha256
+    `c61dec506c4a1045355280a560bf66c9ee893fb1510db98510ef7fb277fb2df8`,
+    fetched 2026-11-15 from the list's repository). It is never refreshed
+    as a routine: an entry added or removed can move a host to another
+    site, and so to another address. Updating it is the owner's decision.
+    The cost of pinning: a hosting platform that joins the list later has
+    its sites share one address here until then.
+  - **The tag** keeps the app's old name, since changing it changes every
+    per-app address, and ends in `/`, which no host holds, so no later tag
+    (`v10`) hashes as this one with another host (`0example.com`) (owner's
+    decision, 2026-11-14).
+  - **A host outside ASCII is refused**, not mapped by IDNA: its `xn--`
+    form, as a URL carries it, is accepted. A mapping added later changes
+    no address already made (owner's decision, 2026-11-14).
+  - **Why 92 bits** (owner's decision, 2026-11-14, on PR #297). The host is
+    the dApp's unverified claim, and a dApp can try as many hosts as it
+    likes. #252's first proposal, `m/44'/60'/a'/0/0` with 31 bits, was
+    searched in minutes in the review: a host landing on another site's
+    account, or on `m/44'/60'/1'/0/0`, the key of 0xbow's master secret
+    (*Privacy Pools note secrets*). Over 92 bits, aiming at a chosen
+    address is out of reach.
+  - **`a ≥ 2³⁰`**, so a per-app address is never one of the phrase's
+    ordinary accounts (`m/44'/60'/0'/0/i`), nor one of the low accounts that
+    other derivations and wallets counting at the account level use.
+  - **Nothing is stored that the phrase does not give back.** The address
+    depends on the phrase's seed and the site alone, not on the chain or on
+    anything kept: restoring the phrase and connecting to the same site gives
+    the same address. A wallet that takes a custom path finds it once given
+    the path; the account's details show it in full.
+  - **Made like a further account** (above): from the envelope of an account
+    of the phrase, opened with the wallet password, its seed checked against
+    that account; sealed again in an envelope of its own under the per-app
+    address. Only an account whose envelope holds a seed can give one: an
+    account imported as a bare private key, a watched account or a Safe
+    cannot.
+  - **Every envelope of a phrase names the phrase** by its first account's
+    address (`phrase`, `m/44'/60'/0'/0/0`): a public value, checked against
+    the seed when the envelope opens, so that D3 and D9 can tell phrases
+    apart before the unlock. An envelope stored before carries none; its
+    phrase is learnt at its next unlock.
+  - **Restored on request** (D9, owner's request, 2026-11-14): a host (or
+    its site) and a phrase, the wallet password, and the address is derived again into an
+    envelope of its own. The private key is not shown or exported: that
+    would be an exception to *Key material*, which only the owner makes.
+  - **The envelope names its path** (`perApp`: `a`, `b` and `c`, left out
+    for an ordinary account, so envelopes stored before are unchanged; an
+    envelope with both `perApp` and `index` is damaged). It is not bound as
+    additional data, for the reason `index` is not: signing derives the key
+    at that path and refuses one that is not the account the envelope is
+    filed under, so a path edited on disk signs nothing.
+  - **A collision is refused**, never merged. Two sites with one path give
+    one address. When a host's path is that of a host of another site whose
+    per-app address this device holds for the same phrase, the second host
+    gets "already used for another app" and the choice of existing accounts.
+    Two hosts of one site share their address by design.
+    It is checked per phrase: two phrases give two addresses for one host
+    (owner's decision, 2026-11-14). Over 92 bits this is not expected, by
+    accident or on purpose; the check stays so that it can never happen
+    silently.
+  - **Not key material, and not restored with the phrase:** which host an
+    address was made for, the addresses last approved for each host, and the
+    aliases the user links (docs/walletconnect.md). They are app-private
+    data, kept like a session's state. Connecting again after a restore
+    re-derives the address, and an alias is linked again with "Type the old
+    site's host".
+  - **Fixed vectors**, for Hardhat's published phrase
+    `test test test test test test test test test test test junk` (the
+    empty passphrase), computed independently of the code:
+
+    | host | site | first 12 bytes of the hash | `a`, `b`, `c` | address |
+    |---|---|---|---|---|
+    | `example.com` | `example.com` | `3e9bed10be9e4b7869879e28` | 1336343364, 399755631, 110655970 | `0xD95Eed45757974E165fd937990362A47aeC0C4c9` |
+    | `app.uniswap.org` | `uniswap.org` | `ef928cef676ba4ada3a451a0` | 2078581563, 1827501205, 1513768218 | `0x9fa669087fa85CFc61545E7c649f1b5C69088D52` |
+    | `walletbeat.eth.limo` | `walletbeat.eth.limo` | `eae55ba5af1f10005e5d8c41` | 2058966761, 904126976, 98949316 | `0xb25C58C595AD12B8A6C5e980f5e0457716A8F37b` |
+    | `app.safe.global` | `safe.global` | `24a122884bbc7658da0b7336` | 1227376802, 158830283, 228636467 | `0x7144Bb0e35F67cAC626CA72Aef48bbBAbA648Ff4` |
+    | `localhost` | `localhost` | `2bc4b6df430217a4bc6f075e` | 1257319863, 1751139060, 1271328885 | `0xb95bA35cf5b2bA6D0E44f640837e97E6945FDF09` |
 - **Storage.** The BIP-39 seed goes into the envelope above, one file per
   account (`<address>.seed`, JSON) in a directory of the app's own.
   - Writes go through a temporary file readable by this user alone, an

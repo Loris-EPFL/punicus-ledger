@@ -45,6 +45,7 @@ or edited. A skill (`.claude/skills/<name>/SKILL.md`) loads on demand:
 | `release` | the owner asks for a release, a version bump or a `v*` tag | developer |
 | `reviewer` | you review a diff or a PR | reviewer |
 | `ux` | you design or change a screen, a flow or the words the user sees | UX designer |
+| `security-fix` | you work on a vulnerability that is not public yet (a private advisory) | developer |
 
 **Roles.** A developer starts with this file; the rules load as code is
 touched; `/pr` comes at step 3 of the Workflow. A reviewer starts with
@@ -119,10 +120,12 @@ Full text: `.claude/rules/platform.md`, `.claude/rules/ui.md`,
 ## Workflow — the mandatory steps for EVERY work item
 
 Full text of steps 3 to 5: `.claude/skills/pr/SKILL.md`. Do every step, in
-order. None is optional, and none waits to be asked for. The only time to
-skip the PR is when the user explicitly says not to open one.
+order. None is optional, and none waits to be asked for. The PR is skipped
+only when the user explicitly says not to open one, or for an embargoed
+security fix (below the steps).
 
-1. **Code** the change on the designated branch.
+1. **Code** the change on the designated branch (an embargoed security fix:
+   a local branch, never pushed).
 2. **Review** your own diff: `/code-review` in Claude Code; in another tool,
    `/reviewer` on your own diff. Fix what it finds.
 3. **PR.** Open the pull request: base `main`, or the feature branch for a
@@ -136,6 +139,11 @@ skip the PR is when the user explicitly says not to open one.
    2026-11-10, #284). "Pushed" is not "done".
 5. **Address every comment** and drive CI to green. Keep watching until the
    PR is merged or closed.
+
+**An embargoed security fix** (a vulnerability that is not public yet) takes
+the `security-fix` skill instead of steps 3 to 5: no public PR, and no push
+to any branch, the designated one included, before the advisory is published
+(owner's request, 2026-11-15, on Myotis #870).
 
 **MERGING IS THE OWNER'S ACTION. NEVER MERGE A PR YOURSELF** (owner ruling,
 2026-08-31). Green CI plus every comment answered means: report "ready to

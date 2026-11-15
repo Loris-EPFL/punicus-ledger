@@ -170,11 +170,17 @@ class VerifiedDelayModules internal constructor(
         }
 
         /**
-         * Where the call of hash [wanted] stands: the nonces and periods, then `txHash(n)` from the
+         * Where the call of hash [wanted] stands, at one block: avatar, target and owner first, which
+         * must be [safe] (null otherwise); the nonces and periods, then `txHash(n)` from the
          * next entry on until the first of that hash, at most [DelayModules.MAX_QUEUE_READ] of them,
          * and that one's `txCreatedAt(n)`, all at the one block.
          */
-        fun queue(wanted: Digest): Read<DelayQueue> {
+        fun queue(safe: Address, wanted: Digest): Read<DelayQueue?> {
+            val avatar = address(AVATAR) ?: return stopped
+            val target = address(TARGET) ?: return stopped
+            val owner = address(OWNER) ?: return stopped
+            // Another's Delay, at the block the queue would be read at: no queue of the Safe's.
+            if (avatar != safe || target != safe || owner != safe) return done(null)
             val txNonce = number(TX_NONCE) ?: return stopped
             val queueNonce = number(QUEUE_NONCE) ?: return stopped
             // A pinned Delay keeps its next entry within its queue.
@@ -257,22 +263,28 @@ class VerifiedDelayModules internal constructor(
     /**
      * Where the call of hash [hash] stands in the queue of the Delay at [delay], read fresh: only a
      * proxy of the current mastercopy, its code proven first, is read (owner's decisions,
-     * 2026-11-15: nothing is sent through another); the getters at one block, read again at once
+     * 2026-11-15: nothing is sent through another), and only as [safe]'s own, its avatar, target
+     * and owner read at the queue's block; the getters at one block, read again at once
      * while they straddle two or a call gives no answer, [READ_TRIES] reads in all; the head's time
      * read before them, so that a cooldown is never judged over before it is, and an expiration
      * judged with the margin the use case keeps.
      */
-    override suspend fun queue(network: Network, delay: Address, hash: Digest): DelayQueueReading {
+    override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading {
         if (network != served) return DelayQueueReading.Unavailable(ReadUnavailable.NO_ENGINE)
         return chain.askVerified(dispatcher, DelayQueueReading::Unavailable) { verified ->
             val unproven = DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
             val headTime = (verified.snapshot() as? EngineSnapshot.Running)?.headTimestamp
                 ?: return@askVerified unproven
             val code = verified.proveCode(delay) ?: return@askVerified unproven
-            if (proxies[code.codeHex.lowercase()] != DelayGeneration.CURRENT) return@askVerified unproven
+            val generation = proxies[code.codeHex.lowercase()]
+            if (generation != DelayGeneration.CURRENT) {
+                return@askVerified DelayQueueReading.NotTheSafes(generation, code.blockNumber)
+            }
             repeat(READ_TRIES) {
-                when (val read = Getters(verified, delay).queue(hash)) {
-                    is Read.Done -> return@askVerified DelayQueueReading.Read(read.value, read.block, headTime)
+                when (val read = Getters(verified, delay).queue(safe, hash)) {
+                    is Read.Done -> return@askVerified read.value
+                        ?.let { DelayQueueReading.Read(it, read.block, headTime) }
+                        ?: DelayQueueReading.NotTheSafes(DelayGeneration.CURRENT, read.block)
                     is Read.Stopped -> when (read.ended) {
                         Ended.STRADDLED, Ended.NO_ANSWER -> Unit
                         Ended.NOT_A_DELAYS_ANSWER -> return@askVerified unproven

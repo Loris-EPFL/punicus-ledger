@@ -26,17 +26,19 @@ interface DelayModules {
     fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading>
 
     /**
-     * Where the call of hash [hash] stands in the queue of the Delay at [delay] on [network], as
-     * it is now (docs/gnosis-pay.md, *Sending*): the queue's next entry to execute and its next to
-     * be added, its cooldown and expiration, and the first entry of that hash from the next to
-     * execute on, searched through at most [MAX_QUEUE_READ] entries, with the time it was queued;
-     * all read with verified calls at one block, and the time of the verified head they were
-     * read at, which is when "now" is for the cooldown. Only a Delay proven to be a proxy of the
-     * current mastercopy is read. Read fresh at every call, never from a reading kept before.
-     * Blocks on the engine, bounded by it; never throws. A [network] no adapter serves here is
-     * refused ([ReadUnavailable.NO_ENGINE]).
+     * Where the call of hash [hash] stands in the queue of the Delay at [delay], enabled on the Safe
+     * at [safe], on [network], as it is now (docs/gnosis-pay.md, *Sending*), all of it read fresh at
+     * one block, never from a reading kept before: the Delay's code proven to be a proxy of the
+     * current mastercopy; its avatar, target and owner, which must be [safe] (else
+     * [DelayQueueReading.NotTheSafes]); its next entry to execute and its next to be added, its
+     * cooldown and expiration; and the first entry of that hash from the next to execute on,
+     * searched through at most [MAX_QUEUE_READ] entries, with the time it was queued. With them,
+     * the time of the verified head they were read at, which is when "now" is for the cooldown.
+     * The one read that what is quoted or sent through a Delay rests on. Blocks on the engine,
+     * bounded by it; never throws. A [network] no adapter serves here is refused
+     * ([ReadUnavailable.NO_ENGINE]).
      */
-    suspend fun queue(network: Network, delay: Address, hash: Digest): DelayQueueReading
+    suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading
 
     companion object {
         /** Entries searched from the next to execute on: an entry further back is not looked for. */
@@ -49,6 +51,13 @@ sealed interface DelayQueueReading {
 
     /** [queue], read at block [blockNumber], whose verified head was produced at [headTime] (unix seconds). */
     data class Read(val queue: DelayQueue, val blockNumber: Long, val headTime: Long) : DelayQueueReading
+
+    /**
+     * The Delay is not [safe]'s own of the current mastercopy, as proven now: a proxy of the
+     * retired one ([generation] RETIRED), one whose avatar, target or owner is another address,
+     * or (with [generation] null) no proxy of a pinned mastercopy at all. Nothing is sent through it.
+     */
+    data class NotTheSafes(val generation: DelayGeneration?, val blockNumber: Long) : DelayQueueReading
 
     /** No verified answer can be had right now, for the reason [reason] gives. */
     data class Unavailable(val reason: ReadUnavailable) : DelayQueueReading

@@ -9,12 +9,10 @@ import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.Broadcaster
-import eth.serotine.domain.repository.DelayFinding
 import eth.serotine.domain.repository.DelayGeneration
 import eth.serotine.domain.repository.DelayModules
 import eth.serotine.domain.repository.DelayQueue
 import eth.serotine.domain.repository.DelayQueueReading
-import eth.serotine.domain.repository.DelayReading
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryList
@@ -24,6 +22,7 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfers
+import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
@@ -135,19 +134,30 @@ sealed interface DelayQuoting {
     data class Quoted(val quote: DelayQuote) : DelayQuoting
 
     /**
-     * The Delay is no longer the Safe's own of the current mastercopy, as proven now ([finding];
-     * null when the module is no Delay at all): nothing is sent through it.
+     * The Delay is not the Safe's own of the current mastercopy, as proven now: [generation]
+     * RETIRED for a proxy of the retired one, CURRENT for one not wired to the Safe, null for no
+     * proxy of a pinned mastercopy. Nothing is sent through it.
      */
-    data class NotTheSafesDelay(val finding: DelayFinding?) : DelayQuoting
-
-    /** The Safe holds less of the asset than the amount: the execution would fail, its fee paid. */
-    data object SafeInsufficient : DelayQuoting
+    data class NotTheSafesDelay(val generation: DelayGeneration?) : DelayQuoting
 
     /**
-     * The same transfer, queued from here, waits for its execution still ([queuedBy], its
-     * queueing): queuing it again would make two entries of one hash, which nothing tells apart.
+     * The Safe holds less of the asset than the amount, with what transfers queued from here and
+     * not executed yet will move of it ([alreadyQueued]): the execution would fail, its fee paid.
      */
-    data class AlreadyQueued(val queuedBy: String) : DelayQuoting
+    data class SafeInsufficient(val alreadyQueued: UInt256 = UInt256.ZERO) : DelayQuoting
+
+    /**
+     * An entry of the same call waits in the Delay's queue still, or its queueing from here
+     * ([queuedBy], null when the queue holds it and this device sent none) is not mined yet:
+     * queuing it again would make two entries of one hash, which nothing tells apart.
+     */
+    data class AlreadyQueued(val queuedBy: String?) : DelayQuoting
+
+    /** The token answers false to the Safe's `transfer`: the Delay would spend its entry and move nothing. */
+    data object TokenRefuses : DelayQuoting
+
+    /** The history of what this wallet sent cannot be read right now, so what waits from here cannot be told. */
+    data object HistoryUnreadable : DelayQuoting
 
     /** The member's transaction itself was not quoted: [refusal]. */
     data class NotQuoted(val refusal: CallRefusal) : DelayQuoting
@@ -156,15 +166,21 @@ sealed interface DelayQuoting {
     data class NotReady(val state: DelayTransferState) : DelayQuoting
 }
 
+/** Whether this transfer and [other] are the same call of one Delay for one Safe: what its queue tells apart. */
+fun DelayTransfer.sameCall(other: DelayTransfer): Boolean =
+    safe == other.safe && delay == other.delay && hash == other.hash
+
 /**
- * The reads both quotes share: the Delay proven, fresh, to be the Safe's own of the current
- * mastercopy; the Safe's verified balance of the transfer's asset, at least its amount; the
- * member's native balance; then the member's call of the Delay quoted ([CallQuoter]) with [data],
- * which must not revert and must return true.
+ * The reads both quotes share: the Delay's queue read fresh at one block ([DelayModules.queue]),
+ * which also proves the Delay the Safe's own of the current mastercopy; the Safe's verified balance
+ * of the transfer's asset, at least its amount and what is already queued of it; for a token, the
+ * Safe's own `transfer` run as a verified call, which must not answer false; the member's native
+ * balance; then the member's call of the Delay quoted ([CallQuoter]): the queueing must return
+ * true, the execution, which returns nothing, must not revert.
  */
 private class DelayCallQuoter(
     private val delays: DelayModules,
-    inputs: TransactionInputs,
+    private val inputs: TransactionInputs,
     private val nativeBalances: NativeBalances,
     private val tokenBalances: TokenBalances,
     sentTransfers: SentTransfers,
@@ -174,22 +190,26 @@ private class DelayCallQuoter(
 ) {
     private val quoter = CallQuoter(inputs, sentTransfers, network, clock, outbox)
 
-    /** Why nothing may be sent through [transfer]'s Delay, as proven now; null when it is the Safe's own, current. */
-    suspend fun refusedDelay(transfer: DelayTransfer): DelayQuoting? {
-        val reading = delays.observeDelay(network, transfer.safe, transfer.delay).first { it != DelayReading.Syncing }
-        return when (reading) {
-            DelayReading.Syncing -> error("filtered out")
-            is DelayReading.Unavailable -> DelayQuoting.NotQuoted(CallRefusal.Unavailable(reading.reason))
-            is DelayReading.Verified -> when (val finding = reading.finding) {
-                is DelayFinding.Wired -> if (finding.module.generation == DelayGeneration.CURRENT) {
-                    null
-                } else {
-                    DelayQuoting.NotTheSafesDelay(finding)
-                }
-                is DelayFinding.NotWired -> DelayQuoting.NotTheSafesDelay(finding)
-                DelayFinding.NotDelay -> DelayQuoting.NotTheSafesDelay(null)
-            }
+    /** [transfer]'s queue as it is now, or why nothing is quoted through its Delay. */
+    suspend fun freshQueue(transfer: DelayTransfer): Fresh =
+        when (val reading = delays.queue(network, transfer.safe, transfer.delay, transfer.hash)) {
+            is DelayQueueReading.Read -> Fresh.Read(reading)
+            is DelayQueueReading.NotTheSafes -> Fresh.Refused(DelayQuoting.NotTheSafesDelay(reading.generation))
+            is DelayQueueReading.Unavailable -> Fresh.Refused(
+                DelayQuoting.NotQuoted(
+                    if (reading.reason == ReadUnavailable.SYNCING) {
+                        CallRefusal.Syncing
+                    } else {
+                        CallRefusal.Unavailable(reading.reason, QuoteFigure.RUN)
+                    },
+                ),
+            )
         }
+
+    /** What [freshQueue] gives. */
+    sealed interface Fresh {
+        data class Read(val reading: DelayQueueReading.Read) : Fresh
+        data class Refused(val quoting: DelayQuoting) : Fresh
     }
 
     suspend fun quote(
@@ -197,6 +217,7 @@ private class DelayCallQuoter(
         transfer: DelayTransfer,
         step: DelayStep,
         level: FeeLevel,
+        alreadyQueued: UInt256 = UInt256.ZERO,
     ): DelayQuoting = cancellingReads {
         quoter.heldBack(member)?.let { return@cancellingReads DelayQuoting.NotQuoted(it) }
         val memberNative = async { nativeBalances.observeBalance(network, member).first() }
@@ -204,17 +225,33 @@ private class DelayCallQuoter(
             is SafeHolds.Read -> read
             is SafeHolds.NotRead -> return@cancellingReads DelayQuoting.NotQuoted(read.refusal)
         }
-        if (safeHolds.amount < transfer.amount) return@cancellingReads DelayQuoting.SafeInsufficient
+        val needed = transfer.amount.plusOrNull(alreadyQueued)
+        if (needed == null || safeHolds.amount < needed) {
+            return@cancellingReads DelayQuoting.SafeInsufficient(alreadyQueued)
+        }
+        // The token's own answer to the Safe's call: one that answers false instead of reverting
+        // would let the Delay spend its entry and move nothing.
+        if (transfer.asset is TransferAsset.Erc20Token) {
+            when (val run = inputs.simulate(network, transfer.safe, transfer.to, UInt256.ZERO, transfer.data)) {
+                is Simulation.Succeeded ->
+                    if (Erc20.returnedFalse(run.returnHex)) return@cancellingReads DelayQuoting.TokenRefuses
+                is Simulation.Reverted ->
+                    return@cancellingReads DelayQuoting.NotQuoted(CallRefusal.Reverts(run.blockNumber))
+                Simulation.Refused -> return@cancellingReads DelayQuoting.NotQuoted(CallRefusal.Refused)
+                is Simulation.Unavailable ->
+                    return@cancellingReads DelayQuoting.NotQuoted(CallRefusal.Unavailable(run.reason, QuoteFigure.RUN))
+            }
+        }
         val native = when (val read = NativeRead.of(memberNative.await())) {
             is NativeRead.Before -> read
             is NativeRead.NotRead -> return@cancellingReads DelayQuoting.NotQuoted(read.refusal)
         }
-        val data = when (step) {
-            DelayStep.QUEUE -> transfer.queueData()
-            DelayStep.EXECUTE -> transfer.executeData()
+        val (data, accepts) = when (step) {
+            // `execTransactionFromModule` returns a bool: a word of zero is a refusal as surely as a revert.
+            DelayStep.QUEUE -> transfer.queueData() to { returned: String -> !Erc20.returnedFalse(returned) }
+            // `executeNextTx` returns nothing, and reverts when the Safe's call fails.
+            DelayStep.EXECUTE -> transfer.executeData() to { _: String -> true }
         }
-        // Both Delay calls return a bool: a word of zero is a refusal as surely as a revert.
-        val accepts: (String) -> Boolean = { returned -> !Erc20.returnedFalse(returned) }
         when (val quoted = quoter.quote(member, transfer.delay, UInt256.ZERO, data, level, native, accepts = accepts)) {
             is CallQuoting.Quoted -> DelayQuoting.Quoted(
                 DelayQuote(network, transfer, step, quoted.quote, safeHolds.amount, safeHolds.blockNumber),
@@ -258,11 +295,13 @@ private class DelayCallQuoter(
 /**
  * Quotes the queueing of a Gnosis Pay account's [DelayTransfer] by [member], a member of its Delay
  * whose key is held here: `execTransactionFromModule` sent to the Delay, run as a verified call from
- * the member, which must succeed (it reverts for anyone who is not a member). The Delay must be
- * proven, now, to be the Safe's own of the current mastercopy (owner's decisions, 2026-11-15); the
- * Safe must hold the amount now, verified: a transfer it cannot pay would be queued, waited for and
- * fail. The same transfer still waiting from here is refused ([DelayQuoting.AlreadyQueued]). On
- * [network] only. [clock] is in unix seconds.
+ * the member, which must succeed (it reverts for anyone who is not a member). The Delay's queue is
+ * read fresh first, which proves the Delay the Safe's own of the current mastercopy (owner's
+ * decisions, 2026-11-15); an entry of the same call still in it, or a queueing of it from here not
+ * mined yet, is refused ([DelayQuoting.AlreadyQueued]), so no two entries share a hash. The Safe must
+ * hold the amount now, verified, beside what transfers of the same asset queued from here and not
+ * executed will move: a transfer it cannot pay would be queued, waited for and fail. On [network]
+ * only. [clock] is in unix seconds.
  */
 class QuoteDelayQueue(
     delays: DelayModules,
@@ -273,36 +312,46 @@ class QuoteDelayQueue(
     sentTransfers: SentTransfers,
     private val network: Network,
     outbox: Outbox,
-    clock: () -> Long = ::epochSecondsNow,
+    private val clock: () -> Long = ::epochSecondsNow,
 ) {
     private val quoter =
         DelayCallQuoter(delays, inputs, nativeBalances, tokenBalances, sentTransfers, network, clock, outbox)
 
     suspend operator fun invoke(member: Address, transfer: DelayTransfer, level: FeeLevel): DelayQuoting {
-        quoter.refusedDelay(transfer)?.let { return it }
+        val read = when (val fresh = quoter.freshQueue(transfer)) {
+            is DelayCallQuoter.Fresh.Read -> fresh.reading
+            is DelayCallQuoter.Fresh.Refused -> return fresh.quoting
+        }
         val entries = (history.observe().first() as? HistoryList.Loaded)?.entries
-            ?: return DelayQuoting.NotQuoted(CallRefusal.Unavailable(ReadUnavailable.UNPROVEN))
-        entries.pendingQueueings(network, transfer).firstOrNull()
-            ?.let { return DelayQuoting.AlreadyQueued(it.entry.transfer.hash) }
-        return quoter.quote(member, transfer, DelayStep.QUEUE, level)
+            ?: return DelayQuoting.HistoryUnreadable
+        val waiting = entries.waitingQueueings(network, transfer.safe, transfer.delay, clock(), read.queue)
+        // A mined one is in the queue just read, or gone: only one on its way is the history's to tell.
+        val sameCall = waiting.firstOrNull { it.queued.sameCall(transfer) && it.entry.onItsWay(clock()) }
+        if (read.queue.entry != null || !read.queue.searchedAll || sameCall != null) {
+            return DelayQuoting.AlreadyQueued(sameCall?.entry?.transfer?.hash)
+        }
+        val alreadyQueued = waiting.filter { it.queued.asset.sameAsset(transfer.asset) }
+            .map { it.queued.amount }
+            .sumOrNull() ?: return DelayQuoting.SafeInsufficient()
+        return quoter.quote(member, transfer, DelayStep.QUEUE, level, alreadyQueued)
     }
 }
 
 /**
  * Quotes the execution of a Gnosis Pay account's [DelayTransfer] that [member] queued before:
- * `executeNextTx` sent to the Delay. Only through the Safe's own Delay of the current mastercopy,
- * proven now, and only once its queue, read fresh ([DelayModules.queue]), has the transfer as the
- * next entry, past its cooldown and short of its expiration ([DelayTransferState.Ready]); otherwise
+ * `executeNextTx` sent to the Delay. Only once its queue, read fresh ([DelayModules.queue]), proves
+ * the Delay the Safe's own of the current mastercopy and has the transfer as the next entry, past
+ * its cooldown and short of its expiration ([DelayTransferState.Ready]); otherwise
  * [DelayQuoting.NotReady] says where it stands. The run as a verified call then makes the Safe's
  * own transfer, which must succeed. On [network] only. [clock] is in unix seconds.
  */
 class QuoteDelayExecution(
-    private val delays: DelayModules,
+    delays: DelayModules,
     inputs: TransactionInputs,
     nativeBalances: NativeBalances,
     tokenBalances: TokenBalances,
     sentTransfers: SentTransfers,
-    private val network: Network,
+    network: Network,
     outbox: Outbox,
     clock: () -> Long = ::epochSecondsNow,
 ) {
@@ -310,11 +359,9 @@ class QuoteDelayExecution(
         DelayCallQuoter(delays, inputs, nativeBalances, tokenBalances, sentTransfers, network, clock, outbox)
 
     suspend operator fun invoke(member: Address, transfer: DelayTransfer, level: FeeLevel): DelayQuoting {
-        quoter.refusedDelay(transfer)?.let { return it }
-        val read = when (val reading = delays.queue(network, transfer.delay, transfer.hash)) {
-            is DelayQueueReading.Read -> reading
-            is DelayQueueReading.Unavailable ->
-                return DelayQuoting.NotQuoted(CallRefusal.Unavailable(reading.reason, QuoteFigure.RUN))
+        val read = when (val fresh = quoter.freshQueue(transfer)) {
+            is DelayCallQuoter.Fresh.Read -> fresh.reading
+            is DelayCallQuoter.Fresh.Refused -> return fresh.quoting
         }
         val state = read.queue.state(read.headTime)
         if (state !is DelayTransferState.Ready) return DelayQuoting.NotReady(state)
@@ -367,38 +414,47 @@ sealed interface DelayTransfersReading {
 
 /**
  * The transfers this wallet queued for the Gnosis Pay account [safe] through its Delay at [delay]
- * and has not executed: each queueing in the history ([TransactionHistory]) with no execution of
- * the same transfer from here after it that a verified receipt shows succeeded, and where each
- * stands in the queue, read fresh ([DelayModules.queue]). One no longer in the queue whose queueing
- * was mined was executed or skipped by someone else: it is still listed, as
- * [DelayTransferState.NotInQueue], so that the user sees it went.
+ * that still wait, and where each stands, its queue read fresh ([DelayModules.queue]). The history
+ * ([TransactionHistory]) names the candidates: each queueing that did not fail and that no
+ * execution from here was seen to succeed after. The queue decides: one whose queueing is not
+ * mined yet (and was taken within [FOLLOW_SECONDS]) is listed while it is on its way; once it is,
+ * only while the queue holds an entry of its call, or may hold one further back, or cannot be read.
+ * One executed or skipped by anyone, expired and skipped, or never mined leaves the list.
+ * [clock] is in unix seconds.
  */
 class ReadDelayTransfers(
     private val history: TransactionHistory,
     private val delays: DelayModules,
+    private val clock: () -> Long = ::epochSecondsNow,
 ) {
     suspend operator fun invoke(safe: AccountId, delay: Address): DelayTransfersReading {
         val entries = when (val list = history.observe().first()) {
             is HistoryList.Loaded -> list.entries
             HistoryList.Unreadable -> return DelayTransfersReading.HistoryUnreadable
         }
-        val pending = entries.pendingQueueings(safe.network, null)
-            .filter { it.queued.safe == safe.address && it.queued.delay == delay }
+        val now = clock()
         var unread: ReadUnavailable? = null
-        val transfers = pending.sortedBy { it.entry.transfer.sentAt }.map { (entry, transfer) ->
-            val state = when (val read = delays.queue(safe.network, delay, transfer.hash)) {
-                is DelayQueueReading.Read -> read.queue.state(read.headTime)
-                is DelayQueueReading.Unavailable -> null.also { unread = read.reason }
+        val transfers = entries.candidateQueueings(safe.network, safe.address, delay)
+            .sortedBy { it.entry.transfer.sentAt }
+            .mapNotNull { (entry, transfer) ->
+                val onItsWay = entry.onItsWay(now)
+                val state = when (val read = delays.queue(safe.network, safe.address, delay, transfer.hash)) {
+                    is DelayQueueReading.Read -> read.queue.state(read.headTime)
+                    // Not this Safe's Delay any more: nothing of it waits through it.
+                    is DelayQueueReading.NotTheSafes -> return@mapNotNull null
+                    is DelayQueueReading.Unavailable -> null.also { unread = read.reason }
+                }
+                val holds = state != null && state != DelayTransferState.NotInQueue
+                if (!onItsWay && state != null && !holds) return@mapNotNull null
+                QueuedDelayTransfer(
+                    transfer,
+                    entry.transfer.account,
+                    entry.transfer.hash,
+                    entry.transfer.sentAt,
+                    entry.outcome,
+                    state,
+                )
             }
-            QueuedDelayTransfer(
-                transfer,
-                entry.transfer.account,
-                entry.transfer.hash,
-                entry.transfer.sentAt,
-                entry.outcome,
-                state,
-            )
-        }
         return DelayTransfersReading.Read(transfers, unread)
     }
 }
@@ -407,21 +463,49 @@ class ReadDelayTransfers(
 private data class Queueing(val entry: HistoryEntry, val queued: DelayTransfer)
 
 /**
- * The queueings on [network] in this history of [transfer] (null: of any) that wait for their
- * execution still: neither failed on chain, nor followed by an execution of the same transfer from
- * here that a verified receipt shows succeeded.
+ * The queueings on [network] in this history for the Safe [safe] through [delay] that may still
+ * wait: neither failed on chain, nor followed by an execution of the same call from here that a
+ * verified receipt shows succeeded.
  */
-private fun List<HistoryEntry>.pendingQueueings(network: Network, transfer: DelayTransfer?): List<Queueing> =
+private fun List<HistoryEntry>.candidateQueueings(network: Network, safe: Address, delay: Address): List<Queueing> =
     mapNotNull { entry ->
         val queued = (entry.transfer.action as? SentAction.DelayQueue)?.transfer ?: return@mapNotNull null
-        if (entry.transfer.network != network || (transfer != null && queued != transfer)) return@mapNotNull null
+        if (entry.transfer.network != network || queued.safe != safe || queued.delay != delay) return@mapNotNull null
         if (entry.outcome.failed()) return@mapNotNull null
         val executed = any {
-            (it.transfer.action as? SentAction.DelayExecution)?.transfer == queued &&
-                it.transfer.network == network && it.transfer.sentAt >= entry.transfer.sentAt && it.outcome.succeeded()
+            val execution = (it.transfer.action as? SentAction.DelayExecution)?.transfer ?: return@any false
+            execution.sameCall(queued) && it.transfer.network == network &&
+                it.transfer.sentAt >= entry.transfer.sentAt && it.outcome.succeeded()
         }
         if (executed) null else Queueing(entry, queued)
     }
+
+/**
+ * Of [candidateQueueings], those that still hold the Safe's funds, as far as a quote can tell
+ * without reading each one's entry: on their way (not mined yet, taken within [FOLLOW_SECONDS]), or
+ * mined within the window [queue]'s periods give an entry. What the next queueing must leave room for.
+ */
+private fun List<HistoryEntry>.waitingQueueings(
+    network: Network,
+    safe: Address,
+    delay: Address,
+    now: Long,
+    queue: DelayQueue,
+): List<Queueing> {
+    val window = if (queue.expirationSeconds == 0L) null else queue.cooldownSeconds + queue.expirationSeconds
+    return candidateQueueings(network, safe, delay).filter { (entry, _) ->
+        entry.onItsWay(now) || window == null || entry.transfer.sentAt >= now - window
+    }
+}
+
+/** Whether this queueing is not mined yet, and was taken recently enough to still be. */
+private fun HistoryEntry.onItsWay(now: Long): Boolean =
+    outcome == SentOutcome.NotSeen && transfer.sentAt >= now - FOLLOW_SECONDS
+
+private fun TransferAsset.sameAsset(other: TransferAsset): Boolean = when (this) {
+    TransferAsset.Native -> other == TransferAsset.Native
+    is TransferAsset.Erc20Token -> (other as? TransferAsset.Erc20Token)?.token?.address == token.address
+}
 
 private fun SentOutcome.succeeded(): Boolean =
     (this as? SentOutcome.Included)?.succeeded == true || (this as? SentOutcome.Finalized)?.succeeded == true

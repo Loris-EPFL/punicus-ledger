@@ -6,6 +6,7 @@ import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.DelayTransferPlan
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
@@ -47,7 +48,8 @@ class GnosisPayTransfersTest {
     private val roles = Address.of("0x5c7516e3e2581d1274d28e97cccc3eda87af796d")
     private val member = Address.of("0xa52bddbc4145f89b3740266a74f2d81c358677aa")
     private val recipient = Address.of("0x" + "11".repeat(20))
-    private val eure = Token(Address.of("0xcb444e90d8198415266c6a2724b7900fb12fc56e"), "EURe", "Monerium EURe", 18, null)
+    private val eure =
+        Token(Address.of("0xcb444e90d8198415266c6a2724b7900fb12fc56e"), "EURe", "Monerium EURe", 18, null)
     private val oneUnit = UInt256.of("1000000000000000000")
 
     private fun plan(
@@ -65,7 +67,8 @@ class GnosisPayTransfersTest {
         val native = transfer()
         assertEquals(Digest.of("2bfd7a0ce48c1c80dab186e019242eadd45da2b28d554cb3c92252a5e6dd9a90"), native.hash)
         assertEquals(
-            "468721a7" + "0".repeat(24) + "11".repeat(20) + "0000000000000000000000000000000000000000000000000de0b6b3a7640000" +
+            "468721a7" + "0".repeat(24) + "11".repeat(20) +
+                "0000000000000000000000000000000000000000000000000de0b6b3a7640000" +
                 "0".repeat(62) + "80" + "0".repeat(64) + "0".repeat(64),
             native.queueData().toHex(),
         )
@@ -132,18 +135,22 @@ class GnosisPayTransfersTest {
     private val native = FakeNativeBalances()
     private val tokens = FakeTokenBalances()
     private val sent = MemorySentTransfers()
-    private var queueAnswer: DelayQueueReading = DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
-    private val asked = mutableListOf<Digest>()
-    private var finding: DelayFinding = DelayFinding.Wired(
-        DelayModule(delay, DelayGeneration.CURRENT, 90_000, 111_600, 5, 5, listOf(member)),
-    )
-    private val delays = object : DelayModules {
-        override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> =
-            flowOf(DelayReading.Verified(if (safe == this@GnosisPayTransfersTest.safe) finding else DelayFinding.NotDelay, 100))
+    /** An empty queue from entry 5, read at a head produced at 1000: what a queueing is checked against. */
+    private var queueAnswer: DelayQueueReading =
+        DelayQueueReading.Read(DelayQueue(5, 5, 90_000, 111_600, null, 0), 120, 1_000)
 
-        override suspend fun queue(network: Network, delay: Address, hash: Digest): DelayQueueReading {
+    /** The queue's answer for a hash, where it differs from [queueAnswer]. */
+    private val answers = mutableMapOf<Digest, DelayQueueReading>()
+    private val asked = mutableListOf<Digest>()
+    private val delays = object : DelayModules {
+        // The screen's kept reading: no quote leans on it.
+        override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> =
+            error("a quote reads the queue fresh, never the screen's reading")
+
+        override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading {
+            assertEquals(this@GnosisPayTransfersTest.safe, safe, "the Safe is applied")
             asked += hash
-            return queueAnswer
+            return answers[hash] ?: queueAnswer
         }
     }
     private val history = MemoryTransactionHistory()
@@ -176,46 +183,106 @@ class GnosisPayTransfersTest {
     @Test
     fun nothingIsSentThroughADelayThatIsNotTheSafesOwnCurrentOne() = runTest {
         funded()
-        val retired = DelayFinding.Wired(DelayModule(delay, DelayGeneration.RETIRED, 1, 1, 0, 0, listOf(member)))
-        finding = retired
-        assertEquals(DelayQuoting.NotTheSafesDelay(retired), queueing()(member, transfer(), FeeLevel.entries.first()))
-        finding = DelayFinding.NotWired(DelayGeneration.CURRENT)
+        queueAnswer = DelayQueueReading.NotTheSafes(DelayGeneration.RETIRED, 120)
         assertEquals(
-            DelayQuoting.NotTheSafesDelay(DelayFinding.NotWired(DelayGeneration.CURRENT)),
+            DelayQuoting.NotTheSafesDelay(DelayGeneration.RETIRED),
+            queueing()(member, transfer(), FeeLevel.entries.first()),
+        )
+        queueAnswer = DelayQueueReading.NotTheSafes(DelayGeneration.CURRENT, 120)
+        assertEquals(
+            DelayQuoting.NotTheSafesDelay(DelayGeneration.CURRENT),
             execution()(member, transfer(), FeeLevel.entries.first()),
         )
         assertTrue(inputs.simulated.isEmpty())
-        assertTrue(asked.isEmpty())
     }
 
     @Test
-    fun theSameTransferIsNotQueuedTwiceWhileItWaits() = runTest {
+    fun aQueueThatCannotBeReadWhileSyncingSaysSoAtOnce() = runTest {
         funded()
-        val waiting = sentBy(SentAction.DelayQueue(transfer()), 10, 1)
-        history.entries.value = listOf(HistoryEntry(waiting, SentOutcome.NonceUsed))
+        queueAnswer = DelayQueueReading.Unavailable(ReadUnavailable.SYNCING)
         assertEquals(
-            DelayQuoting.AlreadyQueued(waiting.hash),
+            DelayQuoting.NotQuoted(CallRefusal.Syncing),
             queueing()(member, transfer(), FeeLevel.entries.first()),
         )
+    }
 
-        // Once its execution succeeded, or its queueing failed, it may be queued again.
-        history.entries.value = listOf(
-            HistoryEntry(waiting, SentOutcome.NonceUsed),
-            HistoryEntry(sentBy(SentAction.DelayExecution(transfer()), 20, 2), SentOutcome.Included(130, true)),
+    @Test
+    fun theSameCallIsNotQueuedTwiceWhileItsEntryWaits() = runTest {
+        funded()
+        val ours = transfer()
+        // The queue holds an entry of the call, whoever queued it.
+        answers[ours.hash] =
+            DelayQueueReading.Read(DelayQueue(5, 6, 90_000, 111_600, DelayEntry(5, ours.hash, 900), 1), 120, 1_000)
+        assertEquals(DelayQuoting.AlreadyQueued(null), queueing()(member, ours, FeeLevel.entries.first()))
+
+        // Its queueing from here, not mined yet: the queue cannot hold it yet.
+        answers.clear()
+        val onItsWay = sentBy(SentAction.DelayQueue(ours), 900, 1)
+        history.entries.value = listOf(HistoryEntry(onItsWay, SentOutcome.NotSeen))
+        assertEquals(DelayQuoting.AlreadyQueued(onItsWay.hash), queueing()(member, ours, FeeLevel.entries.first()))
+
+        // Mined, and no longer in the queue (executed by anyone, or skipped): it may be queued again,
+        // whether or not this device saw the execution's receipt.
+        history.entries.value = listOf(HistoryEntry(onItsWay, SentOutcome.NonceUsed))
+        assertTrue(queueing()(member, ours, FeeLevel.entries.first()) is DelayQuoting.Quoted)
+    }
+
+    @Test
+    fun theSameCallIsTheSameWhateverTheTokensDisplayMetadata() = runTest {
+        funded()
+        tokens.of(safe, eure.address).value = TokenBalanceReading.Verified(TokenUnits.of("5000000000000000000"), 100)
+        // The history's token as the store reads it back: no price.
+        val stored = transfer(TransferAsset.Erc20Token(eure))
+        val priced = transfer(TransferAsset.Erc20Token(eure.copy(priceId = PriceId("EUR"), icon = "eure")))
+        assertTrue(priced.sameCall(stored))
+        history.entries.value = listOf(HistoryEntry(sentBy(SentAction.DelayQueue(stored), 900, 1), SentOutcome.NotSeen))
+
+        assertTrue(queueing()(member, priced, FeeLevel.entries.first()) is DelayQuoting.AlreadyQueued)
+    }
+
+    @Test
+    fun whatIsQueuedOfTheAssetAlreadyCountsAgainstTheBalance() = runTest {
+        funded(safeWei = "1500000000000000000")
+        // 1 xDAI to another recipient, queued from here and waiting.
+        val other = (plan(to = Address.of("0x" + "22".repeat(20))) as DelayTransferPlan.Planned).transfer
+        history.entries.value =
+            listOf(HistoryEntry(sentBy(SentAction.DelayQueue(other), 900, 1), SentOutcome.NonceUsed))
+
+        assertEquals(
+            DelayQuoting.SafeInsufficient(alreadyQueued = oneUnit),
+            queueing()(member, transfer(), FeeLevel.entries.first()),
         )
-        assertTrue(queueing()(member, transfer(), FeeLevel.entries.first()) is DelayQuoting.Quoted)
-        history.entries.value = listOf(HistoryEntry(waiting, SentOutcome.Included(120, false)))
-        assertTrue(queueing()(member, transfer(), FeeLevel.entries.first()) is DelayQuoting.Quoted)
+    }
+
+    @Test
+    fun aTokenThatAnswersFalseToTheSafesTransferIsRefused() = runTest {
+        funded()
+        tokens.of(safe, eure.address).value = TokenBalanceReading.Verified(TokenUnits.of("5000000000000000000"), 100)
+        inputs.simulation = Simulation.Succeeded("0".repeat(64), 100)
+
+        assertEquals(
+            DelayQuoting.TokenRefuses,
+            queueing()(member, transfer(TransferAsset.Erc20Token(eure)), FeeLevel.entries.first()),
+        )
+        // Run as the Safe's own call of the token.
+        assertEquals(safe to eure.address, inputs.simulated.single().let { it.first to it.second })
+    }
+
+    @Test
+    fun aHistoryThatCannotBeReadIsSaidAsSuch() = runTest {
+        funded()
+        history.readable.value = false
+        assertEquals(DelayQuoting.HistoryUnreadable, queueing()(member, transfer(), FeeLevel.entries.first()))
     }
 
     @Test
     fun aTransferTheSafeCannotPayIsNeverQueued() = runTest {
         funded(safeWei = "999999999999999999")
-        assertEquals(DelayQuoting.SafeInsufficient, queueing()(member, transfer(), FeeLevel.entries.first()))
+        assertEquals(DelayQuoting.SafeInsufficient(), queueing()(member, transfer(), FeeLevel.entries.first()))
 
         tokens.of(safe, eure.address).value = TokenBalanceReading.Verified(TokenUnits.of("1"), 100)
         assertEquals(
-            DelayQuoting.SafeInsufficient,
+            DelayQuoting.SafeInsufficient(),
             queueing()(member, transfer(TransferAsset.Erc20Token(eure)), FeeLevel.entries.first()),
         )
         assertTrue(inputs.simulated.isEmpty())
@@ -269,7 +336,7 @@ class GnosisPayTransfersTest {
 
         queueAnswer = DelayQueueReading.Unavailable(ReadUnavailable.SYNCING)
         assertEquals(
-            DelayQuoting.NotQuoted(CallRefusal.Unavailable(ReadUnavailable.SYNCING, QuoteFigure.RUN)),
+            DelayQuoting.NotQuoted(CallRefusal.Syncing),
             execution()(member, ours, FeeLevel.entries.first()),
         )
 
@@ -316,15 +383,21 @@ class GnosisPayTransfersTest {
             HistoryEntry(sentBy(SentAction.DelayExecution(first), 20, 2), SentOutcome.Finalized(130, true)),
             HistoryEntry(sentBy(SentAction.DelayQueue(second), 30, 3), SentOutcome.NotSeen),
         )
-        queueAnswer = DelayQueueReading.Read(queueOf(DelayEntry(5, second.hash, 1_000)), 120, 2_000)
-        // An execution that failed leaves its transfer listed.
+        answers[second.hash] = DelayQueueReading.Read(queueOf(DelayEntry(5, second.hash, 1_000)), 120, 2_000)
+        // An execution that failed leaves its transfer listed while the queue holds it.
         val third = (plan(amount = UInt256.of(3)) as DelayTransferPlan.Planned).transfer
+        // Mined, its execution's receipt missed, and gone from the queue: no longer listed.
+        val fourth = (plan(amount = UInt256.of(4)) as DelayTransferPlan.Planned).transfer
         history.entries.value += listOf(
             HistoryEntry(sentBy(SentAction.DelayQueue(third), 40, 4), SentOutcome.NonceUsed),
             HistoryEntry(sentBy(SentAction.DelayExecution(third), 50, 5), SentOutcome.Included(140, false)),
+            HistoryEntry(sentBy(SentAction.DelayQueue(fourth), 60, 6), SentOutcome.NonceUsed),
+            HistoryEntry(sentBy(SentAction.DelayExecution(fourth), 70, 7), SentOutcome.NonceUsed),
         )
+        answers[third.hash] = DelayQueueReading.Read(queueOf(DelayEntry(5, third.hash, 1_000)), 120, 2_000)
+        queueAnswer = DelayQueueReading.Read(queueOf(null, queued = 1), 120, 2_000)
 
-        val reading = ReadDelayTransfers(history, delays)(AccountId(Network.GNOSIS, safe), delay)
+        val reading = ReadDelayTransfers(history, delays) { 1_000 }(AccountId(Network.GNOSIS, safe), delay)
             as DelayTransfersReading.Read
 
         assertEquals(listOf(second, third), reading.transfers.map { it.transfer })
@@ -334,16 +407,17 @@ class GnosisPayTransfersTest {
         assertEquals(DelayTransferState.Waiting(91_000, 202_600, 0), listed.state)
 
         // A queue that cannot be read lists them all the same, and says why.
+        answers.clear()
         queueAnswer = DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
-        val unread = ReadDelayTransfers(history, delays)(AccountId(Network.GNOSIS, safe), delay)
+        val unread = ReadDelayTransfers(history, delays) { 1_000 }(AccountId(Network.GNOSIS, safe), delay)
             as DelayTransfersReading.Read
-        assertEquals(listOf(null, null), unread.transfers.map { it.state })
+        assertEquals(listOf(null, null, null), unread.transfers.map { it.state })
         assertEquals(ReadUnavailable.UNPROVEN, unread.queueUnread)
 
         history.readable.value = false
         assertEquals(
             DelayTransfersReading.HistoryUnreadable,
-            ReadDelayTransfers(history, delays)(AccountId(Network.GNOSIS, safe), delay),
+            ReadDelayTransfers(history, delays) { 1_000 }(AccountId(Network.GNOSIS, safe), delay),
         )
     }
 }

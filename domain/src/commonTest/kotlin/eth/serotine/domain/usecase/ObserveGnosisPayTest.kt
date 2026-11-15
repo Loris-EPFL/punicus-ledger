@@ -60,7 +60,7 @@ class ObserveGnosisPayTest {
             return readings.getValue(module)
         }
 
-        override suspend fun queue(network: Network, delay: Address, hash: Digest): DelayQueueReading =
+        override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading =
             DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
     }
 

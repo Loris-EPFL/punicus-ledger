@@ -4,6 +4,8 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
@@ -13,6 +15,7 @@ import eth.serotine.domain.repository.DappPairing
 import eth.serotine.domain.repository.DappProposal
 import eth.serotine.domain.repository.DappProposalId
 import eth.serotine.domain.repository.DappSessionId
+import eth.serotine.domain.repository.DappSiteMemory
 import eth.serotine.domain.repository.DappSessions
 import eth.serotine.domain.repository.NetworkSettings
 import kotlinx.coroutines.flow.Flow
@@ -43,6 +46,12 @@ enum class DappOffer {
 
     /** An EOA watched with no key on this device: it can sign nothing here. */
     NO_KEY,
+
+    /**
+     * The per-app address of another site than the dApp's (issue #252): offered only to its own site, so that the two
+     * cannot link the user's activity. Using one for another site is an alias, which asks first (part 4 of #252).
+     */
+    OTHER_SITE,
 }
 
 /** One of the wallet's accounts, and whether a dApp may be offered it, whatever the proposal asks. */
@@ -62,9 +71,13 @@ private fun proposalOffer(account: Account, proposal: DappProposal, chosen: Coll
     return when {
         account.network !in proposal.askedNetworks -> DappOffer.NOT_ASKED
         kinds.any { it != account.network.testnet } -> DappOffer.OTHER_FUNDS
+        account.perApp != null && account.perApp.site != siteOf(proposal) -> DappOffer.OTHER_SITE
         else -> null
     }
 }
+
+/** The site of the host [proposal]'s dApp states ([AppHost.site]), or null when it states none. */
+fun siteOf(proposal: DappProposal): AppHost? = (AppHost.ofUrl(proposal.dapp.url) as? AppHostResult.Host)?.host?.site
 
 /** The connections, and every account of the wallet with whether a dApp may be offered it. */
 data class DappOverview(
@@ -118,12 +131,15 @@ class PairDapp(private val sessions: DappSessions) {
 /**
  * Approves a proposal with [accounts]: each must be one of the wallet's accounts the proposal's dApp may be
  * offered ([dappOffer]), on a network it asked for, all of one kind of funds with what it requires, so
- * that nothing a screen got wrong reaches the dApp ([DappApproval.InvalidAccounts]).
+ * that nothing a screen got wrong reaches the dApp ([DappApproval.InvalidAccounts]). Once approved, the accounts
+ * are remembered for the site of the host the dApp states ([DappSiteMemory]; issue #252), to be preselected when a
+ * host of that site connects again; a memory that cannot be saved takes nothing from the approval.
  */
 class ApproveDappProposal(
     private val sessions: DappSessions,
     private val accounts: AccountRepository,
     private val networks: NetworkSettings,
+    private val sites: DappSiteMemory,
 ) {
     suspend operator fun invoke(proposal: DappProposalId, chosen: List<AccountId>): DappApproval {
         val asked = (sessions.observe().first() as? DappConnections.On)?.proposals?.find { it.id == proposal }
@@ -137,7 +153,9 @@ class ApproveDappProposal(
             dappOffer(account, enabled, asked, chosen - id) == DappOffer.OFFERED
         } && missingRequired(asked, chosen).isEmpty()
         if (!valid) return DappApproval.InvalidAccounts
-        return sessions.approve(proposal, chosen)
+        val approval = sessions.approve(proposal, chosen)
+        if (approval is DappApproval.Approved) siteOf(asked)?.let { sites.remember(it, chosen) }
+        return approval
     }
 }
 

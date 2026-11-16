@@ -22,11 +22,21 @@ interface PerAppKeys {
      * or after a connection that never reached the account list, gives the same address. Only an account whose envelope
      * holds a seed can give one.
      *
-     * [host] is used as it is; a collision with a host of another site of the same phrase
-     * ([eth.serotine.domain.model.AppIsolation.collision]) is the caller's to refuse before asking, since only the
-     * caller knows which hosts its accounts were made for. Never throws.
+     * [host] is used as it is; a collision with a host of another site of a per-app address in the account list, of
+     * any phrase ([eth.serotine.domain.model.AppIsolation.collision]), is the caller's to refuse before asking, since
+     * only the caller knows which hosts its accounts were made for. Never throws.
      */
     suspend fun derivePerApp(from: Address, host: AppHost, password: WalletPassword): PerAppDerivation
+
+    /**
+     * The phrase of each account whose envelope is stored here and names it, by the address of the phrase's first
+     * account: read from the envelopes without the unlock, so that the phrases can be told apart and listed before
+     * a password is typed (screen D3). It is what the envelope records, a public value, checked against the seed
+     * only when the envelope is opened ([derivePerApp] answers the phrase it checked). A phrase's first account names
+     * itself; an older envelope of a further account, sealed before part 2 of #252, names none and is left out.
+     * Empty when the envelopes cannot be read. Never throws.
+     */
+    suspend fun phrases(): Map<Address, Address>
 }
 
 /** The outcome of [PerAppKeys.derivePerApp]. */

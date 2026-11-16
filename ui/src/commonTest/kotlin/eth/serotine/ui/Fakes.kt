@@ -6,6 +6,7 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
@@ -56,6 +57,11 @@ internal class FakeAccounts(vararg initial: Account) : AccountRepository {
 
     override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange =
         change(id) { list -> list.map { if (it.id == id) it.copy(custody = custody) else it } }
+
+    override suspend fun markPerApp(id: AccountId, mark: PerAppAccount): AccountChange =
+        change(id) { list ->
+            list.map { if (it.id == id) it.copy(custody = AccountCustody.InKeyStore, perApp = mark) else it }
+        }
 
     override suspend fun remove(id: AccountId): AccountChange =
         change(id) { list -> list.filterNot { it.id == id } }

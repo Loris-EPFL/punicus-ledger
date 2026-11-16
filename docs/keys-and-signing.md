@@ -185,7 +185,7 @@ that can fail (locked, biometric invalidated, hardware missing) says so in
 its KDoc and returns it as a result the UI shows as state.
 
 **What exists today**: the key-store port
-`KeyStore`, the per-app port `PerAppKeys` (`derivePerApp`) and the signer
+`KeyStore`, the per-app port `PerAppKeys` (`derivePerApp`, `phrases`) and the signer
 port `Signer` in `:domain`, all implemented by `EnvelopeKeyStore` in
 `eth.serotine.data.keys`.
 
@@ -416,9 +416,12 @@ port `Signer` in `:domain`, all implemented by `EnvelopeKeyStore` in
     apart before the unlock. An envelope stored before carries none, and is
     left as it is: rewritten, an older build of the app could no longer
     read it. Its phrase is learnt when a per-app address is next derived
-    from it (`PerAppDerivation.Stored.phrase`), and part 3 keeps it with the account,
-    app-private like the per-site memory. The first account of a phrase
-    needs none: its address is the phrase's.
+    from it (`PerAppDerivation.Stored.phrase`), and kept with the per-app
+    account made (`PerAppAccount.phrase`, in the account list); D3 lists the
+    older account itself as a phrase of its own, which gives the same
+    addresses. The first account of a
+    phrase needs none: its address is the phrase's. `PerAppKeys.phrases()`
+    reads them from the envelopes without the unlock.
   - **Restored on request** (D9, owner's request, 2026-11-14): a host (or
     its site) and a phrase, the wallet password, and the address is derived again into an
     envelope of its own. The private key is not shown or exported: that
@@ -431,13 +434,20 @@ port `Signer` in `:domain`, all implemented by `EnvelopeKeyStore` in
     filed under, so a path edited on disk signs nothing.
   - **A collision is refused**, never merged. Two sites with one path give
     one address. When a host's path is that of a host of another site whose
-    per-app address this device holds for the same phrase, the second host
-    gets "already used for another app" and the choice of existing accounts.
+    per-app address is in the account list, the second host gets "already
+    used for another app" and the choice of existing accounts.
     Two hosts of one site share their address by design.
-    It is checked per phrase: two phrases give two addresses for one host
-    (owner's decision, 2026-11-14). Over 92 bits this is not expected, by
+    Two phrases give two addresses for one host (owner's decision,
+    2026-11-14). The check still weighs the per-app addresses of every
+    phrase, which refuses more than one phrase alone needs (owner's
+    decision, 2026-11-16, on PR #313). Over 92 bits this is not expected, by
     accident or on purpose; the check stays so that it can never happen
     silently.
+    - Its one blind spot, accepted by the same decision: a per-app key left
+      in the key store without its account (the list not saved after the
+      key was) names no site, so it cannot be weighed. A key at the same
+      path is taken for the same site, as making the address again after a
+      removal or a failed save needs.
   - **Not key material, and not restored with the phrase:** which host an
     address was made for, the addresses last approved for each host, and the
     aliases the user links (docs/walletconnect.md). They are app-private

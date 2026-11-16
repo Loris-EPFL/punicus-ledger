@@ -3,6 +3,7 @@ package eth.serotine.domain.repository
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
+import eth.serotine.domain.model.PerAppAccount
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -45,6 +46,15 @@ interface AccountRepository {
      * account becomes [AccountCustody.InKeyStore] when its key is imported. Never throws.
      */
     suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange
+
+    /**
+     * Records that the entry [id] is the per-app address [mark] (issue #252): held as
+     * [AccountCustody.InKeyStore] and marked so, in one change in place that keeps everything
+     * else about it, its name and position among them ([AccountChange.Changed]); or
+     * [AccountChange.NotFound]; or, when the list cannot be stored or is [AccountList.Unreadable],
+     * [AccountChange.NotSaved]. Never throws.
+     */
+    suspend fun markPerApp(id: AccountId, mark: PerAppAccount): AccountChange
 
     /**
      * Takes the entry [id] out of the list ([AccountChange.Changed]); or, when there is no

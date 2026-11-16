@@ -215,8 +215,12 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     phrase is known by the address of its first account
     (`m/44'/60'/0'/0/0`), which every envelope of that phrase sealed since
     part 2 records (an older envelope's is learnt when a per-app address is
-    derived from it, and kept with its account), a public value checked against the seed
-    when the envelope opens; so the
+    derived from it, and kept with the per-app account made; D3 still lists
+    that older account as a phrase of its own, which gives the same
+    addresses: accepted by the owner's decision, 2026-11-16, on PR #313,
+    with a follow-up, #314, that records the phrase in the envelope when it
+    is next opened and merges the two entries), a public value checked against
+    the seed when the envelope opens; so the
     phrases can be told apart and listed before the unlock, whether or not
     that first account is still in the wallet. With one phrase, D3 asks
     nothing. With several, D3 shows which phrase the new address comes from
@@ -233,7 +237,24 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   - The account made is an ordinary EOA on the session's network, named
     after its site and marked as a per-app address, its site on its
     details. The same address serves the session's other network (Ethereum
-    and Gnosis Chain, ruling 9) as one more account there.
+    and Gnosis Chain, ruling 9) as one more account there. An entry of that
+    address already listed on the network (watched, say) is marked in place
+    instead: held here and marked as a per-app address, keeping its name,
+    its position and its history's start (owner's decision, 2026-11-16, on
+    PR #313).
+  - **Which networks** (owner's decision, 2026-11-16, on PR #313, confirming
+    part 3's reading): every
+    network the dApp asks for that is on, of one kind of funds, where the
+    site has no address yet. The kind is that of the other accounts ticked;
+    with none, that of the networks the dApp requires; with neither, real
+    funds when one of them is on, else Sepolia. A site whose address is on
+    every such network already shows it among the accounts, and no new
+    address is offered; added on more networks, it comes from the phrase it
+    was made from.
+  - **Another site's per-app address** is greyed out among the accounts, a
+    tap saying it is offered to its own site alone; ApproveDappProposal
+    refuses it too. Using it for another site is an alias (part 4), which
+    asks first.
 - **Remembered per site.** The addresses last approved for a site are kept,
   app-private like a session's state (ruling 8), and preselected when a host
   of that site connects again (WalletBeat's *per-app account persistence*). After a

@@ -216,6 +216,25 @@ class EnvelopeKeyStore internal constructor(
             outOfMemory = PerAppDerivation.NotEnoughMemory(MemoryStep.CHECK_PASSWORD),
         ) { file, passwordBytes -> derivePerApp(file, from, host, passwordBytes) }
 
+    // Without the lock: it only reads envelopes, each written whole by a move, and a sign waiting on its prompt holds
+    // the lock for as long as the prompt is up.
+    override suspend fun phrases(): Map<Address, Address> = withContext(dispatcher) {
+        try {
+            envelopes().mapNotNull { stored ->
+                val account = Address.parse(stored.address) ?: return@mapNotNull null
+                val phrase = stored.sealed.phraseAccount?.let(Address::parse)
+                    ?: account.takeIf { stored.sealed.path() == AccountPath.Ordinary(0) }
+                    ?: return@mapNotNull null
+                account to phrase
+            }.toMap()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            report("the envelopes cannot be listed (${e::class.simpleName})")
+            emptyMap()
+        }
+    }
+
     /**
      * [derivePerApp] with [from]'s envelope at [file]: opened with [password] (which checks it), [host]'s per-app
      * address of its seed derived and, unless its envelope is stored already, sealed. Opening short of memory throws

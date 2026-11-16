@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
@@ -44,6 +45,10 @@ internal class ListAccountRepository(vararg initial: Account) : AccountRepositor
 
     override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange =
         change(id) { current -> current.map { if (it.id == id) it.copy(custody = custody) else it } }
+
+    override suspend fun markPerApp(id: AccountId, mark: PerAppAccount): AccountChange = change(id) { current ->
+        current.map { if (it.id == id) it.copy(custody = AccountCustody.InKeyStore, perApp = mark) else it }
+    }
 
     override suspend fun rename(id: AccountId, label: String): AccountChange = change(id) { current ->
         current.map { if (it.id == id) it.copy(label = label, ensName = null) else it }

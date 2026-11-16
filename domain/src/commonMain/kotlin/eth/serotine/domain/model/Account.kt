@@ -50,6 +50,11 @@ data class Account(
      * (`ObserveEnsNames`): a name that no longer does is not shown as the account's.
      */
     val ensName: String? = null,
+    /**
+     * What makes it a per-app address (issue #252), or null for an ordinary account: the site it was made for, its path
+     * and its phrase. Such an account is an [AccountKind.EOA] held in the key store.
+     */
+    val perApp: PerAppAccount? = null,
 ) {
     /** What names this account: its [network] and [address]. */
     val id: AccountId get() = AccountId(network, address)
@@ -59,3 +64,11 @@ data class Account(
         require(ensName == null || label == ensName) { "an account that follows an ENS name is named by it" }
     }
 }
+
+/**
+ * What marks an account as a per-app address (issue #252; docs/walletconnect.md, *Per-app addresses*): the [site] it
+ * was made for, its [path] below the seed (`m/44'/60'/a'/b'/c'`, [AppIsolation.pathOf] of the site) and the [phrase]
+ * it comes from, named by the address of that phrase's first account (`m/44'/60'/0'/0/0`). Public values only: the
+ * key stays in the key store, which checked the phrase against the seed when it made the address.
+ */
+data class PerAppAccount(val site: AppHost, val path: PerAppPath, val phrase: Address)

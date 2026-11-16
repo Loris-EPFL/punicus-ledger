@@ -126,8 +126,14 @@ class SettingsViewModel(
     /** The confirmation asked before a network is turned off, while it is asked. */
     private val turningOff = MutableStateFlow<TurnOffConfirmation?>(null)
 
-    /** Each network's fresh checkpoint applied while this screen is open, said under its row. */
+    /**
+     * Each network's fresh checkpoint applied while this screen is open, said under its row until
+     * the network parks again ([parked]).
+     */
     private val checkpointNotes = MutableStateFlow(emptyMap<Network, String>())
+
+    /** The networks whose light client refused a stale checkpoint at the last reading. */
+    private val parked = mutableSetOf<Network>()
 
     /** The fresh checkpoints asked for, each network's said in its row's warning. */
     private val checkpointFetches = FreshCheckpointFetches(
@@ -142,10 +148,17 @@ class SettingsViewModel(
                 // Each row dates its head block, re-dated every second as the strip's line is.
                 observeNetworkOverview()
                     // A network that no longer refuses forgets what was said of its fetch, never carried
-                    // into a later park.
+                    // into a later park. One that parks again drops the note of the checkpoint applied
+                    // before: that one is not where it stands now.
                     .onEach { networks ->
-                        networks.filter { it.status !is LightClientStatus.StaleAnchor }
-                            .forEach { checkpointFetches.settled(it.network) }
+                        networks.forEach {
+                            if (it.status is LightClientStatus.StaleAnchor) {
+                                if (parked.add(it.network)) checkpointNotes.update { notes -> notes - it.network }
+                            } else {
+                                parked -= it.network
+                                checkpointFetches.settled(it.network)
+                            }
+                        }
                     }
                     .redatedWhile { networks -> networks.any { it.on && it.status.dated } },
                 networkNotSaved,

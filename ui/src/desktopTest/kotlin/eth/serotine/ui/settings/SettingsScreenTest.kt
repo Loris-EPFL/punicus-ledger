@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -74,6 +75,19 @@ class SettingsScreenTest {
     }
 
     private val meteredChoices = mutableListOf<Boolean>()
+
+    @Test
+    fun aFreshCheckpointAppliedIsSaidUnderItsNetworksRow() {
+        val note = "Sepolia starts over from the checkpoint at epoch 42: every checkpoint server that answered " +
+            "named it (a.io, b.org), and 1 peer Punicus has long known confirmed it."
+        show(networks = listOf(sepolia.copy(checkpointNote = note)))
+
+        // Inside the row's merged toggle node, so found in the unmerged tree.
+        rule.onNodeWithTag(SETTINGS_CHECKPOINT_NOTE_TAG + sepolia.chainId, useUnmergedTree = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertTextEquals(note)
+    }
 
     @Test
     fun theMeteredDownloadsSwitchIsOffByDefaultAndATapOnItsRowAllowsThem() {

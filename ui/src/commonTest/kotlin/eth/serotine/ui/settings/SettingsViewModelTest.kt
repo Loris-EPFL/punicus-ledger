@@ -329,6 +329,14 @@ class SettingsViewModelTest {
                 "named it (a.io, b.org), and 1 peer Punicus has long known confirmed it.",
             viewModel.sepolia.checkpointNote,
         )
+
+        // It stays while the light client catches up from it, and goes once the network parks again.
+        status.value = LightClientStatus.CatchingUp(done = 1, total = 6)
+        runCurrent()
+        assertNotNull(viewModel.sepolia.checkpointNote, "said while it catches up")
+        status.value = LightClientStatus.StaleAnchor(anchorAgePeriods = 6, boundPeriods = 3)
+        runCurrent()
+        assertNull(viewModel.sepolia.checkpointNote, "never beside a later park's warning")
     }
 
     @Test

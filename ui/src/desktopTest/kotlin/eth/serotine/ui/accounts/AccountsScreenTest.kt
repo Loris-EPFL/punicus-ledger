@@ -9,8 +9,10 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
@@ -30,7 +32,9 @@ import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.STALE_ANCHOR_CATCH_UP_TAG
 import eth.serotine.ui.components.STALE_ANCHOR_CONFIRM_TAG
+import eth.serotine.ui.components.STALE_ANCHOR_DISMISS_TAG
 import eth.serotine.ui.components.STALE_ANCHOR_FETCH_TAG
+import eth.serotine.ui.components.STALE_ANCHOR_STATUS_TAG
 import eth.serotine.ui.components.STALE_ANCHOR_UNCONFIRMED_TAG
 import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
@@ -38,6 +42,7 @@ import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.update.UPGRADE_BANNER_TAG
 import eth.serotine.ui.update.UpgradeBannerItem
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -519,9 +524,26 @@ class AccountsScreenTest {
         current = shown(CheckpointFetchState.Fetching)
         rule.onNodeWithTag(STALE_ANCHOR_FETCH_TAG).assertIsNotEnabled()
         rule.onNodeWithTag(STALE_ANCHOR_CONFIRM_TAG).assertIsNotEnabled()
+        rule.onNodeWithTag(STALE_ANCHOR_STATUS_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(STALE_ANCHOR_DISMISS_TAG).assertIsEnabled()
 
         current = shown(CheckpointFetchState.Refused("no long-known peer confirmed it", unconfirmed = true))
-        rule.onNodeWithText("No fresh checkpoint: no long-known peer confirmed it.").assertExists()
+        // Seen, not merely there: the outcome is said above the explanation, out of no scroll.
+        rule.onNodeWithText("No fresh checkpoint: no long-known peer confirmed it.").assertIsDisplayed()
+        // No action drawn over another: AlertDialog's own button row once laid "Not now" over them.
+        val actions = listOf(
+            STALE_ANCHOR_FETCH_TAG,
+            STALE_ANCHOR_UNCONFIRMED_TAG,
+            STALE_ANCHOR_CONFIRM_TAG,
+            STALE_ANCHOR_DISMISS_TAG,
+        ).map { it to rule.onNodeWithTag(it).getBoundsInRoot() }
+        actions.forEachIndexed { i, (tag, bounds) ->
+            actions.drop(i + 1).forEach { (other, otherBounds) ->
+                val apart = bounds.bottom <= otherBounds.top || otherBounds.bottom <= bounds.top ||
+                    bounds.right <= otherBounds.left || otherBounds.right <= bounds.left
+                assertTrue(apart, "$tag and $other overlap")
+            }
+        }
         rule.onNodeWithTag(STALE_ANCHOR_UNCONFIRMED_TAG).performClick()
         assertEquals(Network.SEPOLIA.chainId to true, fetched.last(), "only on the user's explicit choice")
 

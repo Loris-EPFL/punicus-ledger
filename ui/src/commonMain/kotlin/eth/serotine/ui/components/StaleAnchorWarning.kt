@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,6 +32,12 @@ const val STALE_ANCHOR_FETCH_TAG = "stale-anchor-fetch"
 
 /** Test tag of the stale-anchor dialog's "Use it anyway", for a checkpoint no long-known peer confirmed. */
 const val STALE_ANCHOR_UNCONFIRMED_TAG = "stale-anchor-unconfirmed"
+
+/** Test tag of the stale-anchor dialog's "Not now", for UI tests. */
+const val STALE_ANCHOR_DISMISS_TAG = "stale-anchor-dismiss"
+
+/** Test tag of what the stale-anchor dialog says of the last fetch: its progress, refusal or warning. */
+const val STALE_ANCHOR_STATUS_TAG = "stale-anchor-status"
 
 /**
  * A light client that refuses to sync because its last trusted checkpoint is older than the
@@ -135,8 +142,11 @@ internal fun StaleAnchorBanner(warning: StaleAnchorWarning, color: Color, onActi
 /**
  * The question [warning] asks: [onFetch] asks for a fresh checkpoint (true: take one no long-known
  * peer confirmed, the user's "Use it anyway"); [onConfirm] catches up anyway, for this run;
- * [onDismiss] leaves it refused. While the servers are asked, nothing else can be chosen and the
- * dialog stays, so their answer is seen.
+ * [onDismiss] leaves it refused. While the servers are asked, no other way on can be chosen, but
+ * "Not now" still closes the dialog: the engine's call cannot be cut short, and the fetch goes on
+ * without it. Its answer is in the warning when the dialog is opened again, and an applied one is
+ * said once. What the last fetch came to is said first, above the explanation, so it is seen
+ * without scrolling.
  */
 @Composable
 internal fun StaleAnchorDialog(
@@ -146,19 +156,34 @@ internal fun StaleAnchorDialog(
     onFetch: (useUnconfirmed: Boolean) -> Unit = {},
 ) {
     val busy = warning.fetching
+    // Red, through the button's colors, so a disabled one greys out like the others.
+    val red = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
     AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
+        onDismissRequest = onDismiss,
         title = { Text(warning.title) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(warning.body)
-                if (busy) Text(warning.fetchingText, fontWeight = FontWeight.SemiBold)
+                if (busy) {
+                    Text(
+                        warning.fetchingText,
+                        Modifier.testTag(STALE_ANCHOR_STATUS_TAG),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
                 warning.fetchProblem?.takeIf { !busy }?.let {
-                    Text(it, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
+                    Text(
+                        it,
+                        Modifier.testTag(STALE_ANCHOR_STATUS_TAG),
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
                 warning.unconfirmedWarning?.takeIf { !busy }?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Text(warning.body)
             }
         },
+        // Every action in one column, "Not now" last. AlertDialog's own button row lays a dismiss
+        // button out as if the confirm side were one line high, and drew it over this column.
         confirmButton = {
             Column(horizontalAlignment = Alignment.End) {
                 TextButton(
@@ -173,20 +198,24 @@ internal fun StaleAnchorDialog(
                         onClick = { onFetch(true) },
                         enabled = !busy,
                         modifier = Modifier.testTag(STALE_ANCHOR_UNCONFIRMED_TAG),
+                        colors = red,
                     ) {
-                        Text(warning.useUnconfirmed, color = MaterialTheme.colorScheme.error)
+                        Text(warning.useUnconfirmed)
                     }
                 }
                 TextButton(
                     onClick = onConfirm,
                     enabled = !busy,
                     modifier = Modifier.testTag(STALE_ANCHOR_CONFIRM_TAG),
+                    colors = red,
                 ) {
-                    Text(warning.confirm, color = MaterialTheme.colorScheme.error)
+                    Text(warning.confirm)
+                }
+                TextButton(onClick = onDismiss, modifier = Modifier.testTag(STALE_ANCHOR_DISMISS_TAG)) {
+                    Text(warning.dismiss)
                 }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(warning.dismiss) } },
     )
 }
 

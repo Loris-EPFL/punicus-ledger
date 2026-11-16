@@ -232,7 +232,10 @@ upgrades*).
      the checkpoint is the servers' word, shows "Asking the checkpoint
      servers…" while it runs, and on a refusal says why; "Use it anyway" only
      when no long-known peer confirmed the servers' answer; and "Catch up
-     anyway". An applied checkpoint is said once, with the operators that
+     anyway". What the last fetch came to is said first, above the
+     explanation. "Not now" closes the dialog even while the servers are
+     asked: the fetch goes on, and its answer is there when the dialog is
+     opened again. An applied checkpoint is said once, with the operators that
      named it and the long-known peers that confirmed it. Settings →
      Networks offers the same dialog, and says it under the network's row.
    - Under a network's status line, what its accounts have queued in

@@ -554,6 +554,7 @@ class DappViewModelsTest {
         val perApp = Account(
             Network.ETHEREUM, keys.address, AccountKind.EOA, "uniswap.org", AccountCustody.InKeyStore, perApp = mark,
         )
+        keys.phrases = mapOf(ethereumHeld.address to ethereumHeld.address, perApp.address to ethereumHeld.address)
         val wallet = FakeAccounts(ethereumHeld, perApp)
         // Its address is on Ethereum; the dApp asks for Gnosis Chain too, which is off.
         realFunds.on.value = setOf(Network.ETHEREUM)

@@ -187,7 +187,7 @@ class PerAppAddressesTest {
     fun aWatchedEntryOfTheAddressIsReplacedByTheMarkedOneUnderItsName() = runTest {
         val keys = FakePerAppKeys(address = address('7'))
         val watchedOwn = account(Network.ETHEREUM, '7', custody = AccountCustody.Watched)
-            .copy(label = "Mine", ensName = "mine.eth")
+            .copy(label = "mine.eth", ensName = "mine.eth")
         val accounts = ListAccountRepository(first, watchedOwn, other)
         val made = MakePerAppAddress(keys, accounts, WalletChanges())(
             first.id,

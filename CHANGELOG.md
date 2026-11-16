@@ -10,15 +10,41 @@ and issues of this repository.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-16
+
 ### Added
 
+- Gnosis Pay: a Gnosis Pay account is recognised when watched, and a member
+  whose key is held here sends a plain transfer through its Delay module,
+  queued first and executed after the cooldown; the current mastercopy only,
+  no relayer (#305, #306, #309, #310).
+- A fresh checkpoint when a network's checkpoint is too old: "Catch up…"
+  offers to fetch one, taken only when the checkpoint servers agree and a
+  long-known peer confirms it, besides "Catch up anyway" (#301).
+- ENS names: names resolved to an account are remembered and listed as NFTs
+  once proven held, "Add an NFT" takes an ENS name alone, and an account's
+  header shows the names pointing to it (#274, #299).
 - Funding: a Sponsor button and a Funding section in the README (#280, #296).
 - A privacy policy, `docs/privacy-policy.md`, linked from the README (#296).
+- A security policy, `SECURITY.md`: how to report a vulnerability privately
+  (#303).
+- `docs/how-keys-are-protected.md`: how Punicus protects keys, in plain words
+  with the code (#302).
 - Gradle dependency locking and checksum verification: lockfiles for every
   project and the build logic, `gradle/verification-metadata.xml`, the Gradle
   distribution's SHA-256 in the wrapper, and the `gradle pins` check that
-  fails a build on a dependency that is not pinned (#281).
-- This changelog (#281).
+  fails a build on a dependency that is not pinned (#281, #298).
+- This changelog (#281, #298).
+
+### Changed
+
+- The embedded Myotis engine is 0.1.21-rc1 (was 0.1.20); it brings the
+  `myotis-logindex-presets` module to every app (#301).
+- Kotlin 2.4.21 (was 2.2.21), with R8 9.1.57 and lint 9.5.1 on AGP 8.13
+  (#312).
+- Background re-proofs of different accounts are spaced out, one address at a
+  time with a random gap, so they no longer reach a peer all at once (#253,
+  #300).
 
 ### Fixed
 
@@ -26,6 +52,12 @@ and issues of this repository.
   "already in your wallet" card (#273, #296).
 - An empty wallet runs its light clients from the start and shows them, so
   the first account added is not left waiting for a sync (#66, #296).
+
+### Security
+
+- Turning biometric unlock on checks that the hardware key exists first, so a
+  lost Android Keystore key is reported instead of silently remade, which
+  made the loss read as a wrong password later (audit finding N3, #307).
 
 ## [0.4.0] - 2026-11-10
 
@@ -159,7 +191,8 @@ accounts on Sepolia, on the embedded Myotis light client, for Android, desktop
 - Control badges: the icon beside the text, the icon alone where the text
   would wrap (#128).
 
-[Unreleased]: https://github.com/biafra23/punicus/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/biafra23/punicus/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/biafra23/punicus/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/biafra23/punicus/compare/v0.3.0-rc1...v0.4.0
 [0.3.0-rc1]: https://github.com/biafra23/punicus/compare/v0.2.0...v0.3.0-rc1
 [0.2.0]: https://github.com/biafra23/punicus/compare/v0.1.0...v0.2.0

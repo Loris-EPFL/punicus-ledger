@@ -2,9 +2,29 @@
 // installable app derives its own version from, and the release-version query
 // the tag guard makes (.github/workflows/release-version-guard.yml).
 
+// R8/D8 override, as Myotis carried one until its AGP 9 move (#837): AGP 8.13 bundles R8
+// 8.13, which cannot parse Kotlin 2.4 metadata. Every Android dex step then logs "An error
+// occurred when parsing kotlin metadata" with a stack trace per Kotlin class (some 11,000
+// on the `gradle pins` run of the Kotlin 2.4 bump, until the Gradle client ran out of
+// memory), and a minified build would ship stale @Metadata. developer.android.com/build/
+// kotlin-support names R8 9.1.29 for Kotlin 2.4, with AGP 8.5.2 and newer. 9.1.29 is only on
+// R8's own repository (storage.googleapis.com/r8-releases/raw), which this build does not add;
+// 9.1.57 is the newest 9.1 patch on Google's Maven. Drop `repositories {}` and `dependencies {}`
+// below, and keep the locking, with the move to an AGP whose own R8 is 9.1.29 or newer: not
+// AGP 9.0, whose R8 is a 9.0.
 buildscript {
-    // The root buildscript classpath (every plugin the `plugins {}` block
-    // below loads) is locked like the project configurations, in
+    repositories {
+        google {
+            // Filtered, as settings.gradle.kts filters its repositories: this entry
+            // exists only to serve the R8 pin.
+            content { includeGroup("com.android.tools") }
+        }
+    }
+    dependencies {
+        classpath("com.android.tools:r8:9.1.57")
+    }
+    // The root buildscript classpath (this R8 pin plus every plugin the `plugins {}`
+    // block below loads) is locked like the project configurations, in
     // buildscript-gradle.lockfile (#281).
     configurations.classpath {
         resolutionStrategy.activateDependencyLocking()

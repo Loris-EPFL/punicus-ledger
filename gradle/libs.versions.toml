@@ -4,16 +4,19 @@
 # means the library's Kotlin metadata never runs ahead of the host's compiler.
 # Bump both together.
 [versions]
-# AGP 8.13 (with Gradle 8.14, gradle/wrapper): its R8 understands Kotlin 2.2
-# metadata. Myotis's AGP 8.7.3 does not — D8 prints a 200-line "error occurred
-# when parsing kotlin metadata" stack trace per dexed class — and Myotis already
-# runs 8.13.2's lint for the same reason (its gradle.properties). AGP 8.13 is the
-# last 8.x line; 9.x changes the KMP Android target to its own plugin, a
-# migration for both repositories at once.
+# AGP 8.13 (with Gradle 8.14, gradle/wrapper), held until the move to AGP 9 that
+# Myotis made in its #837 (9.x changes the KMP Android target to its own plugin, a
+# migration of its own). AGP 8.13's own R8 and lint cannot read the Kotlin 2.4
+# below, so two overrides stand in until then: R8 9.1.57 on the root buildscript
+# classpath (build.gradle.kts) and AGP 9.5.1's lint (android.experimental.lint.version
+# in gradle.properties).
 agp = "8.13.2"
-# Kotlin 2.2.21 is the floor for the iOS target on Xcode 26 (Myotis's reason to
-# pin it); Compose Multiplatform 1.9.x pairs with Kotlin 2.2.20+.
-kotlin = "2.2.21"
+# Kotlin 2.4.21, Myotis's own pin since its #837: the engine library from Myotis 0.1.21
+# on carries Kotlin 2.4 metadata, which an older host compiler cannot read. (2.2.21 is
+# the floor for the iOS target on Xcode 26.) Compose Multiplatform stays 1.9.3, which
+# pairs with Kotlin 2.2.20+: Myotis's 1.12.2 needs AGP 9 here, a migration of its own,
+# and nothing in the engine library needs it.
+kotlin = "2.4.21"
 compose-multiplatform = "1.9.3"
 # The multiplatform lifecycle (ViewModel + collectAsStateWithLifecycle). 2.9.6 is
 # the version Compose Multiplatform 1.9.3's own artifacts depend on — pin the
@@ -38,13 +41,13 @@ navigation-compose = "2.9.2"
 material-icons-core = "1.7.3"
 # ACINQ's Kotlin Multiplatform binding of bitcoin-core's libsecp256k1: JNI on
 # Android and the JVM, cinterop on iOS — the native secp256k1 that
-# docs/keys-and-signing.md (rule 7) requires. 0.22.0 is the last release built with
-# Kotlin 2.2.21, our pin; 0.23.0 moves its stdlib to 2.3.
+# docs/keys-and-signing.md (rule 7) requires. Held at 0.22.0, built with Kotlin 2.2.21,
+# which the 2.4 compiler reads: moving it is a change of its own.
 secp256k1-kmp = "0.22.0"
 # The persistent account list (eth.serotine.data.account): multiplatform file I/O and
-# JSON. kotlinx-io 0.8.2 and kotlinx-serialization 1.9.0 are the last releases built
-# for Kotlin 2.2 (the next ones need a 2.3 stdlib); the serialization compiler plugin
-# is Kotlin's own, at the Kotlin pin.
+# JSON. kotlinx-io 0.8.2 and kotlinx-serialization 1.9.0, built for Kotlin 2.2, which
+# the 2.4 compiler reads: held, moving them is a change of their own. The serialization
+# compiler plugin is Kotlin's own, at the Kotlin pin.
 kotlinx-io = "0.8.2"
 kotlinx-serialization = "1.9.0"
 # The key envelope's Argon2id (docs/keys-and-signing.md, rule 2), from libsodium (the
@@ -67,10 +70,10 @@ myotis = "0.1.20"
 # 0.8.0 needs a Kotlin 2.2.20 stdlib, below our pin.
 kotlincrypto = "0.8.0"
 # Ktor, the app's one HTTP client (CLAUDE.md, *Platform & language direction*), used only
-# for CoW Protocol's order API (docs/swaps.md, *What CoW learns*). 3.3.3 is the last
-# release built with Kotlin 2.2.21, our pin, and coroutines 1.10.2; 3.4.0 moves its stdlib
-# to 2.3. Engines: CIO (Ktor's own, no OkHttp beneath it) on Android and the desktop,
-# Darwin (NSURLSession) on iOS; neither retries a request behind the caller's back.
+# for CoW Protocol's order API (docs/swaps.md, *What CoW learns*). Held at 3.3.3, built
+# with Kotlin 2.2.21 and coroutines 1.10.2: moving it is a change of its own. Engines:
+# CIO (Ktor's own, no OkHttp beneath it) on Android and the desktop, Darwin
+# (NSURLSession) on iOS; neither retries a request behind the caller's back.
 ktor = "3.3.3"
 
 [plugins]

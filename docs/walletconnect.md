@@ -217,7 +217,9 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     part 2 records (an older envelope's is learnt when a per-app address is
     derived from it, and kept with the per-app account made; D3 still lists
     that older account as a phrase of its own, which gives the same
-    addresses), a public value checked against
+    addresses: accepted by the owner's decision, 2026-11-16, on PR #313,
+    with a follow-up, #314, that records the phrase in the envelope when it
+    is next opened and merges the two entries), a public value checked against
     the seed when the envelope opens; so the
     phrases can be told apart and listed before the unlock, whether or not
     that first account is still in the wallet. With one phrase, D3 asks
@@ -235,8 +237,13 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   - The account made is an ordinary EOA on the session's network, named
     after its site and marked as a per-app address, its site on its
     details. The same address serves the session's other network (Ethereum
-    and Gnosis Chain, ruling 9) as one more account there.
-  - **Which networks** (part 3's reading, for the owner to confirm): every
+    and Gnosis Chain, ruling 9) as one more account there. An entry of that
+    address already listed on the network (watched, say) is marked in place
+    instead: held here and marked as a per-app address, keeping its name,
+    its position and its history's start (owner's decision, 2026-11-16, on
+    PR #313).
+  - **Which networks** (owner's decision, 2026-11-16, on PR #313, confirming
+    part 3's reading): every
     network the dApp asks for that is on, of one kind of funds, where the
     site has no address yet. The kind is that of the other accounts ticked;
     with none, that of the networks the dApp requires; with neither, real

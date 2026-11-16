@@ -434,13 +434,20 @@ port `Signer` in `:domain`, all implemented by `EnvelopeKeyStore` in
     filed under, so a path edited on disk signs nothing.
   - **A collision is refused**, never merged. Two sites with one path give
     one address. When a host's path is that of a host of another site whose
-    per-app address this device holds for the same phrase, the second host
-    gets "already used for another app" and the choice of existing accounts.
+    per-app address is in the account list, the second host gets "already
+    used for another app" and the choice of existing accounts.
     Two hosts of one site share their address by design.
-    It is checked per phrase: two phrases give two addresses for one host
-    (owner's decision, 2026-11-14). Over 92 bits this is not expected, by
+    Two phrases give two addresses for one host (owner's decision,
+    2026-11-14). The check still weighs the per-app addresses of every
+    phrase, which refuses more than one phrase alone needs (owner's
+    decision, 2026-11-16, on PR #313). Over 92 bits this is not expected, by
     accident or on purpose; the check stays so that it can never happen
     silently.
+    - Its one blind spot, accepted by the same decision: a per-app key left
+      in the key store without its account (the list not saved after the
+      key was) names no site, so it cannot be weighed. A key at the same
+      path is taken for the same site, as making the address again after a
+      removal or a failed save needs.
   - **Not key material, and not restored with the phrase:** which host an
     address was made for, the addresses last approved for each host, and the
     aliases the user links (docs/walletconnect.md). They are app-private

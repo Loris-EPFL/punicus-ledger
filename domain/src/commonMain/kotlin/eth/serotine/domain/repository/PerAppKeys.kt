@@ -22,9 +22,9 @@ interface PerAppKeys {
      * or after a connection that never reached the account list, gives the same address. Only an account whose envelope
      * holds a seed can give one.
      *
-     * [host] is used as it is; a collision with a host of another site of the same phrase
-     * ([eth.serotine.domain.model.AppIsolation.collision]) is the caller's to refuse before asking, since only the
-     * caller knows which hosts its accounts were made for. Never throws.
+     * [host] is used as it is; a collision with a host of another site of a per-app address in the account list, of
+     * any phrase ([eth.serotine.domain.model.AppIsolation.collision]), is the caller's to refuse before asking, since
+     * only the caller knows which hosts its accounts were made for. Never throws.
      */
     suspend fun derivePerApp(from: Address, host: AppHost, password: WalletPassword): PerAppDerivation
 

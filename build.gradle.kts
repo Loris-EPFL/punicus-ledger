@@ -44,7 +44,7 @@ plugins {
 
 allprojects {
     group = "eth.serotine"
-    version = "0.4.0-SNAPSHOT"
+    version = "0.5.0-SNAPSHOT"
 
     // === Pinned dependency graph (#281) ==============================
     // Every resolvable configuration of every project is LOCKED: the exact

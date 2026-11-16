@@ -11,7 +11,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | Screen | Folder | States |
 |---|---|---|
 | [Account detail](#account-detail) | `account-detail/` | 46 |
-| [Accounts](#accounts) | `accounts/` | 38 |
+| [Accounts](#accounts) | `accounts/` | 41 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 11 |
 | [Add on networks (dialog)](#add-on-networks-dialog) | `add-on-networks-dialog/` | 5 |
 | [Add token](#add-token) | `add-token/` | 11 |
@@ -40,7 +40,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Screen capture warning (dialog)](#screen-capture-warning-dialog) | `screen-capture-warning-dialog/` | 3 |
 | [Security](#security) | `security/` | 15 |
 | [Send](#send) | `send/` | 32 |
-| [Settings](#settings) | `settings/` | 28 |
+| [Settings](#settings) | `settings/` | 29 |
 | [Account detail (simple mode)](#simple-account-detail) | `simple-account-detail/` | 12 |
 | [Home (simple mode)](#simple-accounts) | `simple-accounts/` | 18 |
 | [Activity detail (simple mode)](#simple-activity-detail) | `simple-activity-detail/` | 4 |
@@ -120,7 +120,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="accounts"></a>
 ## Accounts
 
-`accounts/`, 38 states: `accounts`, `accounts-dark`, `catching-up`, `head-too-old`, `head-too-old-dark`, `no-accounts`, `no-accounts-syncing`, `no-accounts-syncing-dark`, `no-accounts-stale-anchor`, `create-safe-greyed-out`, `create-safe-reason`, `send-reason`, `loading`, `loading-create-safe-greyed-out`, `list-set-aside`, `upgrade-ahead`, `upgrade-activated-dark`, `list-unavailable`, `catching-up-dark`, `narrow`, `ens-names`, `three-networks`, `three-networks-dark`, `one-network-catching-up`, `network-off`, `network-off-dark`, `send-needs-network`, `network-blocked`, `no-rate-on-a-network`, `network-blocked-dark`, `stale-anchor`, `stale-anchor-dark`, `stale-anchor-dialog`, `hidden`, `hidden-dark`, `queued`, `queued-dark`, `lost-queued`
+`accounts/`, 41 states: `accounts`, `accounts-dark`, `catching-up`, `head-too-old`, `head-too-old-dark`, `no-accounts`, `no-accounts-syncing`, `no-accounts-syncing-dark`, `no-accounts-stale-anchor`, `create-safe-greyed-out`, `create-safe-reason`, `send-reason`, `loading`, `loading-create-safe-greyed-out`, `list-set-aside`, `upgrade-ahead`, `upgrade-activated-dark`, `list-unavailable`, `catching-up-dark`, `narrow`, `ens-names`, `three-networks`, `three-networks-dark`, `one-network-catching-up`, `network-off`, `network-off-dark`, `send-needs-network`, `network-blocked`, `no-rate-on-a-network`, `network-blocked-dark`, `stale-anchor`, `stale-anchor-dark`, `stale-anchor-dialog`, `stale-anchor-fetching`, `stale-anchor-unconfirmed`, `stale-anchor-refused`, `hidden`, `hidden-dark`, `queued`, `queued-dark`, `lost-queued`
 
 <a href="accounts/accounts.png"><img src="accounts/accounts.png" width="206" alt="accounts"></a>
 <a href="accounts/accounts-dark.png"><img src="accounts/accounts-dark.png" width="206" alt="accounts-dark"></a>
@@ -155,6 +155,9 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="accounts/stale-anchor.png"><img src="accounts/stale-anchor.png" width="206" alt="stale-anchor"></a>
 <a href="accounts/stale-anchor-dark.png"><img src="accounts/stale-anchor-dark.png" width="206" alt="stale-anchor-dark"></a>
 <a href="accounts/stale-anchor-dialog.png"><img src="accounts/stale-anchor-dialog.png" width="206" alt="stale-anchor-dialog"></a>
+<a href="accounts/stale-anchor-fetching.png"><img src="accounts/stale-anchor-fetching.png" width="206" alt="stale-anchor-fetching"></a>
+<a href="accounts/stale-anchor-unconfirmed.png"><img src="accounts/stale-anchor-unconfirmed.png" width="206" alt="stale-anchor-unconfirmed"></a>
+<a href="accounts/stale-anchor-refused.png"><img src="accounts/stale-anchor-refused.png" width="206" alt="stale-anchor-refused"></a>
 <a href="accounts/hidden.png"><img src="accounts/hidden.png" width="206" alt="hidden"></a>
 <a href="accounts/hidden-dark.png"><img src="accounts/hidden-dark.png" width="206" alt="hidden-dark"></a>
 <a href="accounts/queued.png"><img src="accounts/queued.png" width="206" alt="queued"></a>
@@ -718,7 +721,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="settings"></a>
 ## Settings
 
-`settings/`, 28 states: `synced`, `synced-dark`, `starting`, `unreadable`, `head-too-old`, `head-too-old-dark`, `debug-build`, `debug-build-capture-allowed`, `debug-screen`, `debug-screen-not-saved`, `idle`, `network-not-saved`, `turn-off`, `stale-anchor`, `detailed-view`, `detailed-view-not-saved`, `connections-off`, `sign-while-syncing`, `sign-while-syncing-dark`, `sign-while-syncing-queued`, `sign-while-syncing-not-saved`, `metered-allowed`, `metered-paused`, `metered-not-reported`, `metered-not-reported-dark`, `metered-unreadable`, `metered-not-saved`, `metered-set-aside`
+`settings/`, 29 states: `synced`, `synced-dark`, `starting`, `unreadable`, `head-too-old`, `head-too-old-dark`, `debug-build`, `debug-build-capture-allowed`, `debug-screen`, `debug-screen-not-saved`, `idle`, `network-not-saved`, `turn-off`, `stale-anchor`, `checkpoint-applied`, `detailed-view`, `detailed-view-not-saved`, `connections-off`, `sign-while-syncing`, `sign-while-syncing-dark`, `sign-while-syncing-queued`, `sign-while-syncing-not-saved`, `metered-allowed`, `metered-paused`, `metered-not-reported`, `metered-not-reported-dark`, `metered-unreadable`, `metered-not-saved`, `metered-set-aside`
 
 <a href="settings/synced.png"><img src="settings/synced.png" width="206" alt="synced"></a>
 <a href="settings/synced-dark.png"><img src="settings/synced-dark.png" width="206" alt="synced-dark"></a>
@@ -734,6 +737,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="settings/network-not-saved.png"><img src="settings/network-not-saved.png" width="206" alt="network-not-saved"></a>
 <a href="settings/turn-off.png"><img src="settings/turn-off.png" width="206" alt="turn-off"></a>
 <a href="settings/stale-anchor.png"><img src="settings/stale-anchor.png" width="206" alt="stale-anchor"></a>
+<a href="settings/checkpoint-applied.png"><img src="settings/checkpoint-applied.png" width="206" alt="checkpoint-applied"></a>
 <a href="settings/detailed-view.png"><img src="settings/detailed-view.png" width="206" alt="detailed-view"></a>
 <a href="settings/detailed-view-not-saved.png"><img src="settings/detailed-view-not-saved.png" width="206" alt="detailed-view-not-saved"></a>
 <a href="settings/connections-off.png"><img src="settings/connections-off.png" width="206" alt="connections-off"></a>

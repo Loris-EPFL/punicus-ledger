@@ -22,6 +22,7 @@ import eth.serotine.domain.repository.DebugScreenSetting
 import eth.serotine.domain.repository.DelayModules
 import eth.serotine.domain.repository.DisplayCurrencySetting
 import eth.serotine.domain.repository.EnsNfts
+import eth.serotine.domain.repository.FreshCheckpoints
 import eth.serotine.domain.repository.HistoryStarts
 import eth.serotine.domain.repository.InterfaceModeSetting
 import eth.serotine.domain.repository.KeptSafes
@@ -89,6 +90,7 @@ import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.EstimateSwap
 import eth.serotine.domain.usecase.ExecuteSafeTx
 import eth.serotine.domain.usecase.ExtendDappSession
+import eth.serotine.domain.usecase.FetchFreshCheckpoint
 import eth.serotine.domain.usecase.FindUniswapRoute
 import eth.serotine.domain.usecase.FindWaitingSwap
 import eth.serotine.domain.usecase.HandOffTransfer
@@ -288,6 +290,8 @@ class AppGraph(
     private val lightClient: LightClient,
     /** The user's consent to a light client catching up from a stale checkpoint, for this run. */
     private val staleAnchorConsent: StaleAnchorConsent,
+    /** Fresh checkpoints from a network's checkpoint servers, the other way past a stale one. */
+    private val freshCheckpoints: FreshCheckpoints,
     /** Network upgrades this version does not support, as peers report them to that light client. */
     private val networkUpgrades: NetworkUpgrades,
     /**
@@ -452,6 +456,7 @@ class AppGraph(
             SetNetworkEnabled(networkSettings),
             observeUpgradeWarnings(),
             SyncPastStaleAnchor(lightClient, staleAnchorConsent),
+            FetchFreshCheckpoint(lightClient, freshCheckpoints),
             RefreshNetworkData(networkFreshness),
             ObserveNetworkLive(networkFreshness),
             ObserveAmountsHidden(amountsHidden),
@@ -952,6 +957,7 @@ class AppGraph(
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
             SyncPastStaleAnchor(lightClient, staleAnchorConsent),
+            FetchFreshCheckpoint(lightClient, freshCheckpoints),
             ObserveInterfaceMode(interfaceMode),
             SetInterfaceMode(interfaceMode),
             ObserveNetworkLive(networkFreshness),

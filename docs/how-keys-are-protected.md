@@ -994,17 +994,15 @@ yet, even if it has one.*
 The chip's key can disappear: a cleared Keystore, a factory reset, an OS
 upgrade that loses it, a deleted `secure-enclave.json`. The envelopes sealed
 with it then cannot be opened any more. Before it describes the key store,
-adds an account, stores a key or signs with the password, the app asks
-whether the chip's key still exists. If it does not, the app reports the key
-store as unavailable instead of making a new key, which would only answer
-"wrong password" forever.
+adds an account, stores a key, signs with the password or turns biometric
+unlock on, the app asks whether the chip's key still exists. If it does not,
+the app reports the key store as unavailable instead of making a new key,
+which would only answer "wrong password" forever.
 
-One path does not ask first yet: turning biometric unlock on reads where
-the chip's key lives before it asks whether the key exists, and on Android
-that read makes a new key when the old one is gone (security audit of
-2026-11-01, finding N3, open). It is hard to reach from the app, since the
-Security screen offers no switch while the key store reads as unavailable,
-but the key store itself does not keep the promise on that path yet.
+Asking first matters because on Android merely reading where the chip's key
+lives makes a new key when the old one is gone. Turning biometric unlock on
+used to read that before it asked (security audit of 2026-11-01, finding
+N3); it now asks first, like every other path.
 
 The way back is the recovery phrase. While the envelopes of the lost key
 exist, restoring is refused too, so first remove the accounts whose keys
@@ -1023,6 +1021,16 @@ private fun hardwareKeyLost(provisioned: Boolean, envelopes: List<Stored>): Bool
     report("the hardware key the envelopes were sealed with is gone")
     return true
 }
+```
+
+Turning biometric unlock on asks the same question before it reads where
+the key lives:
+
+```kotlin
+val provisioned = hardware?.isProvisioned() ?: true
+val envelopes = envelopes()
+if (hardwareKeyLost(provisioned, envelopes)) return@withContext BiometricChange.Failed
+if (protection() == KeyProtection.SOFTWARE_KEY_STORE) {
 ```
 
 Signing with the password checks it first, before the envelope is touched:
@@ -2078,7 +2086,7 @@ The order, list first and key second, is the use case's
 | You copy the recovery words in or out of the restore field | Nothing yet: the field offers Copy and Cut like any field that is not a password field, and the system clipboard keeps what it is given, in a keyboard's clipboard history or synced to your other devices (security audit of 2026-11-01, finding S7, open). | **No**, not blocked yet: type the words, do not copy them |
 | Someone sees your recovery words | They are the master secret: with them, anyone can restore every account of the phrase anywhere. | **No**: keep the paper safe |
 | You forget the wallet password | The envelopes cannot be opened without it; that is the point. Removing the accounts deletes their envelopes without the password; once the last one is gone, restoring the phrase sets a new password. A proper reset flow is not built yet. | Recoverable **with the recovery phrase** |
-| The chip's key is lost (a factory reset, a cleared key store) | The app says the key store is unavailable instead of guessing (turning biometric unlock on does not ask first yet: N3, section 5). Restoring is refused while the stranded envelopes exist: removing the accounts whose keys are on this device deletes them without the password, and then restoring the phrase works again. A proper reset flow is not built yet. | Recoverable **with the recovery phrase** |
+| The chip's key is lost (a factory reset, a cleared key store) | The app says the key store is unavailable instead of guessing (section 5). Restoring is refused while the stranded envelopes exist: removing the accounts whose keys are on this device deletes them without the password, and then restoring the phrase works again. A proper reset flow is not built yet. | Recoverable **with the recovery phrase** |
 | Laboratory attacks on the chip itself | Out of scope: that is the chip maker's part. | |
 
 ## 13. Other sensitive things the app keeps
@@ -2142,12 +2150,13 @@ Secure Enclave tests (`MacSecureEnclaveSecretTest`, `MacBiometricKeyTest`)
 use the real enclave and are skipped on other computers; the Android
 Keystore classes need a device and have no unit test.
 
-Three findings of the security audit of 2026-11-01 that touch this page are
-still open, and the page says so where each applies: N3, turning biometric
-unlock on with a lost chip key (section 5); S7, the clipboard (sections 6
-and 12); S5, the desktop's data folder around the key folder (section 10).
-Each has an acceptance test in the tree, marked `@Ignore` until its fix
-lands. None of them is counted below as holding a claim.
+Two findings of the security audit of 2026-11-01 that touch this page are
+still open, and the page says so where each applies: S7, the clipboard
+(sections 6 and 12); S5, the desktop's data folder around the key folder
+(section 10). Each has an acceptance test in the tree, marked `@Ignore`
+until its fix lands. None of them is counted below as holding a claim. A
+third, N3 (turning biometric unlock on with a lost chip key, section 5), is
+fixed, and its acceptance test now runs.
 
 | Claim | Code | Test |
 |---|---|---|
@@ -2164,7 +2173,7 @@ lands. None of them is counted below as holding a claim.
 | Short of memory, a seal steps down a tier, never below 64 MiB, and says so | `sealAtTierThatFits`, `PasswordOnlyTier` | `EnvelopeKeyStoreTest.aSealShortOfMemoryStepsDownATierAndSaysSo`, `aDeviceWithLittleMemoryStartsAtItsTierAndNeverGoesBelowTheFloor`, `EnvelopeTest.argon2idShortOfMemoryLeavesBeforeAnythingIsMade` |
 | The first password is at least eight characters; later ones must match | `EnvelopeKeyStore.import` | `EnvelopeKeyStoreTest.aTooShortFirstPasswordIsRefused`, `laterImportsMustUseTheSamePassword` |
 | A mistyped password costs at most three Argon2id runs | `passwordIsWrong`, `MAX_PASSWORD_CHECKS` | `EnvelopeKeyStoreTest.aMistypedPasswordIsCheckedAgainstAtMostThreeEnvelopes` |
-| A lost hardware key is said, never taken for a wrong password (turning biometric unlock on: not yet, N3) | `hardwareKeyLost` | `EnvelopeKeyStoreTest.aLostHardwareKeyMakesTheKeyStoreUnavailableNotAWrongPassword`, `aLostHardwareKeyIsSaidNotTakenForAWrongPassword`. N3's acceptance test, `EnvelopeKeyStoreLostHardwareKeyTest`, is ignored until its fix |
+| A lost hardware key is said, never taken for a wrong password, and never remade (turning biometric unlock on included) | `hardwareKeyLost` | `EnvelopeKeyStoreTest.aLostHardwareKeyMakesTheKeyStoreUnavailableNotAWrongPassword`, `aLostHardwareKeyIsSaidNotTakenForAWrongPassword`, `EnvelopeKeyStoreLostHardwareKeyTest.turningOnBiometricsNeverRemakesALostHardwareKey`, `noOtherPathRemakesALostHardwareKey` |
 | The key folder and files are readable by this user alone | `createPrivateDirectory`, `writeDurably` | `EnvelopeKeyStoreTest.theDirectoryAndTheEnvelopesAreThisUsersAlone` |
 | A crashed write leaves no half file, and its leftover is swept | `writeDurably`, `sweepTemporaries` | `EnvelopeKeyStoreTest.aCrashedWritesTemporaryIsSweptAway`, `aCreateOnlyWriteNeverReplacesAFile` |
 | The digest is signed as given; the signature recovers to the account | `signWith` | `EnvelopeKeyStoreTest.aStoredAccountsKeySignsTheDigestAsGivenAndNothingElse`, `everyRecoveryIdRecoversTheSigner` |

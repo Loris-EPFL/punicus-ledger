@@ -10,7 +10,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 
 | Screen | Folder | States |
 |---|---|---|
-| [Account detail](#account-detail) | `account-detail/` | 45 |
+| [Account detail](#account-detail) | `account-detail/` | 46 |
 | [Accounts](#accounts) | `accounts/` | 38 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 11 |
 | [Add on networks (dialog)](#add-on-networks-dialog) | `add-on-networks-dialog/` | 5 |
@@ -25,6 +25,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 20 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
+| [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 18 |
 | [Send from another wallet](#handoff) | `handoff/` | 18 |
 | [Import recovery phrase](#mnemonic-import) | `mnemonic-import/` | 12 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
@@ -67,7 +68,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="account-detail"></a>
 ## Account detail
 
-`account-detail/`, 45 states: `assets`, `assets-dark`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`
+`account-detail/`, 46 states: `assets`, `assets-dark`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`
 
 <a href="account-detail/assets.png"><img src="account-detail/assets.png" width="206" alt="assets"></a>
 <a href="account-detail/assets-dark.png"><img src="account-detail/assets-dark.png" width="206" alt="assets-dark"></a>
@@ -114,6 +115,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="account-detail/nft-adding.png"><img src="account-detail/nft-adding.png" width="206" alt="nft-adding"></a>
 <a href="account-detail/activity-queued.png"><img src="account-detail/activity-queued.png" width="206" alt="activity-queued"></a>
 <a href="account-detail/activity-queued-conflict-dark.png"><img src="account-detail/activity-queued-conflict-dark.png" width="206" alt="activity-queued-conflict-dark"></a>
+<a href="account-detail/gnosis-pay-owners.png"><img src="account-detail/gnosis-pay-owners.png" width="206" alt="gnosis-pay-owners"></a>
 
 <a name="accounts"></a>
 ## Accounts
@@ -394,6 +396,30 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="derive-account/added-dark.png"><img src="derive-account/added-dark.png" width="206" alt="added-dark"></a>
 <a href="derive-account/unavailable.png"><img src="derive-account/unavailable.png" width="206" alt="unavailable"></a>
 <a href="derive-account/loading.png"><img src="derive-account/loading.png" width="206" alt="loading"></a>
+
+<a name="gnosis-pay"></a>
+## Gnosis Pay account
+
+`gnosis-pay/`, 18 states: `overview`, `overview-dark`, `queued`, `execute-refused`, `watched`, `compose`, `compose-error`, `review`, `review-requoted`, `compose-quoting`, `review-signing`, `review-checking`, `review-wrong-password`, `review-not-sent`, `review-biometrics`, `queued-unverified`, `loading`, `unavailable`
+
+<a href="gnosis-pay/overview.png"><img src="gnosis-pay/overview.png" width="206" alt="overview"></a>
+<a href="gnosis-pay/overview-dark.png"><img src="gnosis-pay/overview-dark.png" width="206" alt="overview-dark"></a>
+<a href="gnosis-pay/queued.png"><img src="gnosis-pay/queued.png" width="206" alt="queued"></a>
+<a href="gnosis-pay/execute-refused.png"><img src="gnosis-pay/execute-refused.png" width="206" alt="execute-refused"></a>
+<a href="gnosis-pay/watched.png"><img src="gnosis-pay/watched.png" width="206" alt="watched"></a>
+<a href="gnosis-pay/compose.png"><img src="gnosis-pay/compose.png" width="206" alt="compose"></a>
+<a href="gnosis-pay/compose-error.png"><img src="gnosis-pay/compose-error.png" width="206" alt="compose-error"></a>
+<a href="gnosis-pay/review.png"><img src="gnosis-pay/review.png" width="206" alt="review"></a>
+<a href="gnosis-pay/review-requoted.png"><img src="gnosis-pay/review-requoted.png" width="206" alt="review-requoted"></a>
+<a href="gnosis-pay/compose-quoting.png"><img src="gnosis-pay/compose-quoting.png" width="206" alt="compose-quoting"></a>
+<a href="gnosis-pay/review-signing.png"><img src="gnosis-pay/review-signing.png" width="206" alt="review-signing"></a>
+<a href="gnosis-pay/review-checking.png"><img src="gnosis-pay/review-checking.png" width="206" alt="review-checking"></a>
+<a href="gnosis-pay/review-wrong-password.png"><img src="gnosis-pay/review-wrong-password.png" width="206" alt="review-wrong-password"></a>
+<a href="gnosis-pay/review-not-sent.png"><img src="gnosis-pay/review-not-sent.png" width="206" alt="review-not-sent"></a>
+<a href="gnosis-pay/review-biometrics.png"><img src="gnosis-pay/review-biometrics.png" width="206" alt="review-biometrics"></a>
+<a href="gnosis-pay/queued-unverified.png"><img src="gnosis-pay/queued-unverified.png" width="206" alt="queued-unverified"></a>
+<a href="gnosis-pay/loading.png"><img src="gnosis-pay/loading.png" width="206" alt="loading"></a>
+<a href="gnosis-pay/unavailable.png"><img src="gnosis-pay/unavailable.png" width="206" alt="unavailable"></a>
 
 <a name="handoff"></a>
 ## Send from another wallet

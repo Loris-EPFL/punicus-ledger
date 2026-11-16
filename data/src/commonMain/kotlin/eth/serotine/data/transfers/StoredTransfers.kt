@@ -3,6 +3,8 @@ package eth.serotine.data.transfers
 import eth.serotine.data.safe.WireRequest
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrderUid
+import eth.serotine.domain.model.DelayTransfer
+import eth.serotine.domain.model.DelayTransferPlan
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
@@ -25,6 +27,7 @@ private const val APPROVAL = "approval"
 private const val EXECUTION = "execution"
 private const val WRAP = "wrap"
 private const val UNWRAP = "unwrap"
+private const val QUEUE = "queue"
 
 /**
  * One transaction, sent on the network of [chain] (absent in a record written before networks:
@@ -32,8 +35,9 @@ private const val UNWRAP = "unwrap"
  * a transfer's [to], [token] (null: the native currency) and [amount], a
  * Safe transaction's approval or execution ([safe]), a Safe's deployment ([deployment]), a
  * token approval ([approval]), a swap ([swap]), a wrap or unwrap ([wrap]), a CoW order's
- * cancellation on chain ([cancellation]) or a dApp's transaction ([dappCall]) — exactly one of the
- * eight, else the file is damaged.
+ * cancellation on chain ([cancellation]), a dApp's transaction ([dappCall]) or a Gnosis Pay
+ * account's transfer queued or executed through its Delay ([delay]) — exactly one of the nine, else
+ * the file is damaged.
  */
 @Serializable
 internal class StoredTransfer(
@@ -50,6 +54,7 @@ internal class StoredTransfer(
     val wrap: StoredWrap? = null,
     val cancellation: StoredCowCancellation? = null,
     val dappCall: StoredDappCall? = null,
+    val delay: StoredDelayCall? = null,
     val maxCost: String,
     val sentAt: Long,
     val maybeSent: Boolean = false,
@@ -67,7 +72,7 @@ internal class StoredTransfer(
     )
 
     private fun action(): SentAction {
-        val kinds = listOfNotNull(deployment, safe, approval, swap, wrap, cancellation, dappCall)
+        val kinds = listOfNotNull(deployment, safe, approval, swap, wrap, cancellation, dappCall, delay)
         require(kinds.size <= 1) { "more than one kind of transaction" }
         val transferFields = to != null || token != null || amount != null
         require(kinds.isEmpty() || !transferFields) { "a transfer and another kind at once" }
@@ -78,6 +83,7 @@ internal class StoredTransfer(
         wrap?.let { return it.toAction() }
         cancellation?.let { return it.toAction() }
         dappCall?.let { return it.toAction() }
+        delay?.let { return it.toAction() }
         return SentAction.Transfer(
             to = Address.of(requireNotNull(to) { "a transfer without a recipient" }),
             asset = token?.let { TransferAsset.Erc20Token(it.toToken()) } ?: TransferAsset.Native,
@@ -85,6 +91,49 @@ internal class StoredTransfer(
         )
     }
 }
+
+/**
+ * A Gnosis Pay account's transfer through its Delay, queued ([kind] `queue`) or executed
+ * (`execution`): [amount] of [token] (null: the Safe's currency) from the Safe [safe] through its
+ * Delay [delay] to [recipient]. A stored transfer that is no plain transfer the Delay may queue
+ * does not decode: the file is damaged.
+ */
+@Serializable
+internal class StoredDelayCall(
+    val kind: String,
+    val safe: String,
+    val delay: String,
+    val recipient: String,
+    val token: StoredToken? = null,
+    val amount: String,
+) {
+    fun toAction(): SentAction {
+        val plan = DelayTransfer.of(
+            Address.of(safe),
+            Address.of(delay),
+            emptyList(),
+            token.asset(),
+            Address.of(recipient),
+            UInt256.of(amount),
+        )
+        val transfer = requireNotNull((plan as? DelayTransferPlan.Planned)?.transfer) { "no plain transfer" }
+        return when (kind) {
+            QUEUE -> SentAction.DelayQueue(transfer)
+            EXECUTION -> SentAction.DelayExecution(transfer)
+            else -> throw IllegalArgumentException("a Delay call of an unknown kind")
+        }
+    }
+}
+
+/** [transfer] as stored, queued or executed ([kind]). */
+private fun delayCall(kind: String, transfer: DelayTransfer) = StoredDelayCall(
+    kind,
+    transfer.safe.hex,
+    transfer.delay.hex,
+    transfer.recipient.hex,
+    transfer.asset.storedToken(),
+    transfer.amount.toDecimal(),
+)
 
 /** What a token transfer needs shown again: its bundled icon's name too, not its price. */
 @Serializable
@@ -216,8 +265,13 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
             is SentAction.SafeExecution -> safeCall(EXECUTION, action.request)
             is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
             is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap, is SentAction.CowCancellation,
-            is SentAction.DappCall,
+            is SentAction.DappCall, is SentAction.DelayQueue, is SentAction.DelayExecution,
             -> null
+        },
+        delay = when (action) {
+            is SentAction.DelayQueue -> delayCall(QUEUE, action.transfer)
+            is SentAction.DelayExecution -> delayCall(EXECUTION, action.transfer)
+            else -> null
         },
         dappCall = (action as? SentAction.DappCall)?.let {
             StoredDappCall(it.to.hex, it.value.toDecimal(), it.dapp, it.request.session.topic, it.request.id)

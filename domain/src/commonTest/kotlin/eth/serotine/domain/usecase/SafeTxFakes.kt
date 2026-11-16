@@ -243,6 +243,9 @@ internal class FakeTransactionInputs : TransactionInputs {
     var gas = 80_000L
     var estimate: GasEstimate? = null
     var simulation: Simulation = Simulation.Succeeded("", 100)
+
+    /** When set, the run's answer by its sender and target, in place of [simulation]. */
+    var simulationOf: ((from: Address, to: Address) -> Simulation)? = null
     val simulated = mutableListOf<Triple<Address, Address, ByteArray>>()
 
     override suspend fun nonce(network: Network, account: Address): NonceReading = NonceReading.Read(7)
@@ -277,7 +280,7 @@ internal class FakeTransactionInputs : TransactionInputs {
         data: ByteArray,
     ): Simulation {
         simulated += Triple(from, to, data)
-        return simulation
+        return simulationOf?.invoke(from, to) ?: simulation
     }
 
     private companion object {

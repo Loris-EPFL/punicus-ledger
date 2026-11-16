@@ -29,6 +29,7 @@ import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.PriceHistory
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
+import eth.serotine.domain.repository.DelayModules
 import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
@@ -73,7 +74,8 @@ import kotlinx.coroutines.launch
  * screen needs it). A host's composition root creates it with [start] and hands its ports to the
  * AppGraph: [nativeBalances], [tokenBalances], [tokenMetadata], [priceFeeds], [addressKinds],
  * [lightClient], [networkUpgrades], and for sending [transactionInputs], [broadcaster],
- * [receipts] and [names], for a Safe's transactions [safeApprovals], for swaps [uniswap] and [cow], for the
+ * [receipts] and [names], for a Safe's transactions [safeApprovals], for a Gnosis Pay account
+ * [delayModules], for swaps [uniswap] and [cow], for the
  * accounts' histories [logIndex], for a home-screen widget's daily change [priceHistory]; each
  * port routes a call to the light client of the network it names ([NetworkRoutedPorts]). The host
  * owns it for the life of the process: [pause] and [resume] every running light client around
@@ -176,6 +178,9 @@ class MyotisHost private constructor(
 
     /** A Safe's owners' approvals on chain (`approvedHashes`), each a verified call. */
     val safeApprovals: SafeApprovals = routed.safeApprovals
+
+    /** A Gnosis Pay account's Delay modifier and its queue (docs/gnosis-pay.md), each a verified read. */
+    val delayModules: DelayModules = routed.delayModules
 
     /** Uniswap v3 on each network: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = routed.uniswap
@@ -467,6 +472,7 @@ class MyotisHost private constructor(
             blockTransactions = EngineBlockTransactions(network, chain, Dispatchers.IO),
             names = EngineNames(network, chain, Dispatchers.IO),
             safeApprovals = VerifiedSafeApprovals(network, chain, Dispatchers.IO),
+            delayModules = VerifiedDelayModules(network, chain, Dispatchers.IO, POLL_INTERVAL),
             uniswap = VerifiedUniswapV3(chain, Dispatchers.IO, network),
             cow = VerifiedCow(chain, Dispatchers.IO, network),
             logIndex = EngineLogIndex(network, chain, Dispatchers.IO, POLL_INTERVAL),

@@ -6,6 +6,9 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.DelayFinding
+import eth.serotine.domain.repository.DelayGeneration
+import eth.serotine.domain.repository.DelayReading
 import eth.serotine.domain.repository.FeedReading
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.LightClientRun
@@ -125,6 +128,23 @@ class MyotisHostGnosisTest {
                 val recognised = assertIs<AddressKind.Safe>(assertIs<KindReading.Verified>(otherKind).kind, other)
                 assertEquals(version, recognised.state.version, other)
             }
+
+            // A Gnosis Pay account (docs/gnosis-pay.md; DelayDeployments.kt's doc comment, read
+            // 2026-11-15): a Safe 1.3.0 owned by the sentinel 0x…02, its Delay a proxy of the current
+            // mastercopy, wired to it, with one member. Proves the pin and that eight getters land on
+            // one Gnosis Chain block often enough.
+            val card = Address.of("0x188416e7d22a45e1c5f69c628d9c05bee54bd4fb")
+            val cardDelay = Address.of("0xfc85bcbc2ce6aec1be9d94c77c872269ebddb6c7")
+            val delayReading = withTimeout(5.minutes) {
+                node.delayModules.observeDelay(gnosis, card, cardDelay).first {
+                    it !is DelayReading.Syncing &&
+                        !(it is DelayReading.Unavailable && it.reason == ReadUnavailable.UNPROVEN)
+                }
+            }
+            println("[${at()}] $cardDelay: $delayReading")
+            val wired = assertIs<DelayFinding.Wired>(assertIs<DelayReading.Verified>(delayReading).finding)
+            assertEquals(DelayGeneration.CURRENT, wired.module.generation)
+            assertEquals(listOf(Address.of("0xa52bddbc4145f89b3740266a74f2d81c358677aa")), wired.module.members)
         } finally {
             progress.cancel()
             node.shutdown()

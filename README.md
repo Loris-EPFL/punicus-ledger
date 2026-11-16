@@ -62,6 +62,14 @@ What the app does today:
   instead. A transaction that would set the fallback handler to anything but
   the pinned one or none (the zero address removes it), or enable a module,
   is shown and never signed, approved or executed here.
+- **Gnosis Pay.** A watched Gnosis Pay account (the Safe behind the Gnosis Pay
+  card, on Gnosis Chain) is recognised, and a member whose key is held here
+  sends a plain transfer through the account's Delay module: queued first,
+  executed after the cooldown, with no relayer (docs/gnosis-pay.md).
+- **NFTs.** An account's NFTs, found in its verified log index and shown only
+  once proven held, with on-chain metadata only; older ones are added by
+  contract and id, ENS names also by name, and the ENS names pointing to an
+  account are shown with it.
 - **Swaps on Uniswap v3** from an account or a Safe: verified quotes from the
   pinned contracts, an exact-amount approval, a slippage tolerance (0.5 % by
   default) and the price impact, with the amount received read from the
@@ -75,8 +83,9 @@ What the app does today:
   does not support, the app warns ahead of it, notifies (on Android also while
   it is closed), and once the upgrade has cut it off shows nothing but the way
   to the update.
-- **dApp connections**, on Sepolia, over WalletConnect v2. A dApp connects
-  with a pasted `wc:` URI (or a `wc:` link on Android), and sees only the
+- **dApp connections** over WalletConnect v2, on Ethereum and Gnosis Chain
+  together or on Sepolia alone. A dApp connects with a pasted `wc:` URI (on
+  Android also a scanned QR code or a `wc:` link), and sees only the
   accounts the user chooses. It can ask to sign in, to sign typed data, and
   to send a transaction: from an account held here, or proposed from a Safe
   as a Safe transaction. Each is reviewed from verified state before
@@ -89,13 +98,17 @@ Store.
 docs/wallet-ux.md describes every screen, with what is built and what is not.
 
 **What leaves the device.** The wallet never takes chain data from a server:
-no RPC provider, no indexer. Two optional features use a third-party
-service. A swap the user sends to CoW Protocol goes to CoW's order API
-(docs/swaps.md). dApp connections go through WalletConnect's relay: today a
+no RPC provider, no indexer. Three optional features use a third-party
+service. A fresh checkpoint, fetched only on the user's tap when a network's
+checkpoint is too old, comes from that network's public checkpoint-sync
+servers, which see the device's IP address and nothing about its accounts
+(docs/privacy-policy.md). A swap the user sends to CoW Protocol goes to
+CoW's order API (docs/swaps.md). dApp connections go through WalletConnect's relay: today a
 centralised service, run by Reown and a selected group of operators. It
 carries end-to-end encrypted messages only. It sees the device's IP address
 and when it is connected, never what is signed, and it cannot sign anything
-(docs/walletconnect.md). The embedded Myotis engine itself uses neither.
+(docs/walletconnect.md). The embedded Myotis engine itself uses neither of
+the last two.
 
 ## Build & run
 

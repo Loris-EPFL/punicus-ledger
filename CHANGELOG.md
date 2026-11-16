@@ -19,8 +19,9 @@ and issues of this repository.
   queued first and executed after the cooldown; the current mastercopy only,
   no relayer (#305, #306, #309, #310).
 - A fresh checkpoint when a network's checkpoint is too old: "Catch up…"
-  offers to fetch one, taken only when the checkpoint servers agree and a
-  long-known peer confirms it, besides "Catch up anyway" (#301).
+  offers to fetch one, taken when the checkpoint servers agree and a
+  long-known peer confirms it, or, with no such peer in reach, only on the
+  user's "Use it anyway", besides "Catch up anyway" (#301).
 - ENS names: names resolved to an account are remembered and listed as NFTs
   once proven held, "Add an NFT" takes an ENS name alone, and an account's
   header shows the names pointing to it (#274, #299).

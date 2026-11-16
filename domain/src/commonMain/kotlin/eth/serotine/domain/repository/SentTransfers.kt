@@ -2,6 +2,7 @@ package eth.serotine.domain.repository
 
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.SignedTransfer
@@ -209,4 +210,18 @@ sealed interface SentAction {
      * sent.
      */
     data class DappCall(val to: Address, val value: UInt256, val dapp: String, val request: DappRequestId) : SentAction
+
+    /**
+     * A Gnosis Pay account's [transfer], queued through its Delay by the account, a member of that
+     * Delay (`execTransactionFromModule`; docs/gnosis-pay.md, *Sending*): it moves nothing yet, and
+     * nothing of the member's but the fee. What it queues moves the Safe's funds once executed
+     * ([DelayExecution]).
+     */
+    data class DelayQueue(val transfer: DelayTransfer) : SentAction
+
+    /**
+     * The execution of a Gnosis Pay account's [transfer] the account queued before (`executeNextTx`),
+     * sent to the Delay after its cooldown: what it moves is the Safe's, and the account pays the fee.
+     */
+    data class DelayExecution(val transfer: DelayTransfer) : SentAction
 }

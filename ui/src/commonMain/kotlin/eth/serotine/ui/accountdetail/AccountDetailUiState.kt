@@ -94,6 +94,12 @@ sealed interface AccountDetailUiState {
          * menu offers it, and so does the greyed-out Send's explanation.
          */
         val handoff: HandoffChoice? = null,
+        /**
+         * For a Safe that is a Gnosis Pay account (docs/gnosis-pay.md), what its Owners tab says of it
+         * beside the entry that opens its own screen, where a transfer goes through its Delay module;
+         * null for any other account, and before it is read.
+         */
+        val gnosisPay: String? = null,
     ) : AccountDetailUiState {
 
         /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */
@@ -114,8 +120,27 @@ sealed interface AccountDetailUiState {
             get() = when {
                 !networkOn -> networkOffReason(network.name, label)
                 networkBlocked -> networkBlockedReason(network.name)
-                else -> sendBlockedReason(kind, control)
+                // A Gnosis Pay account's owner is a placeholder: its transfers go through its Delay module.
+                else -> sendBlockedReason(kind, control)?.let { if (placeholderOwned) GNOSIS_PAY_SEND else it }
             }
+
+        /**
+         * Whether a greyed-out Send offers the Gnosis Pay screen as the way to send: on a Gnosis Pay
+         * account whose network is on and followed, where no owner held here can sign.
+         */
+        val sendOffersGnosisPay: Boolean
+            get() = gnosisPay != null && networkOn && !networkBlocked && sendBlockedReason(kind, control) != null
+
+        /**
+         * Whether this is a Gnosis Pay account whose verified owners are all the placeholder
+         * `0x…02` (docs/gnosis-pay.md): only then is "no key controls its owner" said. A Gnosis Pay
+         * account is told by its Delay alone, whatever its owners are.
+         */
+        val placeholderOwned: Boolean
+            get() = gnosisPay != null &&
+                (safe as? SafeDetails.Shown)?.owners?.let { owners ->
+                    owners.isNotEmpty() && owners.all { it.address == GNOSIS_PAY_PLACEHOLDER }
+                } == true
 
         /**
          * Whether Swap can be done from this account: greyed out when it cannot (watch-only, or a
@@ -132,7 +157,7 @@ sealed interface AccountDetailUiState {
                 networkBlocked -> networkBlockedReason(network.name, "swapped")
                 !swapVenue -> "No swap venue is pinned on ${network.name} yet, so nothing can be swapped from this " +
                     "account. Send works as before."
-                else -> swapBlockedReason(kind, control)
+                else -> swapBlockedReason(kind, control)?.let { if (placeholderOwned) GNOSIS_PAY_SWAP else it }
             }
 
         /**
@@ -344,3 +369,18 @@ data class NftRow(
     /** The NFT's key ("contract:id:standard") when the user added it, which Remove takes; null otherwise. */
     val addedKey: String? = null,
 )
+
+/**
+ * Why Send is greyed out on a Gnosis Pay account with no owner held here (docs/gnosis-pay.md): its
+ * one owner is a placeholder no key controls, so a transfer goes through its Delay module, on its
+ * own screen, which the explanation offers.
+ */
+internal const val GNOSIS_PAY_SEND = "This is a Gnosis Pay account: its owner is a placeholder that no key " +
+    "controls, so no owner can sign for it. Its transfers go through its Delay module, from the Gnosis Pay screen."
+
+/** The owner account-kit leaves on a Gnosis Pay account, as [eth.serotine.ui.components.Eip55.format] gives it. */
+internal const val GNOSIS_PAY_PLACEHOLDER = "0x0000000000000000000000000000000000000002"
+
+/** Why Swap is greyed out on a Gnosis Pay account: only plain transfers go through its Delay module. */
+internal const val GNOSIS_PAY_SWAP = "This is a Gnosis Pay account: its owner is a placeholder that no key " +
+    "controls, and only plain transfers go through its Delay module, so nothing is swapped from it here."

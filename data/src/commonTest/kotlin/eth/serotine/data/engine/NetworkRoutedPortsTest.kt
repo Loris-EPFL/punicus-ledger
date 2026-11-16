@@ -119,6 +119,7 @@ class NetworkRoutedPortsTest {
             blockTransactions = none.blockTransactions,
             names = none.names,
             safeApprovals = none.safeApprovals,
+            delayModules = none.delayModules,
             uniswap = none.uniswap,
             cow = none.cow,
             logIndex = none.logIndex,

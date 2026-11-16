@@ -55,7 +55,8 @@ rule in code.
   `ReceiptTracker` and `NameResolver`, over the embedded Myotis engine; for a
   Safe's transactions `SafeTxQueue` and `SigningRequestCodec`
   (`eth.serotine.data.safe`), `SignatureRecovery` (`eth.serotine.data.keys`,
-  libsecp256k1) and `SafeApprovals`, over the engine; for creating a Safe
+  libsecp256k1) and `SafeApprovals`, over the engine; for a Gnosis Pay account
+  `DelayModules`, the Safe's Delay modifier, over the engine (docs/gnosis-pay.md); for creating a Safe
   `SafeReleases`, the pinned release in `eth.serotine.data.safe`; for an
   account's history `TransactionHistory`, `HistoryStarts`
   (`eth.serotine.data.history`) and `LogIndex`, over the engine; for when the

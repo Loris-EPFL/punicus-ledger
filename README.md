@@ -18,6 +18,10 @@ on one chain. A release build starts with Ethereum and Gnosis Chain on and
 Sepolia off, a debug build with Sepolia alone, and each network can be turned
 on or off in Settings.
 
+The website, for people who are not developers, with the downloads and a
+guide to adding accounts and Safes: <https://biafra23.github.io/punicus/>
+(its source: [website/](website/)).
+
 ## Status
 
 Early, with pre-releases only (the version is `0.5.0-SNAPSHOT`; every `v*` tag
@@ -143,6 +147,7 @@ simulator needs none.
 | `android-app` | the Android host (package `eth.serotine`; the debug build is `eth.serotine.debug`) |
 | `desktop-app` | the desktop JVM host and the jpackage configuration for the three installers |
 | `ios-app` | the iOS host: the SerotineKit framework (its composition root) and the Xcode shell's XcodeGen spec (`xcode/`) |
+| `website` | the public website, plain HTML and CSS, built by `scripts/build_website.py` and published to GitHub Pages ([website/README.md](website/README.md)) |
 
 The dependency rule, the MVVM contract and how to add a feature:
 [docs/architecture.md](docs/architecture.md). How keys are held, what the

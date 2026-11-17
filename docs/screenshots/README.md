@@ -25,7 +25,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 20 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
-| [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 21 |
+| [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 22 |
 | [Send from another wallet](#handoff) | `handoff/` | 18 |
 | [Import recovery phrase](#mnemonic-import) | `mnemonic-import/` | 12 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
@@ -404,7 +404,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="gnosis-pay"></a>
 ## Gnosis Pay account
 
-`gnosis-pay/`, 21 states: `overview`, `overview-dark`, `queued`, `execute-refused`, `watched`, `compose`, `compose-error`, `review`, `review-requoted`, `compose-quoting`, `review-signing`, `review-checking`, `review-wrong-password`, `review-not-sent`, `review-biometrics`, `queued-unverified`, `member-safe`, `co-signer`, `review-member-safe`, `loading`, `unavailable`
+`gnosis-pay/`, 22 states: `overview`, `overview-dark`, `queued`, `execute-refused`, `watched`, `compose`, `compose-error`, `review`, `review-requoted`, `compose-quoting`, `review-signing`, `review-checking`, `review-wrong-password`, `review-not-sent`, `review-biometrics`, `queued-unverified`, `member-safe`, `co-signer`, `review-member-safe`, `control-unread`, `loading`, `unavailable`
 
 <a href="gnosis-pay/overview.png"><img src="gnosis-pay/overview.png" width="206" alt="overview"></a>
 <a href="gnosis-pay/overview-dark.png"><img src="gnosis-pay/overview-dark.png" width="206" alt="overview-dark"></a>
@@ -425,6 +425,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="gnosis-pay/member-safe.png"><img src="gnosis-pay/member-safe.png" width="206" alt="member-safe"></a>
 <a href="gnosis-pay/co-signer.png"><img src="gnosis-pay/co-signer.png" width="206" alt="co-signer"></a>
 <a href="gnosis-pay/review-member-safe.png"><img src="gnosis-pay/review-member-safe.png" width="206" alt="review-member-safe"></a>
+<a href="gnosis-pay/control-unread.png"><img src="gnosis-pay/control-unread.png" width="206" alt="control-unread"></a>
 <a href="gnosis-pay/loading.png"><img src="gnosis-pay/loading.png" width="206" alt="loading"></a>
 <a href="gnosis-pay/unavailable.png"><img src="gnosis-pay/unavailable.png" width="206" alt="unavailable"></a>
 

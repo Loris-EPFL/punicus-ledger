@@ -248,6 +248,11 @@ data class AccountItem(
      * with its reason where it cannot be done now; null where it does not apply.
      */
     val handoff: HandoffChoice? = null,
+    /**
+     * Whether Send opens the Gnosis Pay screen: a Gnosis Pay account a key held here controls
+     * through its Delay, whose own owners held here cannot sign (owner's request, 2026-11-17).
+     */
+    val sendsThroughGnosisPay: Boolean = false,
 ) {
     /** `0x1234…abcd`, for a list row; the full address stays in [address]. */
     val shortAddress: String
@@ -288,6 +293,7 @@ data class AccountItem(
             value: Pair<Valuation?, DisplayCurrency>? = null,
             safe: SafeReading? = null,
             formatTime: (Long) -> String = ::formatDateTime,
+            gnosisPayControlled: Boolean = false,
             ensName: EnsNameCheck? = null,
             networkOn: Boolean = true,
             now: Long? = null,
@@ -295,8 +301,11 @@ data class AccountItem(
         ): AccountItem {
             val off = network.displayName.takeUnless { networkOn }
             val lastKnown = balance as? BalanceReading.LastKnown
-            val control = (safe as? SafeReading.Verified)?.let { Control.of(it.control) }
+            val owned = (safe as? SafeReading.Verified)?.let { Control.of(it.control) }
                 ?: Control.of(account.kind, account.custody)
+            // A Gnosis Pay account a key held here controls through its Delay: Full control.
+            val throughDelay = gnosisPayControlled && account.kind == AccountKind.SAFE && owned != Control.FULL_CONTROL
+            val control = if (throughDelay) Control.FULL_CONTROL else owned
             val kindNote = when {
                 account.kind != AccountKind.SAFE -> null
                 safe == SafeReading.NotASafe -> "Not a recognised Safe"
@@ -309,6 +318,7 @@ data class AccountItem(
                 kind = account.kind,
                 // A Safe's control is its verified owners'; until they are read, no more than watch-only.
                 control = control,
+                sendsThroughGnosisPay = throughDelay,
                 balance = when {
                     off != null && lastKnown == null -> NOT_CHECKED
                     else -> balance?.let { balanceText(it, network) } ?: "Checking…"
@@ -367,6 +377,12 @@ sealed interface AccountAction {
 
     /** Send from a Safe: propose a Safe transaction; offered only when [AccountItem.canSend]. */
     data class Propose(override val chainId: Long, override val address: String) : AccountAction
+
+    /**
+     * Send from a Gnosis Pay account through its Delay: its own screen (docs/gnosis-pay.md); offered
+     * when [AccountItem.sendsThroughGnosisPay].
+     */
+    data class GnosisPay(override val chainId: Long, override val address: String) : AccountAction
 
     /** Show its address to receive to. */
     data class Receive(override val chainId: Long, override val address: String) : AccountAction

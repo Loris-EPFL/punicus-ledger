@@ -80,6 +80,30 @@ object SafeCalls {
             dynamic(packed)
     }
 
+    /**
+     * The call data of `execTransaction` that has a Safe of threshold 1 call [to] with [data], no
+     * value, operation CALL, sent by its owner [owner] itself: no gas refund, and [owner]'s
+     * pre-validated confirmation ([SafeSignature.ApprovedHash]), which the Safe accepts because
+     * [owner] is the account executing it. With `safeTxGas` and `gasPrice` 0 the Safe reverts when
+     * its call fails, so a run that succeeds is a call that succeeded. The Safe uses its own nonce:
+     * none is chosen here.
+     */
+    fun execAsOwner(to: Address, data: ByteArray, owner: Address): ByteArray = execTransaction(
+        SafeTx(
+            to = to,
+            value = UInt256.ZERO,
+            data = data,
+            operation = SafeOperation.CALL,
+            safeTxGas = UInt256.ZERO,
+            baseGas = UInt256.ZERO,
+            gasPrice = UInt256.ZERO,
+            gasToken = Address.ZERO,
+            refundReceiver = Address.ZERO,
+            nonce = 0,
+        ),
+        listOf(SafeSignature.ApprovedHash(owner)),
+    )
+
     /** The call data of `approveHash(hash)`: an owner's approval of a transaction's hash, on chain. */
     fun approveHash(hash: Digest): ByteArray = APPROVE_HASH + hash.hex.hexToBytes()
 

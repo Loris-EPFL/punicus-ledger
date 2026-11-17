@@ -748,6 +748,27 @@ class AccountsViewModelTest {
     }
 
     @Test
+    fun aGnosisPayAccountControlledThroughItsDelayShowsFullControlAndSendsThroughItsScreen() {
+        // Owner's request, 2026-11-17: a key held here controls it through its Delay.
+        val card =
+            Account(Network.GNOSIS, Address.of("0x" + "5a".repeat(20)), AccountKind.SAFE, "Card", AccountCustody.Watched)
+        val item = AccountItem.from(card, null, Network.GNOSIS, gnosisPayControlled = true)
+
+        assertEquals(Control.FULL_CONTROL, item.control)
+        assertTrue(item.sendsThroughGnosisPay)
+        assertNull(item.sendReason)
+        val acted = mutableListOf<AccountAction>()
+        accountMenu(item, { acted += it }, onTurnOnNetwork = {}, onUnavailable = {})
+            .first { it.label == "Send" }.onClick()
+        assertEquals(listOf<AccountAction>(AccountAction.GnosisPay(100, item.address)), acted)
+
+        // Not controlled from here: as before, watch-only, and Send greyed out.
+        val watched = AccountItem.from(card, null, Network.GNOSIS)
+        assertEquals(Control.WATCH_ONLY, watched.control)
+        assertFalse(watched.sendsThroughGnosisPay)
+    }
+
+    @Test
     fun aWatchedAccountIsWatchOnly() {
         val item = AccountItem.from(
             Account(

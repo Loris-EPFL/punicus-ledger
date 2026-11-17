@@ -108,7 +108,7 @@ class GnosisPayViewModel(
         ) : Flow
 
         /**
-         * [quote], made at [quotedAt] for [member], under review; [form] the form it came from (a
+         * [quote], made at [quotedAt] for [member] (the key that sends it), under review; [form] the form it came from (a
          * queueing's), [hidden] once the screen stopped being shown after it was made, [requoting]
          * while it is made again, and [note] why it was.
          */
@@ -212,6 +212,9 @@ class GnosisPayViewModel(
         }
         latest = found
         latestHoldings = chain.holdings
+        // Names in the wallet, for the members and keys shown: any network's entry names the address.
+        val labels = (found.controllersHeld.map { it.account } + found.keysHeldElsewhere + found.keysCoSigning)
+            .associate { it.address to it.label }
         latestQueued = (chain.transfers as? DelayTransfersReading.Read)?.transfers.orEmpty()
         GnosisPayUiState.Ready(
             label = account.label,
@@ -220,10 +223,27 @@ class GnosisPayViewModel(
             waits = GnosisPayTexts.waits(found.delay.cooldownSeconds, found.delay.expirationSeconds),
             checkedAt = GnosisPayTexts.checkedAt(found.blockNumber),
             members = found.delay.members.map { member ->
-                val inWallet = found.membersHeld.firstOrNull { it.address == member }
-                    ?: found.membersHeldElsewhere.firstOrNull { it.address == member }
-                MemberRow(GnosisPayTexts.eip55(member), inWallet?.label, found.membersHeld.any { it.address == member })
+                val node = found.control?.members?.firstOrNull { it.address == member }
+                MemberRow(
+                    GnosisPayTexts.eip55(member),
+                    labels[member],
+                    found.controllersHeld.any { it.account.address == member || it.via.firstOrNull() == member },
+                    GnosisPayTexts.memberWhat(node),
+                )
             },
+            keys = found.control?.controllers.orEmpty().map { controller ->
+                KeyRow(
+                    GnosisPayTexts.eip55(controller.key),
+                    labels[controller.key],
+                    // Held here under any network's entry, as Send's reason says of one held elsewhere.
+                    heldHere = found.controllersHeld.any { it.account.address == controller.key } ||
+                        found.keysCoSigning.any { it.address == controller.key } ||
+                        found.keysHeldElsewhere.any { it.address == controller.key },
+                    through = GnosisPayTexts.through(controller.via),
+                    alone = controller.alone,
+                )
+            },
+            controlNote = GnosisPayTexts.controlNote(found.control),
             send = ActionItem(found.sending == GnosisPaySending.AVAILABLE, GnosisPayTexts.sendReason(found.sending)),
             queued = latestQueued.map { queuedRow(it, found, (step as? Flow.Overview)?.busy) },
             queuedNote = GnosisPayTexts.queuedNote(chain.transfers),
@@ -232,7 +252,7 @@ class GnosisPayViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GnosisPayUiState.Loading)
 
     private fun queuedRow(queued: QueuedDelayTransfer, found: GnosisPayReading.Found, busy: String?): QueuedRow {
-        val held = found.membersHeld.any { it.address == queued.member }
+        val held = found.controllersHeld.any { it.account.address == queued.member }
         val ready = queued.state is DelayTransferState.Ready
         // Shown greyed out whenever it cannot be done, saying why (owner ruling, 2026-10-18, #55).
         val execute = when {
@@ -269,7 +289,7 @@ class GnosisPayViewModel(
             asset = step.asset,
             to = step.to,
             amount = step.amount,
-            sender = found.membersHeld.firstOrNull()?.label ?: "",
+            sender = found.controllersHeld.firstOrNull()?.let { GnosisPayTexts.sender(it) } ?: "",
             error = step.error,
             quoting = step.quoting,
         )
@@ -322,7 +342,8 @@ class GnosisPayViewModel(
         val compose = flowState.value as? Flow.Compose ?: return
         val found = latest ?: return
         if (compose.quoting) return
-        val member = found.membersHeld.firstOrNull()?.address ?: return
+        val sender = found.controllersHeld.firstOrNull() ?: return
+        val member = sender.account.address
         val asset = GnosisPayTexts.assetOf(compose.asset, latestHoldings) ?: return showCompose(GnosisPayTexts.NO_ASSET)
         val to = when (val input = Eip55.parse(compose.to)) {
             is AddressInput.Valid -> input.address
@@ -343,7 +364,7 @@ class GnosisPayViewModel(
         viewModelScope.launch {
             val quotedAt = timeSource.markNow()
             val hidesAtQuote = hides
-            val quoting = safely { quoteDelayQueue(member, transfer, fee) }
+            val quoting = safely { quoteDelayQueue(member, transfer, fee, via = sender.via) }
             val unlock = if (quoting is DelayQuoting.Quoted) unlockStep() else UnlockStep()
             // Left meanwhile (Back, a new Send), the unlock's check included: the answer is no one's.
             if (request != mine || flowState.value !is Flow.Compose) return@launch
@@ -369,7 +390,7 @@ class GnosisPayViewModel(
         val overview = flowState.value as? Flow.Overview ?: return
         if (overview.busy != null) return
         val queued = latestQueued.firstOrNull { it.queuedBy == id } ?: return
-        if (found.membersHeld.none { it.address == queued.member }) return
+        if (found.controllersHeld.none { it.account.address == queued.member }) return
         if (found.sending == GnosisPaySending.RETIRED_MODULE || queued.state !is DelayTransferState.Ready) return
         flowState.value = Flow.Overview(busy = id)
         val mine = ++request
@@ -437,7 +458,8 @@ class GnosisPayViewModel(
             val level = review.quote.call.level
             val quoting = safely {
                 when (review.quote.step) {
-                    DelayStep.QUEUE -> quoteDelayQueue(review.member, review.quote.transfer, level)
+                    DelayStep.QUEUE ->
+                        quoteDelayQueue(review.member, review.quote.transfer, level, via = review.quote.via)
                     DelayStep.EXECUTE -> quoteDelayExecution(review.member, review.quote.transfer, level)
                 }
             }

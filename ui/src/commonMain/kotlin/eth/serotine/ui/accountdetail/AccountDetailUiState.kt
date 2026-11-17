@@ -100,7 +100,21 @@ sealed interface AccountDetailUiState {
          * null for any other account, and before it is read.
          */
         val gnosisPay: String? = null,
+        /**
+         * Whether that Gnosis Pay account is controlled from here: a key held here reaches its
+         * Delay by itself, as a member or through member Safes (owner's request, 2026-11-17). Its
+         * badge then says Full control, and Send opens the Gnosis Pay screen, where the transfer
+         * goes through the Delay; Swap stays greyed out, since only plain transfers go through it.
+         */
+        val gnosisPayControlled: Boolean = false,
     ) : AccountDetailUiState {
+
+        /**
+         * The badge the account shows: [control], which a Safe's owners held here give, or Full
+         * control for a Gnosis Pay account a key held here controls through its Delay.
+         */
+        val shownControl: Control
+            get() = if (gnosisPayControlled) Control.FULL_CONTROL else control
 
         /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */
         val segments: List<DetailSegment>
@@ -120,6 +134,8 @@ sealed interface AccountDetailUiState {
             get() = when {
                 !networkOn -> networkOffReason(network.name, label)
                 networkBlocked -> networkBlockedReason(network.name)
+                // Controlled here through its Delay: Send opens the Gnosis Pay screen.
+                gnosisPayControlled -> null
                 // A Gnosis Pay account's owner is a placeholder: its transfers go through its Delay module.
                 else -> sendBlockedReason(kind, control)?.let { if (placeholderOwned) GNOSIS_PAY_SEND else it }
             }
@@ -130,6 +146,14 @@ sealed interface AccountDetailUiState {
          */
         val sendOffersGnosisPay: Boolean
             get() = gnosisPay != null && networkOn && !networkBlocked && sendBlockedReason(kind, control) != null
+
+        /**
+         * Whether Send goes to the Gnosis Pay screen rather than this account's own Send: a Gnosis
+         * Pay account controlled from here whose owners held here cannot sign for it by themselves,
+         * as on the list ([eth.serotine.ui.accounts.AccountItem.sendsThroughGnosisPay]).
+         */
+        val sendsThroughGnosisPay: Boolean
+            get() = gnosisPayControlled && control != Control.FULL_CONTROL
 
         /**
          * Whether this is a Gnosis Pay account whose verified owners are all the placeholder

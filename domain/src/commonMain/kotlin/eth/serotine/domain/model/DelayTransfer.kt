@@ -37,6 +37,23 @@ data class DelayTransfer private constructor(
     /** `execTransactionFromModule(to, value, data, CALL)`: what a member sends the Delay to queue it. */
     fun queueData(): ByteArray = moduleCall(QUEUE)
 
+    /**
+     * The queueing as [sender] sends it, as the address it goes to and its call data: [queueData]
+     * to the Delay when [via] is empty ([sender] is a member); otherwise through the Safes in [via],
+     * the Delay's member first and the Safe [sender] owns last, each executing the call of the one
+     * before it as [SafeCalls.execAsOwner], confirmed by the owner that calls it (owner's request,
+     * 2026-11-17). The transaction then goes to the last Safe of [via].
+     */
+    fun queueCall(sender: Address, via: List<Address>): Pair<Address, ByteArray> {
+        var to = delay
+        var data = queueData()
+        via.forEachIndexed { i, safe ->
+            data = SafeCalls.execAsOwner(to, data, owner = via.getOrNull(i + 1) ?: sender)
+            to = safe
+        }
+        return to to data
+    }
+
     /** `executeNextTx(to, value, data, CALL)`: what is sent the Delay to execute it once its cooldown has passed. */
     fun executeData(): ByteArray = moduleCall(EXECUTE)
 

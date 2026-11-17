@@ -8,7 +8,9 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.DelayGeneration
 import eth.serotine.domain.repository.DelayModule
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.usecase.DelayControl
 import eth.serotine.domain.usecase.GnosisPayReading
+import eth.serotine.domain.usecase.HeldController
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.NetworkLabel
 import kotlin.test.Test
@@ -22,27 +24,50 @@ class GnosisPayEntryTest {
     private val member = Address.of("0xa52bddbc4145f89b3740266a74f2d81c358677aa")
     private val owner = Account(Network.GNOSIS, member, AccountKind.EOA, "Card owner", AccountCustody.InKeyStore)
 
-    private fun found(generation: DelayGeneration = DelayGeneration.CURRENT, held: List<Account> = listOf(owner)) =
-        GnosisPayReading.Found(
-            DelayModule(delay, generation, 180, 1_800, 0, 0, listOf(member)),
-            41,
-            membersHeld = held,
-            membersHeldElsewhere = emptyList(),
-            safeModules = listOf(delay),
-        )
+    private fun found(
+        generation: DelayGeneration = DelayGeneration.CURRENT,
+        held: List<HeldController> = listOf(HeldController(owner, emptyList())),
+    ) = GnosisPayReading.Found(
+        DelayModule(delay, generation, 180, 1_800, 0, 0, listOf(member)),
+        41,
+        controllersHeld = held,
+        keysHeldElsewhere = emptyList(),
+        safeModules = listOf(delay),
+        control = DelayControl(emptyList()),
+    )
 
     @Test
     fun aMemberHeldHereSaysTransfersGoThroughTheDelay() {
         assertEquals(
-            "Gnosis Pay account. Its controlling key is on this device: transfers go through its Delay module.",
+            GnosisPayEntry(
+                "Gnosis Pay account. A key on this device controls it: transfers go through its Delay module.",
+                controlled = true,
+            ),
             gnosisPayEntry(found()),
+        )
+    }
+
+    @Test
+    fun aKeyHeldHereOwningAMemberSafeSaysWhichSafeItGoesThrough() {
+        // Owner's request, 2026-11-17: the key controls the account through a member Safe of threshold 1.
+        val memberSafe = Address.of("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb")
+        assertEquals(
+            GnosisPayEntry(
+                "Gnosis Pay account. A key on this device controls it, through Safe 0xdbF0…C6FB: transfers go " +
+                    "through its Delay module.",
+                controlled = true,
+            ),
+            gnosisPayEntry(found(held = listOf(HeldController(owner, listOf(memberSafe))))),
         )
     }
 
     @Test
     fun noMemberHeldHereSaysItCannotSendFromHereYet() {
         assertEquals(
-            "Gnosis Pay account. Controlled through its Delay module, by a key that cannot send from here yet.",
+            GnosisPayEntry(
+                "Gnosis Pay account. Controlled through its Delay module, by a key that cannot send from here yet.",
+                controlled = false,
+            ),
             gnosisPayEntry(found(held = emptyList())),
         )
     }
@@ -50,7 +75,10 @@ class GnosisPayEntryTest {
     @Test
     fun aRetiredModuleSaysNothingIsSentThroughIt() {
         assertEquals(
-            "Gnosis Pay account. Its Delay module runs retired code, so Punicus sends nothing through it.",
+            GnosisPayEntry(
+                "Gnosis Pay account. Its Delay module runs retired code, so Punicus sends nothing through it.",
+                controlled = false,
+            ),
             gnosisPayEntry(found(DelayGeneration.RETIRED)),
         )
     }
@@ -108,5 +136,22 @@ class GnosisPayEntryTest {
         // Send keeps the generic reason, and still offers the Gnosis Pay screen beside it.
         assertEquals(true, mixed.sendOffersGnosisPay)
         assertEquals(false, mixed.sendReason == GNOSIS_PAY_SEND)
+    }
+
+    @Test
+    fun aGnosisPayAccountControlledFromHereShowsFullControlSendsThroughItsScreenAndNeverSwaps() {
+        val controlled = card.copy(gnosisPay = "Gnosis Pay account.", gnosisPayControlled = true)
+
+        assertEquals(Control.FULL_CONTROL, controlled.shownControl)
+        // The Safe's own owners still give nothing: only the badge and Send follow the Delay.
+        assertEquals(Control.WATCH_ONLY, controlled.control)
+        assertEquals(true, controlled.canSend)
+        assertEquals(true, controlled.sendsThroughGnosisPay)
+        assertEquals(false, controlled.canSwap)
+
+        val watched = card.copy(gnosisPay = "Gnosis Pay account.")
+        assertEquals(Control.WATCH_ONLY, watched.shownControl)
+        assertEquals(false, watched.canSend)
+        assertEquals(false, watched.sendsThroughGnosisPay)
     }
 }

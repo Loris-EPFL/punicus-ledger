@@ -114,7 +114,11 @@ the text wins.
   What is signed is always the address, shown in full beside the name.
 - **Control is a badge.** Every account says what the user can do with it:
   - *Full control*: an EOA whose key is in this device's key store, or a Safe
-    whose owners held here reach its threshold.
+    whose owners held here reach its threshold, or a Gnosis Pay account a key
+    held here controls by itself through its Delay module, as a member or
+    through member Safes of threshold 1 (owner's request, 2026-11-17;
+    docs/gnosis-pay.md, *Control through a member Safe*). Its Send opens the
+    Gnosis Pay screen; Swap stays greyed out.
   - *Co-signer*: a Safe with some owners held here, fewer than its threshold.
   - *Watch-only*: nothing held here. Send is greyed out (a tap says why);
     Receive and the balances are as for any account.

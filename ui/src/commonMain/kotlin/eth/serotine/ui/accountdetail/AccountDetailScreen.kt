@@ -373,6 +373,8 @@ fun AccountDetailScreen(
         val ready = state as? AccountDetailUiState.Ready
         val reason = ready?.sendReason
         when {
+            // A Gnosis Pay account controlled from here: its transfers go through its Delay, on its own screen.
+            reason == null && ready?.sendsThroughGnosisPay == true -> onGnosisPay()
             reason == null -> onSend(contract)
             // A Gnosis Pay account sends from its own screen: the way there, offered beside the reason.
             ready.sendOffersGnosisPay -> unavailable = notice("Send", reason).let { blocked ->
@@ -640,7 +642,7 @@ private fun Details(
                         // The account's network beside its control (N3, N4): the same address on
                         // another network is another account.
                         NetworkMark(state.network, style = MaterialTheme.typography.labelMedium)
-                        ControlBadge(state.control)
+                        ControlBadge(state.shownControl)
                         state.kindNote?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
                     }
                     if (!state.networkOn) {

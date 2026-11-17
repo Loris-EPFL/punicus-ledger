@@ -34,8 +34,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 
 // A Gnosis Pay account's transfer, through its Delay (docs/gnosis-pay.md, *Sending*; owner's
-// decisions, 2026-11-15): a member whose key is held here queues it, and after the cooldown sends
-// its execution. Both are the member's own transactions, quoted and sent as every transaction from
+// decisions, 2026-11-15): a key held here that controls the Delay queues it, as a member or through
+// member Safes that each need one signature (owner's request, 2026-11-17), and after the cooldown
+// sends its execution. Both are that key's own transactions, quoted and sent as every transaction from
 // an account this wallet holds ([CallQuoter], [signAndSend]). Strict in either sync mode: nothing
 // here is drafted on state last verified, as swaps and dApp requests are not (CLAUDE.md, *Trust*).
 
@@ -107,10 +108,11 @@ enum class DelayStep {
 }
 
 /**
- * A Gnosis Pay account's [transfer] quoted for review: the member's [step], its transaction quoted
- * from the member ([call]), and the Safe's balance of the asset it was checked against
- * ([safeBalance], at [safeBalanceBlock]). Only this file makes one: what is signed is its [call]'s
- * transaction.
+ * A Gnosis Pay account's [transfer] quoted for review: the [step], its transaction quoted from the
+ * key that sends it ([call]), the Safes a queueing goes through ([via], the Delay's member first;
+ * empty when the sender is a member, and for an execution, which anyone may send), and the Safe's
+ * balance of the asset it was checked against ([safeBalance], at [safeBalanceBlock]). Only this
+ * file makes one: what is signed is its [call]'s transaction.
  */
 @ConsistentCopyVisibility
 data class DelayQuote internal constructor(
@@ -120,8 +122,9 @@ data class DelayQuote internal constructor(
     val call: CallQuote,
     val safeBalance: UInt256,
     val safeBalanceBlock: Long?,
+    val via: List<Address> = emptyList(),
 ) {
-    /** What the member's transaction is recorded as. */
+    /** What the sender's transaction is recorded as. */
     val action: SentAction
         get() = when (step) {
             DelayStep.QUEUE -> SentAction.DelayQueue(transfer)
@@ -200,7 +203,7 @@ sealed interface DelayQuoting {
     /** The history of what this wallet sent cannot be read right now, so what waits from here cannot be told. */
     data object HistoryUnreadable : DelayQuoting
 
-    /** The member's transaction itself was not quoted: [refusal]. */
+    /** The sender's transaction itself was not quoted: [refusal]. */
     data class NotQuoted(val refusal: CallRefusal) : DelayQuoting
 
     /** The transfer cannot be executed now, standing as [state] in its queue. */
@@ -215,9 +218,11 @@ fun DelayTransfer.sameCall(other: DelayTransfer): Boolean =
  * The reads both quotes share: the Delay's queue read fresh at one block ([DelayModules.queue]),
  * which also proves the Delay the Safe's own of the current mastercopy; the Safe's verified balance
  * of the transfer's asset, at least its amount and what is already queued of it; for a token, the
- * Safe's own `transfer` run as a verified call, which must not answer false; the member's native
- * balance; then the member's call of the Delay quoted ([CallQuoter]): the queueing must return
- * true, the execution, which returns nothing, must not revert.
+ * Safe's own `transfer` run as a verified call, which must not answer false; the sender's native
+ * balance; then the sender's call quoted ([CallQuoter]): the queueing, straight to the Delay or
+ * through member Safes ([DelayTransfer.queueCall]), must return true, the execution, which returns
+ * nothing, must not revert. Through Safes, the run is what proves the way: it reverts unless each
+ * Safe is a member or owner of the next, as the call needs, and needs one signature.
  */
 private class DelayCallQuoter(
     private val delays: DelayModules,
@@ -254,14 +259,15 @@ private class DelayCallQuoter(
     }
 
     suspend fun quote(
-        member: Address,
+        sender: Address,
         transfer: DelayTransfer,
         step: DelayStep,
         level: FeeLevel,
         alreadyQueued: UInt256 = UInt256.ZERO,
+        via: List<Address> = emptyList(),
     ): DelayQuoting = cancellingReads {
-        quoter.heldBack(member)?.let { return@cancellingReads DelayQuoting.NotQuoted(it) }
-        val memberNative = async { nativeBalances.observeBalance(network, member).first() }
+        quoter.heldBack(sender)?.let { return@cancellingReads DelayQuoting.NotQuoted(it) }
+        val memberNative = async { nativeBalances.observeBalance(network, sender).first() }
         val safeHolds = when (val read = safeBalance(transfer)) {
             is SafeHolds.Read -> read
             is SafeHolds.NotRead -> return@cancellingReads DelayQuoting.NotQuoted(read.refusal)
@@ -288,15 +294,21 @@ private class DelayCallQuoter(
             is NativeRead.Before -> read
             is NativeRead.NotRead -> return@cancellingReads DelayQuoting.NotQuoted(read.refusal)
         }
-        val (data, accepts) = when (step) {
-            // `execTransactionFromModule` returns a bool: a word of zero is a refusal as surely as a revert.
-            DelayStep.QUEUE -> transfer.queueData() to { returned: String -> !Erc20.returnedFalse(returned) }
-            // `executeNextTx` returns nothing, and reverts when the Safe's call fails.
-            DelayStep.EXECUTE -> transfer.executeData() to { _: String -> true }
+        val (to, data) = when (step) {
+            DelayStep.QUEUE -> transfer.queueCall(sender, via)
+            DelayStep.EXECUTE -> transfer.delay to transfer.executeData()
         }
-        when (val quoted = quoter.quote(member, transfer.delay, UInt256.ZERO, data, level, native, accepts = accepts)) {
+        val accepts = when (step) {
+            // `execTransactionFromModule` returns a bool, and so does a Safe's `execTransaction` around
+            // it: a word of zero is a refusal as surely as a revert.
+            DelayStep.QUEUE -> { returned: String -> !Erc20.returnedFalse(returned) }
+            // `executeNextTx` returns nothing, and reverts when the Safe's call fails.
+            DelayStep.EXECUTE -> { _: String -> true }
+        }
+        val route = if (step == DelayStep.QUEUE) via else emptyList()
+        when (val quoted = quoter.quote(sender, to, UInt256.ZERO, data, level, native, accepts = accepts)) {
             is CallQuoting.Quoted -> DelayQuoting.Quoted(
-                DelayQuote(network, transfer, step, quoted.quote, safeHolds.amount, safeHolds.blockNumber),
+                DelayQuote(network, transfer, step, quoted.quote, safeHolds.amount, safeHolds.blockNumber, route),
             )
             is CallQuoting.Refused -> DelayQuoting.NotQuoted(quoted.refusal)
         }
@@ -335,9 +347,12 @@ private class DelayCallQuoter(
 }
 
 /**
- * Quotes the queueing of a Gnosis Pay account's [DelayTransfer] by [member], a member of its Delay
- * whose key is held here: `execTransactionFromModule` sent to the Delay, run as a verified call from
- * the member, which must succeed (it reverts for anyone who is not a member). The Delay's queue is
+ * Quotes the queueing of a Gnosis Pay account's [DelayTransfer] by `sender`, a key held here that
+ * controls its Delay by itself: `execTransactionFromModule` sent to the Delay by `sender` as a
+ * member, or, with `via`, through the member Safes on the way down to `sender`, each executing the
+ * call of the one before as its one owner's transaction ([DelayTransfer.queueCall]; owner's request,
+ * 2026-11-17). Run as a verified call from `sender`, which must succeed: it reverts for anyone who
+ * is not a member, or not the one owner a Safe on the way needs. The Delay's queue is
  * read fresh first, which proves the Delay the Safe's own of the current mastercopy (owner's
  * decisions, 2026-11-15); an entry of the same call still in it, or a queueing of it from here not
  * mined yet, is refused ([DelayQuoting.AlreadyQueued]), so no two entries share a hash. The Safe must
@@ -359,7 +374,12 @@ class QuoteDelayQueue(
     private val quoter =
         DelayCallQuoter(delays, inputs, nativeBalances, tokenBalances, sentTransfers, network, clock, outbox)
 
-    suspend operator fun invoke(member: Address, transfer: DelayTransfer, level: FeeLevel): DelayQuoting {
+    suspend operator fun invoke(
+        sender: Address,
+        transfer: DelayTransfer,
+        level: FeeLevel,
+        via: List<Address> = emptyList(),
+    ): DelayQuoting {
         val read = when (val fresh = quoter.freshQueue(transfer)) {
             is DelayCallQuoter.Fresh.Read -> fresh.reading
             is DelayCallQuoter.Fresh.Refused -> return fresh.quoting
@@ -386,14 +406,15 @@ class QuoteDelayQueue(
         val alreadyQueued = waiting.filter { it.queued.asset.sameAsset(transfer.asset) }
             .map { it.queued.amount }
             .sumOrNull() ?: return DelayQuoting.SafeInsufficient()
-        return quoter.quote(member, transfer, DelayStep.QUEUE, level, alreadyQueued)
+        return quoter.quote(sender, transfer, DelayStep.QUEUE, level, alreadyQueued, via)
     }
 }
 
 /**
- * Quotes the execution of a Gnosis Pay account's [DelayTransfer] that [member] queued before:
- * `executeNextTx` sent to the Delay. Only once its queue, read fresh ([DelayModules.queue]), proves
- * the Delay the Safe's own of the current mastercopy and has the transfer as the next entry, past
+ * Quotes the execution of a Gnosis Pay account's [DelayTransfer] that `member` queued before, sent
+ * by `member` itself, straight to the Delay: `executeNextTx`, which anyone may send. Only once its
+ * queue, read fresh ([DelayModules.queue]), proves the Delay the Safe's own of the current
+ * mastercopy and has the transfer as the next entry, past
  * its cooldown and short of its expiration ([DelayTransferState.Ready]); otherwise
  * [DelayQuoting.NotReady] says where it stands. The run as a verified call then makes the Safe's
  * own transfer, which must succeed. On [network] only. [clock] is in unix seconds.
@@ -428,7 +449,7 @@ class QuoteDelayExecution(
 }
 
 /**
- * Signs a reviewed [DelayQuote]'s transaction with the member's key as [unlock] opens it, and hands
+ * Signs a reviewed [DelayQuote]'s transaction with the sender's key as [unlock] opens it, and hands
  * it to the network ([signAndSend]): recorded as the queueing or the execution it is, which is how
  * the account's queued transfers are found again ([ReadDelayTransfers]). [clock] is in unix seconds.
  */
@@ -443,7 +464,8 @@ class SendDelayCall(
 }
 
 /**
- * A transfer this wallet queued for a Gnosis Pay account: [transfer], queued by [member] in the
+ * A transfer this wallet queued for a Gnosis Pay account: [transfer], queued by [member] (the key
+ * that sent the queueing, a member or the owner of a member Safe) in the
  * transaction [queuedBy] at [queuedAt] (unix seconds) and how that ended ([queueOutcome]), and where
  * it stands in the Delay's queue now ([state]; null when the queue could not be read), and
  * [executing], the hash of its execution from here while that is on its way, not mined yet.

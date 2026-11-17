@@ -22,9 +22,11 @@ sealed interface GnosisPayUiState {
     /**
      * The account [label] at [address] (EIP-55), its Delay module at [delay], what its Delay
      * makes a transfer wait ([waits]: "A transfer waits 3 min, then can be executed for 30 min"),
-     * where that was verified ([checkedAt]), its [members], Send ([send]: greyed out with its
-     * reason when it cannot be done here), the transfers queued from here ([queued]) with
-     * [queuedNote] saying what could not be read, and the [step] the screen is at.
+     * where that was verified ([checkedAt]), its [members], the [keys] at the end of the ways down
+     * from them through member Safes with [controlNote] saying what was not followed or not read,
+     * Send ([send]: greyed out with its reason when it cannot be done here), the transfers queued
+     * from here ([queued]) with [queuedNote] saying what could not be read, and the [step] the
+     * screen is at.
      */
     data class Ready(
         val label: String,
@@ -33,6 +35,8 @@ sealed interface GnosisPayUiState {
         val waits: String,
         val checkedAt: String,
         val members: List<MemberRow>,
+        val keys: List<KeyRow> = emptyList(),
+        val controlNote: String? = null,
         val send: ActionItem,
         val queued: List<QueuedRow>,
         val queuedNote: String?,
@@ -40,8 +44,26 @@ sealed interface GnosisPayUiState {
     ) : GnosisPayUiState
 }
 
-/** One member of the Delay: its EIP-55 [address], its name in the wallet ([label]), and whether its key is here. */
-data class MemberRow(val address: String, val label: String?, val heldHere: Boolean)
+/**
+ * One member of the Delay: its EIP-55 [address], its name in the wallet ([label]), whether a key on
+ * this device controls the account through it ([heldHere]), and [what] it is when that is more than
+ * a key ("A Safe: 1 of its 9 owners signs"), null for a key or one not read.
+ */
+data class MemberRow(val address: String, val label: String?, val heldHere: Boolean, val what: String? = null)
+
+/**
+ * A key at the end of a way down from a member (owner's request, 2026-11-17): its EIP-55 [address],
+ * its name in the wallet ([label]), whether its key is on this device ([heldHere]), the Safes it
+ * goes [through] ("Through Safe 0xdbF0…C6FB"; null for a member itself), and whether it acts [alone]
+ * or only with co-owners.
+ */
+data class KeyRow(
+    val address: String,
+    val label: String?,
+    val heldHere: Boolean,
+    val through: String?,
+    val alone: Boolean,
+)
 
 /**
  * An action shown either way: [enabled], or greyed out with the [reason] a tap on it says (owner

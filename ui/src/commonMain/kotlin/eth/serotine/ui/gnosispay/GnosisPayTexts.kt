@@ -13,6 +13,8 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.usecase.CallRefusal
+import eth.serotine.domain.usecase.ControlNode
+import eth.serotine.domain.usecase.DelayControl
 import eth.serotine.domain.usecase.DelayQuote
 import eth.serotine.domain.usecase.DelayQuoting
 import eth.serotine.domain.usecase.DelayStep
@@ -20,6 +22,7 @@ import eth.serotine.domain.usecase.DelayTransferState
 import eth.serotine.domain.usecase.DelayTransfersReading
 import eth.serotine.domain.usecase.GnosisPayReading
 import eth.serotine.domain.usecase.GnosisPaySending
+import eth.serotine.domain.usecase.HeldController
 import eth.serotine.domain.usecase.TokenHoldings
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.displaySymbol
@@ -72,9 +75,50 @@ internal object GnosisPayTexts {
         GnosisPaySending.WINDOW_TOO_SHORT ->
             "This account's Delay module gives a transfer too short a window to be executed in: an execution " +
                 "sent once it is ready could not be mined before it expires. Punicus queues nothing through it."
+        GnosisPaySending.CONTROL_UNREAD ->
+            "Which keys control this account cannot all be verified right now, so whether one is on this device " +
+                "cannot be told yet. Punicus keeps checking."
+        GnosisPaySending.CO_SIGNERS_NEEDED ->
+            "A key on this device controls this account only together with others: a Safe on its way needs more " +
+                "than one signature. Punicus sends through a Delay only with a key that can act alone."
         GnosisPaySending.NO_MEMBER_KEY ->
-            "The key of the account that controls this Gnosis Pay account is not on this device. Import its " +
-                "recovery phrase to send from here; until then the account is watched."
+            "No key that controls this Gnosis Pay account is on this device. Import the recovery phrase of one of " +
+                "the keys listed here to send from here; until then the account is watched."
+    }
+
+    /** What a member is when it is more than a key: a Safe and how many of its owners sign; null otherwise. */
+    fun memberWhat(node: ControlNode?): String? = when (node) {
+        is ControlNode.Safe -> "A Safe: ${node.threshold} of its ${node.owners.size} " +
+            (if (node.owners.size == 1) "owner signs" else "owners sign")
+        is ControlNode.OtherContract -> "A contract that is no Safe: not followed"
+        is ControlNode.NotFollowed -> "A Safe too far down to follow"
+        else -> null
+    }
+
+    /** The Safes a key goes through to the Delay, the member first; null for a member itself. */
+    fun through(via: List<Address>): String? = when (via.size) {
+        0 -> null
+        1 -> "Through Safe ${shortAddress(eip55(via.single()))}"
+        else -> "Through Safes " + via.joinToString(" → ") { shortAddress(eip55(it)) }
+    }
+
+    /** Who signs a transfer: the key's name, and the Safes it goes through. */
+    fun sender(held: HeldController): String =
+        listOfNotNull(held.account.label, through(held.via)?.replaceFirstChar { it.lowercase() }).joinToString(", ")
+
+    /** What the list of keys leaves out: what is not read yet, and what is not followed; null when nothing. */
+    fun controlNote(control: DelayControl?): String? {
+        if (control == null) return null
+        val notes = listOfNotNull(
+            "Some of the accounts on the way to these keys are not verified yet. Punicus keeps checking."
+                .takeIf { !control.complete },
+            control.notFollowed.size.takeIf { it > 0 }?.let { count ->
+                val what = if (count == 1) "1 signer is" else "$count signers are"
+                "$what not followed: a contract that is no Safe (a passkey, for one), a Safe older than 1.3.0, " +
+                    "or a Safe more than ${DelayControl.MAX_SAFES} levels down."
+            },
+        )
+        return notes.joinToString(" ").ifEmpty { null }
     }
 
     const val EXECUTE_NEEDS_MEMBER =
@@ -290,6 +334,12 @@ internal object GnosisPayTexts {
             "Amount" to amount(transfer.amount, transfer.asset, network),
         ) + tokenLines(transfer.asset, sharesBuiltInSymbol) + listOf(
             "Through" to "Delay module ${eip55(transfer.delay)}",
+        ) + listOfNotNull(
+            quote.via.takeIf { it.isNotEmpty() }?.let { via ->
+                "Through ${if (via.size == 1) "Safe" else "Safes"}" to via.joinToString(" → ") { eip55(it) } +
+                    ": ${if (via.size == 1) "it executes" else "each executes"} the call as its one owner's transaction"
+            },
+        ) + listOf(
             "Signed by" to eip55(member),
             "Fee" to maxFee,
             "Signer's $symbol" to "${call.nativeBefore.formatUnits(NATIVE_DECIMALS)} $symbol now, at least " +

@@ -246,6 +246,93 @@ private fun GnosisPayQueuedUnverifiedPreview() = GnosisPayPreview(
     ),
 )
 
+/**
+ * A Delay whose member is a Safe of threshold 1, whose owner's key is held here: the account is
+ * controlled from here through that Safe (owner's request, 2026-11-17).
+ */
+private val throughMemberSafe = overview.copy(
+    members = listOf(
+        MemberRow(
+            "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+            null,
+            heldHere = true,
+            what = "A Safe: 1 of its 3 owners signs",
+        ),
+    ),
+    keys = listOf(
+        KeyRow(
+            "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+            "Signer",
+            heldHere = true,
+            through = "Through Safe 0xdbF0…C6FB",
+            alone = true,
+        ),
+        KeyRow(
+            "0x52908400098527886E0F7030069857D2E4169EE7",
+            null,
+            heldHere = false,
+            through = "Through Safe 0xdbF0…C6FB",
+            alone = true,
+        ),
+    ),
+    controlNote = "1 signer is not followed: a contract that is no Safe (a passkey, for one), a Safe older than " +
+        "1.3.0, or a Safe more than 3 levels down.",
+)
+
+@Preview
+@Composable
+private fun GnosisPayMemberSafePreview() = GnosisPayPreview(throughMemberSafe)
+
+@Preview
+@Composable
+private fun GnosisPayCoSignerPreview() = GnosisPayPreview(
+    throughMemberSafe.copy(
+        members = listOf(
+            MemberRow(
+                "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+                null,
+                heldHere = false,
+                what = "A Safe: 2 of its 3 owners sign",
+            ),
+        ),
+        keys = throughMemberSafe.keys.map { it.copy(alone = false) },
+        send = ActionItem(
+            enabled = false,
+            reason = "A key on this device controls this account only together with others: a Safe on its way " +
+                "needs more than one signature. Punicus sends through a Delay only with a key that can act alone.",
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun GnosisPayReviewMemberSafePreview() = GnosisPayPreview(
+    throughMemberSafe.copy(
+        step = GnosisPayStep.Review(
+            title = "Queue 50 EURe to 0x5aAeb6…eAed",
+            lines = queueLines.map { (label, value) ->
+                when (label) {
+                    "To" -> label to "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
+                    "Signed by" -> label to "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb"
+                    else -> label to value
+                }
+            }.flatMap { line ->
+                if (line.first == "Through") {
+                    listOf(
+                        line,
+                        "Through Safe" to "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB: it executes the call as its " +
+                            "one owner's transaction",
+                    )
+                } else {
+                    listOf(line)
+                }
+            },
+            fee = FeeLevel.NORMAL,
+            unlock = UnlockStep(),
+        ),
+    ),
+)
+
 @Preview
 @Composable
 private fun GnosisPayLoadingPreview() = GnosisPayPreview(GnosisPayUiState.Loading)
@@ -276,6 +363,9 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("review-not-sent") { GnosisPayReviewNotSentPreview() },
     ScreenPreview("review-biometrics") { GnosisPayReviewBiometricsPreview() },
     ScreenPreview("queued-unverified") { GnosisPayQueuedUnverifiedPreview() },
+    ScreenPreview("member-safe") { GnosisPayMemberSafePreview() },
+    ScreenPreview("co-signer") { GnosisPayCoSignerPreview() },
+    ScreenPreview("review-member-safe") { GnosisPayReviewMemberSafePreview() },
     ScreenPreview("loading") { GnosisPayLoadingPreview() },
     ScreenPreview("unavailable") { GnosisPayUnavailablePreview() },
 )

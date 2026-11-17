@@ -121,6 +121,7 @@ import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveGnosisPay
+import eth.serotine.domain.usecase.ObserveGnosisPays
 import eth.serotine.domain.usecase.ObserveHeavyDownloads
 import eth.serotine.domain.usecase.ObserveInterfaceMode
 import eth.serotine.domain.usecase.ObserveKeptSafe
@@ -465,6 +466,7 @@ class AppGraph(
             AcknowledgeLostOutbox(outbox),
             offerHandoff = OfferHandoff(walletHandoff),
             holdNetworksWhileEmpty = HoldNetworksWhileEmpty(accounts, networkSettings, networkDemand),
+            observeGnosisPays = ObserveGnosisPays(accounts, observeGnosisPay()),
         )
 
     /** The light clients' status strips of the screens that depend on them: one for the app, in the host's scope. */

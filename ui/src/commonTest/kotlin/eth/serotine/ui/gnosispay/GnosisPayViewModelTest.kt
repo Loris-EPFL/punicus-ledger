@@ -58,6 +58,8 @@ import eth.serotine.ui.MemoryOutbox
 import eth.serotine.ui.MemorySentTransfers
 import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.shortAddress
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -91,9 +93,11 @@ class GnosisPayViewModelTest {
     private val owner = Account(Network.GNOSIS, member, AccountKind.EOA, "Card owner", AccountCustody.InKeyStore)
     private val accounts = FakeAccounts(card, owner)
 
+    /** Kinds that differ from the card Safe's own, by address: a member that is a Safe, its owners. */
+    private val otherKinds = mutableMapOf<Address, KindReading>()
     private val kinds = object : AddressKinds {
         override fun observeKind(network: Network, address: Address): Flow<KindReading> = flowOf(
-            KindReading.Verified(
+            otherKinds[address] ?: KindReading.Verified(
                 AddressKind.Safe(
                     SafeState("1.3.0", false, listOf(sentinel), 1, 3, listOf(delay), null),
                 ),
@@ -196,6 +200,50 @@ class GnosisPayViewModelTest {
         assertEquals(member, recorded.account)
         assertEquals(listOf("correct horse"), signer.passwords)
         assertEquals(GnosisPayStep.Overview(), viewModel.ready().step)
+    }
+
+    @Test
+    fun theOwnerOfAMemberSafeSendsThroughItAndIsListedAmongTheKeys() = runTest {
+        // The Delay's member is a Safe of threshold 1 whose owner's key is held here (owner's request, 2026-11-17).
+        val key = Address.of("0x" + "91".repeat(20))
+        val passkey = Address.of("0x" + "fd".repeat(20))
+        otherKinds[member] = KindReading.Verified(
+            AddressKind.Safe(SafeState("1.4.1", true, listOf(passkey, key), 1, 80, emptyList(), null)),
+            40,
+        )
+        otherKinds[passkey] = KindReading.Verified(AddressKind.Contract, 40)
+        val keyHeld = Account(Network.GNOSIS, key, AccountKind.EOA, "Signer", AccountCustody.InKeyStore)
+        accounts.accounts.value = listOf(card, keyHeld)
+        balances.of(key).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 41)
+        val viewModel = viewModel()
+
+        val state = viewModel.ready()
+        assertEquals(ActionItem(enabled = true, reason = null), state.send)
+        assertEquals("A Safe: 1 of its 2 owners sign", state.members.single().what)
+        assertTrue(state.members.single().heldHere)
+        val listed = state.keys.single()
+        assertEquals("Signer", listed.label)
+        assertTrue(listed.heldHere && listed.alone)
+        val short = shortAddress(Eip55.format(member))
+        assertEquals("Through Safe $short", listed.through)
+        assertNotNull(state.controlNote, "the passkey is said not to be followed")
+
+        viewModel.startSend()
+        assertEquals("Signer, through Safe $short", (viewModel.ready().step as GnosisPayStep.Compose).sender)
+        viewModel.onAssetChange(null)
+        viewModel.onToChange(recipient.hex)
+        viewModel.onAmountChange("1")
+        viewModel.review()
+        val review = viewModel.ready().step as GnosisPayStep.Review
+        assertEquals(Eip55.format(key), review.lines.toMap()["Signed by"])
+        assertTrue(review.lines.toMap().getValue("Through Safe").startsWith(Eip55.format(member)))
+
+        viewModel.onPasswordChange("correct horse")
+        viewModel.sign()
+        viewModel.sent.first { it != null }
+        val recorded = (sent.observe().first() as SentTransferList.Loaded).transfers.single()
+        assertEquals(key, recorded.account)
+        assertTrue(recorded.action is SentAction.DelayQueue)
     }
 
     @Test

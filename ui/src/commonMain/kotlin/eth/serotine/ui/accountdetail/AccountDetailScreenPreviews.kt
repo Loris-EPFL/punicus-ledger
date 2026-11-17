@@ -474,9 +474,14 @@ private fun AccountDetailSafeOwnersPreview() = AccountDetailPreview(treasury.cop
 
 @Preview
 @Composable
-private fun AccountDetailGnosisPayOwnersPreview() = AccountDetailPreview(
-    // As account-kit leaves one: its one owner the placeholder 0x…02, the Roles and Delay modules on,
-    // controlled by a member of the Delay whose key is on this device, not by any owner.
+private fun AccountDetailGnosisPayOwnersPreview() = AccountDetailPreview(gnosisPayCard)
+
+/**
+ * A Gnosis Pay account as account-kit leaves one: its one owner the placeholder 0x…02, the Roles and
+ * Delay modules on, controlled through the Delay by a key on this device that owns the Delay's
+ * member Safe (owner's request, 2026-11-17): Full control, and Send opens the Gnosis Pay screen.
+ */
+private val gnosisPayCard =
     treasury.copy(
         label = "Card",
         network = NetworkLabel(100, "Gnosis Chain", testnet = false),
@@ -503,9 +508,15 @@ private fun AccountDetailGnosisPayOwnersPreview() = AccountDetailPreview(
         threshold = "1/1",
         queue = SafeQueue.Shown(rows = emptyList()),
         segment = DetailSegment.OWNERS,
-        gnosisPay = "Gnosis Pay account. Its controlling key is on this device: transfers go through its Delay module.",
-    ),
-)
+        gnosisPay = "Gnosis Pay account. A key on this device controls it, through Safe 0xdbF0…C6FB: transfers " +
+            "go through its Delay module.",
+        gnosisPayControlled = true,
+    )
+
+@Preview
+@Composable
+private fun AccountDetailGnosisPayControlledPreview() =
+    AccountDetailPreview(gnosisPayCard.copy(segment = DetailSegment.ASSETS))
 
 @Preview
 @Composable
@@ -925,4 +936,5 @@ internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("activity-queued") { AccountDetailActivityQueuedPreview() },
     ScreenPreview("activity-queued-conflict-dark") { AccountDetailActivityQueuedConflictPreview() },
     ScreenPreview("gnosis-pay-owners") { AccountDetailGnosisPayOwnersPreview() },
+    ScreenPreview("gnosis-pay-controlled") { AccountDetailGnosisPayControlledPreview() },
 )

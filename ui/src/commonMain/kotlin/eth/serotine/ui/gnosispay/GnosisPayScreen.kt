@@ -72,6 +72,9 @@ const val GNOSIS_PAY_SEND_TAG = "gnosis-pay-send"
 /** Test tag of a queued transfer's Execute, for UI tests: one per row, suffixed with its id. */
 const val GNOSIS_PAY_EXECUTE_TAG = "gnosis-pay-execute"
 
+/** The tag of each key listed under Keys, reached through a member Safe, for tests. */
+const val GNOSIS_PAY_KEY_TAG = "gnosis-pay-key"
+
 /** Test tag of the recipient field, for UI tests. */
 const val GNOSIS_PAY_TO_TAG = "gnosis-pay-to"
 
@@ -247,13 +250,46 @@ private fun Overview(
             AccountAvatar(member.address, size = 32.dp)
             Column {
                 Text(
-                    listOfNotNull(member.label, if (member.heldHere) "key on this device" else "key not on this device")
-                        .joinToString(" · "),
+                    listOfNotNull(
+                        member.label,
+                        when {
+                            member.what == null && member.heldHere -> "key on this device"
+                            member.what == null -> "key not on this device"
+                            member.heldHere -> "a key on this device controls it"
+                            else -> null
+                        },
+                    ).joinToString(" · ").ifEmpty { "Member" }.replaceFirstChar { it.uppercase() },
                 )
                 Mono(member.address)
+                member.what?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         }
     }
+    // The keys at the end of the ways down, where a member is a Safe (owner's request, 2026-11-17).
+    if (state.keys.any { it.through != null }) {
+        Text("Keys", style = MaterialTheme.typography.titleSmall)
+        state.keys.filter { it.through != null }.forEach { key ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.testTag(GNOSIS_PAY_KEY_TAG),
+            ) {
+                AccountAvatar(key.address, size = 32.dp)
+                Column {
+                    Text(
+                        listOfNotNull(
+                            key.label,
+                            if (key.heldHere) "key on this device" else "key not on this device",
+                            "only with co-owners".takeIf { !key.alone },
+                        ).joinToString(" · ").replaceFirstChar { it.uppercase() },
+                    )
+                    Mono(key.address)
+                    key.through?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+        }
+    }
+    state.controlNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     val sendLabel = "Send through the Delay"
     Button(
         onClick = {

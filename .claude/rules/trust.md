@@ -182,6 +182,15 @@ carve-out of 2026-11-10 and its rulings of 2026-11-11 and 2026-11-13 on #761;
   key is held here, as an account on Gnosis Chain, may queue a transfer for
   the Safe and then execute it. Both are its own transactions, each quoted,
   simulated and signed like any other, and it pays both fees.
+- **So does a key that owns a member Safe** (owner's request, 2026-11-17).
+  Members are followed down through Safes to the keys, each address's kind
+  proven, at most three Safes deep. A key held here whose every Safe on the
+  way needs one signature controls the account by itself: the account shows
+  Full control, and the key queues through those Safes, each executing the
+  call with `execTransaction` as its one owner's transaction (no value,
+  CALL, no refund, a pre-validated signature of the owner that calls it).
+  A Safe of a higher threshold on the way makes the key a co-signer only:
+  nothing is sent. What is not read is never taken for no key.
 - **Only plain transfers.** The Safe's xDAI as the value with no data, or an
   ERC-20 `transfer` with no value; operation CALL; never to the Safe, its
   modules or the Delay. Anything else is refused.

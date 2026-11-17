@@ -43,6 +43,7 @@
           <li><a href="#watch">Watch an address</a></li>
           <li><a href="#add-safe">Add a Safe you already have</a></li>
           <li><a href="#create-safe">Create a new Safe</a></li>
+          <li><a href="#walletconnect">Connect to a web app (WalletConnect)</a></li>
           <li><a href="#after">What to do next</a></li>
         </ul>
       </div>
@@ -349,7 +350,66 @@
       </div>
     </section>
 
-    <section class="section" id="after">
+    <section class="section" id="walletconnect">
+      <div class="wrap walk wide">
+        <div>
+          <h2>Connect to a web app (WalletConnect)</h2>
+          <p class="when">Web apps that work with wallets, often called dApps, connect to Punicus through WalletConnect. You start the connection in Punicus, then choose which accounts the app may see.</p>
+          <ol class="steps">
+            <li>
+              In the web app, choose <span class="ui">WalletConnect</span> as the way to connect.
+              <p>It shows a QR code, with a button to copy the same thing as a link that begins with <code>wc:</code>.</p>
+            </li>
+            <li>
+              In Punicus, open <span class="ui">Settings</span>, then <span class="ui">Connected dApps</span>, and tap <span class="ui">Connect a dApp</span>.
+            </li>
+            <li>
+              <span class="ui">Paste the link</span> and tap <span class="ui">Connect</span>.
+              <p>On Android you can tap Scan the QR code instead. If the web app runs in the browser of the same phone, opening its link brings you here with the link filled in.</p>
+            </li>
+            <li>
+              <span class="ui">Tap the web app's entry under "Waiting for you".</span>
+              <p>Punicus goes back to Connected dApps. After a moment the web app appears there with the line "Asks to connect · Review". It looks like a line of text, and it is the button: nothing is connected until you tap it.</p>
+            </li>
+            <li>
+              <span class="ui">Tick the accounts</span> the web app may see, then tap <span class="ui">Approve</span> at the bottom of the screen.
+              <p>The web app sees only the accounts you tick. An account in grey cannot be offered: tap it and Punicus says why. A watched account has no key here to sign with, for example.</p>
+            </li>
+            <li>
+              <span class="ui">Answer what the web app asks for.</span>
+              <p>When it wants you to sign in, sign a message or send a transaction, the request opens in Punicus by itself. Read what it will do, then sign, or refuse. A request you leave open waits under "Waiting for you", again with "Review" at the end of its line.</p>
+            </li>
+          </ol>
+          <p class="caution">The step that is easy to miss is the fourth. Connect only starts the connection. The web app keeps waiting until you tap its "Asks to connect · Review" entry and approve it.</p>
+          <p class="proofline">One connection holds accounts on Ethereum and Gnosis Chain, or accounts on the Sepolia test network, never both kinds. To end it, tap Disconnect under the web app's name in Connected dApps. A Safe can be connected too: what the web app asks it to send becomes a Safe transaction for its owners to sign.</p>
+        </div>
+        <ul class="shots">
+          <li>
+            <figure>
+              <img class="crop" style="--rows: 390" loading="lazy" src="../docs/screenshots/pair-dapp/with-scan.png" width="412" height="892" alt="Connect a dApp: a button to scan the QR code, a field for the WalletConnect link and the Connect button.">
+              <figcaption>Paste the link, or scan the code</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <div class="frame">
+                <img loading="lazy" src="../docs/screenshots/connections/connected.png" width="412" height="892" alt="Connected dApps. Under 'Waiting for you' are three entries; the third, Uniswap Interface, says 'Asks to connect · Review' and is marked. Under 'Connected' are two web apps, each with Extend and Disconnect.">
+                <span class="mark" style="--top: 36.1%; --height: 8.8%"></span>
+              </div>
+              <figcaption>Tap the marked entry: "Asks to connect · Review"</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img loading="lazy" src="../docs/screenshots/dapp-proposal/request.png" width="412" height="892" alt="Connection request from Uniswap Interface: its network, what it may ask for, and the accounts to tick. Main is ticked; the accounts that cannot be offered are grey, each with its reason.">
+              <figcaption>Tick the accounts; Approve is further down</figcaption>
+            </figure>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section tinted" id="after">
       <div class="wrap">
         <div class="section-head">
           <h2>What to do next</h2>

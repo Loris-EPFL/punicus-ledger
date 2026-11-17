@@ -9,7 +9,7 @@ built so that it can also be published to Swarm and reached through
 | File | What it is |
 |---|---|
 | `index.html` | the front page: what Punicus does, the app's screens, keys and privacy, the downloads |
-| `guide.html` | getting started: create or import an account, watch an address, add or create a Safe |
+| `guide.html` | getting started: create or import an account, watch an address, add or create a Safe, connect a web app over WalletConnect |
 | `404.html` | the page for an address that does not exist |
 | `css/site.css` | the one stylesheet, light and dark |
 | `fonts/` | Atkinson Hyperlegible Next and Mono, with their licence (`OFL.txt`) |
@@ -69,7 +69,9 @@ repository, the site's source, or files that are not an earlier build.
   optional services see is said as the privacy policy says it.
 - **The screens are the app's own**, from `docs/screenshots/`. Never a mock-up
   and never an edited image. A screen may be cut off below its content
-  (`class="crop"`, with the number of rows to show in `--rows`).
+  (`class="crop"`, with the number of rows to show in `--rows`), and a
+  step may point at a spot on it with an outline drawn over the image
+  (`class="mark"`).
 - **The pages show the phone app.** The previews are rendered on the desktop,
   where screen capture cannot be blocked, so the screens that show a recovery
   phrase or take the password end in a notice saying so. The desktop and iOS

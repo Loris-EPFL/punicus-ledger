@@ -991,6 +991,23 @@ pre {
   object-position: top;
 }
 
+/* A spot on a screen that a step points at: an outline drawn over the image, which is not
+   changed. `--top` and `--height` place it, as shares of the image's height. */
+.shots .frame {
+  position: relative;
+}
+
+.shots .mark {
+  position: absolute;
+  left: 1.5%;
+  right: 1.5%;
+  top: var(--top);
+  height: var(--height);
+  border: 3px solid var(--warn);
+  border-radius: 0.7rem;
+  pointer-events: none;
+}
+
 .shots figcaption {
   margin-top: 0.5rem;
   font-size: 0.95rem;

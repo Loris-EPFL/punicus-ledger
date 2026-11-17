@@ -495,6 +495,14 @@ a Safe transaction*). What the engine adds:
 - **The Safe's state** is the verified inspection above (`VerifiedAddressKinds`):
   owners, threshold and nonce, each storage-proven at one block. A request,
   a signature or an execution is checked against it.
+- **A Delay's getters** (`VerifiedDelayModules`, docs/gnosis-pay.md) are
+  verified calls that must answer at one block. The first is made at the
+  head; the others pass the block it answered at as `callDetailed`'s block
+  selector (`0x<number>`), which the engine applies or refuses. Each answer's
+  block number, and hash where the engine names one, is checked against the
+  first's. Seen on a Pixel on Gnosis Chain, 2026-11-17: a numbered call
+  answers at that block, where eight calls at the head never fit under one
+  five-second block.
 - **Approvals on chain** are `VerifiedSafeApprovals` (`SafeApprovals`): the
   Safe's own getter `approvedHashes(owner, hash)` as a verified call
   (`callDetailed`, no sender) at the head, labelled with the block the engine

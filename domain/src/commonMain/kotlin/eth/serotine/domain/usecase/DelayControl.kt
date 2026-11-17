@@ -49,6 +49,12 @@ sealed interface ControlNode {
     data class NotFollowed(override val address: Address) : ControlNode
 
     /**
+     * An address past the reads one Delay is given ([DelayControl.MAX_ADDRESSES]): never read, so
+     * what it is, and what is behind it, is not known.
+     */
+    data class OverBudget(override val address: Address) : ControlNode
+
+    /**
      * An address no key controls: `0x…01` to `0x…ff`, where account-kit's placeholder owner `0x…02`
      * and Safe's sentinel are; never read.
      */
@@ -86,9 +92,15 @@ data class DelayControl(val members: List<ControlNode>) {
         get() = members.map { it.address }
 
     /** Whether every address on the way down was read: false while one is not, or cannot be. */
-    val complete: Boolean by lazy { members.none { it.hasUnread() } }
+    val complete: Boolean by lazy { members.none { it.any { node -> node is ControlNode.Unread } } }
 
-    /** The addresses on the way down that are neither a key nor a Safe followed: contracts, Safes too deep. */
+    /** Whether an address on the way down was left unread, past [MAX_ADDRESSES]: then never complete either. */
+    val overBudget: Boolean by lazy { members.any { it.any { node -> node is ControlNode.OverBudget } } }
+
+    /**
+     * The addresses on the way down that are neither a key nor a Safe followed: contracts, Safes too
+     * deep or too old, and addresses past [MAX_ADDRESSES].
+     */
     val notFollowed: List<Address> by lazy {
         buildList { members.forEach { collectNotFollowed(it) } }.distinct()
     }
@@ -101,15 +113,13 @@ data class DelayControl(val members: List<ControlNode>) {
         }
     }
 
-    private fun ControlNode.hasUnread(): Boolean = when (this) {
-        is ControlNode.Unread -> true
-        is ControlNode.Safe -> owners.any { it.hasUnread() }
-        else -> false
-    }
+    /** Whether this node, or one below it, is [match]. */
+    private fun ControlNode.any(match: (ControlNode) -> Boolean): Boolean =
+        match(this) || (this is ControlNode.Safe && owners.any { it.any(match) })
 
     private fun MutableList<Address>.collectNotFollowed(node: ControlNode) {
         when (node) {
-            is ControlNode.OtherContract, is ControlNode.NotFollowed -> add(node.address)
+            is ControlNode.OtherContract, is ControlNode.NotFollowed, is ControlNode.OverBudget -> add(node.address)
             is ControlNode.Safe -> node.owners.forEach { collectNotFollowed(it) }
             else -> Unit
         }
@@ -118,26 +128,45 @@ data class DelayControl(val members: List<ControlNode>) {
     companion object {
         /** How many Safes deep a way down from a member is followed: a member Safe, its owner Safe, and one more. */
         const val MAX_SAFES = 3
+
+        /**
+         * How many addresses one Delay's tree may read, each a verified read the light client keeps
+         * proving while it is shown: the members share it evenly, and a Safe what is left of its
+         * share among its owners. A key held here costs nothing and is always found. Anyone can build
+         * a wide tree on chain cheaply; this keeps watching one cheap too.
+         */
+        const val MAX_ADDRESSES = 32
     }
 }
 
 /**
  * Reads who controls a Delay whose members are [members] ([DelayControl]), on [network]: each
  * address's kind as the light client proves it ([AddressKinds]), a Safe's owners read the same way
- * in turn, at most [DelayControl.MAX_SAFES] Safes deep. An address in [keys], an account whose key
+ * in turn, at most [DelayControl.MAX_SAFES] Safes deep and [DelayControl.MAX_ADDRESSES] addresses
+ * in all ([ControlNode.OverBudget] past them). An address in [keys], an account whose key
  * the wallet holds, is a key without a read. Each address is said [ControlNode.Unread] until its
  * kind is read, so the whole is told at once and filled in as the reads land; a Safe's owners are
  * read again only when its owners or threshold change, not at every nonce.
  */
 internal class DelayControlReader(private val kinds: AddressKinds) {
 
-    fun observe(network: Network, members: List<Address>, keys: Set<Address>): Flow<DelayControl> =
-        combineAll(members.map { node(network, it, emptyList(), keys) }).map { DelayControl(it) }
+    fun observe(network: Network, members: List<Address>, keys: Set<Address>): Flow<DelayControl> {
+        val share = if (members.isEmpty()) 0 else DelayControl.MAX_ADDRESSES / members.size
+        return combineAll(members.map { node(network, it, emptyList(), keys, share) }).map { DelayControl(it) }
+    }
 
+    /** [address]'s node, read with at most [budget] reads for it and all below it. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private fun node(network: Network, address: Address, path: List<Address>, keys: Set<Address>): Flow<ControlNode> {
+    private fun node(
+        network: Network,
+        address: Address,
+        path: List<Address>,
+        keys: Set<Address>,
+        budget: Int,
+    ): Flow<ControlNode> {
         if (address in keys) return flowOf(ControlNode.Key(address))
         if (address.isPlaceholder()) return flowOf(ControlNode.Placeholder(address))
+        if (budget < 1) return flowOf(ControlNode.OverBudget(address))
         return kinds.observeKind(network, address)
             .map { Shape.of(it) }
             .distinctUntilChanged()
@@ -150,7 +179,9 @@ internal class DelayControlReader(private val kinds: AddressKinds) {
                     is Shape.Safe -> if (address in path || path.size >= DelayControl.MAX_SAFES) {
                         flowOf(ControlNode.NotFollowed(address))
                     } else {
-                        combineAll(shape.owners.map { node(network, it, path + address, keys) })
+                        // This read spent, the rest shared among the owners.
+                        val share = if (shape.owners.isEmpty()) 0 else (budget - 1) / shape.owners.size
+                        combineAll(shape.owners.map { node(network, it, path + address, keys, share) })
                             .map { owners -> ControlNode.Safe(address, shape.threshold, owners) }
                     }
                 }

@@ -250,7 +250,7 @@ private fun Overview(
             AccountAvatar(member.address, size = 32.dp)
             Column {
                 Text(
-                    listOfNotNull(
+                    labelled(
                         member.label,
                         when {
                             member.what == null && member.heldHere -> "key on this device"
@@ -258,7 +258,7 @@ private fun Overview(
                             member.heldHere -> "a key on this device controls it"
                             else -> null
                         },
-                    ).joinToString(" · ").ifEmpty { "Member" }.replaceFirstChar { it.uppercase() },
+                    ).ifEmpty { "Member" },
                 )
                 Mono(member.address)
                 member.what?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -277,11 +277,11 @@ private fun Overview(
                 AccountAvatar(key.address, size = 32.dp)
                 Column {
                     Text(
-                        listOfNotNull(
+                        labelled(
                             key.label,
                             if (key.heldHere) "key on this device" else "key not on this device",
                             "only with co-owners".takeIf { !key.alone },
-                        ).joinToString(" · ").replaceFirstChar { it.uppercase() },
+                        ),
                     )
                     Mono(key.address)
                     key.through?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -412,4 +412,17 @@ private fun Review(step: GnosisPayStep.Review, actions: GnosisPayActions) {
 @Composable
 private fun Mono(text: String) {
     Text(text, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+}
+
+/**
+ * A row's line: the account's own [label] as it is named, then [notes]; with no label, the first
+ * note starts the sentence, capitalised. A name ("alice.eth") is never changed.
+ */
+private fun labelled(label: String?, vararg notes: String?): String {
+    val rest = notes.filterNotNull()
+    return if (label != null) {
+        (listOf(label) + rest).joinToString(" · ")
+    } else {
+        rest.joinToString(" · ").replaceFirstChar { it.uppercase() }
+    }
 }

@@ -395,6 +395,26 @@ class ObserveGnosisPayTest {
     }
 
     @Test
+    fun aWideTreeIsReadWithinItsBudgetAndAHeldKeyIsStillFound() = runTest {
+        // A member Safe of 40 owners: more than one Delay's reads allow. A held key needs none.
+        val owners = (1..40).map { Address.of("0x" + it.toString(16).padStart(2, '0').repeat(20)) }
+        others[memberSafe] = MutableStateFlow(safeOf(owners + ownerKey))
+        val held = eoa(Network.GNOSIS, address = ownerKey)
+
+        val reading = observe(held)(gnosisPay).settled() as GnosisPayReading.Found
+
+        assertEquals(GnosisPaySending.AVAILABLE, reading.sending)
+        assertTrue(kindsAsked.size <= DelayControl.MAX_ADDRESSES, "${kindsAsked.size} reads")
+        assertEquals(owners, reading.control?.notFollowed)
+
+        // Without the key: never "no key here", only that the tree is too wide to tell.
+        kindsAsked.clear()
+        val none = observe()(gnosisPay).settled() as GnosisPayReading.Found
+        assertEquals(GnosisPaySending.CONTROL_TOO_WIDE, none.sending)
+        assertTrue(kindsAsked.size <= DelayControl.MAX_ADDRESSES, "${kindsAsked.size} reads")
+    }
+
+    @Test
     fun theSentinelOwnerIsNeverReadNorAController() = runTest {
         others[memberSafe] = MutableStateFlow(safeOf(listOf(sentinelOwner)))
 

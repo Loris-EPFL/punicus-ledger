@@ -63,9 +63,10 @@ What the app does today:
   the pinned one or none (the zero address removes it), or enable a module,
   is shown and never signed, approved or executed here.
 - **Gnosis Pay.** A watched Gnosis Pay account (the Safe behind the Gnosis Pay
-  card, on Gnosis Chain) is recognised, and a member whose key is held here
-  sends a plain transfer through the account's Delay module: queued first,
-  executed after the cooldown, with no relayer (docs/gnosis-pay.md).
+  card, on Gnosis Chain) is recognised, and a key held here that controls its
+  Delay module, as a member or as the owner of a member Safe, sends a plain
+  transfer through it: queued first, executed after the cooldown, with no
+  relayer (docs/gnosis-pay.md).
 - **NFTs.** An account's NFTs, found in its verified log index and shown only
   once proven held, with on-chain metadata only; older ones are added by
   contract and id, ENS names also by name, and the ENS names pointing to an

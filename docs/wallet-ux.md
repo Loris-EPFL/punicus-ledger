@@ -1647,34 +1647,52 @@ they are helpful." The rulings (owner rulings, 2026-11-05, #246; the
 
 ### A Gnosis Pay account
 
-A Safe on Gnosis Chain whose own Delay module a member controls
-(docs/gnosis-pay.md; owner's decisions, 2026-11-15). Its Owners tab says
-"Gnosis Pay account" and opens **Gnosis Pay**, a screen of its own:
+A Safe on Gnosis Chain whose own Delay module a member controls, or a key
+that owns a member Safe (docs/gnosis-pay.md; owner's decisions, 2026-11-15,
+and owner's request, 2026-11-17). Its Owners tab says "Gnosis Pay account" and
+opens **Gnosis Pay**, a screen of its own:
 
 - The account, its Delay module, and what the Delay makes a transfer do, in
   that account's own figures: "A transfer waits 3 min in the Delay module,
   then can be executed for 30 min."
-- Who controls it: each member, and whether its key is on this device.
+- Who controls it: each member, what it is ("A Safe: 1 of its 9 owners
+  signs", "A contract that is no Safe: not followed", "Not verified yet",
+  never a key before it is proven one), and whether a key on this device
+  controls the account through it. Where a member is a Safe, **Keys** lists
+  the keys at the end of the ways down: each with its name in the wallet,
+  whether its key is on this device, the Safes it goes through in the order
+  the call runs, and "only with co-owners" where a Safe on the way needs more
+  than one signature. A note under them says what is not verified yet, and
+  what is not followed (a contract that is no Safe, a Safe older than 1.3.0
+  or too far down, an account past the reads one account is given).
 - **Send through the Delay**, greyed out with its reason where it cannot be
-  done here: no member's key, the member on another network only, the member
-  watched here while held elsewhere, the account list unreadable, or the
-  retired module.
+  done here: no controlling key, the key on another network only, the key
+  watched here while held elsewhere, the account list unreadable, who
+  controls the Delay not all verified yet, more accounts behind it than
+  Punicus reads, a held key that acts only with co-owners, or the retired
+  module.
 - **Queued from this device**: each transfer queued here and not executed,
   with where it stands ("Waits until …", "Ready to execute until …",
   "Expired …: nothing moved"). Execute is offered once it is the next entry
-  and its cooldown has passed. Until then it is greyed out, and a tap says
-  why: the time until then, the entries ahead, or what cannot be verified.
+  and its cooldown has passed, to the key that queued it while that key is
+  held here on Gnosis Chain, whoever controls the Delay by then: anyone may
+  execute an entry. Until then it is greyed out, and a tap says why: the
+  time until then, the entries ahead, or what cannot be verified.
 - Send is a form (the Safe's assets, the recipient's address, checked
   against its EIP-55 checksum, and the amount), then a review of the
-  member's transaction with the unlock that signs it. The review names the
-  fee level, the member's xDAI before and after, and the blocks each figure
-  was read at. A quote over a minute old is made again before it is signed,
+  signing key's transaction with the unlock that signs it. The form names
+  the key and the Safes it goes through. The review names the fee level, the
+  Safes the queueing goes through, the key's xDAI before and after, and the
+  blocks each figure was read at. A quote over a minute old is made again before it is signed,
   as on Send (screen 8). A transaction sent opens its status (screen 9).
 - The light client's strip (Detailed view) or sync line (simple mode) sits
   above the screen, as on every screen that reads the chain.
-- On the account's own screen, Send and Swap stay greyed out: no owner can
-  sign. A tap on Send says the transfers go through the Delay, and offers
-  the Gnosis Pay screen.
+- On the account's own screen, and on its row in the list, an account a key
+  held here controls shows Full control, and Send opens the Gnosis Pay
+  screen; Swap stays greyed out, since only plain transfers go through the
+  Delay. Otherwise Send and Swap stay greyed out, since no owner can sign: a
+  tap on Send says the transfers go through the Delay, and offers the Gnosis
+  Pay screen.
 
 ## Co-signing a Safe transaction
 

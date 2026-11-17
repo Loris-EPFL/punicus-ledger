@@ -306,6 +306,20 @@ private fun GnosisPayCoSignerPreview() = GnosisPayPreview(
 
 @Preview
 @Composable
+private fun GnosisPayControlUnreadPreview() = GnosisPayPreview(
+    overview.copy(
+        members = listOf(MemberRow("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB", null, false, "Not verified yet")),
+        controlNote = "Some of the accounts on the way to these keys are not verified yet. Punicus keeps checking.",
+        send = ActionItem(
+            enabled = false,
+            reason = "Which keys control this account cannot all be verified right now, so whether one is on this " +
+                "device cannot be told yet. Punicus keeps checking.",
+        ),
+    ),
+)
+
+@Preview
+@Composable
 private fun GnosisPayReviewMemberSafePreview() = GnosisPayPreview(
     throughMemberSafe.copy(
         step = GnosisPayStep.Review(
@@ -366,6 +380,7 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("member-safe") { GnosisPayMemberSafePreview() },
     ScreenPreview("co-signer") { GnosisPayCoSignerPreview() },
     ScreenPreview("review-member-safe") { GnosisPayReviewMemberSafePreview() },
+    ScreenPreview("control-unread") { GnosisPayControlUnreadPreview() },
     ScreenPreview("loading") { GnosisPayLoadingPreview() },
     ScreenPreview("unavailable") { GnosisPayUnavailablePreview() },
 )

@@ -104,18 +104,26 @@ its owners. Punicus follows the members down to the keys:
 - Each member's kind is proven by the light client: a key (no code, or an
   EIP-7702 delegation), a Safe (a pinned proxy of a pinned singleton), or
   other code. A Safe's owners are read the same way, in turn, at most three
-  Safes deep. An account whose key is held here is a key without a read.
-  Addresses `0x…01` to `0x…ff` (the placeholder `0x…02`, the sentinel) are
-  never read and control nothing.
-- Other code (a passkey signer, a module, an unpinned Safe) and a Safe past
-  three levels, or already on the way, are listed as not followed.
+  Safes deep. An account whose key is held here is a key without a read: a
+  held key is an account with no Safe code. Addresses `0x…01` to `0x…ff`
+  (the placeholder `0x…02`, the sentinel) are never read and control nothing.
+- At most 32 addresses are read for one Delay, each a read the light client
+  keeps proving while it is shown: the members share them evenly, and a
+  Safe what is left of its share among its owners. Past them an address is
+  not read, and listed as such; a key held here costs nothing and is found
+  anyway. Anyone can build a wide tree on chain cheaply; this bounds what
+  watching one costs, on the Gnosis Pay screen and for the list's badge.
+- Other code (a passkey signer, a module, an unpinned Safe), a Safe older
+  than 1.3.0 (it does not revert when its call fails, so a run through it
+  proves nothing), and a Safe past three levels, or already on the way, are
+  listed as not followed.
+- What is not read yet, or cannot be verified, is never taken for "no key
+  here", and neither is what was left unread past the 32: Send says which.
 - **A key controls the account by itself** when every Safe on its way needs
   one signature. Then, held here on Gnosis Chain, it sends: the account shows
   Full control. A held key behind a Safe of a higher threshold is a
   co-signer only, and Send says so: Punicus does not gather co-owners'
   signatures for a Delay.
-- What is not read yet, or cannot be verified, is never taken for "no key
-  here": Send waits, saying so.
 - The Gnosis Pay screen lists the members, what each is ("A Safe: 1 of its 9
   owners signs"), and the keys at the end of the ways down, each with the
   Safes it goes through and whether its key is on this device.
@@ -144,7 +152,10 @@ Delay.
 2. **Wait.** The cooldown runs from the block that queued it. The screen
    shows when the transfer can be executed, and until when.
 3. **Execute.** `executeNextTx` with the same four fields, sent by the key
-   that queued it, straight to the Delay: anyone may execute an entry. Before it is quoted, the Delay's verified state must show the
+   that queued it, straight to the Delay: anyone may execute an entry. It is
+   offered while that key is held here on Gnosis Chain, whatever the control
+   tree says meanwhile: a member Safe's owners changed during the cooldown,
+   or not read yet, never strand a transfer queued here. Before it is quoted, the Delay's verified state must show the
    transfer as the next entry (`txHash(txNonce)` equal to its hash), its
    cooldown passed and at least five minutes left before its expiration, so
    that the transaction is mined while the window is open. An entry ahead of

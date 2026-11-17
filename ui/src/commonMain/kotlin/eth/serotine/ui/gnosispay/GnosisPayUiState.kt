@@ -46,8 +46,8 @@ sealed interface GnosisPayUiState {
 
 /**
  * One member of the Delay: its EIP-55 [address], its name in the wallet ([label]), whether a key on
- * this device controls the account through it ([heldHere]), and [what] it is when that is more than
- * a key ("A Safe: 1 of its 9 owners signs"), null for a key or one not read.
+ * this device controls the account through it ([heldHere]), and [what] it is when it is not proven a
+ * key ("A Safe: 1 of its 9 owners signs", "Not verified yet"); null for a key.
  */
 data class MemberRow(val address: String, val label: String?, val heldHere: Boolean, val what: String? = null)
 

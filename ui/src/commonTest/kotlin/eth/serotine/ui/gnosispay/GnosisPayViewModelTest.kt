@@ -219,7 +219,7 @@ class GnosisPayViewModelTest {
 
         val state = viewModel.ready()
         assertEquals(ActionItem(enabled = true, reason = null), state.send)
-        assertEquals("A Safe: 1 of its 2 owners sign", state.members.single().what)
+        assertEquals("A Safe: 1 of its 2 owners signs", state.members.single().what)
         assertTrue(state.members.single().heldHere)
         val listed = state.keys.single()
         assertEquals("Signer", listed.label)
@@ -244,6 +244,41 @@ class GnosisPayViewModelTest {
         val recorded = (sent.observe().first() as SentTransferList.Loaded).transfers.single()
         assertEquals(key, recorded.account)
         assertTrue(recorded.action is SentAction.DelayQueue)
+    }
+
+    @Test
+    fun aTransferQueuedHereIsExecutableByItsKeyWhateverTheControlTreeSays() = runTest {
+        // The member Safe's owners cannot be read now: no one controls the account from here, as far as
+        // is verified, yet the key that queued the transfer may still execute it (anyone may).
+        val key = Address.of("0x" + "91".repeat(20))
+        otherKinds[member] = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        val keyHeld = Account(Network.GNOSIS, key, AccountKind.EOA, "Signer", AccountCustody.InKeyStore)
+        accounts.accounts.value = listOf(card, keyHeld)
+        val transfer = (
+            DelayTransfer.of(safe, delay, listOf(delay), TransferAsset.Native, recipient, UInt256.of(7))
+                as DelayTransferPlan.Planned
+            ).transfer
+        val queueing = SentTransfer(
+            Network.GNOSIS,
+            key,
+            3,
+            SignedTransfer(byteArrayOf(1, 2, 3)),
+            SentAction.DelayQueue(transfer),
+            UInt256.ZERO,
+            100,
+        )
+        history.entries.value = listOf(HistoryEntry(queueing, SentOutcome.NonceUsed))
+        queueAnswer = DelayQueueReading.Read(
+            DelayQueue(0, 1, 180, 1_800, DelayEntry(0, transfer.hash, 1_000), 1),
+            41,
+            1_200,
+        )
+
+        val state = viewModel().uiState.first { (it as? GnosisPayUiState.Ready)?.queued?.isNotEmpty() == true }
+            as GnosisPayUiState.Ready
+        assertEquals(false, state.send.enabled)
+        assertEquals("Not verified yet", state.members.single().what)
+        assertEquals(ActionItem(true, null), state.queued.single().execute)
     }
 
     @Test

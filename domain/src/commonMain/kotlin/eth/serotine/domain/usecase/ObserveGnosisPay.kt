@@ -181,6 +181,7 @@ class ObserveGnosisPay(
             safeModules = chosen.modules,
             control = control,
             keysCoSigning = coSigning,
+            keysHere = held.filter { it.network == safe.network },
         )
     }
 }
@@ -243,7 +244,8 @@ sealed interface GnosisPayReading {
      * wallet on the Safe's network as watched entries; [safeModules], every module the Safe's
      * verified state lists, which no transfer may go to; [control], who controls the Delay, null
      * until it is read; and [keysCoSigning], keys held here on the Safe's network that act for the
-     * Delay only with co-owners.
+     * Delay only with co-owners; and [keysHere], every key held here on the Safe's network, from the
+     * wallet's list alone: any of them may execute a transfer it queued, which needs no control.
      */
     data class Found(
         val delay: DelayModule,
@@ -255,6 +257,7 @@ sealed interface GnosisPayReading {
         val safeModules: List<Address>,
         val control: DelayControl? = null,
         val keysCoSigning: List<Account> = emptyList(),
+        val keysHere: List<Account> = controllersHeld.map { it.account },
     ) : GnosisPayReading {
         /** Whether a transfer can be queued through [delay] from this wallet, or what is missing. */
         val sending: GnosisPaySending
@@ -265,8 +268,9 @@ sealed interface GnosisPayReading {
                 !accountsRead -> GnosisPaySending.ACCOUNTS_UNREADABLE
                 keysWatchedHere.isNotEmpty() -> GnosisPaySending.MEMBER_WATCHED_HERE
                 keysHeldElsewhere.isNotEmpty() -> GnosisPaySending.MEMBER_ON_ANOTHER_NETWORK
-                // Never said to be out of reach on a read that did not answer.
+                // Never said to be out of reach on a read that did not answer, or was never made.
                 control == null || !control.complete -> GnosisPaySending.CONTROL_UNREAD
+                control.overBudget -> GnosisPaySending.CONTROL_TOO_WIDE
                 keysCoSigning.isNotEmpty() -> GnosisPaySending.CO_SIGNERS_NEEDED
                 else -> GnosisPaySending.NO_MEMBER_KEY
             }
@@ -311,6 +315,13 @@ enum class GnosisPaySending {
      * was found to control it, and one could still be on a way not read.
      */
     CONTROL_UNREAD,
+
+    /**
+     * The Delay is controlled through more accounts than Punicus reads for one
+     * ([DelayControl.MAX_ADDRESSES]), and no key held here was found among those read: whether one
+     * is behind the rest cannot be told.
+     */
+    CONTROL_TOO_WIDE,
 
     /**
      * A key held here acts for the Delay only together with co-owners: a Safe on its way needs more

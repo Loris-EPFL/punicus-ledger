@@ -252,7 +252,8 @@ class GnosisPayViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GnosisPayUiState.Loading)
 
     private fun queuedRow(queued: QueuedDelayTransfer, found: GnosisPayReading.Found, busy: String?): QueuedRow {
-        val held = found.controllersHeld.any { it.account.address == queued.member }
+        // Anyone may execute an entry: the key that queued it, held here, needs no control now.
+        val held = found.keysHere.any { it.address == queued.member }
         val ready = queued.state is DelayTransferState.Ready
         // Shown greyed out whenever it cannot be done, saying why (owner ruling, 2026-10-18, #55).
         val execute = when {
@@ -342,7 +343,9 @@ class GnosisPayViewModel(
         val compose = flowState.value as? Flow.Compose ?: return
         val found = latest ?: return
         if (compose.quoting) return
-        val sender = found.controllersHeld.firstOrNull() ?: return
+        // Control can change while the form is open: said on the form, never a tap that does nothing.
+        val sender = found.controllersHeld.firstOrNull()
+            ?: return showCompose(GnosisPayTexts.sendReason(found.sending) ?: GnosisPayTexts.QUOTE_FAILED)
         val member = sender.account.address
         val asset = GnosisPayTexts.assetOf(compose.asset, latestHoldings) ?: return showCompose(GnosisPayTexts.NO_ASSET)
         val to = when (val input = Eip55.parse(compose.to)) {
@@ -390,7 +393,7 @@ class GnosisPayViewModel(
         val overview = flowState.value as? Flow.Overview ?: return
         if (overview.busy != null) return
         val queued = latestQueued.firstOrNull { it.queuedBy == id } ?: return
-        if (found.controllersHeld.none { it.account.address == queued.member }) return
+        if (found.keysHere.none { it.address == queued.member }) return
         if (found.sending == GnosisPaySending.RETIRED_MODULE || queued.state !is DelayTransferState.Ready) return
         flowState.value = Flow.Overview(busy = id)
         val mine = ++request

@@ -68,7 +68,14 @@ repository, the site's source, or files that are not an earlier build.
   describes a feature is updated with the feature. What peers and the three
   optional services see is said as the privacy policy says it.
 - **The screens are the app's own**, from `docs/screenshots/`. Never a mock-up
-  and never an edited image.
+  and never an edited image. A screen may be cut off below its content
+  (`class="crop"`, with the number of rows to show in `--rows`).
+- **The pages show the phone app.** The previews are rendered on the desktop,
+  where screen capture cannot be blocked, so the screens that show a recovery
+  phrase or take the password end in a notice saying so. The desktop and iOS
+  apps show that notice; the Android app blocks capture and shows none. Those
+  screens are cut above the notice. When such a screen's layout changes, its
+  `--rows` in `guide.html` has to follow.
 - **The certificate digest** in the download section is the one pinned in
   `android-app/release-signing-cert.sha256`. The build fails when they differ.
 

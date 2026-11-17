@@ -981,9 +981,12 @@ pre {
   border-radius: 1.1rem;
 }
 
-/* A screen whose lower part is empty, shown down to where it ends. */
+/* A screen shown down to where its content ends: `--rows` of its 892 rows, set on the image. The
+   screens that show a recovery phrase or take the password are cut above their last line, the
+   notice that screen capture cannot be blocked: the desktop and iOS apps show it, the Android
+   app, which blocks capture, does not, and these pages show the phone app (website/README.md). */
 .shots img.crop {
-  aspect-ratio: 412 / 690;
+  aspect-ratio: 412 / var(--rows, 690);
   object-fit: cover;
   object-position: top;
 }

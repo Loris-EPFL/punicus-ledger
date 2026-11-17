@@ -10,6 +10,12 @@ and issues of this repository.
 
 ## [Unreleased]
 
+### Added
+
+- A website, `website/`: what Punicus does in plain words, the downloads and
+  a guide to adding accounts and Safes, published to GitHub Pages by the
+  `Website` workflow (#316).
+
 ## [0.5.0] - 2026-11-16
 
 ### Added

@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Punicus: a wallet that checks the blockchain itself</title>
+  <meta name="description" content="Punicus is a free, open-source wallet for Ethereum accounts and Safe accounts. It reads the blockchain through a light client inside the app and checks every answer on your device. Android, macOS and Linux.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Punicus: a wallet that checks the blockchain itself">
+  <meta property="og:description" content="A free, open-source wallet for Ethereum accounts and Safe accounts that verifies what it shows you on your own device.">
+  <meta property="og:image" content="../assets/social-preview.png">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="index.html"><picture><source media="(prefers-color-scheme: dark)" srcset="../assets/serotine_logo_dark.svg"><img class="bat" src="../assets/serotine_logo.svg" width="1024" height="544" alt=""></picture>Punicus</a>
+      <nav aria-label="Main">
+        <a class="optional" href="#features">What it does</a>
+        <a href="guide.html">Get started</a>
+        <a href="#download">Download</a>
+        <a class="optional" href="https://github.com/biafra23/punicus">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="wrap">
+        <div class="hero-copy">
+          <h1>A wallet that checks the blockchain itself</h1>
+          <p class="lede">Most wallet apps ask a company's server what you own and show you the answer. Punicus asks the Ethereum network directly and checks every answer on your own device, before it shows you a balance or lets you sign.</p>
+          <div class="actions">
+            <a class="button" href="#download">Download Punicus</a>
+            <a class="button quiet" href="guide.html">Set up your first account</a>
+          </div>
+          <p class="fine">For Android, macOS and Linux. Free and open source. For ordinary Ethereum accounts and for shared Safe accounts.</p>
+        </div>
+        <div class="hero-stage">
+          <svg class="echo" viewBox="0 0 800 800" aria-hidden="true" focusable="false">
+            <circle class="ring" cx="400" cy="400" r="150"/>
+            <circle class="ring" cx="400" cy="400" r="230"/>
+            <circle class="ring" cx="400" cy="400" r="310"/>
+            <circle class="ring" cx="400" cy="400" r="390"/>
+            <circle class="peer" cx="576" cy="252" r="6"/>
+            <circle class="peer" cx="184" cy="321" r="6"/>
+            <circle class="peer" cx="294" cy="109" r="6"/>
+            <circle class="peer" cx="699" cy="480" r="6"/>
+            <circle class="peer" cx="109" cy="506" r="6"/>
+            <circle class="peer" cx="565" cy="47" r="6"/>
+            <circle class="peer" cx="62" cy="205" r="6"/>
+          </svg>
+          <figure class="phone">
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="../docs/screenshots/simple-accounts/everyday-dark.png">
+              <img src="../docs/screenshots/simple-accounts/everyday.png" width="412" height="892" alt="The Punicus home screen: a total of €19,375.85 and four accounts. Main, with full control, on Ethereum. Savings, watch-only. Family Safe, a 2 of 3 Safe on Gnosis Chain where this device is a co-signer. Test, on the Sepolia test network, with no real value.">
+            </picture>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="how">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Who tells your wallet what you own?</h2>
+          <p class="lede">A blockchain is shared by thousands of computers. A wallet app has to ask someone what is on it. Whom it asks, and whether it can check the answer, makes the difference.</p>
+        </div>
+
+        <div class="paths">
+          <div class="path">
+            <h3>Most wallet apps</h3>
+            <ol>
+              <li><strong>Your phone asks a company's server</strong><span>"What does this account hold?"</span></li>
+              <li><strong>The server answers</strong><span>"3.2 ETH."</span></li>
+              <li><strong>The app shows the answer</strong><span>It has no way to tell whether the answer is true.</span></li>
+            </ol>
+            <p class="outcome">You take the company's word, and the company sees every account you look at.</p>
+          </div>
+
+          <div class="path ours">
+            <h3>Punicus</h3>
+            <ol>
+              <li><strong>Your phone asks the network itself</strong><span>Any of the many computers that keep the chain can answer. None of them belongs to Punicus.</span></li>
+              <li><strong>The answer comes with a proof</strong><span>A short piece of maths that ties "3.2 ETH" to the chain the network has signed.</span></li>
+              <li class="checked"><strong>Punicus checks the proof on your device</strong><span>A program called a light client, built into the app, does the checking.</span></li>
+            </ol>
+            <p class="outcome">Only a checked answer is shown. What cannot be checked is shown as "not available", never as a guess.</p>
+          </div>
+        </div>
+
+        <div class="means">
+          <div>
+            <h3>No company in the middle</h3>
+            <p>There is no Punicus server to trust, to go down or to turn you away. The wallet talks to the network itself.</p>
+          </div>
+          <div>
+            <h3>It says when it does not know</h3>
+            <p>While the wallet catches up with the network, it keeps the last checked balance on screen with its date, and says that it may have changed.</p>
+          </div>
+          <div>
+            <h3>It collects nothing</h3>
+            <p>No sign-up, no analytics, no crash reports. The developer learns nothing about you or your accounts.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section tinted" id="features">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>What you can do with it</h2>
+          <p class="lede">These are the app's own screens. The numbers on them are examples.</p>
+        </div>
+
+        <ul class="screens">
+          <li class="screen">
+            <figure>
+              <div class="shot">
+                <picture>
+                  <source media="(prefers-color-scheme: dark)" srcset="../docs/screenshots/simple-account-detail/assets-dark.png">
+                  <img loading="lazy" src="../docs/screenshots/simple-account-detail/assets.png" width="412" height="892" alt="An account's screen: its value in euros, updated 40 seconds ago, buttons to send, swap and receive, and its ETH, USDC and LINK balances.">
+                </picture>
+              </div>
+              <figcaption>
+                <h3>See what you own</h3>
+                <p>Your coins and tokens, and what they are worth in your currency. Every balance is proven before it is shown, and the screen says how fresh it is.</p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="screen">
+            <figure>
+              <div class="shot">
+                <picture>
+                  <source media="(prefers-color-scheme: dark)" srcset="../docs/screenshots/simple-send/review-dark.png">
+                  <img loading="lazy" src="../docs/screenshots/simple-send/review.png" width="412" height="892" alt="The review before sending 250 USDC to friend-example.eth: the fee at most, the balances afterwards, and the line 'Checked on chain: this transfer should go through'.">
+                </picture>
+              </div>
+              <figcaption>
+                <h3>Send and receive</h3>
+                <p>Send to an address or to a name like name.eth. Before you sign, Punicus tries the transfer against the chain and tells you whether it should go through and what it costs at most. To receive, show your QR code.</p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="screen">
+            <figure>
+              <div class="shot">
+                <picture>
+                  <source media="(prefers-color-scheme: dark)" srcset="../docs/screenshots/simple-safe-tx/overview-dark.png">
+                  <img loading="lazy" src="../docs/screenshots/simple-safe-tx/overview.png" width="412" height="892" alt="A Safe transaction that sends 40 USDC: 2 of 3 owners must confirm, one has approved, and this device's owner has not signed yet.">
+                </picture>
+              </div>
+              <figcaption>
+                <h3>Share an account with Safe</h3>
+                <p>A Safe is an account that needs several approvals, such as 2 of 3 owners: for a family, a team, or your own devices. Create one or add one you already have, then propose, sign and send its transactions.</p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="screen">
+            <figure>
+              <div class="shot">
+                <picture>
+                  <source media="(prefers-color-scheme: dark)" srcset="../docs/screenshots/simple-swap/compose-dark.png">
+                  <img loading="lazy" src="../docs/screenshots/simple-swap/compose.png" width="412" height="892" alt="The swap screen: selling 100 USDC for about 7.183 LINK on Uniswap, with CoW Protocol as the other choice.">
+                </picture>
+              </div>
+              <figcaption>
+                <h3>Swap tokens</h3>
+                <p>Swap on Uniswap, at a price the wallet reads from Uniswap's pools and checks itself, or choose CoW Protocol. You see the least you will receive before you confirm. Not on Gnosis Chain yet.</p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="screen">
+            <figure>
+              <div class="shot">
+                <picture>
+                  <source media="(prefers-color-scheme: dark)" srcset="../docs/screenshots/dapp-request/sign-in-dark.png">
+                  <img loading="lazy" src="../docs/screenshots/dapp-request/sign-in.png" width="412" height="892" alt="A sign-in request from a web app: its name and address, marked as stated by the app and not verified, the account asked to sign, and the message in full.">
+                </picture>
+              </div>
+              <figcaption>
+                <h3>Connect to web apps</h3>
+                <p>Use your accounts in web apps (dApps) through WalletConnect. An app sees only the accounts you pick, and each request is spelled out and checked before you sign it. <a href="guide.html#walletconnect">How to connect, step by step</a>.</p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="screen">
+            <figure>
+              <div class="shot">
+                <picture>
+                  <source media="(prefers-color-scheme: dark)" srcset="../docs/screenshots/simple-transfer-status/confirmed-dark.png">
+                  <img loading="lazy" src="../docs/screenshots/simple-transfer-status/confirmed.png" width="412" height="892" alt="The status of a transfer of 250 USDC: signed, sent and confirmed, and waiting for the network to finalize it.">
+                </picture>
+              </div>
+              <figcaption>
+                <h3>Follow a transfer to the end</h3>
+                <p>After you send, Punicus follows your transaction until the network has finalized it and it can no longer be reversed. Activity keeps what this device sent, and each account's token transfers.</p>
+              </figcaption>
+            </figure>
+          </li>
+        </ul>
+
+        <div class="also">
+          <h3>Also in the app</h3>
+          <dl>
+            <div>
+              <dt>Watch any address</dt>
+              <dd>Add an address without its key to keep an eye on it. Punicus tells you what it is: an ordinary account, a Safe or another contract.</dd>
+            </div>
+            <div>
+              <dt>Three networks</dt>
+              <dd>Ethereum and Gnosis Chain, with real funds, and the Sepolia test network for trying things out with coins of no value. Each can be turned off.</dd>
+            </div>
+            <div>
+              <dt>NFTs and ENS names</dt>
+              <dd>The NFTs an account holds, listed only once they are proven to be there, and the ENS names that point to it.</dd>
+            </div>
+            <div>
+              <dt>Gnosis Pay</dt>
+              <dd>The account behind a Gnosis Pay card is recognised. A member whose key is in the wallet can send from it: queued first, sent after the account's waiting time.</dd>
+            </div>
+            <div>
+              <dt>Fingerprint or face unlock</dt>
+              <dd>Optional, on Android, on a Mac with Touch ID and on iPhone. Your wallet password keeps working.</dd>
+            </div>
+            <div>
+              <dt>A simple view and a detailed one</dt>
+              <dd>The simple view is the default. The detailed view shows how each number was checked, block by block.</dd>
+            </div>
+            <div>
+              <dt>A home-screen widget</dt>
+              <dd>On Android, one checked exchange rate on your home screen.</dd>
+            </div>
+            <div>
+              <dt>Warnings before a network upgrade</dt>
+              <dd>When other computers of the network announce an upgrade this version cannot follow, the app passes the warning on ahead of time, says that it comes from them, and points to the update.</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="keys">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Your keys stay on your device</h2>
+          <p class="lede">Whoever holds an account's key controls its funds. Punicus keeps yours on your device, and tells you plainly what leaves it.</p>
+        </div>
+
+        <div class="split">
+          <ul class="points">
+            <li>
+              <h3>Two locks on every key</h3>
+              <p>Keys are stored encrypted. Opening one takes your wallet password and a secret held by your device's security chip, so a copy of the file is useless anywhere else. On Windows and Linux the password stands alone for now, and the app says so.</p>
+            </li>
+            <li>
+              <h3>A recovery phrase you write down once</h3>
+              <p>A new account comes with 12 words, shown only while you create it. They are your backup: on paper, never in a photo or a chat.</p>
+            </li>
+            <li>
+              <h3>Risky Safe changes are refused</h3>
+              <p>A Safe transaction that would let an add-on (a module) move the Safe's funds, or replace the part that checks its signatures, is shown and never signed here.</p>
+            </li>
+            <li>
+              <h3>Open for anyone to inspect</h3>
+              <p>Punicus is free software under the GNU GPL v3. <a href="https://github.com/biafra23/punicus/blob/main/docs/how-keys-are-protected.md">How keys are protected</a>, in plain words and with the code.</p>
+            </li>
+          </ul>
+
+          <div>
+            <div class="table-scroll">
+              <table>
+                <caption>What leaves your device</caption>
+                <thead>
+                  <tr><th scope="col">Who</th><th scope="col">When</th><th scope="col">What they see</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">Computers of the network (peers)</th>
+                    <td>Always: this is how the wallet reads the chain</td>
+                    <td>Your internet address (IP), and which account a question is about</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Checkpoint servers</th>
+                    <td>Only if you ask for a fresh starting point after a long time offline</td>
+                    <td>Your IP address. No account</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">WalletConnect's relay</th>
+                    <td>Only while you connect a web app</td>
+                    <td>Your IP address and when you are connected. The messages are encrypted</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">CoW Protocol</th>
+                    <td>Only for a swap you send to CoW</td>
+                    <td>That swap: the account, the tokens, the amounts, and your IP address</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">None of them is run by Punicus, and none can sign for you. The details are in the <a href="https://github.com/biafra23/punicus/blob/main/docs/privacy-policy.md">privacy policy</a>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section tinted" id="download">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Download Punicus</h2>
+          <p class="lede">Free, with no account to create. The installers are published on GitHub.</p>
+        </div>
+
+        <div class="callout">
+          <p><strong>Punicus is early software.</strong> Every version so far is a pre-release. It works with real funds on Ethereum and Gnosis Chain, so start with small amounts, or turn on the Sepolia test network in Settings and try it there first.</p>
+        </div>
+
+        <!-- downloads:start -->
+        <p class="release-line">Every version, with its files and what changed, is on the <a href="https://github.com/biafra23/punicus/releases">releases page</a>. Pick the newest one at the top.</p>
+        <ul class="downloads">
+          <li>
+            <div>
+              <h3>Android</h3>
+              <p>Android 10 or newer. The file ends in <code>-android.apk</code>; you install it yourself.</p>
+            </div>
+            <div class="files"><a class="button" href="https://github.com/biafra23/punicus/releases">Get it from the releases page</a></div>
+          </li>
+          <li>
+            <div>
+              <h3>macOS</h3>
+              <p>Files ending in <code>-arm64.dmg</code> (Apple silicon: M1 or newer) and <code>-x64.dmg</code> (Intel).</p>
+            </div>
+            <div class="files"><a class="button" href="https://github.com/biafra23/punicus/releases">Get it from the releases page</a></div>
+          </li>
+          <li>
+            <div>
+              <h3>Linux</h3>
+              <p>Debian and Ubuntu packages: <code>-x64.deb</code> and <code>-arm64.deb</code>.</p>
+            </div>
+            <div class="files"><a class="button" href="https://github.com/biafra23/punicus/releases">Get it from the releases page</a></div>
+          </li>
+          <li>
+            <div>
+              <h3>Windows</h3>
+              <p>Not published yet. The Windows installer follows once the engine inside Punicus runs on Windows.</p>
+            </div>
+            <div class="files later">Coming later</div>
+          </li>
+          <li>
+            <div>
+              <h3>iPhone</h3>
+              <p>A development build only for now. Punicus is not in the App Store yet.</p>
+            </div>
+            <div class="files later">Coming later</div>
+          </li>
+        </ul>
+        <!-- downloads:end -->
+
+        <details>
+          <summary>Installing on Android</summary>
+          <p>Punicus is not in an app store yet, so you install the file yourself. Download the APK, then open it. Android asks whether your browser may install apps: allow it for this once, then tap Install. To update, download the newer APK and install it the same way.</p>
+        </details>
+
+        <details>
+          <summary>Opening it on a Mac</summary>
+          <p>Open the dmg and drag Punicus to Applications. The app is not yet notarized by Apple, so macOS stops its first start. Right-click the app, choose Open and confirm. On macOS 15 or newer, try to open it once, then go to System Settings, Privacy &amp; Security, and choose Open Anyway.</p>
+        </details>
+
+        <details>
+          <summary>Installing on Debian or Ubuntu</summary>
+          <p>Download the package for your computer (x64 for most PCs), then install it from a terminal in the folder you saved it to:</p>
+          <pre>sudo apt install ./Punicus-*.deb</pre>
+        </details>
+
+        <details>
+          <summary>Checking that the Android app is the real one</summary>
+          <p>The Android app is signed with Punicus's release key. With Android's build tools installed, this prints who signed a file you downloaded:</p>
+          <pre>apksigner verify --print-certs Punicus-*-android.apk</pre>
+          <p>The certificate's SHA-256 must be:</p>
+          <pre>d7a33aee06dbedab0e640283ff1b8c8cc919cf3a82aa3bc8fd7c67a3abdddec0</pre>
+        </details>
+      </div>
+    </section>
+
+    <section class="section" id="next">
+      <div class="wrap">
+        <div class="split closing">
+          <div>
+            <h2>New to this? Start with the guide</h2>
+            <p class="lede">It walks through creating an account, bringing in one you already have, and adding or creating a Safe, with the app's screens beside each step.</p>
+            <div class="actions after">
+              <a class="button" href="guide.html">Open the guide</a>
+            </div>
+          </div>
+          <div>
+            <h3>Not built yet</h3>
+            <p>Punicus says what it cannot do. Still to come: a Windows installer and an App Store build, a full history of the plain ETH an account received, recovery options for a Safe, and using another wallet app as a Safe owner's signer.</p>
+            <p>What changed in each version is in the <a href="https://github.com/biafra23/punicus/blob/main/CHANGELOG.md">changelog</a>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <div>
+        <a class="brand" href="index.html"><picture><source media="(prefers-color-scheme: dark)" srcset="../assets/serotine_logo_dark.svg"><img class="bat" src="../assets/serotine_logo.svg" width="1024" height="544" alt=""></picture>Punicus</a>
+        <p>Free software under the GNU GPL v3. Built on <a href="https://github.com/biafra23/myotis">Myotis</a>, the light client inside the app. Named after a bat, which also finds its way by its own call.</p>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <ul>
+          <li><a href="https://github.com/biafra23/punicus">Source code on GitHub</a></li>
+          <li><a href="https://github.com/biafra23/punicus/releases">Releases</a></li>
+          <li><a href="https://github.com/biafra23/punicus/blob/main/CHANGELOG.md">Changelog</a></li>
+          <li><a href="https://github.com/sponsors/biafra23">Sponsor the project</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Read more</h2>
+        <ul>
+          <li><a href="guide.html">Getting started guide</a></li>
+          <li><a href="https://github.com/biafra23/punicus/blob/main/docs/privacy-policy.md">Privacy policy</a></li>
+          <li><a href="https://github.com/biafra23/punicus/blob/main/docs/how-keys-are-protected.md">How keys are protected</a></li>
+          <li><a href="https://github.com/biafra23/punicus/blob/main/SECURITY.md">Report a security issue</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

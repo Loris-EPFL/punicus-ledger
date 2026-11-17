@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Getting started with Punicus: add accounts and Safes</title>
+  <meta name="description" content="Step by step: create an Ethereum account in Punicus, import one from a recovery phrase, watch an address, add a Safe you already have, and create a new Safe.">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Getting started with Punicus">
+  <meta property="og:description" content="Create or import an account, watch an address, and add or create a Safe, with the app's screens beside each step.">
+  <meta property="og:image" content="../assets/social-preview.png">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="index.html"><picture><source media="(prefers-color-scheme: dark)" srcset="../assets/serotine_logo_dark.svg"><img class="bat" src="../assets/serotine_logo.svg" width="1024" height="544" alt=""></picture>Punicus</a>
+      <nav aria-label="Main">
+        <a class="optional" href="index.html#features">What it does</a>
+        <a href="guide.html" aria-current="page">Get started</a>
+        <a href="index.html#download">Download</a>
+        <a class="optional" href="https://github.com/biafra23/punicus">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="page-head">
+      <div class="wrap">
+        <h1>Getting started</h1>
+        <p class="lede">How to put accounts into Punicus: a new one, one you already have, an address you only want to watch, and a Safe. Pick the part you need.</p>
+        <ul class="toc">
+          <li><a href="#kinds">The kinds of account</a></li>
+          <li><a href="#first">The first start</a></li>
+          <li><a href="#create">Create a new account</a></li>
+          <li><a href="#import">Bring in an account you already have</a></li>
+          <li><a href="#more">Add another account from the same phrase</a></li>
+          <li><a href="#watch">Watch an address</a></li>
+          <li><a href="#add-safe">Add a Safe you already have</a></li>
+          <li><a href="#create-safe">Create a new Safe</a></li>
+          <li><a href="#walletconnect">Connect to a web app (WalletConnect)</a></li>
+          <li><a href="#after">What to do next</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <section class="section" id="kinds">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>The kinds of account</h2>
+          <p class="lede">Punicus shows a small badge beside every account that says how much control this device has over it.</p>
+        </div>
+        <div class="kinds">
+          <div class="kind">
+            <h3>An account</h3>
+            <p>The ordinary kind, which wallets also call an EOA. One secret key controls it, and the key comes from a recovery phrase of 12 or more words. Whoever has the words controls the account.</p>
+            <span class="badge">Full control</span>
+          </div>
+          <div class="kind">
+            <h3>A Safe</h3>
+            <p>A shared account that lives on the blockchain. It has a list of owners and a rule, such as "2 of 3 owners must sign". Each owner is an ordinary account. With such a rule, no single lost or stolen key can empty it.</p>
+            <span class="badge">Co-signer</span>
+          </div>
+          <div class="kind">
+            <h3>A watched address</h3>
+            <p>Any account or Safe whose key is not in this wallet. You see its balances and its history, and you cannot send from it.</p>
+            <span class="badge">Watch-only</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section tinted" id="first">
+      <div class="wrap walk">
+        <div>
+          <h2>The first start</h2>
+          <p class="when">Install Punicus from the <a href="index.html#download">download section</a> and open it. The wallet starts empty.</p>
+          <ol class="steps">
+            <li>
+              <span class="ui">Tap the + button</span> at the bottom right.
+              <p>Four choices open: Watch address, Import recovery phrase, Create account and Create Safe.</p>
+            </li>
+            <li>
+              <span class="ui">Create Safe is grey at first.</span>
+              <p>Creating a Safe costs a network fee, which an account in this wallet pays. Tap the grey button and Punicus tells you what is missing.</p>
+            </li>
+            <li>
+              <span class="ui">Give the app a minute.</span>
+              <p>On its first start Punicus catches up with the network before it can check anything. It says so on screen while it does.</p>
+            </li>
+          </ol>
+          <p class="proofline">Ethereum and Gnosis Chain hold real funds. To practise first, turn on Sepolia under Settings, Networks: a test network whose coins are worth nothing.</p>
+        </div>
+        <ul class="shots">
+          <li>
+            <figure>
+              <img loading="lazy" src="../docs/screenshots/simple-accounts/empty.png" width="412" height="892" alt="The empty home screen. It says 'No accounts yet' and explains the + button.">
+              <figcaption>An empty wallet</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img loading="lazy" src="../docs/screenshots/accounts/create-safe-greyed-out.png" width="412" height="892" alt="The + button opened: Watch address, Import recovery phrase, Create account, and Create Safe greyed out with a lock.">
+              <figcaption>The + button, opened</figcaption>
+            </figure>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" id="create">
+      <div class="wrap walk wide">
+        <div>
+          <h2>Create a new account</h2>
+          <p class="when">For when you have no account yet, or want a fresh one. Have a pen and paper ready.</p>
+          <ol class="steps">
+            <li>
+              Tap <span class="ui">+</span>, then <span class="ui">Create account</span>.
+            </li>
+            <li>
+              <span class="ui">Write the 12 words down</span>, in order, on paper.
+              <p>This is your recovery phrase. Punicus shows it only now. Whoever has these words controls the account, and without them a lost phone means lost funds.</p>
+            </li>
+            <li>
+              Tap <span class="ui">I have written them down</span> and type the three words Punicus asks for.
+              <p>This checks that your copy is right.</p>
+            </li>
+            <li>
+              <span class="ui">Choose a wallet password</span> of at least 8 characters and repeat it.
+              <p>You set it once, with your first key. It protects every key this wallet stores, and you type it to sign.</p>
+            </li>
+            <li>
+              <span class="ui">Tick the networks</span> the account should be on, then tap <span class="ui">Create account</span>.
+              <p>The same account can be on Ethereum and on Gnosis Chain. It then appears once per network, with one key behind both.</p>
+            </li>
+          </ol>
+          <p class="caution">Never photograph the words, and never type them into a website or a message. Nobody from Punicus will ever ask for them.</p>
+        </div>
+        <ul class="shots">
+          <li>
+            <figure>
+              <img class="crop" style="--rows: 416" loading="lazy" src="../docs/screenshots/create-account/showing.png" width="412" height="892" alt="Create account: twelve numbered words to write down, and the button 'I have written them down'.">
+              <figcaption>The words to write down (these are examples)</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img class="crop" style="--rows: 416" loading="lazy" src="../docs/screenshots/create-account/checking.png" width="412" height="892" alt="Create account: three fields asking for word 2, word 7 and word 12.">
+              <figcaption>Three words asked back</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img class="crop" style="--rows: 620" loading="lazy" src="../docs/screenshots/create-account/new-password.png" width="412" height="892" alt="Create account: a new wallet password, typed twice, and the networks to add the account to.">
+              <figcaption>The password and the networks</figcaption>
+            </figure>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section tinted" id="import">
+      <div class="wrap walk">
+        <div>
+          <h2>Bring in an account you already have</h2>
+          <p class="when">For an account from another wallet app, when you have its recovery phrase.</p>
+          <ol class="steps">
+            <li>
+              Tap <span class="ui">+</span>, then <span class="ui">Import recovery phrase</span>.
+            </li>
+            <li>
+              <span class="ui">Type the words</span>, 12 to 24 of them, with spaces between.
+            </li>
+            <li>
+              <span class="ui">Enter your wallet password</span>, or choose one if this is your first key.
+            </li>
+            <li>
+              <span class="ui">Tick the networks</span>, then tap <span class="ui">Add account</span>.
+              <p>Punicus adds the first account of the phrase, the one most wallets show first.</p>
+            </li>
+          </ol>
+          <p class="proofline">The phrase is stored encrypted on this device, under your wallet password and, where Punicus uses one, your device's security chip (not yet on Windows and Linux). It goes nowhere else.</p>
+        </div>
+        <ul class="shots">
+          <li>
+            <figure>
+              <img class="crop" style="--rows: 754" loading="lazy" src="../docs/screenshots/mnemonic-import/new-password.png" width="412" height="892" alt="Add account: a field for the seed phrase, the wallet password typed twice, the networks, and the Add account button.">
+              <figcaption>Importing a recovery phrase</figcaption>
+            </figure>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" id="more">
+      <div class="wrap walk">
+        <div>
+          <h2>Add another account from the same phrase</h2>
+          <p class="when">One recovery phrase holds many accounts. For a second or third one, you do not need the words again.</p>
+          <ol class="steps">
+            <li>
+              <span class="ui">Press and hold an account</span> you created or imported, in the list.
+            </li>
+            <li>
+              Choose <span class="ui">New account from the same phrase</span>.
+            </li>
+            <li>
+              <span class="ui">Enter your wallet password</span> and tap <span class="ui">Add account</span>.
+              <p>Punicus adds the next account of that phrase. Your written copy of the words covers it too.</p>
+            </li>
+          </ol>
+        </div>
+        <ul class="shots">
+          <li>
+            <figure>
+              <img class="crop" style="--rows: 464" loading="lazy" src="../docs/screenshots/derive-account/ask.png" width="412" height="892" alt="New account from the same phrase: the account it comes from, an explanation, a field for the wallet password and the Add account button.">
+              <figcaption>A further account, without the words</figcaption>
+            </figure>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section tinted" id="watch">
+      <div class="wrap walk">
+        <div>
+          <h2>Watch an address</h2>
+          <p class="when">For an account whose key is somewhere else: a hardware wallet, a friend's account, a savings account you only want to look at.</p>
+          <ol class="steps">
+            <li>
+              Tap <span class="ui">+</span>, then <span class="ui">Watch address</span>.
+            </li>
+            <li>
+              <span class="ui">Paste the address</span>, or type an ENS name like name.eth.
+              <p>Gnosis Chain has no such names: use the address there.</p>
+            </li>
+            <li>
+              <span class="ui">Read the card</span> Punicus shows.
+              <p>It looks the address up on the chain and says what it found: an account, a Safe or another contract.</p>
+            </li>
+            <li>
+              Give it a name if you like, then tap <span class="ui">Add</span>.
+            </li>
+          </ol>
+        </div>
+        <ul class="shots">
+          <li>
+            <figure>
+              <img class="crop" loading="lazy" src="../docs/screenshots/simple-watch/account.png" width="412" height="892" alt="Watch address: an address, the name Savings, and a card that says 'Account, checked on chain' with the badge Watch-only.">
+              <figcaption>An ordinary account, watched</figcaption>
+            </figure>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" id="add-safe">
+      <div class="wrap walk">
+        <div>
+          <h2>Add a Safe you already have</h2>
+          <p class="when">For a Safe that exists already, made in Punicus on another device or in another Safe app. A Safe has no recovery phrase of its own: you add it by its address.</p>
+          <ol class="steps">
+            <li>
+              Tap <span class="ui">+</span>, then <span class="ui">Watch address</span>.
+            </li>
+            <li>
+              <span class="ui">Paste the Safe's address.</span>
+              <p>Punicus recognises a Safe by itself and shows its version, its rule (such as 2 of 3) and its owners, all read from the chain.</p>
+            </li>
+            <li>
+              Tap <span class="ui">Add</span>.
+            </li>
+            <li>
+              <span class="ui">To sign for the Safe, add your owner account too.</span>
+              <p>Create or import the account that is one of the Safe's owners, as described above. The Safe's badge then changes from Watch-only to Co-signer, or to Full control when this wallet holds enough owners to meet the rule.</p>
+            </li>
+          </ol>
+          <p class="proofline">A Safe lives on one network: add it on the network it was created on. Punicus signs for Safes of version 1.3.0, 1.4.1 and 1.5.0. It shows older ones and signs nothing for them.</p>
+        </div>
+        <ul class="shots">
+          <li>
+            <figure>
+              <img class="crop" loading="lazy" src="../docs/screenshots/simple-watch/safe.png" width="412" height="892" alt="Watch address with a Safe's address: the card says 'Safe 1.4.1, 2 of 3 owners, checked on chain', lists two owners and shows the badge Co-signer.">
+              <figcaption>Punicus recognises the Safe and its owners</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img loading="lazy" src="../docs/screenshots/simple-account-detail/safe.png" width="412" height="892" alt="The Safe's screen: its value, buttons to send, swap and receive, and the tabs Assets, Activity, Owners and Queue. Owners shows that 2 of 3 owners must sign.">
+              <figcaption>The Safe, once added</figcaption>
+            </figure>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section tinted" id="create-safe">
+      <div class="wrap walk wide">
+        <div>
+          <h2>Create a new Safe</h2>
+          <p class="when">You need one account in this wallet with a little of the network's coin (ETH on Ethereum, xDAI on Gnosis Chain) to pay the fee for creating it.</p>
+          <ol class="steps">
+            <li>
+              Tap <span class="ui">+</span>, then <span class="ui">Create Safe</span>, and choose the network.
+            </li>
+            <li>
+              <span class="ui">Step 1 of 3: choose the owners.</span>
+              <p>Tick your own accounts, and add the other owners by address or ENS name: a second device, a hardware wallet, the people you share the Safe with. You can give the Safe a name that only this device sees.</p>
+            </li>
+            <li>
+              <span class="ui">Step 2 of 3: set the rule.</span>
+              <p>Choose how many owners must sign each transaction. Punicus says what each choice means if one owner loses a key. It does not offer a rule where every owner must sign, such as 2 of 2: one lost key would lock the Safe for good.</p>
+            </li>
+            <li>
+              <span class="ui">Step 3 of 3: review, then sign and deploy.</span>
+              <p>You see the Safe's future address, its owners and rule, the account that pays, and the most the fee can be. Sign with your wallet password, or with your fingerprint or face if you turned that on.</p>
+            </li>
+            <li>
+              <span class="ui">Wait for the confirmation.</span>
+              <p>Once the network has confirmed it, Punicus checks the new Safe on the chain and lists it by itself.</p>
+            </li>
+          </ol>
+          <p class="proofline">Then give the Safe's address to the other owners. Each of them adds it as described under "Add a Safe you already have".</p>
+        </div>
+        <ul class="shots">
+          <li>
+            <figure>
+              <img loading="lazy" src="../docs/screenshots/simple-create-safe/owners.png" width="412" height="892" alt="Create Safe, step 1 of 3: the network, the Safe's name, two owners, and a field to add an owner by address or ENS name.">
+              <figcaption>Step 1: the owners</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img loading="lazy" src="../docs/screenshots/create-safe/threshold.png" width="412" height="892" alt="Create Safe, step 2 of 3: the rule set to 2 of 3, with what it means when one owner is lost.">
+              <figcaption>Step 2: the rule</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img loading="lazy" src="../docs/screenshots/simple-create-safe/review.png" width="412" height="892" alt="Create Safe, step 3 of 3: the new Safe's address, its owners, the account that pays and the network fee.">
+              <figcaption>Step 3: the review</figcaption>
+            </figure>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" id="walletconnect">
+      <div class="wrap walk wide">
+        <div>
+          <h2>Connect to a web app (WalletConnect)</h2>
+          <p class="when">Web apps that work with wallets, often called dApps, connect to Punicus through WalletConnect. You start the connection in Punicus, then choose which accounts the app may see.</p>
+          <ol class="steps">
+            <li>
+              In the web app, choose <span class="ui">WalletConnect</span> as the way to connect.
+              <p>It shows a QR code, with a button to copy the same thing as a link that begins with <code>wc:</code>.</p>
+            </li>
+            <li>
+              In Punicus, open <span class="ui">Settings</span>, then <span class="ui">Connected dApps</span>, and tap <span class="ui">Connect a dApp</span>.
+            </li>
+            <li>
+              <span class="ui">Paste the link</span> and tap <span class="ui">Connect</span>.
+              <p>On Android you can tap Scan the QR code instead. If the web app runs in the browser of the same phone, opening its link brings you here with the link filled in.</p>
+            </li>
+            <li>
+              <span class="ui">Tap the web app's entry under "Waiting for you".</span>
+              <p>Punicus goes back to Connected dApps. After a moment the web app appears there with the line "Asks to connect · Review". It looks like a line of text, and it is the button: nothing is connected until you tap it.</p>
+            </li>
+            <li>
+              <span class="ui">Tick the accounts</span> the web app may see, then tap <span class="ui">Approve</span> at the bottom of the screen.
+              <p>The web app sees only the accounts you tick. An account in grey cannot be offered: tap it and Punicus says why. A watched account has no key here to sign with, for example.</p>
+            </li>
+            <li>
+              <span class="ui">Answer what the web app asks for.</span>
+              <p>When it wants you to sign in, sign a message or send a transaction, the request opens in Punicus by itself. Read what it will do, then sign, or refuse. A request you leave open waits under "Waiting for you", again with "Review" at the end of its line.</p>
+            </li>
+          </ol>
+          <p class="caution">The step that is easy to miss is the fourth. Connect only starts the connection. The web app keeps waiting until you tap its "Asks to connect · Review" entry and approve it.</p>
+          <p class="proofline">One connection holds accounts on Ethereum and Gnosis Chain, or accounts on the Sepolia test network, never both kinds. To end it, tap Disconnect under the web app's name in Connected dApps. A Safe can be connected too: what the web app asks it to send becomes a Safe transaction for its owners to sign.</p>
+        </div>
+        <ul class="shots">
+          <li>
+            <figure>
+              <img class="crop" style="--rows: 390" loading="lazy" src="../docs/screenshots/pair-dapp/with-scan.png" width="412" height="892" alt="Connect a dApp: a button to scan the QR code, a field for the WalletConnect link and the Connect button.">
+              <figcaption>Paste the link, or scan the code</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <div class="frame">
+                <img loading="lazy" src="../docs/screenshots/connections/connected.png" width="412" height="892" alt="Connected dApps. Under 'Waiting for you' are three entries; the third, Uniswap Interface, says 'Asks to connect · Review' and is marked. Under 'Connected' are two web apps, each with Extend and Disconnect.">
+                <span class="mark" style="--top: 36.1%; --height: 8.8%"></span>
+              </div>
+              <figcaption>Tap the marked entry: "Asks to connect · Review"</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img loading="lazy" src="../docs/screenshots/dapp-proposal/request.png" width="412" height="892" alt="Connection request from Uniswap Interface: its network, what it may ask for, and the accounts to tick. Main is ticked; the accounts that cannot be offered are grey, each with its reason.">
+              <figcaption>Tick the accounts; Approve is further down</figcaption>
+            </figure>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section tinted" id="after">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>What to do next</h2>
+        </div>
+        <div class="next">
+          <div>
+            <h3>Receive something</h3>
+            <p>Open an account and tap Receive. It shows the account's address as text and as a QR code, with the network it is on. Send only that network's assets to it.</p>
+          </div>
+          <div>
+            <h3>Send from a Safe, together</h3>
+            <p>Open the Safe, tap Send and sign. Then tap Share request and pass the text, or its QR code, to another owner by any messenger. They open the Safe in their Punicus, choose Import a request and paste the text. Their app checks it against the chain before they sign. Once enough owners have signed, any of them sends it.</p>
+          </div>
+          <div>
+            <h3>Turn on fingerprint or face unlock</h3>
+            <p>Under Settings, Security. It is optional, and your wallet password keeps working. Keep the password somewhere safe: without it the keys on this device cannot be opened.</p>
+          </div>
+        </div>
+        <div class="actions after">
+          <a class="button quiet" href="index.html#features">See everything the app does</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <div>
+        <a class="brand" href="index.html"><picture><source media="(prefers-color-scheme: dark)" srcset="../assets/serotine_logo_dark.svg"><img class="bat" src="../assets/serotine_logo.svg" width="1024" height="544" alt=""></picture>Punicus</a>
+        <p>Free software under the GNU GPL v3. Built on <a href="https://github.com/biafra23/myotis">Myotis</a>, the light client inside the app. Named after a bat, which also finds its way by its own call.</p>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <ul>
+          <li><a href="https://github.com/biafra23/punicus">Source code on GitHub</a></li>
+          <li><a href="https://github.com/biafra23/punicus/releases">Releases</a></li>
+          <li><a href="https://github.com/biafra23/punicus/blob/main/CHANGELOG.md">Changelog</a></li>
+          <li><a href="https://github.com/sponsors/biafra23">Sponsor the project</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Read more</h2>
+        <ul>
+          <li><a href="guide.html">Getting started guide</a></li>
+          <li><a href="https://github.com/biafra23/punicus/blob/main/docs/privacy-policy.md">Privacy policy</a></li>
+          <li><a href="https://github.com/biafra23/punicus/blob/main/docs/how-keys-are-protected.md">How keys are protected</a></li>
+          <li><a href="https://github.com/biafra23/punicus/blob/main/SECURITY.md">Report a security issue</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

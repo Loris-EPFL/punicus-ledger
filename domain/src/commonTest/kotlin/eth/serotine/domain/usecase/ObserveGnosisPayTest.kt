@@ -305,6 +305,18 @@ class ObserveGnosisPayTest {
     }
 
     @Test
+    fun aCoSigningKeyHeldOnlyOnAnotherNetworkIsStillACoSigner() = runTest {
+        others[memberSafe] = MutableStateFlow(safeOf(listOf(passkey, ownerKey), threshold = 2))
+        others[passkey] = MutableStateFlow(KindReading.Verified(AddressKind.Contract, 40))
+        val onEthereum = eoa(Network.ETHEREUM, address = ownerKey)
+
+        val reading = observe(onEthereum)(gnosisPay).settled() as GnosisPayReading.Found
+
+        assertEquals(listOf(onEthereum), reading.keysCoSigning)
+        assertEquals(GnosisPaySending.CO_SIGNERS_NEEDED, reading.sending)
+    }
+
+    @Test
     fun anOwnerNotReadYetSaysControlIsUnreadNeverThatNoKeyIsHere() = runTest {
         val unread = MutableStateFlow<KindReading>(KindReading.Unavailable(ReadUnavailable.UNPROVEN))
         others[memberSafe] = unread

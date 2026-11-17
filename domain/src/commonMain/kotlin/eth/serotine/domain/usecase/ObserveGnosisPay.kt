@@ -166,11 +166,11 @@ class ObserveGnosisPay(
             it.network == safe.network && it.custody == AccountCustody.Watched && it.address in aloneKeys &&
                 elsewhere.any { held -> held.address == it.address }
         }
-        // Keys held here that act for the Delay only with co-owners: a Safe on their way needs more signatures.
+        // Keys held here, under any network's entry, that act for the Delay only with co-owners: a Safe
+        // on their way needs more signatures. One entry per address, the Safe's network's first.
         val coSigning = held.filter { account ->
-            account.network == safe.network && account.address !in hereAddresses &&
-                controllers.any { !it.alone && it.key == account.address }
-        }
+            account.address !in hereAddresses && controllers.any { !it.alone && it.key == account.address }
+        }.sortedBy { it.network != safe.network }.distinctBy { it.address }
         return GnosisPayReading.Found(
             chosen.delay,
             chosen.blockNumber,
@@ -243,8 +243,8 @@ sealed interface GnosisPayReading {
      * held cannot be told; [keysWatchedHere], the keys of [keysHeldElsewhere] that are in the
      * wallet on the Safe's network as watched entries; [safeModules], every module the Safe's
      * verified state lists, which no transfer may go to; [control], who controls the Delay, null
-     * until it is read; and [keysCoSigning], keys held here on the Safe's network that act for the
-     * Delay only with co-owners; and [keysHere], every key held here on the Safe's network, from the
+     * until it is read; and [keysCoSigning], keys held here (under any network's entry, one per
+     * address) that act for the Delay only with co-owners; and [keysHere], every key held here on the Safe's network, from the
      * wallet's list alone: any of them may execute a transfer it queued, which needs no control.
      */
     data class Found(

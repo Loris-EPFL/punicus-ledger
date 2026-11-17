@@ -22,7 +22,7 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 <p>If the folder grows too much, there are two levers, both the owner's. Deleting the folder stops the growth and keeps every past image in the history. Rewriting the history with <code>git filter-repo --path docs/screenshots --invert-paths</code> drops them for good, but changes the SHA of every commit since the first screenshot: tags, links to commits and every existing clone must follow. CI fails a pull request once the folder, or one image, passes its size budget (<code>scripts/screenshots.py</code>).</p>
 <nav><a href="#account-detail">Account detail</a> <a href="#accounts">Accounts</a> <a href="#activity-detail">Activity detail</a> <a href="#add-on-networks-dialog">Add on networks (dialog)</a> <a href="#add-token">Add token</a> <a href="#connections">Connected dApps</a> <a href="#cow-order">CoW order</a> <a href="#create-account">Create account</a> <a href="#create-safe">Create Safe</a> <a href="#currency">Display currency</a> <a href="#dapp-proposal">dApp connection request</a> <a href="#dapp-request">dApp signing request</a> <a href="#dapp-transaction">dApp transaction</a> <a href="#debug">Debug</a> <a href="#derive-account">Add account from the same phrase</a> <a href="#gnosis-pay">Gnosis Pay account</a> <a href="#handoff">Send from another wallet</a> <a href="#mnemonic-import">Import recovery phrase</a> <a href="#pair-dapp">Connect a dApp</a> <a href="#receive">Receive</a> <a href="#remove-account-dialog">Remove account (dialog)</a> <a href="#rename-account-dialog">Rename account (dialog)</a> <a href="#safe-import">Import Safe</a> <a href="#safe-propose">Propose Safe transaction</a> <a href="#safe-settings">Safe settings</a> <a href="#safe-swap">Safe swap</a> <a href="#safe-tx">Safe transaction</a> <a href="#screen-capture-warning-dialog">Screen capture warning (dialog)</a> <a href="#security">Security</a> <a href="#send">Send</a> <a href="#settings">Settings</a> <a href="#simple-account-detail">Account detail (simple mode)</a> <a href="#simple-accounts">Home (simple mode)</a> <a href="#simple-activity-detail">Activity detail (simple mode)</a> <a href="#simple-add-token">Add token (simple mode)</a> <a href="#simple-cow-order">CoW order (simple mode)</a> <a href="#simple-create-safe">Create Safe (simple mode)</a> <a href="#simple-safe-import">Import Safe (simple mode)</a> <a href="#simple-safe-propose">Propose Safe transaction (simple mode)</a> <a href="#simple-safe-settings">Safe settings (simple mode)</a> <a href="#simple-safe-swap">Safe swap (simple mode)</a> <a href="#simple-safe-tx">Safe transaction (simple mode)</a> <a href="#simple-send">Send (simple mode)</a> <a href="#simple-settings">Settings (simple mode)</a> <a href="#simple-swap">Swap (simple mode)</a> <a href="#simple-tokens">Tokens (simple mode)</a> <a href="#simple-transfer-status">Transfer status (simple mode)</a> <a href="#simple-watch">Watch address (simple mode)</a> <a href="#swap">Swap</a> <a href="#tokens">Tokens</a> <a href="#transfer-status">Transfer status</a> <a href="#update-required">Update required</a> <a href="#watch">Watch address</a> <a href="#widget-pair">Widget setup</a> </nav>
 <section id="account-detail">
-<h2>Account detail <small>account-detail/ · 46 states</small></h2>
+<h2>Account detail <small>account-detail/ · 47 states</small></h2>
 <div class="shots">
 <figure><a href="account-detail/assets.png"><img src="account-detail/assets.png" loading="lazy" alt="assets"></a><figcaption>assets</figcaption></figure>
 <figure><a href="account-detail/assets-dark.png"><img src="account-detail/assets-dark.png" loading="lazy" alt="assets-dark"></a><figcaption>assets-dark</figcaption></figure>
@@ -70,6 +70,7 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 <figure><a href="account-detail/activity-queued.png"><img src="account-detail/activity-queued.png" loading="lazy" alt="activity-queued"></a><figcaption>activity-queued</figcaption></figure>
 <figure><a href="account-detail/activity-queued-conflict-dark.png"><img src="account-detail/activity-queued-conflict-dark.png" loading="lazy" alt="activity-queued-conflict-dark"></a><figcaption>activity-queued-conflict-dark</figcaption></figure>
 <figure><a href="account-detail/gnosis-pay-owners.png"><img src="account-detail/gnosis-pay-owners.png" loading="lazy" alt="gnosis-pay-owners"></a><figcaption>gnosis-pay-owners</figcaption></figure>
+<figure><a href="account-detail/gnosis-pay-controlled.png"><img src="account-detail/gnosis-pay-controlled.png" loading="lazy" alt="gnosis-pay-controlled"></a><figcaption>gnosis-pay-controlled</figcaption></figure>
 </div>
 </section>
 <section id="accounts">
@@ -342,7 +343,7 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 </div>
 </section>
 <section id="gnosis-pay">
-<h2>Gnosis Pay account <small>gnosis-pay/ · 18 states</small></h2>
+<h2>Gnosis Pay account <small>gnosis-pay/ · 22 states</small></h2>
 <div class="shots">
 <figure><a href="gnosis-pay/overview.png"><img src="gnosis-pay/overview.png" loading="lazy" alt="overview"></a><figcaption>overview</figcaption></figure>
 <figure><a href="gnosis-pay/overview-dark.png"><img src="gnosis-pay/overview-dark.png" loading="lazy" alt="overview-dark"></a><figcaption>overview-dark</figcaption></figure>
@@ -360,6 +361,10 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 <figure><a href="gnosis-pay/review-not-sent.png"><img src="gnosis-pay/review-not-sent.png" loading="lazy" alt="review-not-sent"></a><figcaption>review-not-sent</figcaption></figure>
 <figure><a href="gnosis-pay/review-biometrics.png"><img src="gnosis-pay/review-biometrics.png" loading="lazy" alt="review-biometrics"></a><figcaption>review-biometrics</figcaption></figure>
 <figure><a href="gnosis-pay/queued-unverified.png"><img src="gnosis-pay/queued-unverified.png" loading="lazy" alt="queued-unverified"></a><figcaption>queued-unverified</figcaption></figure>
+<figure><a href="gnosis-pay/member-safe.png"><img src="gnosis-pay/member-safe.png" loading="lazy" alt="member-safe"></a><figcaption>member-safe</figcaption></figure>
+<figure><a href="gnosis-pay/co-signer.png"><img src="gnosis-pay/co-signer.png" loading="lazy" alt="co-signer"></a><figcaption>co-signer</figcaption></figure>
+<figure><a href="gnosis-pay/review-member-safe.png"><img src="gnosis-pay/review-member-safe.png" loading="lazy" alt="review-member-safe"></a><figcaption>review-member-safe</figcaption></figure>
+<figure><a href="gnosis-pay/control-unread.png"><img src="gnosis-pay/control-unread.png" loading="lazy" alt="control-unread"></a><figcaption>control-unread</figcaption></figure>
 <figure><a href="gnosis-pay/loading.png"><img src="gnosis-pay/loading.png" loading="lazy" alt="loading"></a><figcaption>loading</figcaption></figure>
 <figure><a href="gnosis-pay/unavailable.png"><img src="gnosis-pay/unavailable.png" loading="lazy" alt="unavailable"></a><figcaption>unavailable</figcaption></figure>
 </div>

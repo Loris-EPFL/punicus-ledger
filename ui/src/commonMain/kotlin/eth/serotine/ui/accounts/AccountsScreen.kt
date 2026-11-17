@@ -527,6 +527,8 @@ internal fun accountMenu(
         MenuAction("Send", Icons.AutoMirrored.Filled.Send, unavailable = sendNotice != null) {
             when {
                 sendNotice != null -> onUnavailable(sendNotice)
+                // Controlled here through its Delay: its transfers go through the Gnosis Pay screen.
+                account.sendsThroughGnosisPay -> act(AccountAction.GnosisPay(chainId, address))
                 account.kind == AccountKind.SAFE -> act(AccountAction.Propose(chainId, address))
                 else -> act(AccountAction.Send(chainId, address))
             }

@@ -906,6 +906,7 @@ private fun NavController.open(action: AccountAction) {
         is AccountAction.Send -> return send(account, asset = null)
         is AccountAction.SendElsewhere -> return sendElsewhere(account, asset = null)
         is AccountAction.Propose -> return propose(account, asset = null)
+        is AccountAction.GnosisPay -> return gnosisPay(account)
         is AccountAction.Open -> Destination.ACCOUNT
         is AccountAction.Receive -> Destination.RECEIVE
         is AccountAction.Rename -> Destination.RENAME

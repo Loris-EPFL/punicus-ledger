@@ -2,9 +2,11 @@
 
 A Gnosis Pay account backs the Gnosis Pay Visa card. On chain it is a Safe on
 Gnosis Chain, and the account that controls it is not one of the Safe's
-owners: it is a member of a Zodiac Delay modifier enabled on the Safe. This
+owners: it is a member of a Zodiac Delay modifier enabled on the Safe, or a
+key that owns such a member when the member is a Safe. This
 page is the contract for recognising such an account and for sending from it
-through that module. It records the owner's decisions of 2026-11-15, which
+through that module. It records the owner's decisions of 2026-11-15 and the
+owner's request of 2026-11-17 (*Control through a member Safe*), which
 `.claude/rules/trust.md` (*A Gnosis Pay account sends through its Delay
 module*) carries as rules.
 
@@ -50,7 +52,7 @@ through the Delay module:
 
 | Mastercopy | Generation | Punicus |
 |---|---|---|
-| `0x22d903fd45F441F51bcad198D14eBa8a75EA1ef0` | current (Sourcify: exact match of `Delay.sol`) | recognised; a member held here sends |
+| `0x22d903fd45F441F51bcad198D14eBa8a75EA1ef0` | current (Sourcify: exact match of `Delay.sol`) | recognised; a controlling key held here sends |
 | `0x4A97E65188A950Dd4b0f21F9b5434dAeE0BBF9f5` | retired | recognised and shown; Send greyed out, saying why |
 
 Both are pinned in `eth.serotine.data.safe.DelayDeployments`. The public
@@ -73,30 +75,87 @@ modules its verified state lists is the Safe's own Delay:
 
 The Safe is added as any Safe is: watched (*Watch an address*). No new way to
 add an account exists. Its Owners tab then says it is a Gnosis Pay account
-and opens the Gnosis Pay screen. The account's own Send and Swap stay greyed
+and opens the Gnosis Pay screen. That screen offers Send when a key that
+controls the Delay by itself is held here on Gnosis Chain (*Control through a
+member Safe*). The account then shows Full control, and its own Send opens
+the Gnosis Pay screen; its Swap stays greyed out, since only plain transfers
+go through the Delay. Otherwise the account's own Send and Swap stay greyed
 out, since no owner can sign: a tap on Send says that its transfers go
-through the Delay and offers the Gnosis Pay screen. That screen offers Send
-when a member's key is held here on Gnosis Chain.
-Otherwise Send is greyed out, and a tap says what is missing: a member's key;
-the member added on Gnosis Chain; the member's watched entry on Gnosis Chain
+through the Delay and offers the Gnosis Pay screen.
+There, Send is greyed out, and a tap says what is missing: a controlling key;
+the key added on Gnosis Chain; the key's watched entry on Gnosis Chain
 removed and added again from the held one; the wallet's account list, which
-cannot be read right now; or that the module is on the retired mastercopy.
+cannot be read right now; who controls the Delay, not all verified yet; a
+held key that acts only with co-owners; or that the module is on the retired
+mastercopy.
 
 `ObserveGnosisPay` (domain) and `VerifiedDelayModules` (data) implement it.
 
+## Control through a member Safe
+
+(Owner's request, 2026-11-17: "it detects a GnosisPay Safe and finds all
+indirectly controlling EOAs. If one of those EOAs' secret key is available
+show the GnosisPay safe as full controls. Allow to make a tx to send funds".)
+
+Accounts set up since the rollover of 2026-06-04 mostly have a Safe as the
+Delay's member, not a key: a Safe of threshold 1, often with passkeys among
+its owners. Punicus follows the members down to the keys:
+
+- Each member's kind is proven by the light client: a key (no code, or an
+  EIP-7702 delegation), a Safe (a pinned proxy of a pinned singleton), or
+  other code. A Safe's owners are read the same way, in turn, at most three
+  Safes deep. An account whose key is held here is a key without a read: a
+  held key is an account with no Safe code. Addresses `0x…01` to `0x…ff`
+  (the placeholder `0x…02`, the sentinel) are never read and control nothing.
+- At most 32 addresses are read for one Delay, each a read the light client
+  keeps proving while it is shown: the members share them evenly, and a
+  Safe what is left of its share among its owners. Past them an address is
+  not read, and listed as such; a key held here costs nothing and is found
+  anyway. Anyone can build a wide tree on chain cheaply; this bounds what
+  watching one costs, on the Gnosis Pay screen and for the list's badge.
+- Other code (a passkey signer, a module, an unpinned Safe), a Safe older
+  than 1.3.0 (it does not revert when its call fails, so a run through it
+  proves nothing), and a Safe past three levels, or already on the way, are
+  listed as not followed.
+- What is not read yet, or cannot be verified, is never taken for "no key
+  here", and neither is what was left unread past the 32: Send says which.
+- **A key controls the account by itself** when every Safe on its way needs
+  one signature. Then, held here on Gnosis Chain, it sends: the account shows
+  Full control. A held key behind a Safe of a higher threshold is a
+  co-signer only, and Send says so: Punicus does not gather co-owners'
+  signatures for a Delay.
+- The Gnosis Pay screen lists the members, what each is ("A Safe: 1 of its 9
+  owners signs"), and the keys at the end of the ways down, each with the
+  Safes it goes through and whether its key is on this device.
+
 ## Sending
 
-A transfer from a Gnosis Pay account is two transactions from a member whose
-key is held here. The member pays both fees in xDAI.
+A transfer from a Gnosis Pay account is two transactions from a key held here
+that controls the Delay by itself: a member, or the owner of a member Safe
+(*Control through a member Safe*). That key pays both fees in xDAI. The
+shortest way is used: a key that is a member itself sends straight to the
+Delay.
 
 1. **Queue.** `execTransactionFromModule(to, value, data, CALL)` sent to the
-   Delay, quoted, simulated and signed like any transaction from the member:
+   Delay, quoted, simulated and signed like any transaction from the key:
    at the normal fee level, which the review names, and never on a quote
-   more than a minute old, as on Send.
+   more than a minute old, as on Send. Through member Safes, the key sends it
+   to the Safe it owns, and each Safe on the way executes the call of the one
+   before it with `execTransaction`: no value, operation CALL, no gas refund
+   (`safeTxGas`, `baseGas` and `gasPrice` 0, so the Safe reverts when its
+   call fails), confirmed by a pre-validated signature of the owner that
+   calls it (`r` = that owner, `v` = 1), which the Safe accepts because that
+   owner is the account executing it. The run as a verified call proves the
+   way: it reverts unless each Safe needs one signature and the caller is
+   its owner, and unless the member Safe is a member of the Delay. The review
+   names the Safes it goes through.
 2. **Wait.** The cooldown runs from the block that queued it. The screen
    shows when the transfer can be executed, and until when.
-3. **Execute.** `executeNextTx` with the same four fields, sent by the
-   member. Before it is quoted, the Delay's verified state must show the
+3. **Execute.** `executeNextTx` with the same four fields, sent by the key
+   that queued it, straight to the Delay: anyone may execute an entry. It is
+   offered while that key is held here on Gnosis Chain, whatever the control
+   tree says meanwhile: a member Safe's owners changed during the cooldown,
+   or not read yet, never strand a transfer queued here. Before it is quoted, the Delay's verified state must show the
    transfer as the next entry (`txHash(txNonce)` equal to its hash), its
    cooldown passed and at least five minutes left before its expiration, so
    that the transaction is mined while the window is open. An entry ahead of
@@ -148,7 +207,7 @@ refusals of `.claude/rules/trust.md` cannot be bypassed.
 **The relayed path is not used.** The Delay's `moduleOnly` also accepts a
 member's EIP-712 signature appended to the calldata, which Gnosis Pay's
 relayer sends and pays for. That needs an off-chain service, which the data
-sources rule leaves out. Punicus only sends the member's own transactions.
+sources rule leaves out. Punicus only sends the held key's own transactions.
 
 **The card's allowance is never a cap.** The chain does not hold the member
 to the Roles allowance, so neither does Punicus. Showing the allowance was

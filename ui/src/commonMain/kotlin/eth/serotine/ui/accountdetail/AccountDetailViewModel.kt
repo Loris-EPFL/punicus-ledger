@@ -85,6 +85,7 @@ import eth.serotine.ui.components.maskAmount
 import eth.serotine.ui.components.notTurnedOn
 import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.safeTxActionItem
+import eth.serotine.ui.gnosispay.GnosisPayTexts
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
 import eth.serotine.ui.components.valuationText
@@ -453,7 +454,12 @@ class AccountDetailViewModel(
                 if (state is AccountDetailUiState.Ready) state.copy(nfts = nfts) else state
             }
             .combine(gnosisPay) { state, entry ->
-                if (state is AccountDetailUiState.Ready) state.copy(gnosisPay = entry).withGnosisPayOwner() else state
+                if (state is AccountDetailUiState.Ready) {
+                    state.copy(gnosisPay = entry?.text, gnosisPayControlled = entry?.controlled == true)
+                        .withGnosisPayOwner()
+                } else {
+                    state
+                }
             }
             // Masked last, on the finished state (the Activity masks its own, as it is built).
             .combine(amountsHidden) { state, hidden -> state.withAmountsHidden(hidden) }
@@ -1053,15 +1059,25 @@ internal fun AccountDetailUiState.Ready.withGnosisPayOwner(): AccountDetailUiSta
 /** What the Owners tab calls that owner. */
 internal const val GNOSIS_PAY_PLACEHOLDER_LABEL = "Placeholder: no key controls it"
 
+/**
+ * A Safe as a Gnosis Pay account: what its Owners tab says of it ([text]), and whether a key held
+ * here controls it through its Delay ([controlled]; owner's request, 2026-11-17).
+ */
+internal data class GnosisPayEntry(val text: String, val controlled: Boolean)
+
 /** What a Safe's Owners tab says of it as a Gnosis Pay account; null when it is none, or not read yet. */
-internal fun gnosisPayEntry(reading: GnosisPayReading): String? {
+internal fun gnosisPayEntry(reading: GnosisPayReading): GnosisPayEntry? {
     val found = reading as? GnosisPayReading.Found ?: return null
     val who = when (found.sending) {
-        GnosisPaySending.AVAILABLE -> "Its controlling key is on this device: transfers go through its Delay module."
+        GnosisPaySending.AVAILABLE -> {
+            val through = GnosisPayTexts.through(found.controllersHeld.firstOrNull()?.via.orEmpty())
+                ?.let { ", ${it.replaceFirstChar(Char::lowercaseChar)}" }.orEmpty()
+            "A key on this device controls it$through: transfers go through its Delay module."
+        }
         GnosisPaySending.RETIRED_MODULE -> "Its Delay module runs retired code, so Punicus sends nothing through it."
         else -> "Controlled through its Delay module, by a key that cannot send from here yet."
     }
-    return "Gnosis Pay account. $who"
+    return GnosisPayEntry("Gnosis Pay account. $who", found.sending == GnosisPaySending.AVAILABLE)
 }
 
 /**

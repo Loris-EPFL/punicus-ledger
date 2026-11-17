@@ -181,6 +181,32 @@ class GnosisPayTransfersTest {
             inputs.simulated.map { it.first to it.second },
         )
         assertEquals(UInt256.of("2000000000000000000"), quote.safeBalance)
+        assertEquals(emptyList(), quote.via)
+    }
+
+    @Test
+    fun theOwnerOfAMemberSafeQueuesThroughThatSafeAndTheRunMustAcceptIt() = runTest {
+        // The member is a Safe of threshold 1; its owner's key is held here (owner's request, 2026-11-17).
+        val owner = Address.of("0x" + "91".repeat(20))
+        native.of(owner).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 100)
+        native.of(safe).value = BalanceReading.Verified(Wei.of("2000000000000000000"), 100)
+
+        val quote = (queueing()(owner, transfer(), FeeLevel.NORMAL, via = listOf(member)) as DelayQuoting.Quoted).quote
+
+        assertEquals(owner, quote.call.from)
+        assertEquals(member, quote.call.transaction.to)
+        assertEquals(transfer().queueCall(owner, listOf(member)).second.toHex(), quote.call.transaction.data.toHex())
+        assertEquals(listOf(member), quote.via)
+        assertEquals(SentAction.DelayQueue(transfer()), quote.action)
+        assertEquals(listOf(safe to recipient, owner to member), inputs.simulated.map { it.first to it.second })
+
+        // A Safe's execTransaction answering false is a refusal, as the Delay's own would be.
+        inputs.simulated.clear()
+        inputs.simulationOf = { _, to -> Simulation.Succeeded(if (to == member) "0".repeat(64) else "", 100) }
+        assertEquals(
+            DelayQuoting.NotQuoted(CallRefusal.Reverts(100)),
+            queueing()(owner, transfer(), FeeLevel.NORMAL, via = listOf(member)),
+        )
     }
 
     @Test

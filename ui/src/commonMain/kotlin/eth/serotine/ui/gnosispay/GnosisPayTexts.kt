@@ -13,6 +13,8 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.usecase.CallRefusal
+import eth.serotine.domain.usecase.ControlNode
+import eth.serotine.domain.usecase.DelayControl
 import eth.serotine.domain.usecase.DelayQuote
 import eth.serotine.domain.usecase.DelayQuoting
 import eth.serotine.domain.usecase.DelayStep
@@ -20,6 +22,7 @@ import eth.serotine.domain.usecase.DelayTransferState
 import eth.serotine.domain.usecase.DelayTransfersReading
 import eth.serotine.domain.usecase.GnosisPayReading
 import eth.serotine.domain.usecase.GnosisPaySending
+import eth.serotine.domain.usecase.HeldController
 import eth.serotine.domain.usecase.TokenHoldings
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.displaySymbol
@@ -72,9 +75,65 @@ internal object GnosisPayTexts {
         GnosisPaySending.WINDOW_TOO_SHORT ->
             "This account's Delay module gives a transfer too short a window to be executed in: an execution " +
                 "sent once it is ready could not be mined before it expires. Punicus queues nothing through it."
+        GnosisPaySending.CONTROL_UNREAD ->
+            "Which keys control this account cannot all be verified right now, so whether one is on this device " +
+                "cannot be told yet. Punicus keeps checking."
+        GnosisPaySending.CONTROL_TOO_WIDE ->
+            "This account is controlled through more accounts than Punicus reads for one " +
+                "(${DelayControl.MAX_ADDRESSES}), and no key on this device was found among those read."
+        GnosisPaySending.CO_SIGNERS_NEEDED ->
+            "A key on this device controls this account only together with others: a Safe on its way needs more " +
+                "than one signature. Punicus sends through a Delay only with a key that can act alone."
         GnosisPaySending.NO_MEMBER_KEY ->
-            "The key of the account that controls this Gnosis Pay account is not on this device. Import its " +
-                "recovery phrase to send from here; until then the account is watched."
+            "No key that controls this Gnosis Pay account is on this device. Import the recovery phrase of one of " +
+                "the keys listed here to send from here; until then the account is watched."
+    }
+
+    /**
+     * What a member is, when it is more than a key: a Safe and how many of its owners sign, or what
+     * was not followed or not verified; null for a key (or a placeholder), which the row says itself.
+     */
+    fun memberWhat(node: ControlNode?): String? = when (node) {
+        is ControlNode.Safe -> "A Safe: ${node.threshold} of its ${node.owners.size} " +
+            (if (node.owners.size == 1) "owner" else "owners") + if (node.threshold == 1) " signs" else " sign"
+        is ControlNode.OtherContract -> "A contract that is no Safe: not followed"
+        // A member has nothing above it: only its version keeps it from being followed.
+        is ControlNode.NotFollowed -> "A Safe older than 1.3.0: not followed"
+        is ControlNode.OverBudget ->
+            "Not read: past the ${DelayControl.MAX_ADDRESSES} accounts Punicus reads for one account"
+        // Never called a key before it is proven one (.claude/rules/ui.md).
+        is ControlNode.Unread, null -> "Not verified yet"
+        is ControlNode.Key, is ControlNode.Placeholder -> null
+    }
+
+    /**
+     * The Safes a key goes through to the Delay, in the order the call runs: the Safe the key owns
+     * first, the member last; null for a member itself.
+     */
+    fun through(via: List<Address>): String? = when (via.size) {
+        0 -> null
+        1 -> "Through Safe ${shortAddress(eip55(via.single()))}"
+        else -> "Through Safes " + via.reversed().joinToString(" → ") { shortAddress(eip55(it)) }
+    }
+
+    /** Who signs a transfer: the key's name, and the Safes it goes through. */
+    fun sender(held: HeldController): String =
+        listOfNotNull(held.account.label, through(held.via)?.replaceFirstChar { it.lowercase() }).joinToString(", ")
+
+    /** What the list of keys leaves out: what is not read yet, and what is not followed; null when nothing. */
+    fun controlNote(control: DelayControl?): String? {
+        if (control == null) return null
+        val notes = listOfNotNull(
+            "Some of the accounts on the way to these keys are not verified yet. Punicus keeps checking."
+                .takeIf { !control.complete },
+            control.notFollowed.size.takeIf { it > 0 }?.let { count ->
+                val what = if (count == 1) "1 signer is" else "$count signers are"
+                "$what not followed: a contract that is no Safe (a passkey, for one), a Safe older than 1.3.0, " +
+                    "a Safe more than ${DelayControl.MAX_SAFES} levels down, or an account past the " +
+                    "${DelayControl.MAX_ADDRESSES} Punicus reads for one."
+            },
+        )
+        return notes.joinToString(" ").ifEmpty { null }
     }
 
     const val EXECUTE_NEEDS_MEMBER =
@@ -236,7 +295,8 @@ internal object GnosisPayTexts {
         CallRefusal.InsufficientFunds -> "The controlling account holds too little xDAI for the fee. It pays the " +
             "fees of both the queueing and the execution."
         is CallRefusal.Infeasible -> "It cannot succeed: ${refusal.detail}"
-        is CallRefusal.Reverts -> "It reverts, run as a verified call: the Delay module refuses it. Nothing was signed."
+        is CallRefusal.Reverts -> "It reverts, run as a verified call: the Delay module refuses it, or a Safe on the " +
+            "way to it does (an owner removed, a threshold raised, a guard). Nothing was signed."
         CallRefusal.Refused -> "The light client on this device cannot run it."
         CallRefusal.Syncing -> "The light client is still syncing. Try again once it has caught up."
         is CallRefusal.Unavailable -> "A figure it needs cannot be verified right now: ${reasonText(refusal.reason)}"
@@ -290,6 +350,13 @@ internal object GnosisPayTexts {
             "Amount" to amount(transfer.amount, transfer.asset, network),
         ) + tokenLines(transfer.asset, sharesBuiltInSymbol) + listOf(
             "Through" to "Delay module ${eip55(transfer.delay)}",
+        ) + listOfNotNull(
+            // In the order the call runs: the Safe the signer owns first, the Delay's member last.
+            quote.via.takeIf { it.isNotEmpty() }?.let { via ->
+                "Through ${if (via.size == 1) "Safe" else "Safes"}" to via.reversed().joinToString(" → ") { eip55(it) } +
+                    ": ${if (via.size == 1) "it executes" else "each executes"} the call as its one owner's transaction"
+            },
+        ) + listOf(
             "Signed by" to eip55(member),
             "Fee" to maxFee,
             "Signer's $symbol" to "${call.nativeBefore.formatUnits(NATIVE_DECIMALS)} $symbol now, at least " +

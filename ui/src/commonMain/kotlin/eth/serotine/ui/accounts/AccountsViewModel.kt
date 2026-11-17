@@ -20,6 +20,7 @@ import eth.serotine.domain.usecase.HoldNetworksWhileEmpty
 import eth.serotine.domain.usecase.ObserveAmountsHidden
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
+import eth.serotine.domain.usecase.ObserveGnosisPays
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveOutbox
@@ -56,6 +57,7 @@ import eth.serotine.ui.components.totalText
 import eth.serotine.ui.outbox.redatedAtTheirHour
 import eth.serotine.ui.platform.formatDateTime
 import eth.serotine.ui.update.UpgradeBannerItem
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -127,6 +129,12 @@ class AccountsViewModel(
      * shows. Null: nothing held.
      */
     holdNetworksWhileEmpty: HoldNetworksWhileEmpty? = null,
+    /**
+     * Each Gnosis Chain Safe as a Gnosis Pay account: one a key held here controls through its Delay
+     * shows Full control, and its Send opens the Gnosis Pay screen (owner's request, 2026-11-17).
+     * Null: none is read, and every Safe's badge is its owners'.
+     */
+    observeGnosisPays: ObserveGnosisPays? = null,
 ) : ViewModel() {
 
     init {
@@ -229,12 +237,24 @@ class AccountsViewModel(
 
     val uiState: StateFlow<AccountsUiState> = combine(
         observePortfolio(),
-        combine(observeSafes(), ensNames, ::Pair),
+        combine(observeSafes(), ensNames, controlledThroughDelay(observeGnosisPays), ::Triple),
         combine(statuses, staleAnchors, observeEnabledNetworks(), ::Triple),
         combine(upgrades, live, ::Pair),
         combine(message, lastRefresh, ::Pair),
-    ) { portfolio, (safes, ensNames), (lightClients, staleAnchors, on), (upgrades, live), (message, refresh) ->
-        Inputs(portfolio, safes, ensNames, lightClients, staleAnchors, on.toSet(), upgrades, live, message, refresh)
+    ) { portfolio, (safes, ensNames, controlled), (lightClients, staleAnchors, on), (upgrades, live), (message, refresh) ->
+        Inputs(
+            portfolio,
+            safes,
+            ensNames,
+            lightClients,
+            staleAnchors,
+            on.toSet(),
+            upgrades,
+            live,
+            message,
+            refresh,
+            controlled,
+        )
     }
         // Simple mode's ages ("Updated 2 min ago") are re-dated every second while one is shown.
         .redatedWhile { inputs ->
@@ -244,13 +264,14 @@ class AccountsViewModel(
         }
         .map { inputs ->
             with(inputs) {
-                stateOf(portfolio, safes, ensNames, lightClients, staleAnchors, on, upgrades).let { state ->
-                    if (state is AccountsUiState.Ready) {
-                        simple(state, portfolio, on, live, lightClients, refresh).copy(message = message)
-                    } else {
-                        state
+                stateOf(portfolio, safes, ensNames, lightClients, staleAnchors, on, upgrades, gnosisPayControlled)
+                    .let { state ->
+                        if (state is AccountsUiState.Ready) {
+                            simple(state, portfolio, on, live, lightClients, refresh).copy(message = message)
+                        } else {
+                            state
+                        }
                     }
-                }
             }
         }
         // What the outbox holds, under each network's line in either view; the lost notice until dismissed.
@@ -285,6 +306,14 @@ class AccountsViewModel(
         viewModelScope.launch { if (!toggleAmountsHidden()) message.value = AMOUNTS_NOT_SAVED }
     }
 
+    /** The Gnosis Chain Safes a key held here controls through their Delay; none until read, none without [source]. */
+    private fun controlledThroughDelay(source: ObserveGnosisPays?): Flow<Set<AccountId>> =
+        source?.invoke()
+            ?.map { readings -> readings.filterValues { it.controlledHere }.keys }
+            ?.distinctUntilChanged()
+            ?.onStart { emit(emptySet()) }
+            ?: flowOf(emptySet())
+
     /** What [uiState] is made of, gathered before it is re-dated. */
     private data class Inputs(
         val portfolio: Portfolio,
@@ -297,6 +326,7 @@ class AccountsViewModel(
         val live: List<Boolean>,
         val message: String?,
         val refresh: Refresh?,
+        val gnosisPayControlled: Set<AccountId>,
     )
 
     /**
@@ -463,6 +493,7 @@ class AccountsViewModel(
         staleAnchors: List<StaleAnchorWarning?>,
         on: Set<Network>,
         warnings: UpgradeWarnings,
+        gnosisPayControlled: Set<AccountId>,
     ): AccountsUiState {
         // A network that is off shows no banner, even with an upgrade recorded (docs/networks.md).
         val upgrade = Network.entries.filter { it in on }
@@ -502,6 +533,7 @@ class AccountsViewModel(
                             value?.let { it.nativeValue to it.currency },
                             safes[account.id],
                             formatTime,
+                            gnosisPayControlled = account.id in gnosisPayControlled,
                             ensNames[account.id],
                             networkOn = isOn,
                             now = clock(),

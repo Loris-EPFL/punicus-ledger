@@ -136,12 +136,12 @@ class ObserveGnosisPay(
         list: AccountList,
         readings: Map<Address, Held<DelayReading>>,
     ): Stage {
-        val state = when (kind) {
+        val verifiedKind = when (kind) {
             KindReading.Syncing -> return Stage.Done(GnosisPayReading.Checking)
             is KindReading.Unavailable -> return Stage.Done(GnosisPayReading.Unavailable(kind.reason))
-            is KindReading.Verified ->
-                (kind.kind as? AddressKind.Safe)?.state ?: return Stage.Done(GnosisPayReading.NotGnosisPay)
+            is KindReading.Verified -> kind
         }
+        val state = (verifiedKind.kind as? AddressKind.Safe)?.state ?: return Stage.Done(GnosisPayReading.NotGnosisPay)
         val wired = state.modules.mapNotNull { module ->
             val reading = readings[module] ?: return@mapNotNull null
             val verified = reading.value as? DelayReading.Verified ?: return@mapNotNull null
@@ -162,7 +162,9 @@ class ObserveGnosisPay(
                 },
             )
         }
-        val (delay, block, delayHeld) = chosen
+        val (delay, delayBlock, delayHeld) = chosen
+        // A held Safe's state is older than the Delay read with it: the block named is the older one's.
+        val block = if (kindHeld) minOf(delayBlock, verifiedKind.blockNumber) else delayBlock
         return Stage.Chosen(delay, block, list, state.modules, held = kindHeld || delayHeld)
     }
 
@@ -269,7 +271,7 @@ sealed interface GnosisPayReading {
      * address) that act for the Delay only with co-owners; and [keysHere], every key held here on the Safe's network, from the
      * wallet's list alone: any of them may execute a transfer it queued, which needs no control.
      * [held] when the Safe's state or its Delay's is an earlier verified answer standing over a
-     * read that did not answer since ([blockNumber] is then that answer's): shown, and no transfer
+     * read that did not answer since ([blockNumber] is then the older of the two's): shown, and no transfer
      * is planned on it, since [safeModules] and the Delay's periods could have changed.
      */
     data class Found(

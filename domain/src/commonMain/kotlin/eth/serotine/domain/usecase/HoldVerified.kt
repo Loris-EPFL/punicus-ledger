@@ -7,6 +7,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -65,6 +66,8 @@ internal fun <T : Any> Flow<T>.holdingLastMarked(
                         timer = launch {
                             delay(limit)
                             mutex.withLock {
+                                // Cancelled while it waited for the lock: a verified value came first.
+                                ensureActive()
                                 held = null
                                 timer = null
                                 latest?.let { send(Held(it, held = false)) }
@@ -88,7 +91,8 @@ internal fun <T : Any> Flow<T>.holdingLastMarked(
 /**
  * Whether a read without an answer for this reason may answer at the next head with nothing done:
  * no proof could be had this time (mostly no peer serving it; an engine whose state cannot be read
- * says the same, which is why a hold has a limit), or the light client is catching up. Every other
+ * says the same, and so does a Delay whose getters answer what no pinned Delay's do, which is why
+ * a hold has a limit), or the light client is catching up. Every other
  * reason (the network off, no engine, a stale checkpoint, a refusal) stands until something is
  * done about it.
  */
@@ -104,10 +108,6 @@ internal fun Flow<KindReading>.holdingVerifiedMarked(): Flow<Held<KindReading>> 
     verified = { it is KindReading.Verified },
     transient = { it == KindReading.Syncing || (it as? KindReading.Unavailable)?.reason?.transient == true },
 )
-
-/** [holdingVerifiedMarked], for a reader that does not tell a held answer from a fresh one. */
-internal fun Flow<KindReading>.holdingVerified(): Flow<KindReading> =
-    holdingVerifiedMarked().map { it.value }.distinctUntilChanged()
 
 /** A module's reading, its last [DelayReading.Verified] answer standing the same way ([holdingVerifiedMarked]). */
 internal fun Flow<DelayReading>.holdingVerifiedDelay(): Flow<Held<DelayReading>> = holdingLastMarked(

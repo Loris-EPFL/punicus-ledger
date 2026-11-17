@@ -289,10 +289,11 @@ class GnosisPayViewModelTest {
         cardKinds = kind
         val viewModel = viewModel()
         viewModel.ready()
-        // No peer served the Safe's proof at this head: what was verified before stays on screen.
+        // No peer served the Safe's proof at this head: what was verified before stays on screen, under
+        // the Safe's block, the older of the two, not the Delay's.
         kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
         assertTrue(viewModel.ready().send.enabled)
-        assertEquals(GnosisPayTexts.checkedAt(41, held = true), viewModel.ready().checkedAt)
+        assertEquals(GnosisPayTexts.checkedAt(40, held = true), viewModel.ready().checkedAt)
         viewModel.startSend()
         viewModel.onAssetChange(null)
         viewModel.onToChange(recipient.hex)

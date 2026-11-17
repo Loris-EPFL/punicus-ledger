@@ -129,15 +129,17 @@ class VerifiedDelayModules internal constructor(
         /**
          * What [data] returned, at the one block of this read: the first call at the head, every
          * later one at the block the first answered at ([VerifiedChain.callAt]), asked once more
-         * when it gives no answer. Eight calls of a second or more each never fit under one of
-         * Gnosis Chain's five-second heads, so calls at the head alone straddled two every time.
+         * when it gives no answer, and then at the head, where the check below still throws away an
+         * answer of another block: an engine that serves no call at a named block reads as before.
+         * Eight calls of a second or more each never fit under one of Gnosis Chain's five-second
+         * heads, so calls at the head alone straddled two every time.
          */
         private fun answer(data: ByteArray): String? {
             val pinned = block
             val asked = if (pinned == null) {
                 chain.call(module, data)
             } else {
-                chain.callAt(module, data, pinned) ?: chain.callAt(module, data, pinned)
+                held(data, pinned) ?: held(data, pinned) ?: chain.call(module, data)
             }
             val returned = when (val outcome = asked) {
                 null -> return end(Ended.NO_ANSWER)
@@ -156,6 +158,14 @@ class VerifiedDelayModules internal constructor(
             }
             return returned.hex
         }
+
+        /**
+         * [data] called at block [at]. A refusal there is no answer: the first call, at the head,
+         * showed that the engine runs these calls on this build, so it is that block it will not
+         * serve, which the next read's first call replaces.
+         */
+        private fun held(data: ByteArray, at: Long): CallOutcome? =
+            chain.callAt(module, data, at).takeUnless { it == CallOutcome.Refused }
 
         private fun address(data: ByteArray): Address? {
             val hex = answer(data) ?: return null

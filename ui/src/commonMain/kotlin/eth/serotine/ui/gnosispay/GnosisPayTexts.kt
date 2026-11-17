@@ -126,12 +126,16 @@ internal object GnosisPayTexts {
     fun sender(held: HeldController): String =
         listOfNotNull(held.account.label, through(held.via)?.replaceFirstChar { it.lowercase() }).joinToString(", ")
 
-    /** What the list of keys leaves out: what is not read yet, and what is not followed; null when nothing. */
+    /** What the list of keys leaves out or holds: what is not read yet, held, or not followed; null when nothing. */
     fun controlNote(control: DelayControl?): String? {
         if (control == null) return null
         val notes = listOfNotNull(
             "Some of the accounts on the way to these keys are not verified yet. Punicus keeps checking."
                 .takeIf { !control.complete },
+            (
+                "Some of the accounts on the way to these keys could not be verified at the latest block: they are " +
+                    "shown as last verified, for up to an hour."
+                ).takeIf { control.held },
             control.notFollowed.size.takeIf { it > 0 }?.let { count ->
                 val what = if (count == 1) "1 signer is" else "$count signers are"
                 "$what not followed: a contract that is no Safe (a passkey, for one), a Safe older than 1.3.0, " +

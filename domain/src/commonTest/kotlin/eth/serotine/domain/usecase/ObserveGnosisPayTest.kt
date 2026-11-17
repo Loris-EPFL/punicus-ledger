@@ -411,15 +411,22 @@ class ObserveGnosisPayTest {
         kind.value = KindReading.Unavailable(ReadUnavailable.SYNCING)
         kind.value = KindReading.Syncing
 
-        // Said as held, so that no transfer is planned on it; nothing else changed, nothing in between.
-        assertEquals(found.copy(held = true), seen.last())
-        assertEquals(listOf(found, found.copy(held = true)), seen.dropWhile { it != found })
+        // Said as held, the Safe and its Delay (no transfer is planned on them) and the way to the
+        // keys; nothing else changed, and the key controlled the account all along.
+        // The block named is the Safe's, the older of the two.
+        val held = found.copy(held = true, blockNumber = 40, control = found.control?.copy(held = true))
+        assertEquals(held, seen.last())
+        assertTrue(seen.dropWhile { it != found }.all { it.controlledHere }, seen.toString())
         // Nothing was started over: no address is read again.
         assertEquals(asked, kindsAsked)
 
         // Verified again, it is no longer held.
         kind.value = safeWith(listOf(roles, delay))
         readings.getValue(delay).value = DelayReading.Verified(DelayFinding.Wired(delayOf()), 41)
+        // The way to the keys is still held, and said so, while the Safe and its Delay are fresh.
+        assertEquals(found.copy(control = found.control?.copy(held = true)), seen.last())
+        memberKind.value = safeOf(listOf(passkey, ownerKey))
+        others.getValue(passkey).value = KindReading.Verified(AddressKind.Contract, 40)
         assertEquals(found, seen.last())
 
         // A verified answer that differs replaces it at once: the key's Safe now needs two signatures.
@@ -449,7 +456,8 @@ class ObserveGnosisPayTest {
         // Another kind of miss does not start the hour again.
         kind.value = KindReading.Syncing
         testScheduler.advanceTimeBy(29.minutes)
-        assertEquals(found.copy(held = true), seen.last())
+        // The Safe's state is the held one: the block named is its, the older of the two.
+        assertEquals(found.copy(held = true, blockNumber = 40), seen.last())
 
         testScheduler.advanceTimeBy(2.minutes)
         assertEquals(GnosisPayReading.Checking, seen.last())

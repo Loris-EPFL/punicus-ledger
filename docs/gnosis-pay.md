@@ -69,7 +69,8 @@ modules its verified state lists is the Safe's own Delay:
    EIP-1167 proxy of a pinned mastercopy.
 2. Its getters, run as verified calls at one block (one number, one hash:
    the first call at the head, the others held to the block it answered at,
-   since eight calls do not fit under one five-second head),
+   since eight calls do not fit under one five-second head; a held call
+   without an answer twice, or refused, is made at the head),
    say that its avatar, target and owner are the Safe. A Delay owned by
    anyone else could have its cooldown changed or its queue skipped by them:
    it is no Gnosis Pay account's, and nothing is sent through it.
@@ -97,7 +98,10 @@ mastercopy.
 until a new state has been confirmed", for an hour at most. The owner also
 decided that a held value shows its age, for every value the app shows;
 that comes with the app-wide change. Here the Gnosis Pay screen names the
-block and says that it could not be verified since.)
+block of the Safe's or the Delay's held answer, the older of the two, and
+says that it could not be verified since; for an address on the way to the
+keys, which carries no block on the screen, a note says that some are shown
+as last verified.)
 
 Each of these reads is made again at new heads, and one of them can find no
 peer serving its proof that time while the light client is otherwise fine.
@@ -114,7 +118,10 @@ would fall back to Watch-only every few heads and hardly ever leave it. So:
   one answers again. The hour is counted while the app runs: a desktop
   asleep does not count it down.
 - A verified answer that differs replaces it at once: an owner removed, a
-  threshold raised, a module disabled.
+  threshold raised, a module disabled. One case is held all the same, for
+  the hour: a Delay whose getters come to answer what no pinned Delay's do
+  (a revert, more members than are read), which the adapter says as a read
+  without an answer.
 - A reason that stands replaces it too, and ends the hold: the network
   turned off, no engine, a stale checkpoint, a refusal.
 - Before the first verified answer nothing is held: what is not read is said
@@ -127,6 +134,9 @@ would fall back to Watch-only every few heads and hardly ever leave it. So:
   queue, the balance, and the run as a verified call, which proves the sender
   and the Safes on its way (*Sending*). An execution rests on the fresh
   queue alone.
+- Send stays enabled on a held reading, and Review says why it does not go
+  on. Greyed out, it would flicker with every read that misses for a few
+  seconds.
 
 `ObserveGnosisPay` (domain) and `VerifiedDelayModules` (data) implement it.
 

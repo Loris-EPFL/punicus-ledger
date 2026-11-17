@@ -8,6 +8,10 @@ import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -74,9 +78,10 @@ data class DelayController(val key: Address, val via: List<Address>, val alone: 
 
 /**
  * Who controls a Delay: each of its [members], followed down to keys ([ControlNode]), in the
- * Delay's own order.
+ * Delay's own order. [held] when an address on the way down is what it was last verified as, over
+ * a read of it that did not answer since ([holdingVerifiedMarked]): shown, and said as such.
  */
-data class DelayControl(val members: List<ControlNode>) {
+data class DelayControl(val members: List<ControlNode>, val held: Boolean = false) {
 
     /**
      * Every key at the end of a way down from a member, with the Safes it goes through: one entry
@@ -153,8 +158,12 @@ internal class DelayControlReader(private val kinds: AddressKinds) {
 
     fun observe(network: Network, members: List<Address>, keys: Set<Address>): Flow<DelayControl> {
         val share = if (members.isEmpty()) 0 else DelayControl.MAX_ADDRESSES / members.size
-        return combineAll(members.map { node(network, it, emptyList(), keys, share) }).map { DelayControl(it) }
+        return combineAll(members.map { node(network, it, emptyList(), keys, share) })
+            .map { read -> DelayControl(read.map { it.node }, held = read.any { it.held }) }
     }
+
+    /** A node as read, [held] when it or one below it stands over a read that did not answer. */
+    private data class Marked(val node: ControlNode, val held: Boolean = false)
 
     /** [address]'s node, read with at most [budget] reads for it and all below it. */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -164,33 +173,42 @@ internal class DelayControlReader(private val kinds: AddressKinds) {
         path: List<Address>,
         keys: Set<Address>,
         budget: Int,
-    ): Flow<ControlNode> {
-        if (address in keys) return flowOf(ControlNode.Key(address))
-        if (address.isPlaceholder()) return flowOf(ControlNode.Placeholder(address))
-        if (budget < 1) return flowOf(ControlNode.OverBudget(address))
-        return kinds.observeKind(network, address)
-            // A Safe on the way stays one, its owners still read, over a read that only did not answer.
-            .holdingVerified()
-            .map { Shape.of(it) }
-            .distinctUntilChanged()
-            .flatMapLatest { shape ->
-                when (shape) {
-                    Shape.Key -> flowOf(ControlNode.Key(address))
-                    Shape.Contract -> flowOf(ControlNode.OtherContract(address))
-                    is Shape.Unread -> flowOf(ControlNode.Unread(address, shape.reason))
-                    Shape.OldSafe -> flowOf(ControlNode.NotFollowed(address))
-                    is Shape.Safe -> if (address in path || path.size >= DelayControl.MAX_SAFES) {
-                        flowOf(ControlNode.NotFollowed(address))
-                    } else {
-                        // This read spent, the rest shared among the owners.
-                        val share = if (shape.owners.isEmpty()) 0 else (budget - 1) / shape.owners.size
-                        combineAll(shape.owners.map { node(network, it, path + address, keys, share) })
-                            .map { owners -> ControlNode.Safe(address, shape.threshold, owners) }
+    ): Flow<Marked> {
+        if (address in keys) return flowOf(Marked(ControlNode.Key(address)))
+        if (address.isPlaceholder()) return flowOf(Marked(ControlNode.Placeholder(address)))
+        if (budget < 1) return flowOf(Marked(ControlNode.OverBudget(address)))
+        return flow {
+            // Whether this address's own kind is held, beside what it is: a hold that begins or ends
+            // changes no shape, so the owners below are not read anew for it.
+            val heldNow = MutableStateFlow(false)
+            val below = kinds.observeKind(network, address)
+                // A Safe on the way stays one, its owners still read, over a read that only did not answer.
+                .holdingVerifiedMarked()
+                .onEach { heldNow.value = it.held }
+                .map { Shape.of(it.value) }
+                .distinctUntilChanged()
+                .flatMapLatest { shape ->
+                    when (shape) {
+                        Shape.Key -> flowOf(Marked(ControlNode.Key(address)))
+                        Shape.Contract -> flowOf(Marked(ControlNode.OtherContract(address)))
+                        is Shape.Unread -> flowOf(Marked(ControlNode.Unread(address, shape.reason)))
+                        Shape.OldSafe -> flowOf(Marked(ControlNode.NotFollowed(address)))
+                        is Shape.Safe -> if (address in path || path.size >= DelayControl.MAX_SAFES) {
+                            flowOf(Marked(ControlNode.NotFollowed(address)))
+                        } else {
+                            // This read spent, the rest shared among the owners.
+                            val share = if (shape.owners.isEmpty()) 0 else (budget - 1) / shape.owners.size
+                            combineAll(shape.owners.map { node(network, it, path + address, keys, share) })
+                                .map { owners ->
+                                    val safe = ControlNode.Safe(address, shape.threshold, owners.map { it.node })
+                                    Marked(safe, held = owners.any { it.held })
+                                }
+                        }
                     }
                 }
-            }
-            .onStart { emit(ControlNode.Unread(address)) }
-            .distinctUntilChanged()
+                .onStart { emit(Marked(ControlNode.Unread(address))) }
+            emitAll(combine(below, heldNow) { read, held -> Marked(read.node, read.held || held) })
+        }.distinctUntilChanged()
     }
 
     /** What of an address's kind decides control: a Safe's owners and threshold, not its nonce. */

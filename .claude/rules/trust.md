@@ -195,10 +195,10 @@ carve-out of 2026-11-10 and its rulings of 2026-11-11 and 2026-11-13 on #761;
 - **A verified answer stands over a read that did not answer** (owner's
   decisions, 2026-11-17; docs/gnosis-pay.md, *A read that did not answer*):
   the Safe's state, its Delay's and each address's kind on the way to the
-  keys stay as last verified, with their block, while a later read only
-  found no proof or the light client catches up. For an hour at most; a
-  verified answer that differs, or a reason that stands, replaces it at
-  once. No transfer is planned on a held Safe or Delay.
+  keys stay as last verified, and are said to be, while a later read only
+  found no proof or the light client catches up. For an hour of the app
+  running at most; a verified answer that differs, or a reason that stands,
+  replaces it at once. No transfer is planned on a held Safe or Delay.
 - **Only plain transfers.** The Safe's xDAI as the value with no data, or an
   ERC-20 `transfer` with no value; operation CALL; never to the Safe, its
   modules or the Delay. Anything else is refused.

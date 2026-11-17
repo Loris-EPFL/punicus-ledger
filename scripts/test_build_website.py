@@ -5,11 +5,15 @@ The last test builds the committed `website/` from this checkout, so a page that
 that is gone, or links to an anchor that is not there, fails here.
 """
 
+import contextlib
+import io
+import json
 import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -109,6 +113,29 @@ class PickReleaseTest(unittest.TestCase):
         uploading = release("v0.6.0", "2026-12-01T00:00:00Z", ["Punicus-v0.6.0-x64.deb", "Punicus-v0.6.0-arm64.deb"])
         self.assertIs(build_website.pick_release([uploading, V5]), V5)
         self.assertIs(build_website.pick_release([uploading]), uploading)
+
+    def test_a_release_candidate_is_not_linked_while_another_release_is(self):
+        candidate = release("v0.6.0-rc1", "2026-12-01T00:00:00Z", files_of("v0.6.0-rc1"))
+        self.assertIs(build_website.pick_release([candidate, V5]), V5)
+        self.assertIs(build_website.pick_release([candidate]), candidate)
+        hotfix = release("v0.5.0-hotfix1", "2026-11-18T00:00:00Z", files_of("v0.5.0-hotfix1"))
+        self.assertFalse(build_website.is_candidate(hotfix))
+        self.assertTrue(build_website.is_candidate(release("v0.3.0-RC2", "2026-11-04T00:00:00Z", ["a"])))
+
+    def test_each_newer_release_that_is_not_linked_is_named_with_the_reason(self):
+        unsigned = release("v0.6.0", "2026-12-01T00:00:00Z", [n for n in files_of("v0.6.0") if "android" not in n])
+        candidate = release("v0.7.0-rc1", "2026-12-08T00:00:00Z", files_of("v0.7.0-rc1"))
+        older = release("v0.4.0", "2026-11-10T16:43:29Z", ["Punicus-v0.4.0-x64.deb"])
+        everything = [older, V5, unsigned, candidate]
+        self.assertIs(build_website.pick_release(everything), V5)
+        self.assertEqual(
+            build_website.passed_over(everything, V5),
+            [
+                "v0.7.0-rc1 is newer than v0.5.0 and is not linked: it is a release candidate",
+                "v0.6.0 is newer than v0.5.0 and is not linked: it lacks -android.apk",
+            ],
+        )
+        self.assertEqual(build_website.passed_over([older, V5], V5), [])
 
     def test_a_draft_a_release_without_files_and_another_kind_of_tag_are_passed_over(self):
         draft = release("v0.6.0", "2026-12-01T00:00:00Z", files_of("v0.6.0"), draft=True)
@@ -232,6 +259,20 @@ class CheckSiteTest(unittest.TestCase):
             self.assertIn(f"https://{host}.example/", problems)
         self.assertIn("<meta http-equiv=refresh>", problems)
 
+    def test_a_page_carries_no_script_no_handler_and_no_ping(self):
+        out = self.site(
+            {
+                "index.html": '<script>fetch("https://tracker.example/hit")</script><script src="js/app.js"></script>'
+                '<img src="pixel.png" onerror="go()"><a id="a" href="#a" ping="https://tracker.example/ping">a</a>',
+                "js/app.js": "",
+                "pixel.png": "",
+            }
+        )
+        problems = build_website.check_site(out)
+        self.assertEqual(len([p for p in problems if "a <script>" in p]), 2)
+        self.assertTrue(any("`onerror` on <img>" in p for p in problems))
+        self.assertTrue(any("`ping` on <a>" in p for p in problems))
+
 
 class FaviconTest(unittest.TestCase):
     def test_it_draws_the_logos_paths_centred_in_the_logos_own_box(self):
@@ -250,6 +291,105 @@ class FaviconTest(unittest.TestCase):
         ):
             with self.assertRaises(BuildError):
                 build_website.favicon(logo)
+
+
+DIGEST = "ab" * 32
+
+
+def made_up_repository(test):
+    """The least a repository needs for the site to build, in a folder of its own: nothing to lose."""
+    repo = temporary_folder(test) / "work" / "repo"
+    files = {
+        "website/index.html": f"<p>{DIGEST}</p>\n{build_website.START}\n<p>old</p>\n{build_website.END}\n",
+        "website/css/site.css": "body { margin: 0; }\n",
+        "android-app/release-signing-cert.sha256": f"# the pin\n{DIGEST}\n",
+        "assets/serotine_logo.svg": '<svg viewBox="0 0 1024 544"><path d="M1,2 Z"/></svg>',
+        "docs/screenshots/index.html": "the overview page CI writes",
+        "docs/screenshots/send/review.png": "an image",
+    }
+    for name, text in files.items():
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / name).write_text(text, encoding="utf-8")
+    return repo
+
+
+def listing(folder):
+    """Every file under `folder` with what it holds."""
+    return {p.relative_to(folder).as_posix(): p.read_bytes() for p in folder.rglob("*") if p.is_file()}
+
+
+class OutputFolderTest(unittest.TestCase):
+    """What the build may replace, each clause on a made-up repository."""
+
+    def setUp(self):
+        self.repo = made_up_repository(self)
+        self.before = listing(self.repo.parent)
+
+    def refused(self, out):
+        with self.assertRaises(BuildError):
+            build_website.build(self.repo, out)
+        self.assertEqual(listing(self.repo.parent), self.before)
+
+    def test_the_repository_and_a_folder_around_it_are_refused_a_marker_in_them_or_not(self):
+        self.refused(self.repo)
+        self.refused(self.repo.parent)
+        for folder in (self.repo, self.repo.parent):
+            (folder / build_website.MARKER).write_text("left here by mistake", encoding="utf-8")
+        self.before = listing(self.repo.parent)
+        self.refused(self.repo)
+        self.refused(self.repo.parent)
+
+    def test_the_sites_source_and_a_folder_inside_it_are_refused_a_marker_in_them_or_not(self):
+        site = self.repo / "website"
+        self.refused(site)
+        self.refused(site / "css")
+        self.refused(site / "new")
+        for folder in (site, site / "css"):
+            (folder / build_website.MARKER).write_text("left here by mistake", encoding="utf-8")
+        self.before = listing(self.repo.parent)
+        self.refused(site)
+        self.refused(site / "css")
+
+    def test_a_folder_with_files_that_no_build_left_is_refused_an_index_html_or_not(self):
+        self.refused(self.repo / "docs" / "screenshots")
+        self.refused(self.repo / "assets")
+
+    def test_a_file_is_refused(self):
+        self.refused(self.repo / "assets" / "serotine_logo.svg")
+
+    def test_a_new_folder_an_empty_one_and_an_earlier_build_are_built_into(self):
+        new = self.repo / "build" / "website"
+        build_website.build(self.repo, new)
+        self.assertTrue((new / build_website.MARKER).is_file())
+        (new / "stale.html").write_text("old", encoding="utf-8")
+        build_website.build(self.repo, new)
+        self.assertFalse((new / "stale.html").exists())
+        self.assertTrue((new / "index.html").is_file())
+        empty = self.repo / "build" / "empty"
+        empty.mkdir()
+        build_website.build(self.repo, empty)
+        self.assertTrue((empty / "index.html").is_file())
+
+
+class MainTest(unittest.TestCase):
+    def run_main(self, releases, environment):
+        repo = made_up_repository(self)
+        (repo / "releases.json").write_text(json.dumps(releases), encoding="utf-8")
+        printed = io.StringIO()
+        with mock.patch.dict(os.environ, environment), contextlib.redirect_stdout(printed):
+            status = build_website.main(["--repo", str(repo), "--releases", str(repo / "releases.json")])
+        return status, printed.getvalue()
+
+    def test_a_release_passed_over_is_a_warning_in_a_workflow_run_and_a_note_elsewhere(self):
+        unsigned = release("v0.6.0", "2026-12-01T00:00:00Z", [n for n in files_of("v0.6.0") if "android" not in n])
+        line = "v0.6.0 is newer than v0.5.0 and is not linked: it lacks -android.apk"
+        status, printed = self.run_main([V5, unsigned], {"GITHUB_ACTIONS": "true"})
+        self.assertEqual(status, 0)
+        self.assertIn(f"::warning::{line}\n", printed)
+        status, printed = self.run_main([V5, unsigned], {"GITHUB_ACTIONS": ""})
+        self.assertIn(f"build_website: note: {line}\n", printed)
+        status, printed = self.run_main([V5], {"GITHUB_ACTIONS": "true"})
+        self.assertNotIn("::warning::", printed)
 
 
 class BuildTest(unittest.TestCase):
@@ -280,21 +420,6 @@ class BuildTest(unittest.TestCase):
         index = (out / "index.html").read_text(encoding="utf-8")
         self.assertIn(f"{DOWNLOADS}/v0.5.0/Punicus-v0.5.0-android.apk", index)
         self.assertIn('property="og:image" content="https://example.org/punicus/img/social-preview.png"', index)
-
-    def test_a_folder_the_build_must_not_delete_is_refused(self):
-        kept = temporary_folder(self)
-        (kept / "notes.txt").write_text("mine", encoding="utf-8")
-        for out in (REPO, REPO.parent, REPO / "website", REPO / "website" / "css", kept):
-            with self.assertRaises(BuildError):
-                build_website.build(REPO, out)
-        self.assertEqual((kept / "notes.txt").read_text(encoding="utf-8"), "mine")
-        self.assertTrue((REPO / "website" / "index.html").is_file())
-
-    def test_an_earlier_build_is_replaced(self):
-        out = self.build()
-        (out / "stale.html").write_text("old", encoding="utf-8")
-        build_website.build(REPO, out)
-        self.assertFalse((out / "stale.html").exists())
 
     def test_the_page_names_the_pinned_release_certificate(self):
         index = (REPO / "website" / "index.html").read_text(encoding="utf-8")

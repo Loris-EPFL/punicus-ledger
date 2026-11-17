@@ -49,14 +49,18 @@ gh api "repos/biafra23/punicus/releases?per_page=30" > r.json   # how to get r.j
   resolves, and the rules below hold.
 
 It replaces the folder it builds into, and refuses one that holds the
-repository, the site's source, or files that are not an earlier build.
+repository, the site's source, or files that are not an earlier build. An
+earlier build is known by the `.punicus-website` file the build leaves in it,
+which is not published.
 
 ## Rules of the site
 
 - **Self-contained.** Every file a page loads is part of the site: no CDN, no
-  web-font service, no analytics, no script from another host. A visitor's
-  browser talks to the host that serves the site and to nobody else. The
-  build fails on a file loaded from elsewhere.
+  web-font service, no analytics. A visitor's browser talks to the host that
+  serves the site and to nobody else. The build fails on a file loaded from
+  elsewhere.
+- **No script.** No `<script>`, no `on…` handler, no `ping`: a page that runs
+  nothing can contact nobody once it is open. The build fails on each.
 - **No request to GitHub from the visitor's browser.** The release's files are
   looked up when the site is built, not when it is read.
 - **Relative paths only.** No path starts with `/`, and a page is linked by
@@ -78,6 +82,10 @@ repository, the site's source, or files that are not an earlier build.
   apps show that notice; the Android app blocks capture and shows none. Those
   screens are cut above the notice. When such a screen's layout changes, its
   `--rows` in `guide.html` has to follow.
+- **A line of the app that is out of date is not published.** Two screens end
+  in one today, and are cut above it: Import recovery phrase ("It cannot send
+  transactions yet") and Connect a dApp ("Only on Sepolia for now"). Once the
+  app's text is corrected, the cut can go.
 - **The certificate digest** in the download section is the one pinned in
   `android-app/release-signing-cert.sha256`. The build fails when they differ.
 
@@ -91,7 +99,10 @@ published, and the run says so.
 
 The page links the highest version that carries every published platform's
 files. A release whose files are still being uploaded waits behind the
-last complete one.
+last complete one. A release candidate (`vX.Y.Z-rc…`) is not linked while any
+other release is: the page is for people who are not developers. Whether a
+candidate should be offered there is open, and the owner's to decide. The
+run names each newer release it did not link, with the reason, as a warning.
 
 **Swarm and `punicus.eth`: planned, not set up.** `build/website/` is the
 whole site, so it is what gets uploaded. A sketch of the steps, to be checked

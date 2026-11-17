@@ -41,8 +41,10 @@ on:
   workflow_dispatch:
 
 # One deployment at a time, never cancelled half way; a PR's newer push replaces its older run.
+# Only main's runs share the `publish` group. A run started by hand on another branch publishes
+# nothing, and in that group it would take the place of a main run waiting its turn.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
+  group: ${{ github.workflow }}-${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && 'publish' || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

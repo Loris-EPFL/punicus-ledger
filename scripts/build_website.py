@@ -17,7 +17,8 @@ The pages are plain HTML and CSS and open from a checkout as they are. What the 
    to the releases page. The page never asks GitHub anything in the visitor's browser.
 3. **The favicon**, drawn from `assets/serotine_logo.svg`.
 4. **The checks.** Every local link, image, font and `#anchor` of the built site resolves; nothing
-   is loaded from another host, by a page or by a stylesheet; no path starts at the server's root;
+   is loaded from another host, by a page or by a stylesheet; no page carries a script; no path
+   starts at the server's root;
    the Android certificate digest on the page is the one pinned in
    `android-app/release-signing-cert.sha256`. Together they keep the site hostable under any path
    with no server behind it: GitHub Pages' project path today, a Swarm hash or an ENS gateway
@@ -32,6 +33,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import posixpath
 import re
 import shutil
@@ -56,6 +58,10 @@ END = "<!-- downloads:end -->"
 RELEASES_URL = "https://github.com/biafra23/punicus/releases"
 DOWNLOAD_PREFIX = "https://github.com/biafra23/punicus/releases/download/"
 CERT_PIN = "android-app/release-signing-cert.sha256"
+# What the build leaves in the folder it built, and the only thing that makes a folder with files in
+# it one the next build may replace. A dot-file: actions/upload-pages-artifact leaves hidden files
+# out, so it is not published.
+MARKER = ".punicus-website"
 LOGO = "assets/serotine_logo.svg"
 MONTHS = (
     "January", "February", "March", "April", "May", "June",
@@ -137,7 +143,7 @@ IPHONE = (
 )
 
 
-TAG = re.compile(r"v(\d+)\.(\d+)\.(\d+)(?:-.+)?")
+TAG = re.compile(r"v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?")
 
 
 def asset_names(release: dict) -> list[str]:
@@ -145,38 +151,40 @@ def asset_names(release: dict) -> list[str]:
     return [str(a.get("name", "")) for a in release.get("assets", []) if isinstance(a, dict)]
 
 
-def is_complete(release: dict) -> bool:
-    """Whether `release` carries every file of every platform that is published today.
+def lacking(release: dict) -> list[str]:
+    """The files of the platforms published today that `release` does not carry, by the end of their names.
 
     A tag's files are uploaded by several workflows, minutes apart, and a signing failure publishes
     no Android app at all (`.claude/rules/github-workflows.md`, *Releases*): a release that lacks
     one is not shown while an earlier one has them all.
     """
     names = asset_names(release)
-    return all(
-        any(name.endswith(ending) for name in names)
+    return [
+        ending
         for platform in PLATFORMS
         if platform.missing is None
         for ending, _ in platform.files
-    )
+        if not any(name.endswith(ending) for name in names)
+    ]
 
 
-def pick_release(releases: object) -> Optional[dict]:
-    """The release the page links: the highest version that is complete; None when there is no release.
+def is_candidate(release: dict) -> bool:
+    """Whether `release` is a release candidate: its tag's suffix begins with `rc` (`v0.3.0-rc1`)."""
+    suffix = TAG.fullmatch(release["tag_name"]).group(4) or ""
+    return suffix.lower().startswith("rc")
 
-    Drafts and tags that are not `vX.Y.Z` or `vX.Y.Z-<suffix>` are left out. Pre-releases count:
-    every release of Punicus so far is one (CHANGELOG.md). Releases are ordered by version, so a
-    fix of an older line published later does not replace a newer one; within one version (an rc,
-    then the release, then a hotfix) the one published last wins. When no release is complete,
-    the highest version that carries any file is taken, and its rows say what it lacks.
-    """
+
+def release_order(release: dict) -> tuple:
+    """What releases are ordered by: the version, then, within one version, when it was published."""
+    major, minor, patch, _ = TAG.fullmatch(release["tag_name"]).groups()
+    return (int(major), int(minor), int(patch), release["published_at"])
+
+
+def usable_releases(releases: object) -> list[dict]:
+    """The published releases that carry a file and are tagged `vX.Y.Z` or `vX.Y.Z-<suffix>`; no drafts."""
     if not isinstance(releases, list):
         raise BuildError("--releases: not the list GitHub's releases API returns")
-
-    def order(r: dict) -> tuple:
-        return (*(int(n) for n in TAG.fullmatch(r["tag_name"]).groups()), r["published_at"])
-
-    usable = [
+    return [
         r
         for r in releases
         if isinstance(r, dict)
@@ -186,8 +194,41 @@ def pick_release(releases: object) -> Optional[dict]:
         and TAG.fullmatch(r["tag_name"])
         and asset_names(r)
     ]
-    complete = [r for r in usable if is_complete(r)]
-    return max(complete or usable, key=order, default=None)
+
+
+def pick_release(releases: object) -> Optional[dict]:
+    """The release the page links: the highest version that is complete; None when there is no release.
+
+    Pre-releases count: every release of Punicus so far is one (CHANGELOG.md). Releases are
+    ordered by version, so a fix of an older line published later does not replace a newer one;
+    within one version (the release, then a hotfix) the one published last wins. When no release
+    is complete, the highest version that carries any file is taken, and its rows say what it
+    lacks.
+
+    A release candidate is not linked while any other release is: the page is for people who are
+    not developers, and the wallet holds real funds. Whether a candidate should be offered there
+    at all is the owner's to decide; until then this is the careful reading.
+    """
+    usable = usable_releases(releases)
+    pool = [r for r in usable if not is_candidate(r)] or usable
+    return max([r for r in pool if not lacking(r)] or pool, key=release_order, default=None)
+
+
+def passed_over(releases: object, picked: dict) -> list[str]:
+    """Each release newer than `picked` that the page does not link, with the reason, one line each.
+
+    The page itself goes on saying that `picked` is the newest version, so the run has to say it:
+    a signing failure, or a platform's file dropped for good, would otherwise keep the page on an
+    old release without a word.
+    """
+    notes = []
+    for release in sorted(usable_releases(releases), key=release_order, reverse=True):
+        if release_order(release) <= release_order(picked):
+            break
+        missing = lacking(release)
+        why = "it is a release candidate" if is_candidate(release) else f"it lacks {', '.join(missing)}"
+        notes.append(f"{release['tag_name']} is newer than {picked['tag_name']} and is not linked: {why}")
+    return notes
 
 
 def long_date(published_at: str) -> str:
@@ -311,6 +352,8 @@ class Page(HTMLParser):
         self.loads: list[str] = []
         self.links: list[str] = []
         self.refreshes = False
+        # What can run, or call out, once the page is open: a <script>, an `on...` handler, `ping`.
+        self.scripted: list[str] = []
         self._in_style = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
@@ -321,6 +364,9 @@ class Page(HTMLParser):
         self.loads += css_loads(values.get("style", ""))
         if tag == "meta" and values.get("http-equiv", "").lower() == "refresh":
             self.refreshes = True
+        if tag == "script":
+            self.scripted.append("a <script>")
+        self.scripted += [f"`{name}` on <{tag}>" for name in values if name.startswith("on") or name == "ping"]
         if tag == "a":
             if "href" in values:
                 self.links.append(values["href"])
@@ -365,6 +411,8 @@ def check_site(out: Path) -> list[str]:
     for name, page in pages.items():
         if page.refreshes:
             problems.append(f"{name}: a <meta http-equiv=refresh> sends the visitor on without being asked")
+        for what in page.scripted:
+            problems.append(f"{name}: {what}; the site has no script, so that a page can contact nobody")
         for ref in page.loads:
             local(name, ref, "the file")
         for ref in page.links:
@@ -396,24 +444,35 @@ def pinned_certificate(repo: Path) -> str:
 # --- the build -----------------------------------------------------------------------------------
 
 
-def build(repo: Path, out: Path, releases: Optional[object] = None, base_url: Optional[str] = None) -> None:
-    """Builds the site of `repo` into `out`, replacing what is there. Raises BuildError."""
+def build(repo: Path, out: Path, releases: Optional[object] = None, base_url: Optional[str] = None) -> list[str]:
+    """Builds the site of `repo` into `out`, replacing what is there. Raises BuildError.
+
+    Returns what the reader of the run should know and the page does not say: each release newer
+    than the one linked, with why it is not linked.
+    """
     repo, out = repo.resolve(), out.resolve()
     site = repo / SITE
     if not (site / "index.html").is_file():
         raise BuildError(f"{site}: no index.html")
     # The folder is replaced, so it must be one this build may delete: not the checkout or a folder
-    # around it, not the site's source or a folder inside it, and, when it exists, a build of the
-    # site or an empty folder.
+    # around it, not the site's source or a folder inside it, and, when it exists, an empty folder
+    # or one an earlier build left its marker in. An `index.html` does not make a folder a build:
+    # docs/screenshots/ has one, and so has any web root.
     if out == repo or out in repo.parents or out == site or site in out.parents:
         raise BuildError(
             f"--out {out}: the build replaces that folder, and it holds the repository or the site's source"
         )
-    if out.exists() and (not out.is_dir() or (any(out.iterdir()) and not (out / "index.html").is_file())):
-        raise BuildError(f"--out {out}: exists and is not an earlier build of the site; the build would delete it")
+    if out.exists() and (not out.is_dir() or (any(out.iterdir()) and not (out / MARKER).is_file())):
+        raise BuildError(
+            f"--out {out}: exists and is not an earlier build of the site (no {MARKER} in it); "
+            "the build would delete it"
+        )
     if out.exists():
         shutil.rmtree(out)
+    out.mkdir(parents=True)
+    (out / MARKER).write_text("Built by scripts/build_website.py, which replaces this folder.\n", encoding="utf-8")
     copies: dict[str, str] = {}
+    notes: list[str] = []
     for source in sorted(p for p in site.rglob("*") if p.is_file()):
         name = source.relative_to(site).as_posix()
         if name in LEFT_OUT:
@@ -429,6 +488,7 @@ def build(repo: Path, out: Path, releases: Optional[object] = None, base_url: Op
             release = pick_release(releases) if releases is not None else None
             if release:
                 text = put_downloads(text, downloads_html(release))
+                notes = passed_over(releases, release)
             if pinned_certificate(repo) not in text:
                 raise BuildError(f"index.html: the certificate digest on the page is not the one in {CERT_PIN}")
         if base_url and source.suffix == ".html":
@@ -451,6 +511,7 @@ def build(repo: Path, out: Path, releases: Optional[object] = None, base_url: Op
     problems = check_site(out)
     if problems:
         raise BuildError("\n".join(problems))
+    return notes
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -463,10 +524,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     out = args.out or args.repo / "build" / "website"
     try:
         releases = json.loads(args.releases.read_text(encoding="utf-8")) if args.releases else None
-        build(args.repo, out, releases, args.base_url or None)
+        notes = build(args.repo, out, releases, args.base_url or None)
     except (BuildError, OSError, ValueError) as error:
         print(f"build_website: {error}", file=sys.stderr)
         return 1
+    # In a workflow run a note is a warning on the run's page, so a page that stays on an older
+    # release is seen in the daily run. A note names tags only, and TAG admits no character a
+    # workflow command could be made of.
+    prefix = "::warning::" if os.environ.get("GITHUB_ACTIONS") == "true" else "build_website: note: "
+    for note in notes:
+        print(prefix + note)
     files = [p for p in out.rglob("*") if p.is_file()]
     print(f"build_website: {len(files)} files, {sum(p.stat().st_size for p in files) / 1_000_000:.1f} MB, in {out}")
     return 0

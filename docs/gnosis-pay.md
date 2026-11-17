@@ -67,7 +67,9 @@ modules its verified state lists is the Safe's own Delay:
 
 1. The module's code, proven by the light client, is byte for byte the
    EIP-1167 proxy of a pinned mastercopy.
-2. Its getters, run as verified calls at one block (one number, one hash),
+2. Its getters, run as verified calls at one block (one number, one hash:
+   the first call at the head, the others held to the block it answered at,
+   since eight calls do not fit under one five-second head),
    say that its avatar, target and owner are the Safe. A Delay owned by
    anyone else could have its cooldown changed or its queue skipped by them:
    it is no Gnosis Pay account's, and nothing is sent through it.
@@ -88,6 +90,43 @@ removed and added again from the held one; the wallet's account list, which
 cannot be read right now; who controls the Delay, not all verified yet; a
 held key that acts only with co-owners; or that the module is on the retired
 mastercopy.
+
+### A read that did not answer
+
+(Owner's decisions, 2026-11-17: "If there is an old state, that remains
+until a new state has been confirmed", for an hour at most. The owner also
+decided that a held value shows its age, for every value the app shows;
+that comes with the app-wide change. Here the Gnosis Pay screen names the
+block and says that it could not be verified since.)
+
+Each of these reads is made again at new heads, and one of them can find no
+peer serving its proof that time while the light client is otherwise fine.
+Who controls the account is read from many addresses at once (a member Safe
+of nine owners: eleven), so if each such miss reset the answer, the account
+would fall back to Watch-only every few heads and hardly ever leave it. So:
+
+- An answer once verified stands, with the block it was verified at, while
+  a later read of the same thing only did not answer: no proof could be had
+  that time, or the light client is catching up. That holds for the Safe,
+  each of its modules, and each address on the way down to the keys.
+- **For an hour at most**, counted from the first read that did not answer.
+  Then the answer is dropped and the account says what the read says, until
+  one answers again. The hour is counted while the app runs: a desktop
+  asleep does not count it down.
+- A verified answer that differs replaces it at once: an owner removed, a
+  threshold raised, a module disabled.
+- A reason that stands replaces it too, and ends the hold: the network
+  turned off, no engine, a stale checkpoint, a refusal.
+- Before the first verified answer nothing is held: what is not read is said
+  as not read. The hold is each screen's own: the list's and the Gnosis Pay
+  screen's can differ for a moment after one of them is opened.
+- **No transfer is planned on a held Safe or Delay.** The Safe's modules,
+  which no transfer may go to, and the Delay's periods could have changed
+  since: Review says that the account could not be verified at the latest
+  block. Everything else a transfer rests on is read fresh as before: the
+  queue, the balance, and the run as a verified call, which proves the sender
+  and the Safes on its way (*Sending*). An execution rests on the fresh
+  queue alone.
 
 `ObserveGnosisPay` (domain) and `VerifiedDelayModules` (data) implement it.
 

@@ -55,7 +55,13 @@ internal object GnosisPayTexts {
             "After that it expires, and nothing moves."
     }
 
-    fun checkedAt(block: Long): String = "Verified by the light client at block ${grouped(block)}"
+    /** Where the account's reading is from; [held]: an earlier one standing over a read that did not answer. */
+    fun checkedAt(block: Long, held: Boolean = false): String = if (held) {
+        "Last verified by the light client at block ${grouped(block)}. It could not be verified at the latest " +
+            "block: it may have changed since."
+    } else {
+        "Verified by the light client at block ${grouped(block)}"
+    }
 
     /** Why Send cannot be done here, and how to get there; null when it can. */
     fun sendReason(sending: GnosisPaySending): String? = when (sending) {
@@ -243,6 +249,10 @@ internal object GnosisPayTexts {
         "be mistyped. Copy the address again, or enter it all in lower case only if you are sure of it."
     const val BAD_AMOUNT = "Enter an amount, in the asset's units."
     const val QUOTE_FAILED = "The transfer could not be checked on chain. Try again."
+
+    /** The account's reading is an earlier one standing over a read that did not answer: nothing is planned on it. */
+    const val NOT_VERIFIED_NOW = "This account could not be verified at the latest block, so nothing is sent on " +
+        "what was verified before. Punicus keeps trying: try again in a moment."
     const val SEND_FAILED = "Punicus could not finish sending it. Nothing new was signed; try again."
 
     fun planRefused(plan: DelayTransferPlan): String = when (plan) {

@@ -54,7 +54,18 @@ class VerifiedDelayModulesTest {
                 is CallOutcome.Returned -> outcome.copy(blockNumber = 7, blockHash = hashOfCall(calls++))
                 else -> outcome
             }
+
+        override fun callAt(to: Address, data: ByteArray, block: Long): CallOutcome? {
+            pinnedTo += block
+            return if (pinnedAnswers(pinnedTo.size)) call(to, data) else null
+        }
     }
+
+    /** The block each call after a read's first was held to, in order. */
+    private val pinnedTo = mutableListOf<Long>()
+
+    /** Whether the engine answers the n-th call held to a block; it does by default. */
+    private var pinnedAnswers: (Int) -> Boolean = { true }
 
     private fun word(hex: String) = hex.removePrefix("0x").lowercase().padStart(64, '0')
 
@@ -193,6 +204,27 @@ class VerifiedDelayModulesTest {
         calls = 0
         hashOfCall = { call -> "0x" + (call % 2).toString().repeat(64) }
         assertEquals(DelayReading.Unavailable(ReadUnavailable.UNPROVEN), delays().settled())
+    }
+
+    @Test
+    fun everyCallAfterTheFirstIsHeldToTheBlockTheFirstAnsweredAt() = runTest {
+        fake.snapshot = running(head = 7)
+        gnosisPayDelay()
+
+        assertTrue(delays().settled() is DelayReading.Verified)
+        // Eight getters: the first at the head, seven held to its block, so a moving head cannot split them.
+        assertEquals(List(7) { 7L }, pinnedTo)
+    }
+
+    @Test
+    fun aHeldCallWithoutAnAnswerIsAskedOnceMoreBeforeTheReadIsMadeAgain() = runTest {
+        fake.snapshot = running(head = 7)
+        gnosisPayDelay()
+        // The second held call gives no answer once: asked again, the read goes on.
+        pinnedAnswers = { it != 2 }
+
+        assertTrue(delays().settled() is DelayReading.Verified)
+        assertEquals(8, pinnedTo.size)
     }
 
     @Test

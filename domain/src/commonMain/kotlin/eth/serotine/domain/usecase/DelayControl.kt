@@ -146,7 +146,8 @@ data class DelayControl(val members: List<ControlNode>) {
  * in all ([ControlNode.OverBudget] past them). An address in [keys], an account whose key
  * the wallet holds, is a key without a read. Each address is said [ControlNode.Unread] until its
  * kind is read, so the whole is told at once and filled in as the reads land; a Safe's owners are
- * read again only when its owners or threshold change, not at every nonce.
+ * read again only when its owners or threshold change, not at every nonce. An address once read
+ * stays what it was read as while a later read of it only did not answer ([holdingVerified]).
  */
 internal class DelayControlReader(private val kinds: AddressKinds) {
 
@@ -168,6 +169,8 @@ internal class DelayControlReader(private val kinds: AddressKinds) {
         if (address.isPlaceholder()) return flowOf(ControlNode.Placeholder(address))
         if (budget < 1) return flowOf(ControlNode.OverBudget(address))
         return kinds.observeKind(network, address)
+            // A Safe on the way stays one, its owners still read, over a read that only did not answer.
+            .holdingVerified()
             .map { Shape.of(it) }
             .distinctUntilChanged()
             .flatMapLatest { shape ->

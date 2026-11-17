@@ -69,6 +69,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
@@ -95,18 +96,19 @@ class GnosisPayViewModelTest {
 
     /** Kinds that differ from the card Safe's own, by address: a member that is a Safe, its owners. */
     private val otherKinds = mutableMapOf<Address, KindReading>()
+    private val sentinel = Address.of("0x" + "0".repeat(39) + "2")
+    private val cardKind = KindReading.Verified(
+        AddressKind.Safe(SafeState("1.3.0", false, listOf(sentinel), 1, 3, listOf(delay), null)),
+        40,
+    )
+
+    /** The card Safe's own kind as it changes, where a test makes it change. */
+    private var cardKinds: Flow<KindReading>? = null
     private val kinds = object : AddressKinds {
-        override fun observeKind(network: Network, address: Address): Flow<KindReading> = flowOf(
-            otherKinds[address] ?: KindReading.Verified(
-                AddressKind.Safe(
-                    SafeState("1.3.0", false, listOf(sentinel), 1, 3, listOf(delay), null),
-                ),
-                40,
-            ),
-        )
+        override fun observeKind(network: Network, address: Address): Flow<KindReading> =
+            cardKinds?.takeIf { address == safe } ?: flowOf(otherKinds[address] ?: cardKind)
     }
 
-    private val sentinel = Address.of("0x" + "0".repeat(39) + "2")
     private var queueAnswer: DelayQueueReading =
         DelayQueueReading.Read(DelayQueue(0, 0, 180, 1_800, null, 0), 41, 0)
     private val delays = object : DelayModules {
@@ -279,6 +281,30 @@ class GnosisPayViewModelTest {
         assertEquals(false, state.send.enabled)
         assertEquals("Not verified yet", state.members.single().what)
         assertEquals(ActionItem(true, null), state.queued.single().execute)
+    }
+
+    @Test
+    fun nothingIsReviewedOnAnAccountThatCouldNotBeVerifiedAtTheLatestBlock() = runTest {
+        val kind = MutableStateFlow<KindReading>(cardKind)
+        cardKinds = kind
+        val viewModel = viewModel()
+        viewModel.ready()
+        // No peer served the Safe's proof at this head: what was verified before stays on screen.
+        kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        assertTrue(viewModel.ready().send.enabled)
+        assertEquals(GnosisPayTexts.checkedAt(41, held = true), viewModel.ready().checkedAt)
+        viewModel.startSend()
+        viewModel.onAssetChange(null)
+        viewModel.onToChange(recipient.hex)
+        viewModel.onAmountChange("1.5")
+        viewModel.review()
+
+        // Its modules, which no transfer may go to, could have changed since: said, and nothing quoted.
+        assertEquals(GnosisPayTexts.NOT_VERIFIED_NOW, (viewModel.ready().step as GnosisPayStep.Compose).error)
+
+        kind.value = cardKind.copy(blockNumber = 44)
+        viewModel.review()
+        assertTrue(viewModel.ready().step is GnosisPayStep.Review)
     }
 
     @Test

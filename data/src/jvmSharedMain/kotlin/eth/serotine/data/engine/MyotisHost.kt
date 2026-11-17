@@ -748,6 +748,14 @@ class MyotisHost private constructor(
                 return callOutcome(handle.reads().callDetailed(null, contract, data, null, "latest", null))
             }
 
+            // The engine applies a block selector or refuses it; the caller checks the block answered at.
+            override fun callAt(to: Address, data: ByteArray, block: Long): CallOutcome? {
+                val handle = (state as? ChainState.Running)?.handle ?: return null
+                val contract = to.hex.removePrefix("0x").fromHex()
+                val at = "0x" + block.toString(16)
+                return callOutcome(handle.reads().callDetailed(null, contract, data, null, at, null))
+            }
+
             // Accepted only with a verified storage proof tied to the beacon chain and a verdict, as
             // balances are; a proven empty slot is a proven zero. Labelled as storageProofLabel says:
             // shown with the block the proof anchors to once it matched an attested block's slot from

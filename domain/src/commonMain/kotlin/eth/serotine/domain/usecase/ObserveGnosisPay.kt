@@ -39,6 +39,13 @@ import kotlinx.coroutines.flow.map
  * all of them are read, and [GnosisPayReading.Unavailable] when a module that could still be its
  * Delay cannot be read: a Safe is never said not to be one on a read that did not answer.
  *
+ * An answer once verified stands, with its block, while a later read of the same thing only did
+ * not answer ([holdingVerifiedMarked]: no peer served its proof at that head, or the light client is
+ * catching up): the Safe, each module, and each address on the way to the keys. A verified answer
+ * that differs replaces it at once, and so does a reason that stands (the network turned off);
+ * after an hour of reads that do not answer it is dropped ([HOLD_LIMIT]). A reading that stands on
+ * a held Safe or Delay says so ([GnosisPayReading.Found.held]), and no transfer is planned on it.
+ *
  * A key controls the account here when it reaches the Delay through Safes that each need one
  * signature ([DelayController.alone]; owner's request, 2026-11-17): it then queues a transfer by
  * itself, through those Safes. Who controls the Delay is read again only when its members or the
@@ -54,14 +61,17 @@ class ObserveGnosisPay(
     operator fun invoke(safe: AccountId): Flow<GnosisPayReading> {
         // Gnosis Pay runs on Gnosis Chain alone (owner's decisions, 2026-11-15): no other Safe is read.
         if (safe.network != Network.GNOSIS) return flowOf(GnosisPayReading.NotGnosisPay)
-        return combine(kinds.observeKind(safe.network, safe.address), accounts.observeAccounts()) { k, l -> k to l }
+        // The last verified answer stands over a read that only did not answer this time: the Safe's
+        // modules, and so their readers and who controls the Delay, are not started over for it.
+        val kind = kinds.observeKind(safe.network, safe.address).holdingVerifiedMarked()
+        return combine(kind, accounts.observeAccounts()) { k, l -> k to l }
             .readEach(
-                keys = { (kind, _) -> modulesOf(kind).toSet() },
-                read = { module -> delays.observeDelay(safe.network, safe.address, module) },
+                keys = { (kind, _) -> modulesOf(kind.value).toSet() },
+                read = { module -> delays.observeDelay(safe.network, safe.address, module).holdingVerifiedDelay() },
             )
             .map { (upstream, readings) ->
                 val (kind, list) = upstream
-                stage(kind, list, readings)
+                stage(kind.value, kind.held, list, readings)
             }
             .readEach(
                 keys = { stage -> setOfNotNull((stage as? Stage.Chosen)?.controlKey) },
@@ -101,8 +111,13 @@ class ObserveGnosisPay(
     private sealed interface Stage {
         data class Done(val reading: GnosisPayReading) : Stage
 
-        data class Chosen(val delay: DelayModule, val blockNumber: Long, val list: AccountList, val modules: List<Address>) :
-            Stage {
+        data class Chosen(
+            val delay: DelayModule,
+            val blockNumber: Long,
+            val list: AccountList,
+            val modules: List<Address>,
+            val held: Boolean,
+        ) : Stage {
             /** What who controls the Delay is read for: its members, and the keys held here, which need no read. */
             val controlKey: ControlKey = ControlKey(
                 delay.members,
@@ -115,7 +130,12 @@ class ObserveGnosisPay(
 
     private data class ControlKey(val members: List<Address>, val keys: Set<Address>)
 
-    private fun stage(kind: KindReading, list: AccountList, readings: Map<Address, DelayReading>): Stage {
+    private fun stage(
+        kind: KindReading,
+        kindHeld: Boolean,
+        list: AccountList,
+        readings: Map<Address, Held<DelayReading>>,
+    ): Stage {
         val state = when (kind) {
             KindReading.Syncing -> return Stage.Done(GnosisPayReading.Checking)
             is KindReading.Unavailable -> return Stage.Done(GnosisPayReading.Unavailable(kind.reason))
@@ -123,11 +143,12 @@ class ObserveGnosisPay(
                 (kind.kind as? AddressKind.Safe)?.state ?: return Stage.Done(GnosisPayReading.NotGnosisPay)
         }
         val wired = state.modules.mapNotNull { module ->
-            val verified = readings[module] as? DelayReading.Verified ?: return@mapNotNull null
-            (verified.finding as? DelayFinding.Wired)?.let { it.module to verified.blockNumber }
+            val reading = readings[module] ?: return@mapNotNull null
+            val verified = reading.value as? DelayReading.Verified ?: return@mapNotNull null
+            (verified.finding as? DelayFinding.Wired)?.let { Triple(it.module, verified.blockNumber, reading.held) }
         }
         // Only a module that has answered, and answered that it is not the Safe's Delay, rules one out.
-        val open = state.modules.map { readings[it] }.filter { it !is DelayReading.Verified }
+        val open = state.modules.map { readings[it]?.value }.filter { it !is DelayReading.Verified }
         val current = wired.firstOrNull { it.first.generation == DelayGeneration.CURRENT }
         // A retired Delay is the answer only once no module still unread could be a current one.
         val chosen = current ?: wired.firstOrNull()?.takeIf { open.isEmpty() }
@@ -141,8 +162,8 @@ class ObserveGnosisPay(
                 },
             )
         }
-        val (delay, block) = chosen
-        return Stage.Chosen(delay, block, list, state.modules)
+        val (delay, block, delayHeld) = chosen
+        return Stage.Chosen(delay, block, list, state.modules, held = kindHeld || delayHeld)
     }
 
     private fun found(safe: AccountId, chosen: Stage.Chosen, control: DelayControl): GnosisPayReading.Found {
@@ -182,6 +203,7 @@ class ObserveGnosisPay(
             control = control,
             keysCoSigning = coSigning,
             keysHere = held.filter { it.network == safe.network },
+            held = chosen.held,
         )
     }
 }
@@ -246,6 +268,9 @@ sealed interface GnosisPayReading {
      * until it is read; and [keysCoSigning], keys held here (under any network's entry, one per
      * address) that act for the Delay only with co-owners; and [keysHere], every key held here on the Safe's network, from the
      * wallet's list alone: any of them may execute a transfer it queued, which needs no control.
+     * [held] when the Safe's state or its Delay's is an earlier verified answer standing over a
+     * read that did not answer since ([blockNumber] is then that answer's): shown, and no transfer
+     * is planned on it, since [safeModules] and the Delay's periods could have changed.
      */
     data class Found(
         val delay: DelayModule,
@@ -258,6 +283,7 @@ sealed interface GnosisPayReading {
         val control: DelayControl? = null,
         val keysCoSigning: List<Account> = emptyList(),
         val keysHere: List<Account> = controllersHeld.map { it.account },
+        val held: Boolean = false,
     ) : GnosisPayReading {
         /** Whether a transfer can be queued through [delay] from this wallet, or what is missing. */
         val sending: GnosisPaySending

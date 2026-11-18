@@ -54,7 +54,30 @@ class VerifiedDelayModulesTest {
                 is CallOutcome.Returned -> outcome.copy(blockNumber = 7, blockHash = hashOfCall(calls++))
                 else -> outcome
             }
+
+        override fun callAt(to: Address, data: ByteArray, block: Long): CallOutcome? {
+            pinnedTo += block
+            if (pinnedRefused) return CallOutcome.Refused
+            if (!pinnedAnswers(pinnedTo.size)) return null
+            // At the block asked for, as the engine applies it, unless a test makes it answer at another.
+            return when (val outcome = call(to, data)) {
+                is CallOutcome.Returned -> outcome.copy(blockNumber = answeredAt(block))
+                else -> outcome
+            }
+        }
     }
+
+    /** The block each call after a read's first was held to, in order. */
+    private val pinnedTo = mutableListOf<Long>()
+
+    /** Whether the engine answers the n-th call held to a block; it does by default. */
+    private var pinnedAnswers: (Int) -> Boolean = { true }
+
+    /** Whether the engine refuses every call held to a block: one that serves the head alone. */
+    private var pinnedRefused = false
+
+    /** The block a call held to a block answers at: the one asked for by default. */
+    private var answeredAt: (Long) -> Long = { it }
 
     private fun word(hex: String) = hex.removePrefix("0x").lowercase().padStart(64, '0')
 
@@ -193,6 +216,73 @@ class VerifiedDelayModulesTest {
         calls = 0
         hashOfCall = { call -> "0x" + (call % 2).toString().repeat(64) }
         assertEquals(DelayReading.Unavailable(ReadUnavailable.UNPROVEN), delays().settled())
+    }
+
+    @Test
+    fun everyCallAfterTheFirstIsHeldToTheBlockTheFirstAnsweredAt() = runTest {
+        fake.snapshot = running(head = 7)
+        gnosisPayDelay()
+
+        assertTrue(delays().settled() is DelayReading.Verified)
+        // Eight getters: the first at the head, seven held to its block, so a moving head cannot split them.
+        assertEquals(List(7) { 7L }, pinnedTo)
+    }
+
+    @Test
+    fun aHeldCallWithoutAnAnswerIsAskedOnceMoreBeforeTheReadIsMadeAgain() = runTest {
+        fake.snapshot = running(head = 7)
+        gnosisPayDelay()
+        // The second held call gives no answer once: asked again, the read goes on.
+        pinnedAnswers = { it != 2 }
+
+        assertTrue(delays().settled() is DelayReading.Verified)
+        assertEquals(8, pinnedTo.size)
+    }
+
+    @Test
+    fun aHeldCallAnsweredAtAnotherBlockIsNeverTakenForTheBlockAskedFor() = runTest {
+        fake.snapshot = running(head = 7)
+        gnosisPayDelay()
+        // An engine that ignored the block and answered at its head: every read is thrown away.
+        answeredAt = { it + 1 }
+
+        assertEquals(DelayReading.Unavailable(ReadUnavailable.UNPROVEN), delays().settled())
+    }
+
+    @Test
+    fun aHeldCallWithoutAnAnswerTwiceIsMadeAtTheHead() = runTest {
+        fake.snapshot = running(head = 7)
+        gnosisPayDelay()
+        // The first held call gives no answer, asked twice: made at the head, which is still that block.
+        pinnedAnswers = { it > 2 }
+
+        assertTrue(delays().settled() is DelayReading.Verified)
+        assertEquals(2 + 6, pinnedTo.size)
+    }
+
+    @Test
+    fun anEngineThatRefusesANamedBlockIsReadAtTheHeadNeverSaidToRefuseTheRead() = runTest {
+        fake.snapshot = running(head = 7)
+        gnosisPayDelay()
+        pinnedRefused = true
+
+        // Every call falls back to the head; they answer at one block here, so the read stands.
+        assertTrue(delays().settled() is DelayReading.Verified)
+
+        // With the head moving under them the read is unproven for this poll, not refused for good.
+        calls = 0
+        hashOfCall = { call -> "0x" + (call % 2).toString().repeat(64) }
+        assertEquals(DelayReading.Unavailable(ReadUnavailable.UNPROVEN), delays().settled())
+    }
+
+    @Test
+    fun theQueuesCallsAreHeldToItsFirstCallsBlockToo() = runTest {
+        fake.snapshot = running(head = 7, headTimestamp = 5_000)
+        gnosisPayDelay()
+        queued("ab".repeat(32))
+
+        assertTrue(delays().queue(Network.GNOSIS, safe, delay, Digest.of("ab".repeat(32))) is DelayQueueReading.Read)
+        assertTrue(pinnedTo.isNotEmpty() && pinnedTo.all { it == 7L }, pinnedTo.toString())
     }
 
     @Test

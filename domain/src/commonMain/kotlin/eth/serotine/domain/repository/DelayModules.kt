@@ -27,8 +27,8 @@ interface DelayModules {
 
     /**
      * Where the call of hash [hash] stands in the queue of the Delay at [delay], enabled on the Safe
-     * at [safe], on [network], as it is now (docs/gnosis-pay.md, *Sending*), all of it read fresh at
-     * one block, never from a reading kept before: the Delay's code proven to be a proxy of the
+     * at [safe], on [network] (docs/gnosis-pay.md, *Sending*), all of it read fresh at one block,
+     * the head when its first call answers, never from a reading kept before: the Delay's code proven to be a proxy of the
      * current mastercopy; its avatar, target and owner, which must be [safe] (else
      * [DelayQueueReading.NotTheSafes]); its next entry to execute and its next to be added, its
      * cooldown and expiration; and the first entry of that hash from the next to execute on,

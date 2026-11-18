@@ -23,6 +23,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -386,6 +387,129 @@ class ObserveGnosisPayTest {
         assertEquals(listOf(memberSafe), reading.control?.notFollowed)
         assertEquals(GnosisPaySending.NO_MEMBER_KEY, reading.sending)
         assertTrue(ownerKey !in kindsAsked)
+    }
+
+    @Test
+    fun aReadThatOnlyDidNotAnswerNeverReplacesAVerifiedAnswer() = runTest {
+        val memberKind = MutableStateFlow<KindReading>(safeOf(listOf(passkey, ownerKey)))
+        others[memberSafe] = memberKind
+        others[passkey] = MutableStateFlow(KindReading.Verified(AddressKind.Contract, 40))
+        val observe = observe(eoa(Network.GNOSIS, address = ownerKey))
+        val seen = mutableListOf<GnosisPayReading>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { observe(gnosisPay).collect { seen += it } }
+        val found = seen.last() as GnosisPayReading.Found
+        assertEquals(GnosisPaySending.AVAILABLE, found.sending)
+        assertEquals(true, found.control?.complete)
+        val asked = kindsAsked.toList()
+
+        // No peer served a proof at this head, or the light client is catching up: of the member
+        // Safe, of a module, of the Safe itself. The answer verified before stands, with its block.
+        memberKind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        others.getValue(passkey).value = KindReading.Syncing
+        readings.getValue(delay).value = DelayReading.Unavailable(ReadUnavailable.UNPROVEN)
+        readings.getValue(roles).value = DelayReading.Syncing
+        kind.value = KindReading.Unavailable(ReadUnavailable.SYNCING)
+        kind.value = KindReading.Syncing
+
+        // Said as held, the Safe and its Delay (no transfer is planned on them) and the way to the
+        // keys; nothing else changed, and the key controlled the account all along.
+        // The block named is the Safe's, the older of the two.
+        val held = found.copy(held = true, blockNumber = 40, control = found.control?.copy(held = true))
+        assertEquals(held, seen.last())
+        assertTrue(seen.dropWhile { it != found }.all { it.controlledHere }, seen.toString())
+        // Nothing was started over: no address is read again.
+        assertEquals(asked, kindsAsked)
+
+        // Verified again, it is no longer held.
+        kind.value = safeWith(listOf(roles, delay))
+        readings.getValue(delay).value = DelayReading.Verified(DelayFinding.Wired(delayOf()), 41)
+        // The way to the keys is still held, and said so, while the Safe and its Delay are fresh.
+        assertEquals(found.copy(control = found.control?.copy(held = true)), seen.last())
+        memberKind.value = safeOf(listOf(passkey, ownerKey))
+        others.getValue(passkey).value = KindReading.Verified(AddressKind.Contract, 40)
+        assertEquals(found, seen.last())
+
+        // A verified answer that differs replaces it at once: the key's Safe now needs two signatures.
+        // (Its owners are read anew for it, so the passkey's reader answers again first.)
+        others.getValue(passkey).value = KindReading.Verified(AddressKind.Contract, 42)
+        memberKind.value = safeOf(listOf(passkey, ownerKey), threshold = 2)
+        assertEquals(GnosisPaySending.CO_SIGNERS_NEEDED, (seen.last() as GnosisPayReading.Found).sending)
+
+        // And so does a reason that stands: the network turned off.
+        kind.value = KindReading.Unavailable(ReadUnavailable.NETWORK_OFF)
+        assertEquals(GnosisPayReading.Unavailable(ReadUnavailable.NETWORK_OFF), seen.last())
+        // After it, a read that does not answer is said as such: nothing is held any more.
+        kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        assertEquals(GnosisPayReading.Unavailable(ReadUnavailable.UNPROVEN), seen.last())
+        job.cancel()
+    }
+
+    @Test
+    fun aVerifiedAnswerStandsForAnHourOfReadsThatDoNotAnswer() = runTest {
+        val observe = observe(eoa(Network.GNOSIS))
+        val seen = mutableListOf<GnosisPayReading>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { observe(gnosisPay).collect { seen += it } }
+        val found = seen.last() as GnosisPayReading.Found
+
+        kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        testScheduler.advanceTimeBy(30.minutes)
+        // Another kind of miss does not start the hour again.
+        kind.value = KindReading.Syncing
+        testScheduler.advanceTimeBy(29.minutes)
+        // The Safe's state is the held one: the block named is its, the older of the two.
+        assertEquals(found.copy(held = true, blockNumber = 40), seen.last())
+
+        testScheduler.advanceTimeBy(2.minutes)
+        assertEquals(GnosisPayReading.Checking, seen.last())
+        // Past the hour a read that does not answer is said as such, until one answers.
+        kind.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        assertEquals(GnosisPayReading.Unavailable(ReadUnavailable.UNPROVEN), seen.last())
+        kind.value = safeWith(listOf(roles, delay))
+        assertEquals(found, seen.last())
+        job.cancel()
+    }
+
+    @Test
+    fun aModuleOrAnAddressOnTheWayThatStandsUnreadableEndsItsHold() = runTest {
+        val memberKind = MutableStateFlow<KindReading>(safeOf(listOf(ownerKey)))
+        others[memberSafe] = memberKind
+        val observe = observe(eoa(Network.GNOSIS, address = ownerKey))
+        val seen = mutableListOf<GnosisPayReading>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { observe(gnosisPay).collect { seen += it } }
+        assertEquals(GnosisPaySending.AVAILABLE, (seen.last() as GnosisPayReading.Found).sending)
+
+        memberKind.value = KindReading.Unavailable(ReadUnavailable.REFUSED)
+        assertEquals(GnosisPaySending.CONTROL_UNREAD, (seen.last() as GnosisPayReading.Found).sending)
+
+        readings.getValue(delay).value = DelayReading.Unavailable(ReadUnavailable.REFUSED)
+        assertEquals(GnosisPayReading.Unavailable(ReadUnavailable.REFUSED), seen.last())
+        job.cancel()
+    }
+
+    @Test
+    fun beforeTheFirstVerifiedAnswerNothingIsHeld() = runTest {
+        val values = MutableStateFlow<KindReading>(KindReading.Syncing)
+        val seen = mutableListOf<Held<KindReading>>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { values.holdingVerifiedMarked().collect { seen += it } }
+        values.value = KindReading.Unavailable(ReadUnavailable.UNPROVEN)
+        val verified = KindReading.Verified(AddressKind.Eoa, 40)
+        values.value = verified
+        values.value = KindReading.Syncing
+        // The same answer verified at a later block replaces the held one, with its block.
+        val later = KindReading.Verified(AddressKind.Eoa, 44)
+        values.value = later
+        job.cancel()
+
+        assertEquals(
+            listOf(
+                Held<KindReading>(KindReading.Syncing, held = false),
+                Held(KindReading.Unavailable(ReadUnavailable.UNPROVEN), held = false),
+                Held(verified, held = false),
+                Held(verified, held = true),
+                Held(later, held = false),
+            ),
+            seen,
+        )
     }
 
     @Test

@@ -16,6 +16,18 @@ and issues of this repository.
   a guide to adding accounts and Safes, published to GitHub Pages by the
   `Website` workflow (#316).
 
+### Fixed
+
+- Gnosis Pay: an account's Delay module is verified again on a phone: its
+  getters are read at one block by holding every call to the block the first
+  answered at. Read at the head alone, eight calls straddled two blocks
+  nearly every time, so the account stayed a plain watched Safe.
+- Gnosis Pay: an account a key held here controls no longer falls back to
+  Watch-only whenever one of the reads behind it finds no peer serving its
+  proof at a head. The answer verified before stands, for an hour at most,
+  until one that differs or a reason that stands (the network turned off);
+  no transfer is reviewed on it.
+
 ## [0.5.0] - 2026-11-16
 
 ### Added

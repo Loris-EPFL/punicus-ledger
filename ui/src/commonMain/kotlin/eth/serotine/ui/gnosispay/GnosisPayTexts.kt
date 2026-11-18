@@ -55,7 +55,13 @@ internal object GnosisPayTexts {
             "After that it expires, and nothing moves."
     }
 
-    fun checkedAt(block: Long): String = "Verified by the light client at block ${grouped(block)}"
+    /** Where the account's reading is from; [held]: an earlier one standing over a read that did not answer. */
+    fun checkedAt(block: Long, held: Boolean = false): String = if (held) {
+        "Last verified by the light client at block ${grouped(block)}. It could not be verified at the latest " +
+            "block: it may have changed since."
+    } else {
+        "Verified by the light client at block ${grouped(block)}"
+    }
 
     /** Why Send cannot be done here, and how to get there; null when it can. */
     fun sendReason(sending: GnosisPaySending): String? = when (sending) {
@@ -120,12 +126,16 @@ internal object GnosisPayTexts {
     fun sender(held: HeldController): String =
         listOfNotNull(held.account.label, through(held.via)?.replaceFirstChar { it.lowercase() }).joinToString(", ")
 
-    /** What the list of keys leaves out: what is not read yet, and what is not followed; null when nothing. */
+    /** What the list of keys leaves out or holds: what is not read yet, held, or not followed; null when nothing. */
     fun controlNote(control: DelayControl?): String? {
         if (control == null) return null
         val notes = listOfNotNull(
             "Some of the accounts on the way to these keys are not verified yet. Punicus keeps checking."
                 .takeIf { !control.complete },
+            (
+                "Some of the accounts on the way to these keys could not be verified at the latest block: they are " +
+                    "shown as last verified, for up to an hour."
+                ).takeIf { control.held },
             control.notFollowed.size.takeIf { it > 0 }?.let { count ->
                 val what = if (count == 1) "1 signer is" else "$count signers are"
                 "$what not followed: a contract that is no Safe (a passkey, for one), a Safe older than 1.3.0, " +
@@ -243,6 +253,10 @@ internal object GnosisPayTexts {
         "be mistyped. Copy the address again, or enter it all in lower case only if you are sure of it."
     const val BAD_AMOUNT = "Enter an amount, in the asset's units."
     const val QUOTE_FAILED = "The transfer could not be checked on chain. Try again."
+
+    /** The account's reading is an earlier one standing over a read that did not answer: nothing is planned on it. */
+    const val NOT_VERIFIED_NOW = "This account could not be verified at the latest block, so nothing is sent on " +
+        "what was verified before. Punicus keeps trying: try again in a moment."
     const val SEND_FAILED = "Punicus could not finish sending it. Nothing new was signed; try again."
 
     fun planRefused(plan: DelayTransferPlan): String = when (plan) {

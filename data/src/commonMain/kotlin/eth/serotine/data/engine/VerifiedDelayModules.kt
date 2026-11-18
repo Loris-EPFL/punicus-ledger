@@ -32,7 +32,9 @@ import kotlinx.coroutines.flow.map
  * ([VerifiedChain.call]): `avatar()`, `target()`, `owner()`, `txCooldown()`, `txExpiration()`,
  * `txNonce()`, `queueNonce()` and its members, one page of `getModulesPaginated` from the sentinel
  * `0x1`. Every call must answer at one block, the same number and the same hash where the engine
- * names one: a set that straddles two is made again, as is one a call gave no answer in, after a
+ * names one: the first is made at the head and the others at the block it answered at
+ * ([VerifiedChain.callAt]). A set that straddles two all the same is made again, as is one a call
+ * gave no answer in, after a
  * pause, up to [READ_TRIES] reads in all, and is otherwise unproven for that poll. It is
  * [DelayFinding.Wired] only when its avatar, target and owner are the Safe asked about, the one
  * argument that decides whose Delay it is; otherwise [DelayFinding.NotWired].
@@ -124,9 +126,22 @@ class VerifiedDelayModules internal constructor(
 
         private val stopped: Read<Nothing> get() = Read.Stopped(ended)
 
-        /** What [data] returned, at the one block of this read. */
+        /**
+         * What [data] returned, at the one block of this read: the first call at the head, every
+         * later one at the block the first answered at ([VerifiedChain.callAt]), asked once more
+         * when it gives no answer, and then at the head, where the check below still throws away an
+         * answer of another block: an engine that serves no call at a named block reads as before.
+         * Eight calls of a second or more each never fit under one of Gnosis Chain's five-second
+         * heads, so calls at the head alone straddled two every time.
+         */
         private fun answer(data: ByteArray): String? {
-            val returned = when (val outcome = chain.call(module, data)) {
+            val pinned = block
+            val asked = if (pinned == null) {
+                chain.call(module, data)
+            } else {
+                held(data, pinned) ?: held(data, pinned) ?: chain.call(module, data)
+            }
+            val returned = when (val outcome = asked) {
                 null -> return end(Ended.NO_ANSWER)
                 is CallOutcome.Returned -> outcome
                 // A pinned Delay's getters never revert.
@@ -143,6 +158,14 @@ class VerifiedDelayModules internal constructor(
             }
             return returned.hex
         }
+
+        /**
+         * [data] called at block [at]. A refusal there is no answer: the first call, at the head,
+         * showed that the engine runs these calls on this build, so it is that block it will not
+         * serve, which the next read's first call replaces.
+         */
+        private fun held(data: ByteArray, at: Long): CallOutcome? =
+            chain.callAt(module, data, at).takeUnless { it == CallOutcome.Refused }
 
         private fun address(data: ByteArray): Address? {
             val hex = answer(data) ?: return null
@@ -361,7 +384,7 @@ class VerifiedDelayModules internal constructor(
 
         /**
          * Reads of the getters made while their calls straddle two blocks or one gives no answer, the
-         * first included: eight calls against Gnosis Chain's five-second heads straddle now and then.
+         * first included: a call held to the first one's block can still find that block gone.
          */
         const val READ_TRIES = 5
 

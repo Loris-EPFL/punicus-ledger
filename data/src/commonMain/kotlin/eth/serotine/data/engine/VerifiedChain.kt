@@ -38,6 +38,16 @@ internal interface VerifiedChain {
     fun call(to: Address, data: ByteArray): CallOutcome?
 
     /**
+     * [call], run against the state of block [block] instead of the head: for a read of several
+     * calls that must all answer at one block, the later ones held to the block the first answered
+     * at, so that a head moving under them cannot split them. [block] is applied or refused, never
+     * ignored: null when the engine cannot answer verified at that block (it has moved too far on,
+     * or cannot at all), and from an engine that offers no such read. The answer names the block it
+     * ran against, which the caller still checks. Blocks, bounded by the engine.
+     */
+    fun callAt(to: Address, data: ByteArray, block: Long): CallOutcome? = null
+
+    /**
      * Storage slot [slot] of [address] — or, given a [holder], the entry of the mapping at
      * [slot] under that key (`keccak256(holder ‖ slot)`) — proven against the account's proven
      * storage root and the beacon-attested state; null when the engine could not prove it.

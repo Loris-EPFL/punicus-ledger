@@ -69,6 +69,10 @@ the text wins.
   as syncing. While the trust anchor is stale, a proof fails or the engine
   refuses, the row says that and shows no amount from before, and no other
   value (an address's kind, a Safe's owners, a price) is shown last known.
+  One exception: who controls a Gnosis Pay account stands as last verified,
+  said as such, for an hour at most (owner's decisions, 2026-11-17;
+  docs/gnosis-pay.md, *A read that did not answer*). The owner decided the
+  same for every value shown; this page is changed with that work.
   The one exception is lenient mode (docs/lenient-mode.md; owner rulings,
   2026-11-06): a draft is built and signed on the balances last verified and
   on the other values it needs (the account's nonce, the network's fee
@@ -1665,6 +1669,14 @@ opens **Gnosis Pay**, a screen of its own:
   than one signature. A note under them says what is not verified yet, and
   what is not followed (a contract that is no Safe, a Safe older than 1.3.0
   or too far down, an account past the reads one account is given).
+- **A reading that could not be verified at the latest block** stays as last
+  verified, for an hour at most (docs/gnosis-pay.md, *A read that did not
+  answer*). The line under the Delay then reads "Last verified by the light
+  client at block N. It could not be verified at the latest block: it may
+  have changed since.", and the note under the keys says when some of the
+  accounts on the way are shown as last verified. Send stays enabled;
+  Review then says "This account could not be verified at the latest block,
+  so nothing is sent on what was verified before."
 - **Send through the Delay**, greyed out with its reason where it cannot be
   done here: no controlling key, the key on another network only, the key
   watched here while held elsewhere, the account list unreadable, who

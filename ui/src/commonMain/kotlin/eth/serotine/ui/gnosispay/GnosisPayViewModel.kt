@@ -221,7 +221,7 @@ class GnosisPayViewModel(
             address = GnosisPayTexts.eip55(safe.address),
             delay = GnosisPayTexts.eip55(found.delay.address),
             waits = GnosisPayTexts.waits(found.delay.cooldownSeconds, found.delay.expirationSeconds),
-            checkedAt = GnosisPayTexts.checkedAt(found.blockNumber),
+            checkedAt = GnosisPayTexts.checkedAt(found.blockNumber, found.held),
             members = found.delay.members.map { member ->
                 val node = found.control?.members?.firstOrNull { it.address == member }
                 MemberRow(
@@ -343,6 +343,9 @@ class GnosisPayViewModel(
         val compose = flowState.value as? Flow.Compose ?: return
         val found = latest ?: return
         if (compose.quoting) return
+        // The Safe's modules, which no transfer may go to, and the Delay's periods are an earlier
+        // answer's while a read of them did not answer: nothing is planned on them.
+        if (found.held) return showCompose(GnosisPayTexts.NOT_VERIFIED_NOW)
         // Control can change while the form is open: said on the form, never a tap that does nothing.
         val sender = found.controllersHeld.firstOrNull()
             ?: return showCompose(GnosisPayTexts.sendReason(found.sending) ?: GnosisPayTexts.QUOTE_FAILED)

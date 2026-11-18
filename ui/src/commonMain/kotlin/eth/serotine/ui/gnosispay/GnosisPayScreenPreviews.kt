@@ -320,6 +320,17 @@ private fun GnosisPayControlUnreadPreview() = GnosisPayPreview(
 
 @Preview
 @Composable
+private fun GnosisPayHeldPreview() = GnosisPayPreview(
+    overview.copy(
+        checkedAt = "Last verified by the light client at block 43,000,512. It could not be verified at the latest " +
+            "block: it may have changed since.",
+        controlNote = "Some of the accounts on the way to these keys could not be verified at the latest block: " +
+            "they are shown as last verified, for up to an hour.",
+    ),
+)
+
+@Preview
+@Composable
 private fun GnosisPayReviewMemberSafePreview() = GnosisPayPreview(
     throughMemberSafe.copy(
         step = GnosisPayStep.Review(
@@ -381,6 +392,7 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("co-signer") { GnosisPayCoSignerPreview() },
     ScreenPreview("review-member-safe") { GnosisPayReviewMemberSafePreview() },
     ScreenPreview("control-unread") { GnosisPayControlUnreadPreview() },
+    ScreenPreview("overview-held") { GnosisPayHeldPreview() },
     ScreenPreview("loading") { GnosisPayLoadingPreview() },
     ScreenPreview("unavailable") { GnosisPayUnavailablePreview() },
 )

@@ -17,6 +17,8 @@ import eth.serotine.domain.usecase.ControlNode
 import eth.serotine.domain.usecase.DelayControl
 import eth.serotine.domain.usecase.DelayQuote
 import eth.serotine.domain.usecase.DelayQuoting
+import eth.serotine.domain.usecase.DelaySkipQuote
+import eth.serotine.domain.usecase.DelaySkipQuoting
 import eth.serotine.domain.usecase.DelayStep
 import eth.serotine.domain.usecase.DelayTransferState
 import eth.serotine.domain.usecase.DelayTransfersReading
@@ -285,11 +287,11 @@ internal object GnosisPayTexts {
         is DelayQuoting.AlreadyQueued -> "The same transfer is queued already and waits in the Delay module. " +
             "Execute it, or let it expire, before queuing it again."
         DelayQuoting.SameCallExpired -> "The same transfer is still in the Delay module's queue, expired. It stays " +
-            "there until someone skips it with the module's skipExpired, which Punicus does not offer yet, and it " +
-            "holds back every transfer queued after it."
-        DelayQuoting.HeadExpired -> "The next entry in the Delay module's queue has expired. Until someone skips it " +
-            "with the module's skipExpired, which Punicus does not offer yet, nothing behind it can be executed: a " +
-            "transfer queued now would wait, expire and move nothing, its fees paid."
+            "there until it is skipped, and it holds back every transfer queued after it. Skip expired entries, " +
+            "then review again."
+        DelayQuoting.HeadExpired -> "The next entry in the Delay module's queue has expired. Until it is skipped, " +
+            "nothing behind it can be executed: a transfer queued now would wait, expire and move nothing, its fees " +
+            "paid. Skip expired entries, then review again."
         is DelayQuoting.WindowTooShort -> sendReason(GnosisPaySending.WINDOW_TOO_SHORT).orEmpty()
         is DelayQuoting.SafeCallReverts -> "The account's own transfer reverts, run as a verified call" +
             (quoting.blockNumber?.let { " at block ${grouped(it)}" } ?: "") + ": the recipient does not accept it. " +
@@ -335,6 +337,53 @@ internal object GnosisPayTexts {
             DelayStep.QUEUE -> "Queue $what"
             DelayStep.EXECUTE -> "Execute $what"
         }
+    }
+
+    /** What a skip refused says, on the form it was offered on. */
+    fun skipRefused(quoting: DelaySkipQuoting): String = when (quoting) {
+        is DelaySkipQuoting.Quoted -> ""
+        DelaySkipQuoting.NothingExpired -> "No entry of the Delay module's queue has expired any more: nothing to " +
+            "skip. Review again."
+        is DelaySkipQuoting.NotTheSafesDelay -> quoteRefused(DelayQuoting.NotTheSafesDelay(quoting.generation))
+        is DelaySkipQuoting.SkipOnItsWay -> "A skip of this Delay module's expired entries is on its way, not in a " +
+            "block yet. Review again once it is."
+        DelaySkipQuoting.HistoryUnreadable -> quoteRefused(DelayQuoting.HistoryUnreadable)
+        is DelaySkipQuoting.NotQuoted -> quoteRefused(DelayQuoting.NotQuoted(quoting.refusal))
+    }
+
+    const val BLOCKED_BY_EXPIRED = "An entry ahead of it in the Delay module's queue has expired and blocks it. " +
+        "Skip expired entries, then execute it before it expires too."
+
+    const val SKIP_NEEDS_KEY = "Skipping expired entries is a transaction of an account whose key is on this " +
+        "device, on Gnosis Chain, which pays its fee. Add or import one."
+
+    const val SKIP_SENT = "The skip of the expired entries was sent. Once it is in a block, Review again."
+
+    const val SKIP_TITLE = "Skip expired entries of the Delay module"
+
+    const val SKIP_BIOMETRIC_REASON = "Skip the expired entries of this Gnosis Pay account's Delay module"
+
+    /** The review of a skip of expired entries: what it does, and what it moves (nothing). */
+    fun skipLines(quote: DelaySkipQuote, member: Address, network: Network): List<Pair<String, String>> {
+        val symbol = network.nativeSymbol
+        val call = quote.call
+        val maxFee = "${call.maxFee.formatUnits(NATIVE_DECIMALS)} $symbol at most, ${feeLevel(call.level)} " +
+            "(fees at block ${grouped(call.feeBlock)})"
+        val entries = if (quote.waiting == 1L) "1 entry waits" else "${quote.waiting} entries wait"
+        return listOf(
+            "Account" to eip55(quote.safe),
+            "Delay module" to eip55(quote.delay),
+            "Queue" to "$entries; the next one expired. Every expired entry from the next on is skipped: it can " +
+                "never be executed afterwards.",
+            "What happens" to "The Delay module's skipExpired. It moves nothing: no funds leave the account.",
+            "Signed by" to eip55(member),
+            "Fee" to maxFee,
+            "Signer's $symbol" to "${call.nativeBefore.formatUnits(NATIVE_DECIMALS)} $symbol now, at least " +
+                "${call.nativeAfterAtLeast.formatUnits(NATIVE_DECIMALS)} $symbol after" +
+                (call.balanceBlock?.let { " (block ${grouped(it)})" } ?: ""),
+        ) + listOfNotNull(
+            call.simulationBlock?.let { "Simulated" to "Run as a verified call at block ${grouped(it)}" },
+        )
     }
 
     fun reviewLines(

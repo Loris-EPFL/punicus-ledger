@@ -467,8 +467,10 @@ class SendDelayCall(
  * A transfer this wallet queued for a Gnosis Pay account: [transfer], queued by [member] (the key
  * that sent the queueing, a member or the owner of a member Safe) in the
  * transaction [queuedBy] at [queuedAt] (unix seconds) and how that ended ([queueOutcome]), and where
- * it stands in the Delay's queue now ([state]; null when the queue could not be read), and
- * [executing], the hash of its execution from here while that is on its way, not mined yet.
+ * it stands in the Delay's queue now ([state]; null when the queue could not be read),
+ * [executing], the hash of its execution from here while that is on its way, not mined yet, and
+ * [blockedByExpiredHead] when another entry ahead of it, the Delay's next, has expired: it cannot
+ * be executed until that one is skipped ([QuoteDelaySkip]).
  */
 data class QueuedDelayTransfer(
     val transfer: DelayTransfer,
@@ -478,6 +480,7 @@ data class QueuedDelayTransfer(
     val queueOutcome: SentOutcome,
     val state: DelayTransferState?,
     val executing: String? = null,
+    val blockedByExpiredHead: Boolean = false,
 )
 
 /** What [ReadDelayTransfers] gives. */
@@ -533,8 +536,11 @@ class ReadDelayTransfers(
                 val read = reads.getOrPut(transfer.hash) {
                     delays.queue(safe.network, safe.address, delay, transfer.hash)
                 }
+                var blocked = false
                 val state = when (read) {
                     is DelayQueueReading.Read -> {
+                        val head = read.queue.entry?.nonce == read.queue.txNonce
+                        blocked = !head && read.queue.headExpired(read.headTime)
                         val shown = window ?: read.queue.shownFor()?.also { window = it }
                         if (!onItsWay && shown != null && entry.transfer.sentAt < now - shown) return@mapNotNull null
                         read.queue.state(read.headTime)
@@ -553,6 +559,7 @@ class ReadDelayTransfers(
                     entry.outcome,
                     state,
                     entries.executionOnItsWay(safe.network, transfer, now),
+                    blockedByExpiredHead = blocked,
                 )
             }
             .reversed()

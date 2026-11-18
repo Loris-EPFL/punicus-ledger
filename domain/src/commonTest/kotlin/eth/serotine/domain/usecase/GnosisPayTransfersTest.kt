@@ -469,6 +469,80 @@ class GnosisPayTransfersTest {
         assertEquals(member, signer.asked.single().first)
     }
 
+    private fun skipping() =
+        QuoteDelaySkip(delays, history, inputs, native, sent, Network.GNOSIS, ListOutbox()) { 1_000 }
+
+    /** A queue whose next entry, 5 of 7, was queued at [createdAt]; read at a head produced at [headTime]. */
+    private fun headQueuedAt(createdAt: Long, headTime: Long = 300_000) {
+        queueAnswer = DelayQueueReading.Read(
+            DelayQueue(5, 7, 90_000, 111_600, null, 0, headCreatedAt = createdAt),
+            120,
+            headTime,
+        )
+    }
+
+    @Test
+    fun anExpiredHeadIsSkippedByAnyHeldKeyWithTheDelaysOwnCall() = runTest {
+        funded()
+        // Queued at 1000: ready at 91,000, expired after 202,600.
+        headQueuedAt(createdAt = 1_000)
+
+        val quote = (skipping()(member, safe, delay, FeeLevel.NORMAL) as DelaySkipQuoting.Quoted).quote
+
+        assertEquals(delay, quote.call.transaction.to)
+        assertTrue(quote.call.transaction.value.isZero)
+        // cast sig "skipExpired()"
+        assertEquals("b19d4758", quote.call.transaction.data.toHex())
+        assertEquals(SentAction.DelaySkip(safe, delay), quote.action)
+        assertEquals(2, quote.waiting)
+        assertEquals(1_000, quote.headCreatedAt)
+        // Only the sender's own call is run: the skip moves nothing of the Safe's.
+        assertEquals(listOf(member to delay), inputs.simulated.map { it.first to it.second })
+    }
+
+    @Test
+    fun nothingIsSkippedWhileTheHeadHasNotExpired() = runTest {
+        funded()
+        headQueuedAt(createdAt = 1_000, headTime = 202_600)
+        assertEquals(DelaySkipQuoting.NothingExpired, skipping()(member, safe, delay, FeeLevel.NORMAL))
+        // An empty queue has nothing to skip either.
+        queueAnswer = DelayQueueReading.Read(DelayQueue(5, 5, 90_000, 111_600, null, 0), 120, 300_000)
+        assertEquals(DelaySkipQuoting.NothingExpired, skipping()(member, safe, delay, FeeLevel.NORMAL))
+        assertTrue(inputs.simulated.isEmpty())
+    }
+
+    @Test
+    fun aDelayNotTheSafesOwnOrASkipOnItsWayIsNeverSentTo() = runTest {
+        funded()
+        queueAnswer = DelayQueueReading.NotTheSafes(DelayGeneration.RETIRED, 120)
+        assertEquals(
+            DelaySkipQuoting.NotTheSafesDelay(DelayGeneration.RETIRED),
+            skipping()(member, safe, delay, FeeLevel.NORMAL),
+        )
+
+        headQueuedAt(createdAt = 1_000)
+        val skipping = sentBy(SentAction.DelaySkip(safe, delay), 990, 7)
+        history.entries.value = listOf(HistoryEntry(skipping, SentOutcome.NotSeen))
+        assertEquals(DelaySkipQuoting.SkipOnItsWay(skipping.hash), skipping()(member, safe, delay, FeeLevel.NORMAL))
+        assertTrue(inputs.simulated.isEmpty())
+    }
+
+    @Test
+    fun aSkipIsRecordedAsTheSkipItIs() = runTest {
+        funded()
+        headQueuedAt(createdAt = 1_000)
+        val quote = (skipping()(member, safe, delay, FeeLevel.NORMAL) as DelaySkipQuoting.Quoted).quote
+
+        val sending = SendDelaySkip(FakeSigner(FakeRecovery()), FakeBroadcaster(), sent) { 2_000 }(
+            quote,
+            Unlock.WithBiometrics("test"),
+        )
+
+        assertTrue(sending is TransferSending.Sent)
+        val recorded = (sent.observe().first() as SentTransferList.Loaded).transfers.single()
+        assertEquals(SentAction.DelaySkip(safe, delay), recorded.action)
+    }
+
     private fun sentBy(action: SentAction, at: Long, hash: Int) = SentTransfer(
         Network.GNOSIS,
         member,

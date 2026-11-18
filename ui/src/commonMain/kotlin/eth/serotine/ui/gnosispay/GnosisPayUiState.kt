@@ -73,10 +73,17 @@ data class ActionItem(val enabled: Boolean, val reason: String?)
 
 /**
  * A transfer queued from here: its [id] (the queueing's transaction hash), what it sends ([title]:
- * "50 EURe to 0x1234…abcd"), where it stands ([status]), and Execute ([execute]; null where it does
- * not apply, greyed out with its reason where it cannot be done now).
+ * "50 EURe to 0x1234…abcd"), where it stands ([status]), Execute ([execute]; null where it does
+ * not apply, greyed out with its reason where it cannot be done now), and Skip expired entries
+ * ([skip]) while an expired entry ahead of it blocks it; null otherwise.
  */
-data class QueuedRow(val id: String, val title: String, val status: String, val execute: ActionItem?)
+data class QueuedRow(
+    val id: String,
+    val title: String,
+    val status: String,
+    val execute: ActionItem?,
+    val skip: ActionItem? = null,
+)
 
 /** Where the screen is in a transfer through the Delay. */
 sealed interface GnosisPayStep {
@@ -87,8 +94,9 @@ sealed interface GnosisPayStep {
     /**
      * The transfer form: the Safe's [assets] to choose from, the [asset] chosen (its contract, or
      * null for the network's currency), the recipient [to] and the [amount] as typed, the [sender]
-     * (the member whose key signs, by name), [error] what is wrong with them, and [quoting] while
-     * Review checks them on chain.
+     * (the member whose key signs, by name), [error] what is wrong with them, [quoting] while
+     * Review checks them on chain, and [skip] when the Delay's queue holds an expired entry ahead:
+     * then "Skip expired entries" is offered beside the error.
      */
     data class Compose(
         val assets: List<AssetItem>,
@@ -98,6 +106,7 @@ sealed interface GnosisPayStep {
         val sender: String,
         val error: String? = null,
         val quoting: Boolean = false,
+        val skip: Boolean = false,
     ) : GnosisPayStep
 
     /**

@@ -565,7 +565,8 @@ class TransferStatusViewModel(
     /**
      * What [transfer] is called in a sentence: "transfer", "approval", "execution", "deployment",
      * "swap", "wrap", "unwrap", "cancellation", for a dApp's "transaction", or for a Gnosis Pay
-     * account's transfer through its Delay "queueing" or "execution".
+     * account's transfer through its Delay "queueing" or "execution", and for its Delay's skip of
+     * expired entries "skip".
      */
     private fun whatOf(transfer: SentTransfer): String = when (transfer.action) {
         is SentAction.Transfer -> "transfer"
@@ -580,6 +581,7 @@ class TransferStatusViewModel(
         is SentAction.DappCall -> "transaction"
         is SentAction.DelayQueue -> "queueing"
         is SentAction.DelayExecution -> "execution"
+        is SentAction.DelaySkip -> "skip"
     }
 
     private fun maybeSentText(what: String) = "No peer answered when this $what was broadcast, so it may not have " +
@@ -776,6 +778,7 @@ class TransferStatusViewModel(
             is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
             is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap, is SentAction.CowCancellation,
             is SentAction.DappCall, is SentAction.DelayQueue, is SentAction.DelayExecution,
+            is SentAction.DelaySkip,
             -> return null
         }
         return SafeTxSummary(

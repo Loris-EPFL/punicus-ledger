@@ -164,6 +164,7 @@ import eth.serotine.domain.usecase.QuoteCowSwap
 import eth.serotine.domain.usecase.QuoteDappTransaction
 import eth.serotine.domain.usecase.QuoteDelayExecution
 import eth.serotine.domain.usecase.QuoteDelayQueue
+import eth.serotine.domain.usecase.QuoteDelaySkip
 import eth.serotine.domain.usecase.QuoteSafeApproval
 import eth.serotine.domain.usecase.QuoteSafeDeployment
 import eth.serotine.domain.usecase.QuoteSafeExecution
@@ -189,6 +190,7 @@ import eth.serotine.domain.usecase.RouteRanking
 import eth.serotine.domain.usecase.SendCowCancellation
 import eth.serotine.domain.usecase.SendDappTransaction
 import eth.serotine.domain.usecase.SendDelayCall
+import eth.serotine.domain.usecase.SendDelaySkip
 import eth.serotine.domain.usecase.SendSwap
 import eth.serotine.domain.usecase.SendTokenApproval
 import eth.serotine.domain.usecase.SendTransfer
@@ -533,6 +535,8 @@ class AppGraph(
             outbox,
         ),
         SendDelayCall(signer, broadcaster, sentTransfers),
+        QuoteDelaySkip(delayModules, transactionHistory, transactionInputs, nativeBalances, sentTransfers, safe.network, outbox),
+        SendDelaySkip(signer, broadcaster, sentTransfers),
         DescribeKeyStore(keys),
     )
 

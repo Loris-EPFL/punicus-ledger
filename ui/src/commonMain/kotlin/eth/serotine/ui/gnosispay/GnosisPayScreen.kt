@@ -83,6 +83,7 @@ const val GNOSIS_PAY_AMOUNT_TAG = "gnosis-pay-amount"
 
 /** Test tag of Review, for UI tests. */
 const val GNOSIS_PAY_REVIEW_TAG = "gnosis-pay-review"
+const val GNOSIS_PAY_SKIP_TAG = "gnosis-pay-skip"
 
 /** Test tag of the password field, for UI tests. */
 const val GNOSIS_PAY_PASSWORD_TAG = "gnosis-pay-password"
@@ -142,6 +143,7 @@ fun GnosisPayRoute(
             onPasswordChange = viewModel::onPasswordChange,
             onSign = viewModel::sign,
             onSignWithBiometrics = viewModel::signWithBiometrics,
+            onSkipExpired = { viewModel.skipExpired() },
         ),
         modifier = modifier,
         // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
@@ -161,6 +163,7 @@ data class GnosisPayActions(
     val onPasswordChange: (String) -> Unit = {},
     val onSign: () -> Unit = {},
     val onSignWithBiometrics: () -> Unit = {},
+    val onSkipExpired: () -> Unit = {},
 )
 
 /**
@@ -327,6 +330,23 @@ private fun Overview(
                         },
                     ) { Text("Execute") }
                 }
+                row.skip?.let { skip ->
+                    OutlinedButton(
+                        onClick = {
+                            if (skip.enabled) {
+                                actions.onSkipExpired()
+                            } else {
+                                skip.reason?.let { onUnavailable(UnavailableNotice("Skip expired entries", it)) }
+                            }
+                        },
+                        modifier = Modifier.testTag("$GNOSIS_PAY_SKIP_TAG-${row.id}").unavailable(!skip.enabled),
+                        colors = if (skip.enabled) {
+                            ButtonDefaults.outlinedButtonColors()
+                        } else {
+                            ButtonDefaults.outlinedButtonColors(contentColor = Unavailable.contentColor())
+                        },
+                    ) { Text("Skip expired entries") }
+                }
             }
         }
     }
@@ -375,6 +395,14 @@ private fun Compose(state: GnosisPayUiState.Ready, step: GnosisPayStep.Compose, 
         modifier = Modifier.fillMaxWidth().focusRequester(amountField).testTag(GNOSIS_PAY_AMOUNT_TAG),
     )
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    // An expired entry blocks the Delay's queue: its skip moves nothing, and lets the transfer through.
+    if (step.skip) {
+        OutlinedButton(
+            onClick = actions.onSkipExpired,
+            enabled = !step.quoting,
+            modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_SKIP_TAG),
+        ) { Text("Skip expired entries") }
+    }
     Button(
         onClick = actions.onReview,
         enabled = !step.quoting,

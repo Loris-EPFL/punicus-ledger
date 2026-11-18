@@ -28,6 +28,7 @@ private const val EXECUTION = "execution"
 private const val WRAP = "wrap"
 private const val UNWRAP = "unwrap"
 private const val QUEUE = "queue"
+private const val SKIP = "skip"
 
 /**
  * One transaction, sent on the network of [chain] (absent in a record written before networks:
@@ -96,7 +97,8 @@ internal class StoredTransfer(
  * A Gnosis Pay account's transfer through its Delay, queued ([kind] `queue`) or executed
  * (`execution`): [amount] of [token] (null: the Safe's currency) from the Safe [safe] through its
  * Delay [delay] to [recipient]. A stored transfer that is no plain transfer the Delay may queue
- * does not decode: the file is damaged.
+ * does not decode: the file is damaged. Or the Delay's skip of expired entries (`skip`, format 11):
+ * [recipient] is then the Delay and [amount] zero, neither read.
  */
 @Serializable
 internal class StoredDelayCall(
@@ -108,6 +110,7 @@ internal class StoredDelayCall(
     val amount: String,
 ) {
     fun toAction(): SentAction {
+        if (kind == SKIP) return SentAction.DelaySkip(Address.of(safe), Address.of(delay))
         val plan = DelayTransfer.of(
             Address.of(safe),
             Address.of(delay),
@@ -266,11 +269,15 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
             is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
             is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap, is SentAction.CowCancellation,
             is SentAction.DappCall, is SentAction.DelayQueue, is SentAction.DelayExecution,
+            is SentAction.DelaySkip,
             -> null
         },
         delay = when (action) {
             is SentAction.DelayQueue -> delayCall(QUEUE, action.transfer)
             is SentAction.DelayExecution -> delayCall(EXECUTION, action.transfer)
+            // No transfer: the Delay alone, as recipient, and nothing moved.
+            is SentAction.DelaySkip ->
+                StoredDelayCall(SKIP, action.safe.hex, action.delay.hex, action.delay.hex, amount = "0")
             else -> null
         },
         dappCall = (action as? SentAction.DappCall)?.let {

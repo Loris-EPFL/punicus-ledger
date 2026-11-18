@@ -353,6 +353,8 @@ internal class ActivityRows(
                 action.transfer.recipient,
                 "To",
             )
+            // Moves nothing: the Delay's next entry past every expired one.
+            is SentAction.DelaySkip -> Triple("Skipped expired entries of the Delay", action.safe, "Of")
         }
         val (status, state) = statusOf(entry)
         return ActivityRow(

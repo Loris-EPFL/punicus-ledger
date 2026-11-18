@@ -219,7 +219,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(wrap, unwrap), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":10,"""), "written as format 10: $text")
+        assertTrue(text.startsWith("""{"version":11,"""), "written as format 11: $text")
     }
 
     @Test
@@ -243,7 +243,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(cancellation), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":10,"""), "written as format 10: $text")
+        assertTrue(text.startsWith("""{"version":11,"""), "written as format 11: $text")
     }
 
     @Test
@@ -259,7 +259,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(call), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":10,"""), "written as format 10: $text")
+        assertTrue(text.startsWith("""{"version":11,"""), "written as format 11: $text")
     }
 
     @Test
@@ -276,7 +276,30 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(queued, executed), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":10,"""), "written as format 10: $text")
+        assertTrue(text.startsWith("""{"version":11,"""), "written as format 11: $text")
+    }
+
+    @Test
+    fun aGnosisPayDelaysSkipIsRecordedAsTheSkipItIs() = runTest {
+        val safe = Address.of("0x188416e7d22a45e1c5f69c628d9c05bee54bd4fb")
+        val delay = Address.of("0xfc85bcbc2ce6aec1be9d94c77c872269ebddb6c7")
+        val skipped = transfer(9).copy(action = SentAction.DelaySkip(safe, delay))
+
+        record().record(skipped)
+
+        assertEquals(listOf(skipped), stored())
+        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
+        assertTrue(text.startsWith("""{"version":11,"""), "written as format 11: $text")
+    }
+
+    @Test
+    fun aFormat10FileIsReadAsItIs() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val entry = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff","to":"${bob.hex}","amount":"1",""" +
+            """"maxCost":"1","sentAt":1800000008}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":10,"transfers":[$entry]}""") }
+
+        assertEquals(1, stored().size)
     }
 
     @Test

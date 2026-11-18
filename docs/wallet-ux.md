@@ -1690,6 +1690,13 @@ opens **Gnosis Pay**, a screen of its own:
   held here on Gnosis Chain, whoever controls the Delay by then: anyone may
   execute an entry. Until then it is greyed out, and a tap says why: the
   time until then, the entries ahead, or what cannot be verified.
+  Behind an expired entry, it says "An entry ahead of it in the Delay
+  module's queue has expired and blocks it. Skip expired entries, then
+  execute it before it expires too.", Execute is greyed out with that
+  reason, and **Skip expired entries** is offered beside it. The Send form
+  offers the same when Review is refused for an expired entry ahead. The
+  skip's review says it moves nothing and that the skipped entries can never
+  be executed afterwards (docs/gnosis-pay.md, *Skipping expired entries*).
 - Send is a form (the Safe's assets, the recipient's address, checked
   against its EIP-55 checksum, and the amount), then a review of the
   signing key's transaction with the unlock that signs it. The form names

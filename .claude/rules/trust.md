@@ -208,6 +208,12 @@ carve-out of 2026-11-10 and its rulings of 2026-11-11 and 2026-11-13 on #761;
 - **The queue is checked before an execution.** The transfer must be the
   Delay's next entry, past its cooldown and before its expiration. An entry
   ahead of it is shown and never executed by Punicus.
+- **An expired entry is skipped with the Delay's own `skipExpired()`**
+  (owner's request, 2026-11-18; docs/gnosis-pay.md, *Skipping expired
+  entries*): a key held here sends it straight to the Delay, after a fresh
+  read proves the Delay the Safe's own of the current mastercopy and its
+  next entry expired. It moves nothing, so it needs no control of the
+  account, and it queues nothing.
 - **No relayer.** The Delay's signed, relayed path needs an off-chain
   service and is not used.
 - **The card's allowance is never a cap.** The Delay's cooldown and

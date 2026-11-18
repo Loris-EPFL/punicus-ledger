@@ -22,6 +22,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemColors
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -41,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -58,7 +61,7 @@ import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.SpeedDialAction
 import eth.serotine.ui.components.SpeedDialFab
 import eth.serotine.ui.components.StaleAnchorBanner
-import eth.serotine.ui.components.StaleAnchorDialog
+import eth.serotine.ui.components.StaleAnchorQuestion
 import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableFix
@@ -86,6 +89,9 @@ const val ACCOUNTS_EMPTY_LIGHT_CLIENT_TAG = "accounts-empty-light-client-"
 /** Test tag of the portfolio's total, for UI tests. */
 const val ACCOUNTS_TOTAL_TAG = "accounts-total"
 
+/** The row of the account whose detail is shown beside the list, on a wide window. */
+const val ACCOUNTS_SELECTED_TAG = "accounts-selected"
+
 /**
  * Binds [AccountsScreen], or in simple mode [SimpleAccountsScreen], to its ViewModel: the only
  * composable that knows the ViewModel exists. Copy is done here, on the platform's clipboard;
@@ -100,6 +106,7 @@ fun AccountsRoute(
     onCreateSafe: () -> Unit,
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
+    selected: SelectedAccount? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val copy = rememberCopyText()
@@ -119,9 +126,11 @@ fun AccountsRoute(
             modifier = modifier,
             onTurnOnNetwork = viewModel::turnOnNetwork,
             onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
+            onFetchFreshCheckpoint = viewModel::fetchFreshCheckpoint,
             onMessageShown = viewModel::messageShown,
             onToggleAmounts = viewModel::toggleAmounts,
             onDismissLost = viewModel::dismissLost,
+            selected = selected,
         )
         InterfaceMode.DETAILED -> AccountsScreen(
             state = state,
@@ -133,9 +142,11 @@ fun AccountsRoute(
             modifier = modifier,
             onTurnOnNetwork = viewModel::turnOnNetwork,
             onSyncPastStaleAnchor = viewModel::syncPastStaleAnchor,
+            onFetchFreshCheckpoint = viewModel::fetchFreshCheckpoint,
             onMessageShown = viewModel::messageShown,
             onToggleAmounts = viewModel::toggleAmounts,
             onDismissLost = viewModel::dismissLost,
+            selected = selected,
         )
     }
 }
@@ -151,11 +162,14 @@ fun AccountsRoute(
  * are in a section per network (docs/networks.md, N1), each headed by its network, its light client
  * and its total; on a network that is off, Send's reason offers to turn it on ([onTurnOnNetwork],
  * N18). A network whose light client refuses a stale checkpoint warns in its section, and its
- * "Catch up anyway…" asks first, then [onSyncPastStaleAnchor] (owner's request, 2026-10-24).
+ * "Catch up…" opens the dialog that offers the two ways on: a fresh checkpoint from the network's
+ * checkpoint servers ([onFetchFreshCheckpoint]; owner's request, 2026-11-14), or catching up from the
+ * old one anyway ([onSyncPastStaleAnchor]; owner's request, 2026-10-24).
  * [fabExpandedAtStart] opens the button's fan from the start (a preview). Once the list is read, the
  * eye at the top left hides or shows every amount ([onToggleAmounts]; docs/wallet-ux.md, *Hiding
  * amounts*). What lenient mode's outbox holds is said under each network's line, and a queued
- * transaction lost once, until [onDismissLost].
+ * transaction lost once, until [onDismissLost]. Beside an account's detail on a wide window, the row of
+ * the account shown there, [selected], is drawn selected.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -170,9 +184,11 @@ fun AccountsScreen(
     fabExpandedAtStart: Boolean = false,
     onTurnOnNetwork: (chainId: Long) -> Unit = {},
     onSyncPastStaleAnchor: (chainId: Long) -> Unit = {},
+    onFetchFreshCheckpoint: (chainId: Long, useUnconfirmed: Boolean) -> Unit = { _, _ -> },
     onMessageShown: () -> Unit = {},
     onToggleAmounts: () -> Unit = {},
     onDismissLost: () -> Unit = {},
+    selected: SelectedAccount? = null,
 ) {
     val snackbar = remember { SnackbarHostState() }
     // Said once: a network that could not be turned on.
@@ -187,16 +203,13 @@ fun AccountsScreen(
     var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
     unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
     var asking by remember { mutableStateOf<StaleAnchorWarning?>(null) }
-    asking?.let { warning ->
-        StaleAnchorDialog(
-            warning,
-            onConfirm = {
-                asking = null
-                onSyncPastStaleAnchor(warning.chainId)
-            },
-            onDismiss = { asking = null },
-        )
-    }
+    StaleAnchorQuestion(
+        asking,
+        current = { state.staleAnchorOf(it) },
+        onClose = { asking = null },
+        onCatchUp = onSyncPastStaleAnchor,
+        onFetch = onFetchFreshCheckpoint,
+    )
     val scope = rememberCoroutineScope()
     val act: (AccountAction) -> Unit = { action ->
         onAccountAction(action)
@@ -238,7 +251,9 @@ fun AccountsScreen(
                 )
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                Rows(state, act, onTurnOnNetwork, onDismissLost, onCatchUp = { asking = it }) { unavailable = it }
+                Rows(state, selected, act, onTurnOnNetwork, onDismissLost, onCatchUp = { asking = it }) {
+                    unavailable = it
+                }
             }
         }
     }
@@ -312,6 +327,7 @@ private fun PortfolioTotal(total: String, label: String?, note: String?) {
 @Composable
 private fun BoxScope.Rows(
     state: AccountsUiState,
+    selected: SelectedAccount?,
     onAccountAction: (AccountAction) -> Unit,
     onTurnOnNetwork: (Long) -> Unit,
     onDismissLost: () -> Unit,
@@ -337,6 +353,7 @@ private fun BoxScope.Rows(
                 AccountList(
                     state.sections,
                     state.lostNotice,
+                    selected,
                     onAccountAction,
                     onTurnOnNetwork,
                     onDismissLost,
@@ -371,7 +388,7 @@ internal fun NoAccounts(modifier: Modifier = Modifier) {
 /**
  * A network's light client on the empty Accounts screen (#66): its mark and its status strip's
  * line, as a section header draws them, with no total and no accounts, and a stale checkpoint's
- * warning with its "Catch up anyway…" ([onCatchUp]), in the error colour.
+ * warning with its "Catch up…" ([onCatchUp]), in the error colour.
  */
 @Composable
 private fun EmptyWalletLightClient(network: NetworkLightClient, onCatchUp: (StaleAnchorWarning) -> Unit) {
@@ -408,6 +425,7 @@ private fun EmptyWalletLightClient(network: NetworkLightClient, onCatchUp: (Stal
 private fun AccountList(
     sections: List<NetworkSection>,
     lostNotice: String?,
+    selected: SelectedAccount?,
     onAccountAction: (AccountAction) -> Unit,
     onTurnOnNetwork: (Long) -> Unit,
     onDismissLost: () -> Unit,
@@ -420,14 +438,16 @@ private fun AccountList(
         sections.forEach { section ->
             item(key = "section/${section.chainId}") { SectionHeader(section, onCatchUp) }
             items(section.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
+                val shown = selected?.matches(account) == true
                 WithActionMenu(
                     actions = accountMenu(account, onAccountAction, onTurnOnNetwork, onUnavailable),
                     menuLabel = "Actions for ${account.label}",
                     onClick = { onAccountAction(AccountAction.Open(account.chainId, account.address)) },
+                    modifier = Modifier.selectedRow(shown),
                     clickLabel = "Open ${account.label}",
                 ) {
                     // An account on a network that is off stays listed, dimmed (N18).
-                    AccountRow(account, Modifier.alpha(if (section.on) 1f else DIMMED))
+                    AccountRow(account, shown, Modifier.alpha(if (section.on) 1f else DIMMED))
                 }
                 HorizontalDivider()
             }
@@ -441,7 +461,7 @@ private const val DIMMED = 0.6f
 /**
  * A network's section header (docs/networks.md, N1): its mark and total, and below them its light
  * client's line, which is the section's status strip, with what the total leaves out, and a stale
- * checkpoint's warning with its "Catch up anyway…" ([onCatchUp]).
+ * checkpoint's warning with its "Catch up…" ([onCatchUp]).
  */
 @Composable
 private fun SectionHeader(section: NetworkSection, onCatchUp: (StaleAnchorWarning) -> Unit) {
@@ -525,6 +545,8 @@ internal fun accountMenu(
         MenuAction("Send", Icons.AutoMirrored.Filled.Send, unavailable = sendNotice != null) {
             when {
                 sendNotice != null -> onUnavailable(sendNotice)
+                // Controlled here through its Delay: its transfers go through the Gnosis Pay screen.
+                account.sendsThroughGnosisPay -> act(AccountAction.GnosisPay(chainId, address))
                 account.kind == AccountKind.SAFE -> act(AccountAction.Propose(chainId, address))
                 else -> act(AccountAction.Send(chainId, address))
             }
@@ -576,10 +598,27 @@ internal fun accountMenu(
     )
 }
 
+/**
+ * The row of the account whose detail is shown beside the list, [shown]: said selected to a screen
+ * reader and tagged, the colour being the row's own ([selectedRowColors]). Nothing for any other row.
+ */
+internal fun Modifier.selectedRow(shown: Boolean): Modifier =
+    if (shown) semantics { selected = true }.testTag(ACCOUNTS_SELECTED_TAG) else this
+
+/** A row's colours: the secondary container behind the account shown beside the list ([shown]). */
 @Composable
-private fun AccountRow(account: AccountItem, modifier: Modifier = Modifier) {
+internal fun selectedRowColors(shown: Boolean): ListItemColors =
+    if (shown) {
+        ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    } else {
+        ListItemDefaults.colors()
+    }
+
+@Composable
+private fun AccountRow(account: AccountItem, shown: Boolean, modifier: Modifier = Modifier) {
     ListItem(
         modifier = modifier,
+        colors = selectedRowColors(shown),
         leadingContent = { AccountAvatar(account.address, threshold = account.signers) },
         headlineContent = { NameWithControlBadge(account.label, account.control) },
         supportingContent = {

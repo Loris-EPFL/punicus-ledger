@@ -15,6 +15,7 @@ import eth.serotine.data.logs.MemoryDebugLog
 import eth.serotine.data.network.IosConnectionMeter
 import eth.serotine.data.networks.FileNetworkSettings
 import eth.serotine.data.nfts.FileAddedNfts
+import eth.serotine.data.nfts.FileSeenEnsNames
 import eth.serotine.data.outbox.iosOutbox
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
@@ -271,6 +272,7 @@ class SerotineWallet {
             addressKinds = node.addressKinds,
             lightClient = node.lightClient,
             staleAnchorConsent = node,
+            freshCheckpoints = node,
             networkFreshness = node,
             networkUpgrades = node.networkUpgrades,
             knownUpgrades = knownUpgrades,
@@ -291,11 +293,13 @@ class SerotineWallet {
             ensNfts = node.ensNfts,
             // The NFTs added by contract and id, beside tokens.json (issue #246).
             addedNfts = FileAddedNfts("$dataDir/nfts.json"),
+            seenEnsNames = FileSeenEnsNames("$dataDir/ens-names.json"),
             // The Safe transactions waiting for their owners: the follower's one instance.
             safeTxQueue = safeTxQueue,
             signingRequests = JsonSigningRequestCodec(),
             signatureRecovery = signatureRecovery,
             safeApprovals = node.safeApprovals,
+            delayModules = node.delayModules,
             // Safe 1.4.1's singleton, factory and proxy code, pinned in code: what a new Safe is created from.
             safeReleases = PinnedSafeReleases(),
             // Uniswap v3 on each network that has it pinned, its contracts proven by their code before any quote.

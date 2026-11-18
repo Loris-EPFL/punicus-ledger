@@ -42,7 +42,7 @@ import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.HideAmountsButton
 import eth.serotine.ui.components.NameWithControlBadge
 import eth.serotine.ui.components.StaleAnchorBanner
-import eth.serotine.ui.components.StaleAnchorDialog
+import eth.serotine.ui.components.StaleAnchorQuestion
 import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableNotice
@@ -67,9 +67,11 @@ const val ACCOUNTS_UNREACHABLE_TAG = "accounts-unreachable-"
  * balances from before gets a banner, and those rows are dimmed with their age. Pulling the list
  * down, or the Refresh button, asks [onRefresh]. Everything else is as [AccountsScreen] has it: the
  * + button, a row's tap and long-press menu, the greyed-out actions and their reasons, the upgrade
- * banners and a stale checkpoint's warning with its "Catch up anyway…", and the eye at the top left
+ * banners and a stale checkpoint's warning with its "Catch up…", and the eye at the top left
  * that hides or shows every amount ([onToggleAmounts]). What lenient mode's outbox holds is said
  * per network under the freshness line, and a queued transaction lost once, until [onDismissLost].
+ * Beside an account's detail on a wide window, the row of the account shown there, [selected], is
+ * drawn selected.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,9 +87,11 @@ fun SimpleAccountsScreen(
     fabExpandedAtStart: Boolean = false,
     onTurnOnNetwork: (chainId: Long) -> Unit = {},
     onSyncPastStaleAnchor: (chainId: Long) -> Unit = {},
+    onFetchFreshCheckpoint: (chainId: Long, useUnconfirmed: Boolean) -> Unit = { _, _ -> },
     onMessageShown: () -> Unit = {},
     onToggleAmounts: () -> Unit = {},
     onDismissLost: () -> Unit = {},
+    selected: SelectedAccount? = null,
 ) {
     val snackbar = remember { SnackbarHostState() }
     val message = (state as? AccountsUiState.Ready)?.message
@@ -101,16 +105,13 @@ fun SimpleAccountsScreen(
     var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
     unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
     var asking by remember { mutableStateOf<StaleAnchorWarning?>(null) }
-    asking?.let { warning ->
-        StaleAnchorDialog(
-            warning,
-            onConfirm = {
-                asking = null
-                onSyncPastStaleAnchor(warning.chainId)
-            },
-            onDismiss = { asking = null },
-        )
-    }
+    StaleAnchorQuestion(
+        asking,
+        current = { state.staleAnchorOf(it) },
+        onClose = { asking = null },
+        onCatchUp = onSyncPastStaleAnchor,
+        onFetch = onFetchFreshCheckpoint,
+    )
     val scope = rememberCoroutineScope()
     val act: (AccountAction) -> Unit = { action ->
         onAccountAction(action)
@@ -166,7 +167,7 @@ fun SimpleAccountsScreen(
                         state.notice?.let { Notice(it) }
                         // Each network's sync line while it syncs, before the first account (#66).
                         state.lightClients.forEach { network ->
-                            // A stale checkpoint: its warning and "Catch up anyway…", as for a section.
+                            // A stale checkpoint: its warning and "Catch up…", as for a section.
                             network.staleAnchor?.let { warning ->
                                 NetworkAlarm(network.chainId, network.name, null, warning) { asking = it }
                                 return@forEach
@@ -185,6 +186,7 @@ fun SimpleAccountsScreen(
                 } else {
                     SimpleAccountList(
                         state,
+                        selected,
                         act,
                         onTurnOnNetwork,
                         onCatchUp = { asking = it },
@@ -199,6 +201,7 @@ fun SimpleAccountsScreen(
 @Composable
 private fun SimpleAccountList(
     state: AccountsUiState.Ready,
+    selected: SelectedAccount?,
     onAccountAction: (AccountAction) -> Unit,
     onTurnOnNetwork: (Long) -> Unit,
     onCatchUp: (StaleAnchorWarning) -> Unit,
@@ -229,14 +232,16 @@ private fun SimpleAccountList(
             )
         }
         items(state.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
+            val shown = selected?.matches(account) == true
             WithActionMenu(
                 actions = accountMenu(account, onAccountAction, onTurnOnNetwork, onUnavailable),
                 menuLabel = "Actions for ${account.label}",
                 onClick = { onAccountAction(AccountAction.Open(account.chainId, account.address)) },
+                modifier = Modifier.selectedRow(shown),
                 clickLabel = "Open ${account.label}",
             ) {
                 // A balance from before, or a network that is off: the row dimmed, its age said.
-                SimpleAccountRow(account, Modifier.alpha(if (account.ageNote != null) DIMMED else 1f))
+                SimpleAccountRow(account, shown, Modifier.alpha(if (account.ageNote != null) DIMMED else 1f))
             }
             HorizontalDivider()
         }
@@ -306,7 +311,7 @@ private fun Unreachable(network: UnreachableNetwork) {
 
 /**
  * A network ([chainId], [name]) this version can no longer follow ([blocked]), or whose light
- * client refuses a stale checkpoint ([staleAnchor]), with its "Catch up anyway…" ([onCatchUp]): in
+ * client refuses a stale checkpoint ([staleAnchor]), with its "Catch up…" ([onCatchUp]): in
  * the error colour, as its section is in Detailed view.
  */
 @Composable
@@ -336,10 +341,11 @@ private fun NetworkAlarm(
 }
 
 @Composable
-private fun SimpleAccountRow(account: AccountItem, modifier: Modifier = Modifier) {
+private fun SimpleAccountRow(account: AccountItem, shown: Boolean, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     ListItem(
         modifier = modifier,
+        colors = selectedRowColors(shown),
         leadingContent = { AccountAvatar(account.address, threshold = account.signers, network = account.network) },
         headlineContent = { NameWithControlBadge(account.label, account.control) },
         supportingContent = {

@@ -9,6 +9,7 @@ import eth.serotine.domain.repository.FeeReading
 import eth.serotine.domain.repository.GasEstimate
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NonceReading
+import eth.serotine.domain.repository.PrimaryName
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.Simulation
@@ -416,6 +417,29 @@ class TransactionAdaptersTest {
         assertEquals(NameResolution.NotAName, names.resolve(Network.SEPOLIA, "serotine"))
         assertEquals(NameResolution.NotAName, names.resolve(Network.SEPOLIA, "a..eth"))
         assertEquals(NameResolution.NotAName, names.resolve(Network.SEPOLIA, "my name.eth"))
+    }
+
+    @Test
+    fun aPrimaryNameIsTakenOnlyAsFinalizedStateVerifiesItAndOnlyWhenItCanBeShown() = runTest {
+        synced()
+        val names = EngineNames(Network.SEPOLIA, chain, StandardTestDispatcher(testScheduler))
+        chain.reverse = ReverseNameAnswer("Serotine.eth", 90, verified = true, error = null)
+        assertEquals(PrimaryName.Named("serotine.eth", 90), names.primaryName(Network.SEPOLIA, bob))
+
+        chain.reverse = ReverseNameAnswer("serotine.eth", 90, verified = false, error = null)
+        assertEquals(PrimaryName.Unavailable(ReadUnavailable.UNPROVEN), names.primaryName(Network.SEPOLIA, bob))
+        chain.reverse = ReverseNameAnswer(null, -1, verified = false, error = "no snap peer")
+        assertEquals(PrimaryName.Unavailable(ReadUnavailable.UNPROVEN), names.primaryName(Network.SEPOLIA, bob))
+        chain.reverse = ReverseNameAnswer(null, 90, verified = true, error = null)
+        assertEquals(PrimaryName.None, names.primaryName(Network.SEPOLIA, bob))
+        chain.reverse = ReverseNameAnswer("vit\u0430lik.eth", 90, verified = true, error = null)
+        assertEquals(PrimaryName.NotShowable, names.primaryName(Network.SEPOLIA, bob), "a look-alike is not shown")
+
+        assertEquals(
+            PrimaryName.Unavailable(ReadUnavailable.NO_ENGINE),
+            names.primaryName(Network.ETHEREUM, bob),
+            "another network is refused, never answered from this one",
+        )
     }
 
     @Test

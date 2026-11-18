@@ -69,6 +69,10 @@ the text wins.
   as syncing. While the trust anchor is stale, a proof fails or the engine
   refuses, the row says that and shows no amount from before, and no other
   value (an address's kind, a Safe's owners, a price) is shown last known.
+  One exception: who controls a Gnosis Pay account stands as last verified,
+  said as such, for an hour at most (owner's decisions, 2026-11-17;
+  docs/gnosis-pay.md, *A read that did not answer*). The owner decided the
+  same for every value shown; this page is changed with that work.
   The one exception is lenient mode (docs/lenient-mode.md; owner rulings,
   2026-11-06): a draft is built and signed on the balances last verified and
   on the other values it needs (the account's nonce, the network's fee
@@ -114,7 +118,11 @@ the text wins.
   What is signed is always the address, shown in full beside the name.
 - **Control is a badge.** Every account says what the user can do with it:
   - *Full control*: an EOA whose key is in this device's key store, or a Safe
-    whose owners held here reach its threshold.
+    whose owners held here reach its threshold, or a Gnosis Pay account a key
+    held here controls by itself through its Delay module, as a member or
+    through member Safes of threshold 1 (owner's request, 2026-11-17;
+    docs/gnosis-pay.md, *Control through a member Safe*). Its Send opens the
+    Gnosis Pay screen; Swap stays greyed out.
   - *Co-signer*: a Safe with some owners held here, fewer than its threshold.
   - *Watch-only*: nothing held here. Send is greyed out (a tap says why);
     Receive and the balances are as for any account.
@@ -201,6 +209,44 @@ has left this version unable to follow Sepolia, and gives way to the Accounts
 tab's start when it no longer has (docs/embedding-myotis.md, *Network
 upgrades*).
 
+**On a wide window the Accounts tab is a list and its detail, side by side**
+(owner's request, 2026-11-18). From 840 dp on, the width at which the rail
+replaces the bar (Material's expanded window size class):
+
+- The Accounts list (1) is a pane of its own, 360 dp wide, between the rail
+  and the screen shown, in either view. It is the same list, with its +
+  button, its long-press menu and its greyed-out actions.
+- Beside it is the Accounts tab's screen: the account's detail (3) and every
+  screen opened from it, Activity detail and Receive among them. While no
+  account is open there, the pane says so: "No account open", and either
+  "Choose an account in the list" or, with no account in the wallet yet,
+  that one is added with the + button first. It says nothing about the
+  chain: the list beside it does.
+- A row's tap opens its account beside the list, in place of whatever the
+  tab showed there. Back from that account returns to the list alone, as on
+  a phone. The row of the account open beside the list is drawn selected,
+  in the secondary container colour, and says so to a screen reader. A tap
+  on that row returns to its detail as it was.
+- A row's menu, for the account open beside the list, opens what it asks
+  over that account, as its detail's own buttons do. For another account,
+  a screen of the tab (Receive, Add account from the same phrase) starts
+  from the list, as on a phone, so the pane never shows one account's
+  screen under another's selected row. A dialog (Rename, Remove, Add on
+  another network) and a flow that covers the list (Send, Send from
+  another wallet, a Safe's proposal, Gnosis Pay) open over what is shown,
+  and back from them returns to it.
+- While the list is read, or cannot be, the empty pane shows its title
+  alone: there is nothing to choose yet, and the list says why.
+- The list leaves with the tab: Settings and Debug take the whole width
+  beside the rail, and a flow that covers the bar (send, import, create
+  account, a Safe transaction) covers the list too.
+- The back stack is the same at every width, so a window that crosses
+  840 dp keeps the screen it shows: narrowed, the account alone, back from it
+  to the list; widened, the list joins it.
+- Its screenshots are drawn on a tablet held sideways, 1280 × 800 dp
+  (owner's request, 2026-11-18): `docs/screenshots/accounts-tablet/` and
+  `simple-accounts-tablet/`.
+
 ## Screens
 
 ### Accounts tab
@@ -224,8 +270,20 @@ upgrades*).
      address, control badge, native balance and its fiat value.
    - With no account yet, each network that is on still runs while this
      screen is open, and shows its light client above "No accounts yet": its
-     status line, and a stale checkpoint's warning with "Catch up anyway…"
+     status line, and a stale checkpoint's warning with "Catch up…"
      (#66).
+   - A stale checkpoint's "Catch up…", in a section or in an empty wallet,
+     opens one dialog with the two ways on (owner's requests, 2026-10-24 and
+     2026-11-14): "Fetch a fresh checkpoint" (recommended), which says that
+     the checkpoint is the servers' word, shows "Asking the checkpoint
+     servers…" while it runs, and on a refusal says why; "Use it anyway" only
+     when no long-known peer confirmed the servers' answer; and "Catch up
+     anyway". What the last fetch came to is said first, above the
+     explanation. "Not now" closes the dialog even while the servers are
+     asked: the fetch goes on, and its answer is there when the dialog is
+     opened again. An applied checkpoint is said once, with the operators that
+     named it and the long-known peers that confirmed it. Settings →
+     Networks offers the same dialog, and says it under the network's row.
    - Under a network's status line, what its accounts have queued in
      lenient mode (docs/lenient-mode.md, *Where it shows*; owner rulings,
      2026-11-06): "1 waiting to send" (or N), and while its light client
@@ -351,6 +409,9 @@ upgrades*).
      sent. Send or discard it first.", with its status (9). Swap, a CoW
      order's cancellation, a Safe transaction's approval or execution, Create
      Safe and a dApp's transaction say the same.
+   - The recipient, once resolved, is checked for address poisoning, and
+     what the check finds is shown under it; a block greys Review out (8,
+     *Address poisoning check*).
    - **In lenient mode** (Settings → Advanced → *Sign while syncing*, 18;
      docs/lenient-mode.md; owner rulings, 2026-11-06), while the network's
      light client catches up:
@@ -412,6 +473,48 @@ upgrades*).
      for a new one. Nothing is signed twice. One no peer answered may have
      reached one all the same, so it is recorded as maybe sent: leaving the
      screen, or the app, keeps its bytes for Try again on its status (9).
+   - **The recipient in full, in groups of four** ("0x fB69 1609 …"), never
+     shortened, and not selectable: a copy would carry the spaces, and the
+     address as entered is one tap back, in 7's field (the requirements of
+     #324, 2026-11-18).
+   - **Address poisoning check** (`ObserveRecipientCheck`; the requirements
+     of #324, 2026-11-18), on 7 and here, the draft's review included. Only
+     Send runs it: Send from another wallet (7H) and a Safe's proposal of a
+     transfer show the recipient chunked, with no check yet.
+     - **What it compares with.** The addresses this device sent to
+       (`ObserveSentTo`: transactions it signed, so their `tx.from` is the
+       user) and the wallet's accounts on the network, the only address
+       book there is.
+     - **A look-alike blocks, with no way past it.** Same first 4 and last
+       4 hex digits as one of those, but another address: both addresses
+       in full, the differing middle in bold red. Review is refused and
+       nothing is signed until the recipient is changed. A send refused
+       with no override is a new kind of refusal; whether it becomes a rule
+       beside those of `.claude/rules/trust.md` is open, the owner's to
+       decide.
+     - **A planted address blocks until the user confirms.** The account's
+       history (the log index) holds a transfer between it and the
+       recipient that this device never signed, of the kind that plants a
+       look-alike: a transfer of nothing either way (`transferFrom(account,
+       recipient, 0)` needs no allowance), a transfer of an ERC-20 token
+       the wallet does not list (built in, or added without a built-in
+       token's symbol; matched by contract address), or dust received (at
+       most 0.00001 of the network's currency). ERC-721 transfers are not
+       judged. "I checked it: send anyway" lifts the block for that
+       recipient, and the warning then says the user chose to.
+     - **An unreadable history blocks the same way.** While this device's
+       history of what it sent cannot be read, a recipient cannot be
+       compared with it: said, and lifted only by the same confirmation.
+       The wallet's own accounts are still compared.
+     - **A new recipient is a notice.** "This device has not sent to this
+       address before": a restored account's earlier transfers, sent from
+       elsewhere, are not in it. While the account's history is not read
+       from the log index yet, the notice says a planted sender cannot be
+       ruled out: the log index may stay unread (a metered connection, the
+       walk not started), and that must not block every send.
+     - **It fails closed.** Review and every signature wait for the check's
+       answer about the recipient on screen; an answer about another one,
+       or none yet, clears nothing.
    - **A draft's review** (lenient mode; docs/lenient-mode.md, *The draft's
      review*; owner rulings, 2026-11-06). The same screen, with these
      differences:
@@ -981,6 +1084,23 @@ upgrades*).
       (owner ruling, 2026-10-18, on #54), and a version update runs a
       migration contract's code as the Safe, a delegate call, which this
       wallet does not sign (#57) until a migration contract is pinned.
+    - **A Gnosis Pay account's Delay members** (owner ruling and request,
+      2026-11-18; docs/gnosis-pay.md, *Adding and removing a member*): above
+      the owners, since its one owner is a placeholder, "Delay module
+      members" lists who controls the account: each member's address, its
+      name in the wallet, what it is ("A key", "A Safe: 1 of its 9 owners
+      signs"), and "A key on this device controls the account through it"
+      where one does, with Remove; then Add a member, and the block the Delay
+      was verified at (in simple mode "Checked on chain", the block under
+      *Details*). Both are greyed out where they cannot be done here,
+      with Send through the Delay's reason, and Remove of the only member
+      with "This is the Delay module's only member … its funds would be
+      locked for good. Add another member first." Through a Delay whose
+      entries never expire both are greyed out with "This account's Delay
+      module never lets an entry expire … So Punicus adds and removes no
+      member through it. Transfers still go through it." (owner's decision,
+      2026-11-18). A tap opens the Gnosis Pay
+      screen at the add form or the removal's review; Back returns here.
     - Each change has its form: the owner it removes or replaces; the new
       owner's address, typed or picked from the wallet's accounts on the
       Safe's network that are not owners yet (an address only, no name); and
@@ -1106,7 +1226,10 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       character before you copy it" (owner's request on #136, 2026-10-21):
       anyone can send a little from a look-alike of an address the user
       uses, so that it is copied from the history later. ETH a Safe
-      received is cautioned alike. What a swap sent from here bought (an
+      received is cautioned alike. Since the address poisoning protection
+      (the requirements of #324, 2026-11-18), the detail (26) shows such a
+      sender with no Copy; whether the status's words change with it is
+      the owner's to decide. What a swap sent from here bought (an
       account's own, or a Safe's executed from here), arriving in its
       transaction, is not (its proceeds come from a pool never sent to): its
       ETH, or a built-in token whose contract does not contradict it, of at
@@ -1144,7 +1267,8 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     event). Its row's headline and status first, then every party it
     concerns, each address in full (EIP-55, its blockie, the wallet's name
     for it) and every hash (the transaction's, a Safe transaction's, a
-    message's), each selectable and with Copy, then what it moved, its
+    message's), each selectable and with Copy (but for a sender its row
+    cautions, below), then what it moved, its
     nonce, when a peer took it (an event: when its block was produced, where
     the engine reported it) and its block. Read from what 25 is read from,
     so it says what the row says.
@@ -1173,7 +1297,10 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     - A transfer whose row is cautioned about its sender says why beside
       its fields: the sender is none of the user's accounts and was never
       sent to from this device, and a look-alike is compared in full before
-      anything is sent to it.
+      anything is sent to it. That sender, a token's, ETH's or the ETH a
+      Safe received, is shown in full but not selectable and with no Copy,
+      and the note says so (the requirements of #324, 2026-11-18): a
+      planted look-alike is never one tap from the clipboard.
     - One no longer there (a reorganisation replaced its block, once every
       block from the history's start is checked again) says so; while the
       blocks it is in are still being checked, or its history cannot be
@@ -1492,6 +1619,45 @@ they are helpful." The rulings (owner rulings, 2026-11-05, #246; the
   could have sent, and listed only while it is held. An added row has
   Remove. *Add an NFT* is greyed out while the account's network is off, a
   tap saying why (owner ruling, 2026-10-18, #55).
+- **ENS names seen, as candidates** (issue #274; it amends "older NFTs are
+  added by contract and id" for ENS names: owner ruling, 2026-11-15, on
+  #299). Every verified resolution
+  in the wallet that lands on one of the user's accounts (Watch, the
+  duplicate case included; Send; Create Safe's owners; the check of a name
+  an account follows; the account's primary name; never a dApp request,
+  which resolves none)
+  keeps that name for the account, with its block, in `ens-names.json`
+  (`RememberResolvedNames`, `FileSeenEnsNames`). A name that lands on an
+  address not in the wallet is not kept. The tokens each name can be are
+  worked out by hashing it (`EnsNameTokens`): the .eth registrar's, whose id
+  is the first label's hash, for a .eth name of the second level, and the
+  NameWrapper's, whose id is the namehash. Those of the latest 20 names are
+  checked as an added NFT is, among the built-in collections' and before
+  the ones the log index found, and listed only while held; a name seen is
+  not the user's to remove. A damaged `ens-names.json` is set aside: the
+  names resolutions find come back by themselves, one added by hand has to
+  be added again.
+  A registrar token whose label no receipt gave takes it from a name seen,
+  checked by hashing. *Add an NFT* takes an ENS name alone in its contract
+  field (`AddEnsName`), kept once the account is proven to hold one of its
+  tokens; a token id typed beside a name is refused. ENSv2's names
+  (Sepolia) are not found this way: the token id
+  carries a version the name does not tell.
+- **Names pointing here, held or not** (issue #274; the owner's choice on
+  #299, 2026-11-14: a name in the NFTs only when the account holds it, a
+  name that merely points here shown too). The account's header has a
+  line "ENS names pointing here: x (primary name), y"
+  (`ObserveAccountNames`). The primary name is the account's reverse
+  record, read through the engine's `reverseResolve`, which resolves the
+  name forward again and takes it only when it points back, in finalized
+  state. The others are the names seen (above) that still resolve to the
+  account, checked again every 10 minutes while the page is open, every 30
+  seconds while one has no verified answer. A name that no longer points
+  here drops out; one without a verified answer keeps its last one, and is
+  left out until it has one. The name the account follows is said by its
+  own line and left out of this one. Nothing in it says the account holds
+  a name. Gnosis Chain has no names, and iOS has no reverse read yet, so
+  no primary name there.
 - **On chain only.** A row shows the collection's name (its `name()`, the
   contract's claim, or the built-in name) and the token id; an ERC-1155
   amount above one shows as "×n", masked while amounts are hidden. The
@@ -1602,6 +1768,98 @@ they are helpful." The rulings (owner rulings, 2026-11-05, #246; the
     must return it before anything is signed.
 - **A hardware P-256 owner** signs through the passkey signer, under
   docs/keys-and-signing.md (*A Safe owned by a hardware P-256 key*).
+
+### A Gnosis Pay account
+
+A Safe on Gnosis Chain whose own Delay module a member controls, or a key
+that owns a member Safe (docs/gnosis-pay.md; owner's decisions, 2026-11-15,
+and owner's request, 2026-11-17). Its Owners tab says "Gnosis Pay account" and
+opens **Gnosis Pay**, a screen of its own:
+
+- The account, its Delay module, and what the Delay makes a transfer do, in
+  that account's own figures: "A transfer waits 3 min in the Delay module,
+  then can be executed for 30 min."
+- Who controls it: each member, what it is ("A Safe: 1 of its 9 owners
+  signs", "A contract that is no Safe: not followed", "Not verified yet",
+  never a key before it is proven one), and whether a key on this device
+  controls the account through it. Where a member is a Safe, **Keys** lists
+  the keys at the end of the ways down: each with its name in the wallet,
+  whether its key is on this device, the Safes it goes through in the order
+  the call runs, and "only with co-owners" where a Safe on the way needs more
+  than one signature. A note under them says what is not verified yet, and
+  what is not followed (a contract that is no Safe, a Safe older than 1.3.0
+  or too far down, an account past the reads one account is given).
+- **A reading that could not be verified at the latest block** stays as last
+  verified, for an hour at most (docs/gnosis-pay.md, *A read that did not
+  answer*). The line under the Delay then reads "Last verified by the light
+  client at block N. It could not be verified at the latest block: it may
+  have changed since.", and the note under the keys says when some of the
+  accounts on the way are shown as last verified. Send stays enabled;
+  Review then says "This account could not be verified at the latest block,
+  so nothing is sent on what was verified before."
+- **New transfer** (owner's request, 2026-11-18: it was "Send through the
+  Delay", which read as if something were waiting to be sent), greyed out
+  with its reason where it cannot be done here: no controlling key, the key
+  on another network only, the key watched here while held elsewhere, the
+  account list unreadable, who controls the Delay not all verified yet, more
+  accounts behind it than Punicus reads, a held key that acts only with
+  co-owners, or the retired module.
+- **Queued from this device**: each transfer queued here and not executed,
+  with where it stands ("Waits until …", "Ready to execute until …",
+  "Expired …: nothing moved"). While it waits out a cooldown of under an
+  hour it counts down ("Executable in 2:41"), over a bar that drains to zero
+  (owner's request, 2026-11-18). It counts on the chain's time, the verified
+  head the queue was read at plus the time since, never the device's clock.
+  Past the end it says "Executable shortly: waiting for a block past its
+  cooldown", and the queue is read again every few seconds for half a
+  minute, until a verified head says it is ready and Execute is offered. Execute is offered once it is the next entry
+  and its cooldown has passed, to the key that queued it while that key is
+  held here on Gnosis Chain, whoever controls the Delay by then: anyone may
+  execute an entry. Until then it is greyed out, and a tap says why: the
+  time until then, the entries ahead, or what cannot be verified.
+  Behind an expired entry, it says "An entry ahead of it in the Delay
+  module's queue has expired and blocks it. Skip expired entries, then
+  execute it before it expires too.", Execute is greyed out with that
+  reason, and **Skip expired entries** is offered beside it. The Send form
+  offers the same when Review is refused for an expired entry ahead. The
+  skip's review says it moves nothing and that the skipped entries can never
+  be executed afterwards (docs/gnosis-pay.md, *Skipping expired entries*).
+- Send is a form (the Safe's assets, the recipient's address, checked
+  against its EIP-55 checksum, and the amount), then a review of the
+  signing key's transaction with the unlock that signs it. The form names
+  the key and the Safes it goes through. The review names the fee level, the
+  Safes the queueing goes through, the key's xDAI before and after, and the
+  blocks each figure was read at. A quote over a minute old is made again before it is signed,
+  as on Send (screen 8). A transaction sent opens its status (screen 9).
+- **A member of the Delay added or removed** (owner ruling, 2026-11-18;
+  docs/gnosis-pay.md, *Adding and removing a member*), opened from the
+  Safe's settings (screen 28). Add is a form: what a member can do, in the
+  account's own figures ("A member of the Delay module can queue any
+  transaction of this account … A member can move all of this account's
+  funds, without this device."), the key that signs, and the address,
+  checked against its EIP-55 checksum. Its review is titled "Queue: add
+  member 0x…" and warns: "Once this is executed, 0x… can move all of this
+  account's funds after the Delay's wait of 3 min, without this device."
+  Remove goes straight to its review, "Queue: remove member 0x…", which
+  names the member before it in the Delay's list and, where the member is
+  the way this device controls the account, warns that once executed this
+  device can no longer send from it (or controls it only through the
+  others). While it is checked, the overview says "Checking the removal of
+  0x… on chain…", and New transfer is greyed out saying what is being
+  checked. Refused for an expired entry ahead, the overview offers **Skip
+  expired entries**. The reviews sign with the same unlock as Send. Queued changes
+  are listed under **Queued from this device** ("Add member 0x…", "Remove
+  member 0x…") with Execute after the cooldown, as transfers are; an
+  execution whose change no longer fits the members says so, and is not
+  sent.
+- The light client's strip (Detailed view) or sync line (simple mode) sits
+  above the screen, as on every screen that reads the chain.
+- On the account's own screen, and on its row in the list, an account a key
+  held here controls shows Full control, and Send opens the Gnosis Pay
+  screen; Swap stays greyed out, since only plain transfers go through the
+  Delay. Otherwise Send and Swap stay greyed out, since no owner can sign: a
+  tap on Send says the transfers go through the Delay, and offers the Gnosis
+  Pay screen.
 
 ## Co-signing a Safe transaction
 

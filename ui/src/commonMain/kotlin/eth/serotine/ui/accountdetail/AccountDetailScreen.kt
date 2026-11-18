@@ -110,11 +110,17 @@ import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+/** Test tag of a Gnosis Pay account's entry in its Owners tab, for UI tests. */
+const val ACCOUNT_GNOSIS_PAY_TAG = "account-gnosis-pay"
+
 /** Test tag of the account's total, for UI tests. */
 const val ACCOUNT_TOTAL_TAG = "account-total"
 
 /** Test tag of simple mode's freshness line, for UI tests. */
 const val ACCOUNT_FRESHNESS_TAG = "account-freshness"
+
+/** Test tag of the line naming the ENS names that point to the account (#274), for UI tests. */
+const val ACCOUNT_ENS_NAMES_TAG = "account-ens-names"
 
 /** Test tag of simple mode's Refresh button, for UI tests. */
 const val ACCOUNT_REFRESH_TAG = "account-refresh"
@@ -174,6 +180,7 @@ fun AccountDetailRoute(
     modifier: Modifier = Modifier,
     onAddOnNetwork: () -> Unit = {},
     onSafeSettings: () -> Unit = {},
+    onGnosisPay: () -> Unit = {},
     onDerive: () -> Unit = {},
     onContinueSwap: (sell: String) -> Unit = {},
     onSendElsewhere: (contract: String?) -> Unit = {},
@@ -214,6 +221,7 @@ fun AccountDetailRoute(
             onTurnOnNetwork = viewModel::turnOnNetwork,
             onAddOnNetwork = onAddOnNetwork,
             onSafeSettings = onSafeSettings,
+            onGnosisPay = onGnosisPay,
             onContinueSwap = onContinueSwap,
             onSendElsewhere = onSendElsewhere,
             onDismissWaiting = viewModel::dismissWaiting,
@@ -250,6 +258,7 @@ fun AccountDetailRoute(
             onTurnOnNetwork = viewModel::turnOnNetwork,
             onAddOnNetwork = onAddOnNetwork,
             onSafeSettings = onSafeSettings,
+            onGnosisPay = onGnosisPay,
             onContinueSwap = onContinueSwap,
             onSendElsewhere = onSendElsewhere,
             onDismissWaiting = viewModel::dismissWaiting,
@@ -313,6 +322,7 @@ fun AccountDetailScreen(
     onTurnOnNetwork: () -> Unit = {},
     onAddOnNetwork: () -> Unit = {},
     onSafeSettings: () -> Unit = {},
+    onGnosisPay: () -> Unit = {},
     onContinueSwap: (sell: String) -> Unit = {},
     onDismissWaiting: (sell: String) -> Unit = {},
     onDerive: () -> Unit = {},
@@ -363,7 +373,17 @@ fun AccountDetailScreen(
         val ready = state as? AccountDetailUiState.Ready
         val reason = ready?.sendReason
         when {
+            // A Gnosis Pay account controlled from here: its transfers go through its Delay, on its own screen.
+            reason == null && ready?.sendsThroughGnosisPay == true -> onGnosisPay()
             reason == null -> onSend(contract)
+            // A Gnosis Pay account sends from its own screen: the way there, offered beside the reason.
+            ready.sendOffersGnosisPay -> unavailable = notice("Send", reason).let { blocked ->
+                UnavailableNotice(
+                    blocked.title,
+                    blocked.reason,
+                    blocked.fixes + UnavailableFix("Gnosis Pay", onGnosisPay),
+                )
+            }
             ready.handoff?.available == true -> unavailable = notice("Send", reason).let { blocked ->
                 UnavailableNotice(
                     blocked.title,
@@ -519,6 +539,7 @@ fun AccountDetailScreen(
                     onContinueSwap = continueSwap,
                     onDismissWaiting = onDismissWaiting,
                     onSafeSettings = safeSettings,
+                    onGnosisPay = onGnosisPay,
                     simple = chrome is AccountChrome.Refresh,
                     onToggleUnlistedNfts = onToggleUnlistedNfts,
                     nftActions = nftsShown,
@@ -558,6 +579,7 @@ private fun Details(
     onContinueSwap: (String) -> Unit,
     onDismissWaiting: (String) -> Unit,
     onSafeSettings: () -> Unit,
+    onGnosisPay: () -> Unit,
     /** Simple mode's chrome: the network on the blockie, the freshness line and the "can't check" banner. */
     simple: Boolean,
     onToggleUnlistedNfts: () -> Unit,
@@ -620,7 +642,7 @@ private fun Details(
                         // The account's network beside its control (N3, N4): the same address on
                         // another network is another account.
                         NetworkMark(state.network, style = MaterialTheme.typography.labelMedium)
-                        ControlBadge(state.control)
+                        ControlBadge(state.shownControl)
                         state.kindNote?.let { Text(it, style = MaterialTheme.typography.labelMedium) }
                     }
                     if (!state.networkOn) {
@@ -628,6 +650,15 @@ private fun Details(
                             "${state.network.name} is off in this wallet: nothing is checked.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                    // The names that point here (#274): their records, never a claim the account holds them.
+                    state.ensNames?.let {
+                        Text(
+                            it,
+                            Modifier.testTag(ACCOUNT_ENS_NAMES_TAG),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     // Why the title is the address: the ENS name it was named by no longer points here.
@@ -676,7 +707,15 @@ private fun Details(
                 onDismiss = onDismissWaiting,
                 continueAvailable = state.canSwap,
             )
-            state.segment == DetailSegment.OWNERS -> item { SafeOwners(checkNotNull(state.safe), state.safeSettingsReason == null, onSafeSettings) }
+            state.segment == DetailSegment.OWNERS -> item {
+                SafeOwners(
+                    checkNotNull(state.safe),
+                    state.safeSettingsReason == null,
+                    onSafeSettings,
+                    state.gnosisPay,
+                    onGnosisPay,
+                )
+            }
             else -> item { SafeQueueList(checkNotNull(state.queue), onOpenSafeTx, onImportRequest) }
         }
     }
@@ -900,7 +939,8 @@ private fun Nfts(nfts: NftSection, onToggle: () -> Unit, actions: NftActions, mo
 
 /**
  * The *Add an NFT* dialog (owner ruling, 2026-11-05, #246: older NFTs are added by contract and id): the
- * contract and the token id, added once the account is proven to hold it; [form] says why when nothing was.
+ * contract and the token id, or an ENS name alone (#274), added once the account is proven to hold it;
+ * [form] says why when nothing was.
  */
 @Composable
 private fun AddNftDialog(form: AddNftForm, actions: NftActions) {
@@ -914,13 +954,14 @@ private fun AddNftDialog(form: AddNftForm, actions: NftActions) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     "For an NFT received before this wallet began following the account. It is added only " +
-                        "once the light client proves the account holds it.",
+                        "once the light client proves the account holds it. For an ENS name, type the name " +
+                        "alone, like alice.eth.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedTextField(
                     value = contract,
                     onValueChange = { contract = it },
-                    label = { Text("Contract address") },
+                    label = { Text("Contract address or ENS name") },
                     singleLine = true,
                     enabled = !form.busy,
                     modifier = Modifier.fillMaxWidth().testTag(ADD_NFT_CONTRACT_TAG),
@@ -928,7 +969,7 @@ private fun AddNftDialog(form: AddNftForm, actions: NftActions) {
                 OutlinedTextField(
                     value = tokenId,
                     onValueChange = { tokenId = it },
-                    label = { Text("Token id") },
+                    label = { Text("Token id (none for an ENS name)") },
                     singleLine = true,
                     enabled = !form.busy,
                     modifier = Modifier.fillMaxWidth().testTag(ADD_NFT_ID_TAG),
@@ -1107,8 +1148,19 @@ private fun QueueItem(row: QueueRow, onClick: () -> Unit) {
  * (the network off), a tap then saying why.
  */
 @Composable
-private fun SafeOwners(safe: SafeDetails, settingsAvailable: Boolean, onSafeSettings: () -> Unit) {
+private fun SafeOwners(
+    safe: SafeDetails,
+    settingsAvailable: Boolean,
+    onSafeSettings: () -> Unit,
+    gnosisPay: String? = null,
+    onGnosisPay: () -> Unit = {},
+) {
     Column(Modifier.testTag(ACCOUNT_OWNERS_TAG), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // A Gnosis Pay account: its own screen, where a transfer goes through its Delay module.
+        gnosisPay?.let { note ->
+            Text(note)
+            OutlinedButton(onClick = onGnosisPay, modifier = Modifier.testTag(ACCOUNT_GNOSIS_PAY_TAG)) { Text("Gnosis Pay") }
+        }
         OutlinedButton(
             onClick = onSafeSettings,
             modifier = Modifier.testTag(ACCOUNT_SAFE_SETTINGS_TAG).unavailable(!settingsAvailable),

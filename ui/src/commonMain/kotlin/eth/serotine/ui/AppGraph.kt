@@ -20,8 +20,10 @@ import eth.serotine.domain.repository.DappSessions
 import eth.serotine.domain.repository.DappSiteMemory
 import eth.serotine.domain.repository.DebugLog
 import eth.serotine.domain.repository.DebugScreenSetting
+import eth.serotine.domain.repository.DelayModules
 import eth.serotine.domain.repository.DisplayCurrencySetting
 import eth.serotine.domain.repository.EnsNfts
+import eth.serotine.domain.repository.FreshCheckpoints
 import eth.serotine.domain.repository.HistoryStarts
 import eth.serotine.domain.repository.InterfaceModeSetting
 import eth.serotine.domain.repository.KeptSafes
@@ -44,6 +46,7 @@ import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
 import eth.serotine.domain.repository.SafeReleases
 import eth.serotine.domain.repository.SafeTxQueue
+import eth.serotine.domain.repository.SeenEnsNames
 import eth.serotine.domain.repository.SentTransfers
 import eth.serotine.domain.repository.SignatureRecovery
 import eth.serotine.domain.repository.Signer
@@ -61,6 +64,7 @@ import eth.serotine.domain.repository.UserTokens
 import eth.serotine.domain.repository.WaitingSwaps
 import eth.serotine.domain.repository.WalletHandoff
 import eth.serotine.domain.usecase.AcknowledgeLostOutbox
+import eth.serotine.domain.usecase.AddEnsName
 import eth.serotine.domain.usecase.AddNft
 import eth.serotine.domain.usecase.AddOnNetworks
 import eth.serotine.domain.usecase.AddToken
@@ -88,6 +92,7 @@ import eth.serotine.domain.usecase.EncodeSigningRequest
 import eth.serotine.domain.usecase.EstimateSwap
 import eth.serotine.domain.usecase.ExecuteSafeTx
 import eth.serotine.domain.usecase.ExtendDappSession
+import eth.serotine.domain.usecase.FetchFreshCheckpoint
 import eth.serotine.domain.usecase.FindUniswapRoute
 import eth.serotine.domain.usecase.FindWaitingSwap
 import eth.serotine.domain.usecase.HandOffTransfer
@@ -118,6 +123,8 @@ import eth.serotine.domain.usecase.ObserveDebugTab
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
+import eth.serotine.domain.usecase.ObserveGnosisPay
+import eth.serotine.domain.usecase.ObserveGnosisPays
 import eth.serotine.domain.usecase.ObserveHeavyDownloads
 import eth.serotine.domain.usecase.ObserveInterfaceMode
 import eth.serotine.domain.usecase.ObserveKeptSafe
@@ -126,6 +133,7 @@ import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveNetworkOverview
+import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveNfts
 import eth.serotine.domain.usecase.ObserveOutbox
 import eth.serotine.domain.usecase.ObservePerAppChoice
@@ -134,6 +142,7 @@ import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveSafes
+import eth.serotine.domain.usecase.ObserveRecipientCheck
 import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.ObserveSwapVenue
@@ -158,6 +167,9 @@ import eth.serotine.domain.usecase.QueueTransfer
 import eth.serotine.domain.usecase.QuoteCowCancellation
 import eth.serotine.domain.usecase.QuoteCowSwap
 import eth.serotine.domain.usecase.QuoteDappTransaction
+import eth.serotine.domain.usecase.QuoteDelayExecution
+import eth.serotine.domain.usecase.QuoteDelayQueue
+import eth.serotine.domain.usecase.QuoteDelaySkip
 import eth.serotine.domain.usecase.QuoteSafeApproval
 import eth.serotine.domain.usecase.QuoteSafeDeployment
 import eth.serotine.domain.usecase.QuoteSafeExecution
@@ -165,12 +177,14 @@ import eth.serotine.domain.usecase.QuoteSwap
 import eth.serotine.domain.usecase.QuoteTokenApproval
 import eth.serotine.domain.usecase.QuoteTransfer
 import eth.serotine.domain.usecase.QuoteWrap
+import eth.serotine.domain.usecase.ReadDelayTransfers
 import eth.serotine.domain.usecase.ReadKeptSafeTxOwners
 import eth.serotine.domain.usecase.ReadSafeTxOwners
 import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.RefreshNetworkData
 import eth.serotine.domain.usecase.RefuseDappRequest
 import eth.serotine.domain.usecase.RejectDappProposal
+import eth.serotine.domain.usecase.RememberResolvedNames
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.domain.usecase.RemoveAddedNft
 import eth.serotine.domain.usecase.RemoveQueuedSafeTx
@@ -180,6 +194,8 @@ import eth.serotine.domain.usecase.ResolveRecipient
 import eth.serotine.domain.usecase.RouteRanking
 import eth.serotine.domain.usecase.SendCowCancellation
 import eth.serotine.domain.usecase.SendDappTransaction
+import eth.serotine.domain.usecase.SendDelayCall
+import eth.serotine.domain.usecase.SendDelaySkip
 import eth.serotine.domain.usecase.SendSwap
 import eth.serotine.domain.usecase.SendTokenApproval
 import eth.serotine.domain.usecase.SendTransfer
@@ -219,6 +235,7 @@ import eth.serotine.ui.dapptransaction.DappTransactionViewModel
 import eth.serotine.ui.debug.DebugTabViewModel
 import eth.serotine.ui.debug.DebugViewModel
 import eth.serotine.ui.deriveaccount.DeriveAccountViewModel
+import eth.serotine.ui.gnosispay.GnosisPayViewModel
 import eth.serotine.ui.handoff.HandoffViewModel
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
@@ -281,6 +298,8 @@ class AppGraph(
     private val lightClient: LightClient,
     /** The user's consent to a light client catching up from a stale checkpoint, for this run. */
     private val staleAnchorConsent: StaleAnchorConsent,
+    /** Fresh checkpoints from a network's checkpoint servers, the other way past a stale one. */
+    private val freshCheckpoints: FreshCheckpoints,
     /** Network upgrades this version does not support, as peers report them to that light client. */
     private val networkUpgrades: NetworkUpgrades,
     /**
@@ -325,6 +344,8 @@ class AppGraph(
     private val ensNfts: EnsNfts,
     /** The NFTs the user added to an account by contract and id, kept on this device (#246). */
     private val addedNfts: AddedNfts,
+    /** The ENS names seen pointing to the user's accounts, kept on this device: candidates for their NFTs (#274). */
+    private val seenEnsNames: SeenEnsNames,
     /** The Safe transactions waiting for their owners, kept on this device across restarts. */
     private val safeTxQueue: SafeTxQueue,
     /** The text a Safe's signing request travels in between devices, for every network the app knows. */
@@ -333,6 +354,8 @@ class AppGraph(
     private val signatureRecovery: SignatureRecovery,
     /** Owners' approvals of Safe transactions on chain, verified by that light client. */
     private val safeApprovals: SafeApprovals,
+    /** A Gnosis Pay account's Delay modifier and its queue, verified by that light client (docs/gnosis-pay.md). */
+    private val delayModules: DelayModules,
     /** The Safe release a new Safe on a network is created from: pinned singleton, factory and proxy code. */
     private val safeReleases: SafeReleases,
     /** Uniswap v3 on each network: its pinned contracts, proven by their code, and verified calls of them. */
@@ -425,6 +448,9 @@ class AppGraph(
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
 
+    /** Every resolution of the app: [names]', each one that lands on an account kept in [seenEnsNames] (#274). */
+    private val resolver: NameResolver = RememberResolvedNames(names, accounts, seenEnsNames)
+
     /** The one toggle of the eye for every screen: its taps take turns app-wide, not only within a screen. */
     private val toggleAmountsHidden = ToggleAmountsHidden(amountsHidden)
 
@@ -436,12 +462,13 @@ class AppGraph(
         AccountsViewModel(
             ObservePortfolio(ObserveAccounts(accounts), accountValue(), displayCurrencies()),
             ObserveSafes(accounts, observeSafe()),
-            ObserveEnsNames(accounts, names),
+            ObserveEnsNames(accounts, resolver),
             ObserveLightClient(lightClient),
             ObserveEnabledNetworks(networkSettings),
             SetNetworkEnabled(networkSettings),
             observeUpgradeWarnings(),
             SyncPastStaleAnchor(lightClient, staleAnchorConsent),
+            FetchFreshCheckpoint(lightClient, freshCheckpoints),
             RefreshNetworkData(networkFreshness),
             ObserveNetworkLive(networkFreshness),
             ObserveAmountsHidden(amountsHidden),
@@ -450,6 +477,7 @@ class AppGraph(
             AcknowledgeLostOutbox(outbox),
             offerHandoff = OfferHandoff(walletHandoff),
             holdNetworksWhileEmpty = HoldNetworksWhileEmpty(accounts, networkSettings, networkDemand),
+            observeGnosisPays = ObserveGnosisPays(accounts, observeGnosisPay()),
         )
 
     /** The light clients' status strips of the screens that depend on them: one for the app, in the host's scope. */
@@ -464,7 +492,7 @@ class AppGraph(
             observeSafeTxQueue(account.network),
             knownTokens(),
             SetTokenHidden(userTokens),
-            ObserveEnsNames(accounts, names),
+            ObserveEnsNames(accounts, resolver),
             accountActivity(),
             ObserveEnabledNetworks(networkSettings),
             SetNetworkEnabled(networkSettings),
@@ -476,13 +504,60 @@ class AppGraph(
             DropWaitingSwap(waitingSwaps),
             ObserveAmountsHidden(amountsHidden),
             toggleAmountsHidden,
-            ObserveNfts(logIndex, historyStarts, nfts, ensNfts, receipts, addedNfts),
+            ObserveNfts(logIndex, historyStarts, nfts, ensNfts, receipts, addedNfts, seenEnsNames),
             AddNft(nfts, addedNfts),
+            AddEnsName(nfts, seenEnsNames),
+            ObserveAccountNames(resolver, seenEnsNames),
             RemoveAddedNft(addedNfts),
             // A Safe's queue lists the signatures held for it too (lenient mode).
             ObserveOutbox(outbox),
             offerHandoff = OfferHandoff(walletHandoff),
+            observeGnosisPay = observeGnosisPay(),
         )
+
+    /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it. */
+    fun gnosisPayViewModel(safe: AccountId): GnosisPayViewModel = GnosisPayViewModel(
+        safe,
+        ObserveAccount(accounts),
+        observeGnosisPay(),
+        ObserveNativeBalance(nativeBalances),
+        ObserveTokenHoldings(knownTokens(), tokenBalances),
+        ReadDelayTransfers(transactionHistory, delayModules),
+        QuoteDelayQueue(
+            delayModules,
+            transactionHistory,
+            transactionInputs,
+            nativeBalances,
+            tokenBalances,
+            sentTransfers,
+            safe.network,
+            outbox,
+        ),
+        QuoteDelayExecution(
+            delayModules,
+            transactionHistory,
+            transactionInputs,
+            nativeBalances,
+            tokenBalances,
+            sentTransfers,
+            safe.network,
+            outbox,
+        ),
+        SendDelayCall(signer, broadcaster, sentTransfers),
+        QuoteDelaySkip(
+            delayModules,
+            transactionHistory,
+            transactionInputs,
+            nativeBalances,
+            sentTransfers,
+            safe.network,
+            outbox,
+        ),
+        SendDelaySkip(signer, broadcaster, sentTransfers),
+        DescribeKeyStore(keys),
+    )
+
+    private fun observeGnosisPay() = ObserveGnosisPay(addressKinds, delayModules, accounts)
 
     /** Send from another wallet (#255) from [from], with the token at [asset] chosen (null: the network's currency). */
     fun handoffViewModel(from: AccountId, asset: Address?): HandoffViewModel = HandoffViewModel(
@@ -490,7 +565,7 @@ class AppGraph(
         asset,
         ObserveAccounts(accounts),
         accountValue(),
-        ResolveRecipient(names),
+        ResolveRecipient(resolver),
         OfferHandoff(walletHandoff),
         HandOffTransfer(walletHandoff, blockTransactions),
         WatchHandoff(blockTransactions, receipts),
@@ -567,7 +642,7 @@ class AppGraph(
             accountValue(),
             observeSafe(),
             DescribeKeyStore(keys),
-            ResolveRecipient(names),
+            ResolveRecipient(resolver),
             ProposeSafeTx(
                 observeSafe(),
                 nativeBalances,
@@ -625,6 +700,7 @@ class AppGraph(
         ProposeSafeSettingsChange(observeSafe(), transactionInputs, safeTxQueue, safe.network, outbox),
         signSafeTx(safe.network),
         EncodeSigningRequest(signingRequests),
+        observeGnosisPay(),
     )
 
     /** Import a signing request for the Safe at [safe]. */
@@ -661,7 +737,13 @@ class AppGraph(
         ObserveAccounts(accounts),
         accountValue(),
         DescribeKeyStore(keys),
-        ResolveRecipient(names),
+        ResolveRecipient(resolver),
+        ObserveRecipientCheck(
+            ObserveSentTo(transactionHistory),
+            ObserveAccounts(accounts),
+            ObserveTokenTransfers(logIndex, historyStarts),
+            knownTokens(),
+        ),
         QuoteTransfer(
             transactionInputs,
             nativeBalances,
@@ -847,7 +929,7 @@ class AppGraph(
     fun createSafeViewModel(): CreateSafeViewModel = CreateSafeViewModel(
         ObserveAccounts(accounts),
         DescribeKeyStore(keys),
-        ResolveRecipient(names),
+        ResolveRecipient(resolver),
         PlanSafe(safeReleases),
         QuoteSafeDeployment(addressKinds, nativeBalances, transactionInputs, sentTransfers, outbox = outbox),
         DeploySafe(signer, broadcaster, sentTransfers),
@@ -889,7 +971,7 @@ class AppGraph(
         ObserveAddressKind(addressKinds),
         ObserveAccounts(accounts),
         WatchAddress(accounts, addressKinds),
-        ResolveRecipient(names),
+        ResolveRecipient(resolver),
         ObserveEnabledNetworks(networkSettings),
         SetNetworkEnabled(networkSettings),
         HoldNetwork(networkDemand),
@@ -905,6 +987,7 @@ class AppGraph(
             ObserveDebugScreen(debugScreen),
             SetDebugScreen(debugScreen),
             SyncPastStaleAnchor(lightClient, staleAnchorConsent),
+            FetchFreshCheckpoint(lightClient, freshCheckpoints),
             ObserveInterfaceMode(interfaceMode),
             SetInterfaceMode(interfaceMode),
             ObserveNetworkLive(networkFreshness),

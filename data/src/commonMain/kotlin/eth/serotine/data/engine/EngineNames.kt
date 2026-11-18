@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
+import eth.serotine.domain.repository.PrimaryName
 import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
@@ -18,8 +19,10 @@ import kotlinx.coroutines.withContext
  * (no ENSIP-15, no UTS-46), so a name that looks like another but hashes to a different node — a
  * Cyrillic letter, a zero-width joiner — would resolve to whoever owns that node: until the
  * normalization exists, only ASCII letter-digit-hyphen labels are taken, the rest refused as
- * [NameResolution.NotAName]. On [dispatcher]; a device without an engine, or an engine that
- * fails, has no answer.
+ * [NameResolution.NotAName]. A primary name ([primaryName], the engine's reverse resolution, which
+ * resolves the name back to the address itself) is held to the same: verified in finalized state,
+ * and shown only when it is such a name. On [dispatcher]; a device without an engine, or an engine
+ * that fails, has no answer.
  */
 class EngineNames internal constructor(
     private val served: Network,
@@ -47,6 +50,28 @@ class EngineNames internal constructor(
             } catch (e: Throwable) {
                 currentCoroutineContext().ensureActive() // as for every engine call
                 NameResolution.Unavailable(ReadUnavailable.UNPROVEN)
+            }
+        }
+    }
+
+    override suspend fun primaryName(network: Network, address: Address): PrimaryName {
+        if (network != served) return PrimaryName.Unavailable(ReadUnavailable.NO_ENGINE)
+        val chain = chain ?: return PrimaryName.Unavailable(ReadUnavailable.NO_ENGINE)
+        return withContext(dispatcher) {
+            try {
+                whyUnreadable(chain.snapshot())?.let { return@withContext PrimaryName.Unavailable(it) }
+                val answer = chain.reverseName(address.hex)
+                val name = answer.name?.trim()?.lowercase()
+                when {
+                    // Finalized state only, as for a forward resolution: an AUTO root's peer head is no answer.
+                    answer.error != null || !answer.verified -> PrimaryName.Unavailable(ReadUnavailable.UNPROVEN)
+                    name.isNullOrEmpty() -> PrimaryName.None
+                    !looksLikeAName(name) -> PrimaryName.NotShowable
+                    else -> PrimaryName.Named(name, answer.blockNumber)
+                }
+            } catch (e: Throwable) {
+                currentCoroutineContext().ensureActive() // as for every engine call
+                PrimaryName.Unavailable(ReadUnavailable.UNPROVEN)
             }
         }
     }

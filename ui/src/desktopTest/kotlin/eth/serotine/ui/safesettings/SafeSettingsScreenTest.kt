@@ -22,6 +22,8 @@ import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.verifiedStripSample
+import eth.serotine.ui.gnosispay.ActionItem
+import eth.serotine.ui.gnosispay.MemberRow
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -58,6 +60,8 @@ class SafeSettingsScreenTest {
         onThresholdChange = { events += "threshold $it" },
         onReview = { events += "review" },
         onSign = { events += "sign" },
+        onAddDelayMember = { events += "add member" },
+        onRemoveDelayMember = { events += "remove member $it" },
     )
 
     private fun show(state: SafeSettingsUiState) = rule.setContent {
@@ -146,5 +150,45 @@ class SafeSettingsScreenTest {
         rule.onNodeWithTag(SETTINGS_SIGN_TAG).performScrollTo().assertIsEnabled().performClick()
 
         assertEquals(listOf("sign"), events)
+    }
+
+    private val delayMembers = DelayMembers(
+        members = listOf(
+            MemberRow(daily, "Daily", heldHere = true, remove = ActionItem(true, null)),
+            MemberRow(savings, null, false, what = "A Safe: 1 of its 9 owners signs", remove = ActionItem(true, null)),
+        ),
+        add = ActionItem(true, null),
+        checkedAt = "Verified by the light client at block 9",
+        note = "This is a Gnosis Pay account.",
+    )
+
+    @Test
+    fun aGnosisPayAccountsSettingsListItsDelayMembersWithAddAndRemove() {
+        show(overview.copy(delayMembers = delayMembers))
+
+        rule.onAllNodesWithTag(SETTINGS_DELAY_MEMBER_TAG).assertCountEquals(2)
+        rule.onNodeWithText("A Safe: 1 of its 9 owners signs").assertIsDisplayed()
+        rule.onNodeWithText("A key on this device controls the account through it").assertIsDisplayed()
+        rule.onNodeWithTag("$SETTINGS_REMOVE_DELAY_MEMBER_TAG-$savings").performScrollTo().performClick()
+        rule.onNodeWithTag(SETTINGS_ADD_DELAY_MEMBER_TAG).performScrollTo().performClick()
+
+        assertEquals(listOf("remove member $savings", "add member"), events)
+    }
+
+    @Test
+    fun theLastDelayMembersRemoveIsGreyedOutAndSaysWhy() {
+        val reason = "This is the Delay module's only member."
+        show(
+            overview.copy(
+                delayMembers = delayMembers.copy(
+                    members = listOf(delayMembers.members.first().copy(remove = ActionItem(false, reason))),
+                ),
+            ),
+        )
+
+        rule.onNodeWithTag("$SETTINGS_REMOVE_DELAY_MEMBER_TAG-$daily").performScrollTo().performClick()
+
+        rule.onNodeWithText(reason).assertIsDisplayed()
+        assertEquals(emptyList(), events)
     }
 }

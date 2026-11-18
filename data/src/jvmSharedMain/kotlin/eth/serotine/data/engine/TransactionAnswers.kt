@@ -33,6 +33,17 @@ internal fun nameAnswer(result: EnsResolutionResult): NameAnswer = NameAnswer(
 )
 
 /**
+ * [reverse] (the engine's reverse resolution) as the adapters read it: any failure, thrown or in the
+ * result, is an error, never a primary name.
+ */
+internal fun reverseNameAnswerOf(reverse: () -> EnsResolutionResult): ReverseNameAnswer = try {
+    val result = reverse()
+    ReverseNameAnswer(result.name(), result.blockNumber(), result.verified(), result.error())
+} catch (e: EngineException) {
+    ReverseNameAnswer(null, -1, verified = false, error = e.message ?: "reverse resolution failed")
+}
+
+/**
  * [resolve] (an ENS call), with the engine's refusal of an off-chain name — no CCIP-Read gateway
  * is configured, by design — read as that, and nothing else it throws swallowed.
  */

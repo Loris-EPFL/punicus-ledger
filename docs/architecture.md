@@ -56,7 +56,8 @@ rule in code.
   `ReceiptTracker` and `NameResolver`, over the embedded Myotis engine; for a
   Safe's transactions `SafeTxQueue` and `SigningRequestCodec`
   (`eth.serotine.data.safe`), `SignatureRecovery` (`eth.serotine.data.keys`,
-  libsecp256k1) and `SafeApprovals`, over the engine; for creating a Safe
+  libsecp256k1) and `SafeApprovals`, over the engine; for a Gnosis Pay account
+  `DelayModules`, the Safe's Delay modifier, over the engine (docs/gnosis-pay.md); for creating a Safe
   `SafeReleases`, the pinned release in `eth.serotine.data.safe`; for an
   account's history `TransactionHistory`, `HistoryStarts`
   (`eth.serotine.data.history`) and `LogIndex`, over the engine; for when the
@@ -173,7 +174,12 @@ review finding, whatever it saves.
   what it shows through its use cases. The bar shows on the tabs' screens; a
   flow that ends in a key operation or a transaction (import, create, send,
   a Safe transaction, create Safe) is a destination of its own that covers it, and so is
-  the update screen, outside both tabs. The screens themselves are
+  the update screen, outside both tabs. On a window 840 dp wide or wider,
+  the Accounts tab is a list and its detail side by side: `App` draws the
+  Accounts list in a pane of its own beside the `NavHost`, with the
+  ViewModel of the Accounts destination's back-stack entry, and that
+  destination draws the empty detail pane instead of the list. The back
+  stack is the same at every width. The screens themselves are
   docs/wallet-ux.md.
 - **A ViewModel exposes `StateFlow<UiState>` and intent methods.** It derives
   state from use cases with `stateIn(viewModelScope, WhileSubscribed(5s), …)`,

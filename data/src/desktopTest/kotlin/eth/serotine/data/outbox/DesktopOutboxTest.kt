@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertSame
@@ -44,8 +45,10 @@ class DesktopOutboxTest {
         enclaveSecret(state, madeOn, mac, usable = { usable }, secretAt = { hardware })
 
     private fun assertNotLost(block: () -> Unit) {
-        val failure = assertFailsWith<IllegalStateException> { block() }
+        // Caught wide, so the lost-key check holds whatever OutboxKeyGone extends.
+        val failure = assertFailsWith<Exception> { block() }
         assertFalse(failure is OutboxKeyGone, "it may pass: the outbox stays unreadable, never deleted")
+        assertIs<IllegalStateException>(failure)
     }
 
     @AfterTest

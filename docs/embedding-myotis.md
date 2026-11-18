@@ -222,6 +222,30 @@ consumer developed against an unreleased engine, Myotis's
   fetched waits for that fetch rather than making the same blocking calls:
   the account screen, the Accounts screen and every account of the portfolio
   read the same prices and balances.
+- **Accounts' re-proofs are spaced out** (#253, WalletBeat's *multi-address
+  correlation*). A peer that gets the reads of several addresses at the same
+  moment from one IP can tell they belong to one user. From the Myotis release
+  that carries its #863 on, the engine sends each address to its own peers
+  (an account read, and a token's `balanceOf(holder)` by its holder); until
+  then they share its first peer. `ReadPacer` adds time between them, per
+  network: native and token balances take turns by address. All of one
+  address's reads run together. Another address waits until they are done
+  and then 1.5 to 4 random seconds more, the waiting addresses first come,
+  first served. A turn takes no new reads after 8 seconds while another
+  address waits. A re-proof waits for its turn before it reads the engine's
+  state, so it is made at the head of its turn, a proof made meanwhile
+  answers it, and nothing joins it while it waits. While it waits, its
+  screen keeps the last reading, as it does while any read runs.
+  - What is paced: re-proofs while a screen stays open across heads.
+  - What is not paced:
+    - A first proof, i.e. every new subscription. The Accounts screen shares
+      its state for 5 seconds after it is left, so a return from the
+      background or from another screen reads every account together again.
+    - A pull-to-refresh, which the user asked for "now".
+    - Each Safe's state (`VerifiedAddressKinds`).
+  - Those go out together, each to its own peers once the engine carries
+    #863. Nothing hides this device's IP or its engine's node key. Myotis's
+    Tor mode would, and Punicus does not turn it on (an owner decision).
 - **Verified address kinds.** `VerifiedAddressKinds` reads what is at an
   address for the Watch screen, polled, cached and refused the same way (the
   two share `ProvenReads`). The code hash comes from `requestAccount`'s proof,
@@ -471,6 +495,14 @@ a Safe transaction*). What the engine adds:
 - **The Safe's state** is the verified inspection above (`VerifiedAddressKinds`):
   owners, threshold and nonce, each storage-proven at one block. A request,
   a signature or an execution is checked against it.
+- **A Delay's getters** (`VerifiedDelayModules`, docs/gnosis-pay.md) are
+  verified calls that must answer at one block. The first is made at the
+  head; the others pass the block it answered at as `callDetailed`'s block
+  selector (`0x<number>`), which the engine applies or refuses. Each answer's
+  block number, and hash where the engine names one, is checked against the
+  first's. Seen on a Pixel on Gnosis Chain, 2026-11-17: a numbered call
+  answers at that block, where eight calls at the head never fit under one
+  five-second block.
 - **Approvals on chain** are `VerifiedSafeApprovals` (`SafeApprovals`): the
   Safe's own getter `approvedHashes(owner, hash)` as a verified call
   (`callDetailed`, no sender) at the head, labelled with the block the engine
@@ -705,12 +737,26 @@ user to update — before it, and, after it, nothing else.
   owner's request of 2026-10-24). A light client parked in `STALE_ANCHOR`
   (its newest anchor, the embedded checkpoint or the persisted snapshot,
   older than the weak-subjectivity bound) stays parked until the user
-  confirms Accounts' "Catch up anyway…" for that network:
+  confirms "Catch up anyway" in the dialog Accounts' "Catch up…" opens:
   `SyncPastStaleAnchor` checks it is still parked, and the host calls the
   chain's `acceptStaleAnchor()` on its control lane. The consent lasts for
   the run (the engine never persists it), so a restart that still finds the
   anchor stale asks again. The bound (`setWsBoundPeriods`) keeps the
   engine's default.
+- **Or from a fresh checkpoint, on the user's tap** (CLAUDE.md, *Trust*,
+  owner's request of 2026-11-14). The same dialog offers "Fetch a fresh
+  checkpoint" first: `FetchFreshCheckpoint` checks the network is still
+  parked, and the host calls the chain's `refreshAnchorFromCheckpointz` off
+  its control lane, since the round takes up to about a minute. The engine
+  applies a checkpoint only when every checkpoint-sync server that answers
+  names the same one, from at least two operators, and a long-known peer
+  confirms it; otherwise nothing changes and the dialog shows the engine's
+  reason. When no long-known peer answered, the dialog warns and offers "Use
+  it anyway", the one call with `allowUnconfirmed`, never remembered. An
+  applied checkpoint is said with its operators and the peers that confirmed
+  it. The remembered choice (`setStaleAnchorPolicy`) is not used: Punicus
+  asks each time. The engine has it from Myotis 0.1.21; pinned
+  at 0.1.21-rc1 for now.
 - **A parameter that can change the answer is applied or refused**, never
   accepted and ignored — the Myotis rule, and the reason a port's contract
   spells out what each argument does.

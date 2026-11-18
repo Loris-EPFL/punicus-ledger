@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayCall
+import eth.serotine.domain.model.DelayMemberChange
+import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.SigningRequest
@@ -55,7 +58,7 @@ import kotlinx.coroutines.launch
  * executed, sent from here or seen on chain, is headed with what it does as its row is, from the
  * request this device holds of it. One received from an address the wallet never sent to, in a
  * transaction it did not send ([ObserveSentTo]), and that is none of its accounts says why to
- * compare it before copying it. A transfer of a contract the wallet
+ * compare it before sending to it, and shows that sender with no Copy. A transfer of a contract the wallet
  * does not list is a claim, as its row is: only the contract is named, and an ERC-20 one can be
  * added. No intents: Copy is the screen's own, Status and Add token are navigation.
  */
@@ -215,8 +218,14 @@ class ActivityDetailViewModel(
         status = row.status,
         simpleStatus = row.simpleStatus,
         state = row.state,
-        fields = fields,
-        // A row cautioned about its sender says why, here where the sender can be copied.
+        // The sender a row is cautioned about may be a planted look-alike: shown in full, to compare,
+        // with no Copy (address poisoning protection, 2026-11-18, #324). Its row names it as [row.about].
+        fields = if (row.state == ActivityState.CAUTION) {
+            fields.map { if (it.kind == DetailKind.ADDRESS && it.value == row.about) it.copy(copyable = false) else it }
+        } else {
+            fields
+        },
+        // A row cautioned about its sender says why, and why it cannot be copied here.
         note = note ?: SENDER_NOTE.takeIf { row.state == ActivityState.CAUTION },
         addToken = addToken,
         opensStatus = opensStatus,
@@ -271,6 +280,12 @@ class ActivityDetailViewModel(
                 fields += DetailField("Value", rows.amount(action.value, TransferAsset.Native))
                 fields += DetailField("For the dApp", "${action.dapp} (stated by the dApp, not verified)")
             }
+            is SentAction.DelayQueue -> fields += delayFields(action.call, names, rows)
+            is SentAction.DelayExecution -> fields += delayFields(action.call, names, rows)
+            is SentAction.DelaySkip -> {
+                fields += addressOf("Gnosis Pay account", action.safe, names)
+                fields += addressOf("Delay module", action.delay, names)
+            }
         }
         fields += DetailField("Transaction hash", transfer.hash, DetailKind.HASH)
         fields += DetailField("Nonce", transfer.nonce.toString())
@@ -286,6 +301,28 @@ class ActivityDetailViewModel(
         DetailField("Safe transaction hash", "0x${request.hash.hex}", DetailKind.HASH),
         addressOf("Safe transaction to", request.tx.to, names),
     )
+
+    /**
+     * What a Gnosis Pay account's [call] through its Delay concerns: the account, the Delay, and whom
+     * and what for a transfer, or the member added or removed.
+     */
+    private fun delayFields(call: DelayCall, names: Map<Address, String>, rows: ActivityRows) =
+        mutableListOf<DetailField>().apply {
+            this += addressOf("Gnosis Pay account", call.safe, names)
+            this += addressOf("Delay module", call.delay, names)
+            when (call) {
+                is DelayTransfer -> {
+                    this += addressOf("To", call.recipient, names)
+                    this += DetailField("Amount", rows.amount(call.amount, call.asset))
+                    addContract("Token contract", call.asset, names)
+                }
+                is DelayMemberChange -> this += addressOf(
+                    if (call.kind == DelayMemberChange.Kind.ADD) "Member added" else "Member removed",
+                    call.member,
+                    names,
+                )
+            }
+        }
 
     /** The contract of [asset], when it is a token, named by its symbol. */
     private fun MutableList<DetailField>.addContract(label: String, asset: TransferAsset, names: Map<Address, String>) {
@@ -420,7 +457,8 @@ class ActivityDetailViewModel(
             "logs since its upgrade with EIP-7708: no token is involved, whatever explorers list it under."
         const val SENDER_NOTE = "You have not sent to the sender's address from this device, and it is not one of " +
             "your accounts. Anyone can send you a little from an address made to look like one you use, so that you " +
-            "copy it from your history later: compare every character before you send anything to it."
+            "copy it from your history later: compare every character before you send anything to it. Copy is " +
+            "off for it here, so that it is not pasted by mistake."
         const val ZERO_NAME = "The zero address"
         const val CLAIM_NOTE = "A contract the wallet does not show can log any transfer it likes, between any " +
             "addresses, so only the contract is named here: an address it names could be a look-alike planted " +

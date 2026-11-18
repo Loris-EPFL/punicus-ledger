@@ -8,6 +8,7 @@ import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.RecipientItem
+import eth.serotine.ui.components.RecipientWarning
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
@@ -99,6 +100,7 @@ private fun SimpleSendPreview(state: SendUiState, darkTheme: Boolean = false, sy
             onSign = {},
             onSignWithBiometrics = {},
             onRetry = {},
+            onAcknowledgeRecipient = {},
             onOpenTransfer = {},
             onBack = {},
             syncLine = syncLine,
@@ -237,6 +239,51 @@ private fun SimpleSendDraftReviewPreview() = SimpleSendPreview(draftReview, sync
 @Composable
 private fun SimpleSendDraftReviewDarkPreview() = SimpleSendPreview(draftReview, darkTheme = true, syncLine = catchingUp)
 
+/** A look-alike of FRIEND: the same first and last six digits, a made-up middle. */
+private const val LOOKALIKE = "0xdbF03B" + "0000000000000000000000000000" + "C8C6FB"
+
+/** The compose step meets a look-alike of an address the user sent to: the warning, Review greyed out. */
+@Preview
+@Composable
+private fun SimpleSendComposeLookalikePreview() = SimpleSendPreview(
+    composed.copy(
+        form = composed.form.copy(
+            to = LOOKALIKE,
+            recipient = RecipientItem(
+                LOOKALIKE,
+                warning = RecipientWarning(
+                    blocking = true,
+                    headline = "Looks like an address you know, but it is not",
+                    detail = "It starts and ends like an address you sent to or own, yet the middle differs. This " +
+                        "is how address poisoning works: nothing is signed until you change the recipient.",
+                    known = FRIEND,
+                    knownLabel = "An address you sent to",
+                ),
+            ),
+            canReview = false,
+        ),
+    ),
+)
+
+/** A recipient that planted itself in the history: blocked until the user confirms they checked it. */
+@Preview
+@Composable
+private fun SimpleSendReviewPlantedSenderPreview() = SimpleSendPreview(
+    review.copy(
+        recipient = RecipientItem(
+            FRIEND,
+            warning = RecipientWarning(
+                blocking = true,
+                headline = "This address sent you a dust amount",
+                detail = "Attackers do that to get a look-alike address into your history, so that you copy it. " +
+                    "Compare every character with where you got it. Nothing is signed until you change the " +
+                    "recipient or confirm that you checked it.",
+                overridable = true,
+            ),
+        ),
+    ),
+)
+
 /** Every preview above, which SimpleSendScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleSendScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("compose") { SimpleSendComposePreview() },
@@ -247,4 +294,6 @@ internal val simpleSendScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("compose-lenient-last-verified") { SimpleSendLenientPreview() },
     ScreenPreview("draft-review") { SimpleSendDraftReviewPreview() },
     ScreenPreview("draft-review-dark") { SimpleSendDraftReviewDarkPreview() },
+    ScreenPreview("compose-lookalike-blocked") { SimpleSendComposeLookalikePreview() },
+    ScreenPreview("review-planted-sender") { SimpleSendReviewPlantedSenderPreview() },
 )

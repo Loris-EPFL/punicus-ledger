@@ -352,26 +352,36 @@ private fun AccountDetailPreview(
     darkTheme: Boolean = false,
     lightClient: LightClientItem = verifiedStripSample,
 ) {
-    SerotineTheme(darkTheme = darkTheme) {
-        AccountDetailScreen(
-            state = state,
-            chrome = AccountChrome.Strip(lightClient),
-            onBack = {},
-            onSend = {},
-            onSwap = {},
-            onReceive = {},
-            onCopy = {},
-            onRename = {},
-            onRemove = {},
-            onHideToken = { _, _ -> },
-            onMessageShown = {},
-            onSort = {},
-            onSegment = {},
-            onOpenSafeTx = {},
-            onImportRequest = {},
-            onOpenActivity = {},
-        )
-    }
+    SerotineTheme(darkTheme = darkTheme) { AccountDetailSample(state, lightClient) }
+}
+
+/**
+ * Daily's assets on Sepolia, verified: the detail of the tablet's layout
+ * (eth.serotine.ui.accounts.AccountsTabletScreenPreviews.kt), in the theme it is drawn in.
+ */
+@Composable
+internal fun AccountDetailDailySample() = AccountDetailSample(daily, verifiedStripSample)
+
+@Composable
+private fun AccountDetailSample(state: AccountDetailUiState, lightClient: LightClientItem) {
+    AccountDetailScreen(
+        state = state,
+        chrome = AccountChrome.Strip(lightClient),
+        onBack = {},
+        onSend = {},
+        onSwap = {},
+        onReceive = {},
+        onCopy = {},
+        onRename = {},
+        onRemove = {},
+        onHideToken = { _, _ -> },
+        onMessageShown = {},
+        onSort = {},
+        onSegment = {},
+        onOpenSafeTx = {},
+        onImportRequest = {},
+        onOpenActivity = {},
+    )
 }
 
 @Preview
@@ -471,6 +481,52 @@ private fun AccountDetailSafeAssetsPreview() = AccountDetailPreview(treasury)
 @Preview
 @Composable
 private fun AccountDetailSafeOwnersPreview() = AccountDetailPreview(treasury.copy(segment = DetailSegment.OWNERS))
+
+@Preview
+@Composable
+private fun AccountDetailGnosisPayOwnersPreview() = AccountDetailPreview(gnosisPayCard)
+
+/**
+ * A Gnosis Pay account as account-kit leaves one: its one owner the placeholder 0x…02, the Roles and
+ * Delay modules on, controlled through the Delay by a key on this device that owns the Delay's
+ * member Safe (owner's request, 2026-11-17): Full control, and Send opens the Gnosis Pay screen.
+ */
+private val gnosisPayCard =
+    treasury.copy(
+        label = "Card",
+        network = NetworkLabel(100, "Gnosis Chain", testnet = false),
+        control = Control.WATCH_ONLY,
+        total = "€1,250.00",
+        totalNote = null,
+        assets = listOf(
+            usdc.copy(symbol = "EURe", name = "Monerium EURe", icon = null, amount = "1,250 EURe", value = "€1,250.00"),
+        ),
+        safe = SafeDetails.Shown(
+            title = "Safe 1.3.0 · nonce 1",
+            signers = "No owner can sign: its one owner is a placeholder no key controls",
+            owners = listOf(
+                OwnerRow("0x0000000000000000000000000000000000000002", GNOSIS_PAY_PLACEHOLDER_LABEL, heldHere = false),
+            ),
+            modules = listOf(
+                "0x5c7516E3E2581d1274D28e97cCcC3eda87aF796D",
+                "0xfC85bCbc2Ce6aEC1be9d94C77c872269EbDDb6c7",
+            ),
+            guard = null,
+            checkedAt = "Verified at block 43,000,512",
+        ),
+        kindNote = "Safe",
+        threshold = "1/1",
+        queue = SafeQueue.Shown(rows = emptyList()),
+        segment = DetailSegment.OWNERS,
+        gnosisPay = "Gnosis Pay account. A key on this device controls it, through Safe 0xdbF0…C6FB: transfers " +
+            "go through its Delay module.",
+        gnosisPayControlled = true,
+    )
+
+@Preview
+@Composable
+private fun AccountDetailGnosisPayControlledPreview() =
+    AccountDetailPreview(gnosisPayCard.copy(segment = DetailSegment.ASSETS))
 
 @Preview
 @Composable
@@ -690,6 +746,13 @@ private fun AccountDetailEnsNameMovedPreview() = AccountDetailPreview(
     ),
 )
 
+/** The ENS names that point to the account, its primary name first (#274); the ones it holds are its NFTs. */
+@Preview
+@Composable
+private fun AccountDetailEnsNamesPreview() = AccountDetailPreview(
+    daily.copy(ensNames = "ENS names pointing here: daily-example.eth (primary name), pay-example.eth"),
+)
+
 /**
  * Docs/networks.md's N3: an account on Ethereum, real prices, no testnet note; COW, which no feed
  * prices, at its pool's average, labelled, and counted in the total, which says so (#205).
@@ -854,6 +917,7 @@ internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("loading") { AccountDetailLoadingPreview() },
     ScreenPreview("list-unavailable") { AccountDetailListUnavailablePreview() },
     ScreenPreview("ens-name-moved") { AccountDetailEnsNameMovedPreview() },
+    ScreenPreview("ens-names") { AccountDetailEnsNamesPreview() },
     ScreenPreview("activity") { AccountDetailActivityPreview() },
     ScreenPreview("activity-dark") { AccountDetailActivityDarkPreview() },
     ScreenPreview("waiting-swap") { AccountDetailWaitingSwapPreview() },
@@ -881,4 +945,6 @@ internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("nft-adding") { AccountDetailNftAddingPreview() },
     ScreenPreview("activity-queued") { AccountDetailActivityQueuedPreview() },
     ScreenPreview("activity-queued-conflict-dark") { AccountDetailActivityQueuedConflictPreview() },
+    ScreenPreview("gnosis-pay-owners") { AccountDetailGnosisPayOwnersPreview() },
+    ScreenPreview("gnosis-pay-controlled") { AccountDetailGnosisPayControlledPreview() },
 )

@@ -3,6 +3,10 @@ package eth.serotine.data.transfers
 import eth.serotine.data.safe.WireRequest
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrderUid
+import eth.serotine.domain.model.DelayCall
+import eth.serotine.domain.model.DelayMemberChange
+import eth.serotine.domain.model.DelayTransfer
+import eth.serotine.domain.model.DelayTransferPlan
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
@@ -25,6 +29,10 @@ private const val APPROVAL = "approval"
 private const val EXECUTION = "execution"
 private const val WRAP = "wrap"
 private const val UNWRAP = "unwrap"
+private const val QUEUE = "queue"
+private const val ADD_MEMBER = "add"
+private const val REMOVE_MEMBER = "remove"
+private const val SKIP = "skip"
 
 /**
  * One transaction, sent on the network of [chain] (absent in a record written before networks:
@@ -32,8 +40,9 @@ private const val UNWRAP = "unwrap"
  * a transfer's [to], [token] (null: the native currency) and [amount], a
  * Safe transaction's approval or execution ([safe]), a Safe's deployment ([deployment]), a
  * token approval ([approval]), a swap ([swap]), a wrap or unwrap ([wrap]), a CoW order's
- * cancellation on chain ([cancellation]) or a dApp's transaction ([dappCall]) — exactly one of the
- * eight, else the file is damaged.
+ * cancellation on chain ([cancellation]), a dApp's transaction ([dappCall]) or a Gnosis Pay
+ * account's transfer or member change queued or executed through its Delay ([delay]) — exactly one of the nine, else
+ * the file is damaged.
  */
 @Serializable
 internal class StoredTransfer(
@@ -50,6 +59,7 @@ internal class StoredTransfer(
     val wrap: StoredWrap? = null,
     val cancellation: StoredCowCancellation? = null,
     val dappCall: StoredDappCall? = null,
+    val delay: StoredDelayCall? = null,
     val maxCost: String,
     val sentAt: Long,
     val maybeSent: Boolean = false,
@@ -67,7 +77,7 @@ internal class StoredTransfer(
     )
 
     private fun action(): SentAction {
-        val kinds = listOfNotNull(deployment, safe, approval, swap, wrap, cancellation, dappCall)
+        val kinds = listOfNotNull(deployment, safe, approval, swap, wrap, cancellation, dappCall, delay)
         require(kinds.size <= 1) { "more than one kind of transaction" }
         val transferFields = to != null || token != null || amount != null
         require(kinds.isEmpty() || !transferFields) { "a transfer and another kind at once" }
@@ -78,12 +88,99 @@ internal class StoredTransfer(
         wrap?.let { return it.toAction() }
         cancellation?.let { return it.toAction() }
         dappCall?.let { return it.toAction() }
+        delay?.let { return it.toAction() }
         return SentAction.Transfer(
             to = Address.of(requireNotNull(to) { "a transfer without a recipient" }),
             asset = token?.let { TransferAsset.Erc20Token(it.toToken()) } ?: TransferAsset.Native,
             amount = UInt256.of(requireNotNull(amount) { "a transfer without an amount" }),
         )
     }
+}
+
+/**
+ * A Gnosis Pay account's call through its Delay, queued ([kind] `queue`) or executed
+ * (`execution`), from the Safe [safe] through its Delay [delay]: either a transfer of [amount] of
+ * [token] (null: the Safe's currency) to [recipient], or (format 12) a change of the Delay's
+ * members ([change] `add` or `remove`) of [member], with [previous], the member before it, for a
+ * removal. Exactly one of the two, else the entry is damaged; so is a stored transfer that is no
+ * plain transfer the Delay may queue, or a change [DelayMemberChange.of] would not restore. A build
+ * before format 12 passes a change over: it has no [recipient]. Or the Delay's skip of expired
+ * entries (`skip`, format 11): [recipient] is then the Delay and [amount] zero, neither read.
+ */
+@Serializable
+internal class StoredDelayCall(
+    val kind: String,
+    val safe: String,
+    val delay: String,
+    val recipient: String? = null,
+    val token: StoredToken? = null,
+    val amount: String? = null,
+    val change: String? = null,
+    val member: String? = null,
+    val previous: String? = null,
+) {
+    fun toAction(): SentAction {
+        if (kind == SKIP) {
+            require(change == null && member == null && previous == null) { "a skip with a member's fields" }
+            return SentAction.DelaySkip(Address.of(safe), Address.of(delay))
+        }
+        val call: DelayCall = if (change == null) {
+            require(member == null && previous == null) { "a transfer with a member's fields" }
+            val plan = DelayTransfer.of(
+                Address.of(safe),
+                Address.of(delay),
+                emptyList(),
+                token.asset(),
+                Address.of(requireNotNull(recipient) { "a transfer without a recipient" }),
+                UInt256.of(requireNotNull(amount) { "a transfer without an amount" }),
+            )
+            requireNotNull((plan as? DelayTransferPlan.Planned)?.transfer) { "no plain transfer" }
+        } else {
+            require(recipient == null && token == null && amount == null) { "a member change with a transfer's fields" }
+            val changeKind = when (change) {
+                ADD_MEMBER -> DelayMemberChange.Kind.ADD
+                REMOVE_MEMBER -> DelayMemberChange.Kind.REMOVE
+                else -> throw IllegalArgumentException("a member change of an unknown kind")
+            }
+            requireNotNull(
+                DelayMemberChange.of(
+                    Address.of(safe),
+                    Address.of(delay),
+                    changeKind,
+                    Address.of(requireNotNull(member) { "a member change without a member" }),
+                    previous?.let(Address::of),
+                ),
+            ) { "no member change the Delay may queue" }
+        }
+        return when (kind) {
+            QUEUE -> SentAction.DelayQueue(call)
+            EXECUTION -> SentAction.DelayExecution(call)
+            else -> throw IllegalArgumentException("a Delay call of an unknown kind")
+        }
+    }
+}
+
+/** [call] as stored, queued or executed ([kind]). */
+private fun delayCall(kind: String, call: DelayCall) = when (call) {
+    is DelayTransfer -> StoredDelayCall(
+        kind,
+        call.safe.hex,
+        call.delay.hex,
+        recipient = call.recipient.hex,
+        token = call.asset.storedToken(),
+        amount = call.amount.toDecimal(),
+    )
+    is DelayMemberChange -> StoredDelayCall(
+        kind,
+        call.safe.hex,
+        call.delay.hex,
+        change = when (call.kind) {
+            DelayMemberChange.Kind.ADD -> ADD_MEMBER
+            DelayMemberChange.Kind.REMOVE -> REMOVE_MEMBER
+        },
+        member = call.member.hex,
+        previous = call.previous?.hex,
+    )
 }
 
 /** What a token transfer needs shown again: its bundled icon's name too, not its price. */
@@ -216,8 +313,17 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
             is SentAction.SafeExecution -> safeCall(EXECUTION, action.request)
             is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
             is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap, is SentAction.CowCancellation,
-            is SentAction.DappCall,
+            is SentAction.DappCall, is SentAction.DelayQueue, is SentAction.DelayExecution,
+            is SentAction.DelaySkip,
             -> null
+        },
+        delay = when (action) {
+            is SentAction.DelayQueue -> delayCall(QUEUE, action.call)
+            is SentAction.DelayExecution -> delayCall(EXECUTION, action.call)
+            // No transfer: the Delay alone, as recipient, and nothing moved.
+            is SentAction.DelaySkip ->
+                StoredDelayCall(SKIP, action.safe.hex, action.delay.hex, action.delay.hex, amount = "0")
+            else -> null
         },
         dappCall = (action as? SentAction.DappCall)?.let {
             StoredDappCall(it.to.hex, it.value.toDecimal(), it.dapp, it.request.session.topic, it.request.id)

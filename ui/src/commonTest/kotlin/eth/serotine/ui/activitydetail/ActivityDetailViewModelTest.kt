@@ -275,7 +275,8 @@ class ActivityDetailViewModelTest {
         assertTrue(shown.note.orEmpty().startsWith("You have not sent to the sender's address"))
         assertEquals(
             listOf(
-                DetailField("From", Eip55.format(bob), DetailKind.ADDRESS),
+                // Never sent to: a possible look-alike, shown in full and with no Copy.
+                DetailField("From", Eip55.format(bob), DetailKind.ADDRESS, copyable = false),
                 DetailField("To", Eip55.format(alice.address), DetailKind.ADDRESS, "Alice"),
                 DetailField("Amount", "40 USDC"),
                 DetailField("Token contract", Eip55.format(usdc.address), DetailKind.ADDRESS, "USDC"),
@@ -316,7 +317,8 @@ class ActivityDetailViewModelTest {
         assertEquals("Received 1 ETH", shown.headline)
         assertEquals(
             listOf(
-                DetailField("From", Eip55.format(bob), DetailKind.ADDRESS),
+                // Bob was never sent to: the ETH the Safe received from him is cautioned, his address with no Copy.
+                DetailField("From", Eip55.format(bob), DetailKind.ADDRESS, copyable = false),
                 DetailField("Amount", "1 ETH"),
                 DetailField("Safe", Eip55.format(treasury.address), DetailKind.ADDRESS, "Treasury"),
                 DetailField("Transaction hash", tx, DetailKind.HASH),

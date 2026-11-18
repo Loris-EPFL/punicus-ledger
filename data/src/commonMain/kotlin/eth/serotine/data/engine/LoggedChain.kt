@@ -37,6 +37,11 @@ internal class LoggedChain(
     override fun call(to: Address, data: ByteArray): CallOutcome? =
         request("callDetailed", { "to=${to.hex}, data=${data.hex()}" }, ::callAnswered) { inner.call(to, data) }
 
+    override fun callAt(to: Address, data: ByteArray, block: Long): CallOutcome? =
+        request("callDetailed", { "to=${to.hex}, data=${data.hex()}, block=$block" }, ::callAnswered) {
+            inner.callAt(to, data, block)
+        }
+
     override fun proveSlot(address: Address, slot: Long, holder: Address?): ProvenSlot? = request(
         "getStorageProof",
         { "address=${address.hex}, slot=$slot" + (holder?.let { ", holder=${it.hex}" } ?: "") },
@@ -111,6 +116,11 @@ internal class LoggedChain(
     override fun resolveName(name: String): NameAnswer =
         request("ens.resolveAddress", { "name=$name, root=FINALIZED" }, { it.error }) {
             inner.resolveName(name)
+        }
+
+    override fun reverseName(addressHex: String): ReverseNameAnswer =
+        request("ens.reverseResolve", { "address=$addressHex" }, { it.error }) {
+            inner.reverseName(addressHex)
         }
 
     override fun setLogIndexConfig(configJson: String): Boolean =

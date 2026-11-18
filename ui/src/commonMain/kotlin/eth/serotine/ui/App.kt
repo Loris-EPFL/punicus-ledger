@@ -4,28 +4,23 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.SaveableStateHolder
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
@@ -48,33 +43,42 @@ import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.repository.FeeLevel
-import eth.serotine.ui.addnetwork.AddOnNetworksRoute
 import eth.serotine.ui.accountdetail.AccountDetailRoute
 import eth.serotine.ui.accounts.AccountAction
 import eth.serotine.ui.accounts.AccountsRoute
+import eth.serotine.ui.accounts.AccountsViewModel
+import eth.serotine.ui.accounts.NoAccountOpenRoute
+import eth.serotine.ui.accounts.SelectedAccount
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activitydetail.ActivityDetailRoute
+import eth.serotine.ui.addnetwork.AddOnNetworksRoute
 import eth.serotine.ui.addtoken.AddTokenRoute
+import eth.serotine.ui.components.AppTabs
 import eth.serotine.ui.components.Eip55
-import eth.serotine.ui.components.SerotineIcons
+import eth.serotine.ui.components.ListBesideDetail
+import eth.serotine.ui.components.TabBar
+import eth.serotine.ui.components.TabItem
+import eth.serotine.ui.components.TabRail
+import eth.serotine.ui.connections.ConnectionsRoute
 import eth.serotine.ui.coworder.CowOrderRoute
 import eth.serotine.ui.coworder.SwapAgain
 import eth.serotine.ui.createaccount.CreateAccountRoute
 import eth.serotine.ui.createsafe.CreateSafeRoute
-import eth.serotine.ui.connections.ConnectionsRoute
 import eth.serotine.ui.currency.CurrencyRoute
 import eth.serotine.ui.dappproposal.DappProposalRoute
 import eth.serotine.ui.dapprequest.DappRequestRoute
 import eth.serotine.ui.dapprequest.DappRequestsWaitingViewModel
 import eth.serotine.ui.dapptransaction.DappTransactionRoute
-import eth.serotine.ui.pairdapp.PairDappRoute
 import eth.serotine.ui.debug.DebugRoute
 import eth.serotine.ui.debug.DebugViewModel
 import eth.serotine.ui.deriveaccount.DeriveAccountRoute
+import eth.serotine.ui.gnosispay.GnosisPayRoute
+import eth.serotine.ui.gnosispay.GnosisPayStart
 import eth.serotine.ui.handoff.HandoffRoute
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.mode.LocalInterfaceMode
+import eth.serotine.ui.pairdapp.PairDappRoute
 import eth.serotine.ui.platform.LocalScreenCaptureDebugSwitch
 import eth.serotine.ui.platform.ScreenCaptureWarnings
 import eth.serotine.ui.receive.ReceiveRoute
@@ -95,8 +99,8 @@ import eth.serotine.ui.swap.SwapFill
 import eth.serotine.ui.swap.SwapRoute
 import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.tokens.TokensRoute
-import eth.serotine.ui.transferstatus.SendAgain
 import eth.serotine.ui.transferstatus.SafeTxAgain
+import eth.serotine.ui.transferstatus.SendAgain
 import eth.serotine.ui.transferstatus.TransferStatusRoute
 import eth.serotine.ui.update.UpdateRequiredRoute
 import eth.serotine.ui.update.UpdateRequiredUiState
@@ -113,8 +117,11 @@ import kotlinx.coroutines.flow.map
  * Two tabs, Accounts and Settings, under a bottom bar (a rail on a wide window), around the
  * one [NavHost] (docs/architecture.md), and a third, Debug, once the user turns it on in
  * Settings. Each tab is a nested graph with its own back stack;
- * a flow that ends in a key operation covers the bar. While a network upgrade has left this
- * version unable to follow the network, it shows the update screen and nothing else.
+ * a flow that ends in a key operation covers the bar. On a wide window the Accounts tab is a
+ * list and its detail side by side: the list in a pane of its own beside the [NavHost], which
+ * shows the account chosen there, and the screens opened from it (docs/wallet-ux.md, *Navigation*).
+ * While a network upgrade has left this version unable to follow the network, it shows the update
+ * screen and nothing else.
  */
 @Composable
 fun App(graph: AppGraph) = App(graph, rememberNavController())
@@ -156,55 +163,63 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
             Tab.entries.firstOrNull { it.graph == destination.route }
         }
         val select: (Tab) -> Unit = { tab -> navController.select(tab, current = selected) }
+        // What the list beside the tab's screens keeps (its scroll position) while it is gone, behind Settings or
+        // a flow that covers it: the NavHost keeps the list's when it is its destination, and this the pane's,
+        // outside the NavHost. Two stores, so a window that crosses WIDE_WINDOW starts the other list at the top.
+        val paneState = rememberSaveableStateHolder()
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val wide = maxWidth >= WIDE_WINDOW
+            // Read by the Accounts destination as a State, so the NavHost's graph is not built again as it
+            // changes: that destination is the empty detail pane on a wide window, whatever the tab, so that
+            // as it fades out on a tab switch it does not draw the whole list where the pane was.
+            val wide = rememberUpdatedState(maxWidth >= WIDE_WINDOW)
+            // The Accounts tab's start, and the account open beside the list: looked up again as the screen
+            // shown changes, through NavController's public API (its back stack's flow is the library's own,
+            // @RestrictTo).
+            val paneEntries = remember(entry) {
+                navController.entryOrNull(Destination.ACCOUNTS) to navController.entryOrNull(ACCOUNT_ROUTE)
+            }
+            // The Accounts list beside the tab's screens: on a wide window, while that tab is shown. Not from an
+            // entry popped since (a frame before the screen shown catches up): it has no ViewModels left to give.
+            val paneStart = paneEntries.first?.takeIf {
+                wide.value && selected == Tab.ACCOUNTS && it.lifecycle.currentState != Lifecycle.State.DESTROYED
+            }
+            val onTab: (TabItem) -> Unit = { item -> tabs.firstOrNull { it.item == item }?.let(select) }
             // One layout for both widths, so the NavHost stays where it is in the composition
-            // when the window crosses WIDE_WINDOW: only the bar or the rail comes and goes.
+            // when the window crosses WIDE_WINDOW: only the bar or the rail, and the list, come and go.
             Row(Modifier.fillMaxSize()) {
-                if (wide && selected != null) {
-                    NavigationRail {
-                        tabs.forEach { tab ->
-                            NavigationRailItem(
-                                selected = tab == selected,
-                                onClick = { select(tab) },
-                                icon = { Icon(tab.icon, contentDescription = null) },
-                                label = { Text(tab.label) },
-                            )
-                        }
-                    }
-                }
-                Scaffold(
-                    modifier = Modifier.weight(1f),
-                    // The screens' own scaffolds take the system insets; this one only makes
-                    // room for the bar, which takes the navigation bar's.
-                    contentWindowInsets = WindowInsets(0.dp),
-                    bottomBar = {
-                        if (!wide && selected != null) {
-                            NavigationBar {
-                                tabs.forEach { tab ->
-                                    NavigationBarItem(
-                                        selected = tab == selected,
-                                        onClick = { select(tab) },
-                                        icon = { Icon(tab.icon, contentDescription = null) },
-                                        label = { Text(tab.label) },
-                                    )
-                                }
-                            }
+                if (wide.value && selected != null) TabRail(tabs.map { it.item }, selected.item, onTab)
+                ListBesideDetail(
+                    listShown = paneStart != null,
+                    list = {
+                        paneStart?.let { start ->
+                            AccountsPane(graph, navController, start, paneEntries.second?.account(), paneState)
                         }
                     },
-                ) { padding ->
-                    // Every screen ends at the top of the on-screen keyboard (imePadding, less the
-                    // bar it already clears), so what the keyboard would cover can be scrolled to.
-                    Destinations(
-                        graph,
-                        navController,
-                        update,
-                        lightClient,
-                        debugShown,
-                        debug,
-                        dappRequests,
-                        Modifier.padding(padding).consumeWindowInsets(padding).imePadding(),
-                    )
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                ) {
+                    Scaffold(
+                        modifier = Modifier.fillMaxSize(),
+                        // The screens' own scaffolds take the system insets; this one only makes
+                        // room for the bar, which takes the navigation bar's.
+                        contentWindowInsets = WindowInsets(0.dp),
+                        bottomBar = {
+                            if (!wide.value && selected != null) TabBar(tabs.map { it.item }, selected.item, onTab)
+                        },
+                    ) { padding ->
+                        // Every screen ends at the top of the on-screen keyboard (imePadding, less the
+                        // bar it already clears), so what the keyboard would cover can be scrolled to.
+                        Destinations(
+                            graph,
+                            navController,
+                            update,
+                            lightClient,
+                            debugShown,
+                            debug,
+                            dappRequests,
+                            wide,
+                            Modifier.padding(padding).consumeWindowInsets(padding).imePadding(),
+                        )
+                    }
                 }
             }
         }
@@ -212,13 +227,72 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
     }
 }
 
-/** The tabs of the bottom bar: each the [graph] of its screens, entered at [start]. */
-private enum class Tab(val label: String, val icon: ImageVector, val graph: String, val start: String) {
-    ACCOUNTS("Accounts", SerotineIcons.Wallet, "accounts-tab", Destination.ACCOUNTS),
-    SETTINGS("Settings", Icons.Filled.Settings, "settings-tab", Destination.SETTINGS),
+/**
+ * The Accounts list as a pane of its own, beside the [NavHost] on a wide window (docs/wallet-ux.md,
+ * *Navigation*). It draws the ViewModel of the Accounts destination [start], which is on the back stack
+ * under every screen of the tab: the same list, whichever of the two draws it. The row of the account
+ * [shown] beside it is drawn selected; what a row asks opens as [openFromPane] says. What it keeps (its
+ * scroll position) is kept in [saved] while it is gone.
+ */
+@Composable
+private fun AccountsPane(
+    graph: AppGraph,
+    navController: NavHostController,
+    start: NavBackStackEntry,
+    shown: AccountId?,
+    saved: SaveableStateHolder,
+) {
+    // Kept per Accounts start: a new one (the update screen emptied the stack) starts at the top.
+    saved.SaveableStateProvider("accounts-pane/${start.id}") {
+        AccountsTabList(
+            navController,
+            viewModel(start) { graph.accountsViewModel() },
+            onAccountAction = { action -> navController.openFromPane(action, shown) },
+            modifier = Modifier.fillMaxSize(),
+            selected = shown?.let { SelectedAccount(it.network.chainId, it.address.hex) },
+        )
+    }
+}
+
+/** The topmost entry of [route] on the back stack, or null when there is none. */
+private fun NavController.entryOrNull(route: String): NavBackStackEntry? =
+    try {
+        getBackStackEntry(route)
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+
+/**
+ * The Accounts list, as the tab's start or as the pane beside it: its + button opens the ways to add an
+ * account, and a row's actions go to [onAccountAction].
+ */
+@Composable
+private fun AccountsTabList(
+    navController: NavController,
+    viewModel: AccountsViewModel,
+    onAccountAction: (AccountAction) -> Unit,
+    modifier: Modifier = Modifier,
+    selected: SelectedAccount? = null,
+) {
+    AccountsRoute(
+        viewModel = viewModel,
+        onWatchAddress = { navController.navigate(Destination.WATCH) { launchSingleTop = true } },
+        onImportPhrase = { navController.navigate(Destination.MNEMONIC_IMPORT) { launchSingleTop = true } },
+        onCreateAccount = { navController.navigate(Destination.CREATE_ACCOUNT) { launchSingleTop = true } },
+        onCreateSafe = { navController.navigate(Destination.CREATE_SAFE) { launchSingleTop = true } },
+        onAccountAction = onAccountAction,
+        modifier = modifier,
+        selected = selected,
+    )
+}
+
+/** The tabs of the bottom bar: each, as the user sees it ([item]), the [graph] of its screens, entered at [start]. */
+private enum class Tab(val item: TabItem, val graph: String, val start: String) {
+    ACCOUNTS(AppTabs.ACCOUNTS, "accounts-tab", Destination.ACCOUNTS),
+    SETTINGS(AppTabs.SETTINGS, "settings-tab", Destination.SETTINGS),
 
     /** Shown only while the user has it turned on in Settings. */
-    DEBUG("Debug", Icons.Filled.Build, "debug-tab", Destination.DEBUG),
+    DEBUG(AppTabs.DEBUG, "debug-tab", Destination.DEBUG),
 }
 
 /**
@@ -287,6 +361,7 @@ private fun Destinations(
     debugShown: Boolean?,
     debug: DebugViewModel,
     dappRequests: DappRequestsWaitingViewModel,
+    wide: State<Boolean>,
     modifier: Modifier = Modifier,
 ) {
     val updateState by update.uiState.collectAsStateWithLifecycle()
@@ -349,14 +424,13 @@ private fun Destinations(
     NavHost(navController, startDestination = Tab.ACCOUNTS.graph, modifier = modifier) {
         navigation(startDestination = Destination.ACCOUNTS, route = Tab.ACCOUNTS.graph) {
             composable(Destination.ACCOUNTS) {
-                AccountsRoute(
-                    viewModel = viewModel { graph.accountsViewModel() },
-                    onWatchAddress = { navController.navigate(Destination.WATCH) { launchSingleTop = true } },
-                    onImportPhrase = { navController.navigate(Destination.MNEMONIC_IMPORT) { launchSingleTop = true } },
-                    onCreateAccount = { navController.navigate(Destination.CREATE_ACCOUNT) { launchSingleTop = true } },
-                    onCreateSafe = { navController.navigate(Destination.CREATE_SAFE) { launchSingleTop = true } },
-                    onAccountAction = { action -> navController.open(action) },
-                )
+                val accounts = viewModel { graph.accountsViewModel() }
+                // On a wide window the list is in its pane beside this one, which no account fills yet.
+                if (wide.value) {
+                    NoAccountOpenRoute(accounts)
+                } else {
+                    AccountsTabList(navController, accounts, onAccountAction = { action -> navController.open(action) })
+                }
             }
             composable(Destination.WATCH) {
                 WatchRoute(
@@ -385,6 +459,7 @@ private fun Destinations(
                     onOpenSafeTx = { hash -> navController.openSafeTx(account, hash) },
                     onImportRequest = { navController.importRequest(account) },
                     onSafeSettings = { navController.safeSettings(account) },
+                    onGnosisPay = { navController.gnosisPay(account) },
                     onOpenActivity = { key -> navController.openActivityDetail(account, key) },
                     onContinueSwap = { sell -> navController.continueSwap(account, sell) },
                     onSendElsewhere = { contract -> navController.sendElsewhere(account, contract) },
@@ -807,9 +882,41 @@ private fun Destinations(
                     onBack = { navController.popBackStack(SAFE_SETTINGS_ROUTE, inclusive = true) },
                     // Signed and queued: the change's screen, and back from it to the Safe.
                     onProposed = { hash -> navController.openSafeTx(account, hash, replacing = SAFE_SETTINGS_ROUTE) },
+                    // A change of a Gnosis Pay account's Delay members: queued through the Delay on its screen.
+                    onDelayMember = { start -> navController.gnosisPay(account, start) },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SAFE_SETTINGS_ROUTE, inclusive = true) }
+            }
+        }
+        composable(
+            GNOSIS_PAY_ROUTE,
+            arguments = listOf(
+                navArgument(MEMBERS) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            val account = entry.account()
+            val start = when (val members = entry.savedStateHandle.get<String>(MEMBERS)) {
+                null -> null
+                ADD_MEMBER -> GnosisPayStart.AddMember
+                else -> Address.parse(members)?.let { GnosisPayStart.RemoveMember(Eip55.format(it)) }
+            }
+            if (account != null) {
+                GnosisPayRoute(
+                    viewModel = viewModel { graph.gnosisPayViewModel(account) },
+                    start = start,
+                    lightClient = lightClient.item(account.network),
+                    onBack = { navController.popBackStack(GNOSIS_PAY_ROUTE, inclusive = true) },
+                    onGone = { navController.popBackStack(GNOSIS_PAY_ROUTE, inclusive = true) },
+                    // Sent: its status, over this screen, which back returns to.
+                    onSent = { sent -> navController.navigate(transferRoute(account.network, sent)) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(GNOSIS_PAY_ROUTE, inclusive = true) }
             }
         }
         composable(SAFE_IMPORT_ROUTE) { entry ->
@@ -880,6 +987,31 @@ private fun Destinations(
     }
 }
 
+/**
+ * Opens what [action] asks of a row of the list beside the tab's screens on a wide window, [shown] being
+ * the account open there. For that account: its detail again, as it was ([AccountAction.Open]), or the
+ * screen asked for over it, as from its detail. For another account: a screen of the tab from the list, as
+ * on a phone, so the account open beside the list is the one it shows; a dialog, or a flow that covers the
+ * list (Send and the like), over what is shown, which back returns to.
+ */
+private fun NavController.openFromPane(action: AccountAction, shown: AccountId?) {
+    val network = Network.ofChainId(action.chainId) ?: return
+    val account = AccountId(network, Address.parse(action.address) ?: return)
+    // A second tap while the first one's account is opening, before [shown] has caught up: that account,
+    // once, not its detail popped and made again.
+    val top = currentBackStackEntry
+    if (action is AccountAction.Open && top?.destination?.route == ACCOUNT_ROUTE && top.account() == account) return
+    when {
+        account == shown && action is AccountAction.Open -> popBackStack(ACCOUNT_ROUTE, inclusive = false)
+        account == shown -> open(action)
+        action is AccountAction.Open || action is AccountAction.Receive || action is AccountAction.Derive -> {
+            popBackStack(Destination.ACCOUNTS, inclusive = false)
+            open(action)
+        }
+        else -> open(action)
+    }
+}
+
 /** Opens what [action] asks for; Copy is the screen's own, done on the clipboard. */
 private fun NavController.open(action: AccountAction) {
     val network = Network.ofChainId(action.chainId) ?: return
@@ -889,6 +1021,7 @@ private fun NavController.open(action: AccountAction) {
         is AccountAction.Send -> return send(account, asset = null)
         is AccountAction.SendElsewhere -> return sendElsewhere(account, asset = null)
         is AccountAction.Propose -> return propose(account, asset = null)
+        is AccountAction.GnosisPay -> return gnosisPay(account)
         is AccountAction.Open -> Destination.ACCOUNT
         is AccountAction.Receive -> Destination.RECEIVE
         is AccountAction.Rename -> Destination.RENAME
@@ -899,7 +1032,7 @@ private fun NavController.open(action: AccountAction) {
     }
     // A second tap while the first one's screen is opening: one screen, the first one asked
     // for. (Not launchSingleTop: that would reuse the entry, and its account, for another one.)
-    if (currentDestination?.route == "$route/{$CHAIN}/{$ADDRESS}") return
+    if (currentDestination?.route == accountRoute(route)) return
     navigate("$route/${account.route}")
 }
 
@@ -988,7 +1121,7 @@ private fun NavController.openActivityDetail(account: AccountId, key: ActivityKe
 
 /** Opens Add token by address over the Accounts tab, with the [contract] (an address) filled in. */
 private fun NavController.addToken(network: Network, contract: String) {
-    if (currentDestination?.route == "${Destination.ACTIVITY_ADD_TOKEN}/{$CHAIN}/{$ADDRESS}") return
+    if (currentDestination?.route == accountRoute(Destination.ACTIVITY_ADD_TOKEN)) return
     val address = Address.parse(contract) ?: return
     navigate("${Destination.ACTIVITY_ADD_TOKEN}/${network.chainId}/${address.hex}")
 }
@@ -1136,6 +1269,20 @@ private fun NavController.safeSettings(safe: AccountId) {
 }
 
 /**
+ * Opens the Gnosis Pay account [safe]'s screen (docs/gnosis-pay.md), once; at the step [start] names
+ * when the Safe's settings ask for a change of the Delay's members (owner ruling, 2026-11-18).
+ */
+private fun NavController.gnosisPay(safe: AccountId, start: GnosisPayStart? = null) {
+    if (currentDestination?.route == GNOSIS_PAY_ROUTE) return
+    val members = when (start) {
+        null -> ""
+        GnosisPayStart.AddMember -> "?$MEMBERS=$ADD_MEMBER"
+        is GnosisPayStart.RemoveMember -> "?$MEMBERS=${start.member}"
+    }
+    navigate("${Destination.SAFE}/${safe.route}/${Destination.GNOSIS_PAY}$members")
+}
+
+/**
  * Opens the Safe transaction [hash] (`0x` and 64 hex digits) of the Safe [safe]; in place of the
  * destination [replacing] when set (the proposal or import that led to it), so back from it returns
  * to where that was opened from. [imported] when an import has just queued it: the screen says so.
@@ -1161,7 +1308,7 @@ private fun NavController.openSafeTx(
  * what is still there.
  */
 private fun NavController.leave(pattern: String) {
-    if (popBackStack("$pattern/{$CHAIN}/{$ADDRESS}", inclusive = true)) return
+    if (popBackStack(accountRoute(pattern), inclusive = true)) return
     if (!popBackStack("$pattern/{$ADDRESS}", inclusive = true)) popBackStack(pattern, inclusive = true)
 }
 
@@ -1186,7 +1333,7 @@ private fun NavGraphBuilder.withAccount(
     navController: NavController,
     content: @Composable (AccountId) -> Unit,
 ) {
-    composable("$pattern/{$CHAIN}/{$ADDRESS}") { entry -> WithAccount(entry, pattern, navController, content) }
+    composable(accountRoute(pattern)) { entry -> WithAccount(entry, pattern, navController, content) }
 }
 
 /** As [withAccount], for a dialog over the screen below it. */
@@ -1195,7 +1342,7 @@ private fun NavGraphBuilder.dialogWithAccount(
     navController: NavController,
     content: @Composable (AccountId) -> Unit,
 ) {
-    dialog("$pattern/{$CHAIN}/{$ADDRESS}") { entry -> WithAccount(entry, pattern, navController, content) }
+    dialog(accountRoute(pattern)) { entry -> WithAccount(entry, pattern, navController, content) }
 }
 
 @Composable
@@ -1248,6 +1395,7 @@ private object Destination {
     const val PROPOSE = "propose"
     const val IMPORT = "import"
     const val SAFE_SETTINGS = "settings"
+    const val GNOSIS_PAY = "gnosis-pay"
     const val UPDATE_REQUIRED = "update-required"
     const val COW_ORDER = "cow-order"
 }
@@ -1322,6 +1470,12 @@ private const val COW_ORDER_ROUTE = "${Destination.COW_ORDER}/{$CHAIN}/{$UID}"
 /** A CoW order's UID as a route carries it: `0x` and 112 lower-case hex digits. */
 private val ORDER_UID = Regex("^0x[0-9a-f]{112}$")
 
+/** A screen of one account, as [withAccount] declares it: `pattern/{chain}/{address}`. */
+private fun accountRoute(pattern: String): String = "$pattern/{$CHAIN}/{$ADDRESS}"
+
+/** An account's detail screen. */
+private val ACCOUNT_ROUTE = accountRoute(Destination.ACCOUNT)
+
 /** The detail of a row of an account's Activity: a transaction by its hash, an event by its log too. */
 private const val ACTIVITY_DETAIL_ROUTE =
     "${Destination.ACTIVITY}/{$CHAIN}/{$ADDRESS}/${Destination.ACTIVITY_DETAIL}/{$HASH}?$LOG={$LOG}"
@@ -1355,11 +1509,26 @@ private const val SAFE_SWAP_ROUTE =
 /** A Safe's settings, and the changes of them proposed. */
 private const val SAFE_SETTINGS_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.SAFE_SETTINGS}"
 
+/**
+ * The Gnosis Pay screen's optional route argument: [ADD_MEMBER] for the add form, or a member's
+ * address for its removal's review, as the Safe's settings ask (owner ruling, 2026-11-18).
+ */
+private const val MEMBERS = "members"
+private const val ADD_MEMBER = "add"
+
+/** A Gnosis Pay account: its Delay module, its queued transfers, and Send through the Delay. */
+private const val GNOSIS_PAY_ROUTE =
+    "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.GNOSIS_PAY}?$MEMBERS={$MEMBERS}"
+
 /** Import a signing request for a Safe. */
 private const val SAFE_IMPORT_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.IMPORT}"
 
 /** A transaction hash (a Safe transaction's too) as a route carries it: `0x` and 64 lower-case hex digits. */
 private val TRANSACTION_HASH = Regex("^0x[0-9a-f]{64}$")
 
-/** From this width on, the tabs are a rail at the side instead of a bar at the bottom. */
+/**
+ * From this width on, the tabs are a rail at the side instead of a bar at the bottom, and the Accounts
+ * list is a pane beside the account it opens (Material's expanded window size class).
+ */
 private val WIDE_WINDOW = 840.dp
+

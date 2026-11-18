@@ -12,6 +12,14 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
+import eth.serotine.domain.model.SignedTransfer
+import eth.serotine.domain.model.TokenTransfers
+import eth.serotine.domain.repository.HistoryStart
+import eth.serotine.domain.repository.IndexedLog
+import eth.serotine.domain.repository.LogCoverage
+import eth.serotine.domain.repository.LogCoverageReading
+import eth.serotine.domain.repository.LogWatchKey
+import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
@@ -38,6 +46,7 @@ import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
@@ -70,7 +79,13 @@ import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeBroadcaster
 import eth.serotine.ui.FakeCowChain
 import eth.serotine.ui.FakeFeeds
+import eth.serotine.ui.FakeLogIndex
 import eth.serotine.ui.FakeMetadata
+import eth.serotine.ui.MemoryHistoryStarts
+import eth.serotine.ui.MemoryTransactionHistory
+import eth.serotine.domain.usecase.ObserveRecipientCheck
+import eth.serotine.domain.usecase.ObserveSentTo
+import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.ui.FakeNames
 import eth.serotine.ui.FakeReceipts
 import eth.serotine.ui.FakeSigner
@@ -192,6 +207,9 @@ class SendViewModelTest {
     private val lock = OutboxLock()
     private val kept = FakeKeptInputs()
     private val networks = MemoryNetworkSettings()
+    private val history = MemoryTransactionHistory()
+    private val historyStarts = MemoryHistoryStarts()
+    private val index = FakeLogIndex()
 
     private fun TestScope.viewModel(
         from: Address = daily.address,
@@ -215,6 +233,12 @@ class SendViewModelTest {
             ),
             DescribeKeyStore(keys),
             ResolveRecipient(names),
+            ObserveRecipientCheck(
+                ObserveSentTo(history),
+                ObserveAccounts(accounts),
+                ObserveTokenTransfers(index, historyStarts),
+                ObserveKnownTokens(FakeTokenCatalog(usdc), MemoryUserTokens(), FakeMetadata()),
+            ),
             QuoteTransfer(
                 inputs,
                 balances,
@@ -329,6 +353,86 @@ class SendViewModelTest {
         assertEquals(listOf("ETH"), viewModel.compose.assets.map { it.symbol }, "none held, none offered")
     }
 
+    private fun topic(of: Address) = "0x" + "0".repeat(24) + of.hex.removePrefix("0x")
+
+    /** A token's log of a transfer of nothing from [from] to [to]: how a look-alike is planted. */
+    private fun zeroTransfer(from: Address, to: Address) = IndexedLog(
+        ReceiptLog(usdc.address, listOf(TokenTransfers.TRANSFER, topic(from), topic(to)), "0x" + "0".repeat(64)),
+        9_405_000,
+        "0x" + "bb".repeat(32),
+        "0x" + "e5".repeat(32),
+        0,
+    )
+
+    private fun sentTo(to: Address) = SentTransfer(
+        network = Network.SEPOLIA,
+        account = daily.address,
+        nonce = 1,
+        signed = SignedTransfer(byteArrayOf(2, 1)),
+        action = SentAction.Transfer(to, TransferAsset.Native, UInt256.of(1)),
+        maxCost = UInt256.of(1_000_000),
+        sentAt = 100,
+    )
+
+    @Test
+    fun aRecipientThatLooksLikeOneYouSentToIsBlockedUntilItIsChanged() = runTest {
+        holding()
+        val bob = Address.of("0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed")
+        val lookalike = Address.of("0x5aae" + "1".repeat(32) + "eaed")
+        history.record(sentTo(bob))
+        val viewModel = viewModel()
+
+        viewModel.onToChange(lookalike.hex)
+        viewModel.onAmountChange("0.1")
+        val warning = assertNotNull(viewModel.compose.recipient?.warning)
+        assertTrue(warning.blocking)
+        assertEquals(Eip55.format(bob), warning.known)
+        assertFalse(viewModel.compose.canReview)
+        viewModel.review()
+        assertIs<SendUiState.Compose>(viewModel.uiState.value, "the review is refused, not just greyed out")
+
+        viewModel.onToChange(bob.hex)
+        assertNull(viewModel.compose.recipient?.warning, "the address really sent to is familiar")
+        assertTrue(viewModel.compose.canReview)
+    }
+
+    @Test
+    fun aPlantedSenderBlocksUntilTheUserAcknowledgesItAndALookalikeNever() = runTest {
+        holding()
+        val planter = Address.of("0x1234567890123456789012345678901234567890")
+        historyStarts.starts.value += daily.address to HistoryStart.Fixed(1)
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(daily.address) to LogCoverage(1, 1L..9_420_000L)),
+        )
+        index.logs = listOf(zeroTransfer(planter, daily.address))
+        val viewModel = viewModel()
+
+        viewModel.onToChange(planter.hex)
+        viewModel.onAmountChange("0.1")
+        runCurrent()
+        val warning = assertNotNull(viewModel.compose.recipient?.warning)
+        assertTrue(warning.blocking)
+        assertTrue(warning.overridable)
+        assertFalse(viewModel.compose.canReview)
+
+        viewModel.onAcknowledgeRecipient()
+        runCurrent()
+        assertFalse(assertNotNull(viewModel.compose.recipient?.warning).blocking)
+        assertTrue(viewModel.compose.canReview)
+    }
+
+    @Test
+    fun anAddressNeverSentToIsANonBlockingNotice() = runTest {
+        holding()
+        val viewModel = viewModel()
+        viewModel.onToChange(friend.hex)
+        viewModel.onAmountChange("0.1")
+        val warning = assertNotNull(viewModel.compose.recipient?.warning)
+        assertFalse(warning.blocking)
+        assertEquals("New recipient", warning.headline)
+        assertTrue(viewModel.compose.canReview)
+    }
+
     @Test
     fun aTypedAddressIsCheckedAtTheInputAndShownChecksummed() = runTest {
         holding()
@@ -347,7 +451,7 @@ class SendViewModelTest {
         assertNull(viewModel.compose.recipient)
 
         viewModel.onToChange("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb")
-        assertEquals(RecipientItem("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"), viewModel.compose.recipient)
+        assertEquals("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB", viewModel.compose.recipient?.address)
         assertTrue(names.asked.isEmpty(), "an address is no name to resolve")
 
         viewModel.onToChange("0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb00")
@@ -372,8 +476,9 @@ class SendViewModelTest {
                 name = "friend.eth",
                 resolvedAt = "Resolved at finalized block 9,411,900",
             ),
-            viewModel.compose.recipient,
+            viewModel.compose.recipient?.copy(warning = null),
         )
+        assertEquals("New recipient", viewModel.compose.recipient?.warning?.headline)
         assertNull(viewModel.compose.toNote)
     }
 

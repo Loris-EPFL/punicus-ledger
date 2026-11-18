@@ -152,6 +152,7 @@ import eth.serotine.ui.components.SAFE_TX_QR_TAG
 import eth.serotine.ui.components.SAFE_TX_REQUEST_TAG
 import eth.serotine.ui.components.SEND_AMOUNT_TAG
 import eth.serotine.ui.components.SEND_RECIPIENT_TAG
+import eth.serotine.ui.components.chunkedAddress
 import eth.serotine.ui.components.SEND_REVIEW_TAG
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.coworder.COW_ORDER_UNISWAP_TAG
@@ -1131,7 +1132,7 @@ class AppNavigationTest {
         rule.waitUntil { rule.onAllNodesWithTag(SEND_AMOUNT_REVIEWED_TAG).fetchSemanticsNodes().isNotEmpty() }
 
         rule.onNodeWithTag(SEND_AMOUNT_REVIEWED_TAG).assertTextEquals("0.1 ETH")
-        rule.onNodeWithTag(SEND_RECIPIENT_TAG).assertTextEquals("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
+        rule.onNodeWithTag(SEND_RECIPIENT_TAG).assertTextEquals(chunkedAddress("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"))
         rule.onNodeWithTag(SEND_PASSWORD_TAG).performScrollTo().performTextInput("correct horse")
         rule.onNodeWithTag(SEND_SIGN_TAG).performScrollTo().performClick()
         rule.waitUntil { rule.onAllNodesWithTag(TRANSFER_HASH_TAG).fetchSemanticsNodes().isNotEmpty() }

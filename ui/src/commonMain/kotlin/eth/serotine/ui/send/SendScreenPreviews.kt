@@ -10,6 +10,7 @@ import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.catchingUpStripSample
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.RecipientItem
+import eth.serotine.ui.components.RecipientWarning
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
@@ -457,6 +458,44 @@ private fun SendReviewNotSentPreview() = SendPreview(
     ),
 )
 
+/** A look-alike of FRIEND's address: the same first and last six digits, a made-up middle. */
+private const val LOOKALIKE = "0xdbF03B" + "0000000000000000000000000000" + "C8C6FB"
+
+@Preview
+@Composable
+private fun SendReviewLookalikePreview() = SendPreview(
+    review.copy(
+        recipient = RecipientItem(
+            LOOKALIKE,
+            warning = RecipientWarning(
+                blocking = true,
+                headline = "Looks like an address you know, but it is not",
+                detail = "It starts and ends like an address you sent to or own, yet the middle differs. " +
+                    "This is how address poisoning works: nothing is signed until you change the recipient.",
+                known = FRIEND,
+                knownLabel = "An address you sent to",
+            ),
+        ),
+        unlock = UnlockStep(WalletPassword("made-up preview password")),
+    ),
+)
+
+@Preview
+@Composable
+private fun SendReviewNewRecipientPreview() = SendPreview(
+    review.copy(
+        recipient = RecipientItem(
+            FRIEND,
+            warning = RecipientWarning(
+                blocking = false,
+                headline = "New recipient",
+                detail = "You have not sent to this address before. Check every character against where you got it.",
+            ),
+        ),
+        unlock = UnlockStep(WalletPassword("made-up preview password")),
+    ),
+)
+
 @Preview
 @Composable
 private fun SendReviewRejectedPreview() = SendPreview(
@@ -508,6 +547,8 @@ internal val sendScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("review-refreshing") { SendReviewRefreshingPreview() },
     ScreenPreview("review-not-sent") { SendReviewNotSentPreview() },
     ScreenPreview("review-rejected") { SendReviewRejectedPreview() },
+    ScreenPreview("review-lookalike-blocked") { SendReviewLookalikePreview() },
+    ScreenPreview("review-new-recipient") { SendReviewNewRecipientPreview() },
     ScreenPreview("loading") { SendLoadingPreview() },
     ScreenPreview("watch-only") { SendWatchOnlyPreview() },
     ScreenPreview("sent") { SendSentPreview() },

@@ -79,7 +79,7 @@ private val unfamiliarSender = ActivityDetailUiState.Shown(
     status = "From an address you have not sent to: compare every character before you copy it",
     state = ActivityState.CAUTION,
     fields = listOf(
-        DetailField("From", STRANGER, DetailKind.ADDRESS),
+        DetailField("From", STRANGER, DetailKind.ADDRESS, copyable = false),
         DetailField("To", ALICE, DetailKind.ADDRESS, "Alice"),
         DetailField("Amount", "0.01 USDC"),
         DetailField("Token contract", USDC, DetailKind.ADDRESS, "USDC"),

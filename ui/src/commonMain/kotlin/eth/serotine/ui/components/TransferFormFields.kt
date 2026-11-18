@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -174,6 +173,14 @@ private fun RecipientField(form: TransferForm, onToChange: (String) -> Unit, amo
 /** The recipient in full, with what is known of it: the name it was resolved from, its name in the wallet. */
 @Composable
 internal fun RecipientCard(recipient: RecipientItem) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        RecipientCardBody(recipient)
+        recipient.warning?.let { RecipientWarningCard(recipient, it) }
+    }
+}
+
+@Composable
+private fun RecipientCardBody(recipient: RecipientItem) {
     Surface(
         Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
@@ -188,15 +195,14 @@ internal fun RecipientCard(recipient: RecipientItem) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 val title = listOfNotNull(recipient.name, recipient.label?.let { "$it, in your wallet" })
                 if (title.isNotEmpty()) Text(title.joinToString(" · "), style = MaterialTheme.typography.titleSmall)
-                // In full: this is the address the user confirms, and what is signed.
-                SelectionContainer {
-                    Text(
-                        recipient.address,
-                        Modifier.testTag(SEND_RECIPIENT_TAG),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                }
+                // In full, in groups of four: this is the address the user confirms, and what is signed.
+                // Not selectable: a recipient is chosen from the address book, a name or a QR code.
+                Text(
+                    chunkedAddress(recipient.address),
+                    Modifier.testTag(SEND_RECIPIENT_TAG),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
                 recipient.resolvedAt?.let { Note(it) }
                 recipient.note?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)

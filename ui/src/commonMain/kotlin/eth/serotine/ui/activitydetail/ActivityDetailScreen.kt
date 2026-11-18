@@ -221,15 +221,25 @@ private fun DetailLine(field: DetailField, onCopy: (String) -> Unit) {
         field.name?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (field.kind == DetailKind.ADDRESS) Blockie(field.value, size = 20.dp)
-            // In full, and selectable: the value is what Copy copies too.
-            SelectionContainer(Modifier.weight(1f)) {
-                Text(field.value, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-            }
-            IconButton(onClick = { onCopy(field.value) }) {
-                Icon(
-                    SerotineIcons.ContentCopy,
-                    contentDescription = "Copy ${field.label.replaceFirstChar { it.lowercase() }}",
-                    Modifier.size(18.dp),
+            if (field.copyable) {
+                // In full, and selectable: the value is what Copy copies too.
+                SelectionContainer(Modifier.weight(1f)) {
+                    Text(field.value, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                }
+                IconButton(onClick = { onCopy(field.value) }) {
+                    Icon(
+                        SerotineIcons.ContentCopy,
+                        contentDescription = "Copy ${field.label.replaceFirstChar { it.lowercase() }}",
+                        Modifier.size(18.dp),
+                    )
+                }
+            } else {
+                // A flagged counterparty: in full to compare, never one tap from the clipboard.
+                Text(
+                    field.value,
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
                 )
             }
         }

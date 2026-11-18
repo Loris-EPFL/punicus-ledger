@@ -515,6 +515,20 @@ replaces the bar (Material's expanded window size class):
      when none was verified in time; No matching
      transfer seen yet. Not recorded in Activity: the record of sent
      transactions holds signed bytes, and none are signed here.
+   - **Address poisoning check** (`ObserveRecipientCheck`), on the form and
+     on the review. The recipient is compared with every address this
+     wallet really sent to (`ObserveSentTo`: transactions it signed, so
+     `tx.from` is the user) and with the wallet's own accounts, the only
+     address book there is. Same first 4 and last 4 hex digits but another
+     address: a blocking warning, both addresses in full with the
+     differing middle highlighted; Review is refused and nothing is signed
+     until the recipient is changed. The same block for a recipient that
+     once sent this account a transfer of nothing, dust (at most 0.00001 of
+     the network's currency) or a token the built-in list does not hold,
+     matched by contract address. An address never sent to gets a
+     non-blocking "New recipient" notice. The review always shows the
+     recipient in full, in groups of four, not selectable. In Activity, the
+     counterparty of a cautioned transfer is shown in full with no Copy.
 9. **Send, status**: what was sent (amount, asset, recipient, from this
    device's record; for a Safe's deployment "Deployment of a Safe", the Safe
    with its `t/n`, its version and the account that paid), then Signed → Broadcast → Included (receipt verified,

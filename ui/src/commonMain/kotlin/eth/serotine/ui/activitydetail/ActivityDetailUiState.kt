@@ -47,13 +47,16 @@ sealed interface ActivityDetailUiState {
 /**
  * One line of a detail: what it is ([label]: "To", "Transaction hash") and its [value], in full.
  * An [DetailKind.ADDRESS] is an EIP-55 address, drawn with its blockie and the wallet's [name] for
- * it if it has one; a [DetailKind.HASH] is `0x` and 64 hex digits. Both are copied as [value].
+ * it if it has one; a [DetailKind.HASH] is `0x` and 64 hex digits. Both are copied as [value],
+ * unless [copyable] is false: the counterparty of a cautioned transfer (address poisoning protection)
+ * is shown in full, to compare, but offers no Copy and cannot be selected.
  */
 data class DetailField(
     val label: String,
     val value: String,
     val kind: DetailKind = DetailKind.TEXT,
     val name: String? = null,
+    val copyable: Boolean = true,
 )
 
 /** What a [DetailField]'s value is, which says how it is drawn and whether it can be copied. */

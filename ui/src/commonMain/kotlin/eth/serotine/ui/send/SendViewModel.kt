@@ -31,6 +31,8 @@ import eth.serotine.domain.usecase.ObserveSyncPolicy
 import eth.serotine.domain.usecase.QueueTransfer
 import eth.serotine.domain.usecase.QuoteTransfer
 import eth.serotine.domain.usecase.RebroadcastTransfer
+import eth.serotine.domain.usecase.ObserveRecipientCheck
+import eth.serotine.domain.usecase.RecipientCheck
 import eth.serotine.domain.usecase.RecipientLookup
 import eth.serotine.domain.usecase.ResolveRecipient
 import eth.serotine.domain.usecase.SendTransfer
@@ -50,6 +52,7 @@ import eth.serotine.ui.components.PROMPT_TIMED_OUT
 import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.RecipientState
+import eth.serotine.ui.components.RecipientWarning
 import eth.serotine.ui.components.ResolvedAgain
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.SendFrom
@@ -77,6 +80,7 @@ import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.recipientStates
 import eth.serotine.ui.components.recipientText
+import eth.serotine.ui.components.recipientWarning
 import eth.serotine.ui.components.resolveAgain
 import eth.serotine.ui.components.retryLookupWaits
 import eth.serotine.ui.components.typedAmount
@@ -93,7 +97,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -141,6 +148,8 @@ class SendViewModel(
     observeAccountValue: ObserveAccountValue,
     private val describeKeyStore: DescribeKeyStore,
     private val resolveRecipient: ResolveRecipient,
+    /** The pre-send check of the recipient (address poisoning protection): blocking when it finds a look-alike. */
+    private val observeRecipientCheck: ObserveRecipientCheck,
     private val quoteTransfer: QuoteTransfer,
     private val sendTransfer: SendTransfer,
     private val rebroadcastTransfer: RebroadcastTransfer,
@@ -328,13 +337,56 @@ class SendViewModel(
             null,
         )
 
-    val uiState: StateFlow<SendUiState> = combine(model, step) { model, step -> model to step }
+    /** The recipient the check is about: the one under review, or the one resolved on the compose step. */
+    private val recipientAddress: Flow<Address?> = combine(model, step) { model, step ->
+        when (step) {
+            is Step.Reviewing -> step.request.to.address
+            is Step.Drafting -> step.request.to.address
+            is Step.Composing -> model?.let { m ->
+                ((m.lookup as? RecipientState.Done)?.takeIf { it.text == m.inputs.to.trim() }?.result as? RecipientLookup.Found)
+                    ?.address
+            }
+            is Step.Sent, is Step.Queued -> null
+        }
+    }.distinctUntilChanged()
+
+    /** What the pre-send check finds about [recipientAddress], with the address it is about. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val checks: StateFlow<Checked?> = recipientAddress
+        .flatMapLatest { to ->
+            if (to == null) {
+                flowOf(null)
+            } else {
+                combine(observeRecipientCheck(account, to), acknowledged) { check, ok -> Checked(to, check, ok == to) }
+            }
+        }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+            null,
+        )
+
+    /** The recipient the user chose to send to although it once sent this account a planted transfer. */
+    private val acknowledged = MutableStateFlow<Address?>(null)
+
+    /** The user chose to send to the planted sender under review or being composed, after comparing it. */
+    fun onAcknowledgeRecipient() {
+        val to = checks.value?.takeIf { it.check is RecipientCheck.PlantedSender }?.to ?: return
+        acknowledged.value = to
+    }
+
+    /** A [check] of the recipient [to]; [acknowledged] when the user chose to send to a planted sender anyway. */
+    private data class Checked(val to: Address, val check: RecipientCheck, val acknowledged: Boolean = false)
+
+    val uiState: StateFlow<SendUiState> = combine(model, step, checks) { model, step, checked ->
+        Triple(model, step, checked)
+    }
         // A balance's age, which simple mode shows, is dated anew every second on the compose step;
         // a draft's figures likewise on its review.
-        .redatedWhile { (model, step) ->
+        .redatedWhile { (model, step, _) ->
             step is Step.Drafting || step is Step.Composing && model?.options.orEmpty().any { it.provenAt != null }
         }
-        .map { (model, step) -> render(model, step) }
+        .map { (model, step, checked) -> render(model, step, checked) }
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
@@ -411,6 +463,7 @@ class SendViewModel(
         val model = model.value ?: return
         val request = requestOf(model) ?: return
         val account = (model.sender as? Sender.From)?.account ?: return
+        if (!cleared(request.to.address)) return
         // Whatever ran before (a lenient Max being worked out) is from before this review.
         job?.cancel()
         step.value = Step.Composing(quoting = true)
@@ -491,12 +544,12 @@ class SendViewModel(
     fun sign() {
         (step.value as? Step.Drafting)?.let { draft ->
             val password = draft.unlock.password
-            if (draft.signing || password.text.isEmpty()) return
+            if (draft.signing || password.text.isEmpty() || !cleared(draft.request.to.address)) return
             return queue(draft, Unlock.WithPassword(password))
         }
         val current = step.value as? Step.Reviewing ?: return
         val password = current.unlock.password
-        if (!current.idle || password.text.isEmpty() || requoted(current)) return
+        if (!current.idle || password.text.isEmpty() || !cleared(current.request.to.address) || requoted(current)) return
         sign(current, Unlock.WithPassword(password))
     }
 
@@ -507,14 +560,14 @@ class SendViewModel(
      */
     fun signWithBiometrics() {
         (step.value as? Step.Drafting)?.let { draft ->
-            if (draft.signing || !draft.unlock.biometrics) return
+            if (draft.signing || !draft.unlock.biometrics || !cleared(draft.request.to.address)) return
             val amount = exactAmount(draft.draft.amount, draft.request.option.decimals, draft.request.option.symbol)
             // The recipient in full: the prompt is the last thing read before the key signs.
             val reason = "Sign and queue $amount to ${Eip55.format(draft.draft.to)}"
             return queue(draft, Unlock.WithBiometrics(reason, notAfter = null))
         }
         val current = step.value as? Step.Reviewing ?: return
-        if (!current.idle || !current.unlock.biometrics || requoted(current)) return
+        if (!current.idle || !current.unlock.biometrics || !cleared(current.request.to.address) || requoted(current)) return
         // The prompt gets what is left of the quote's age: past it, nothing is signed, and it is made again.
         val notAfter = promptDeadline(current.quotedAt) ?: return refresh(note = PROMPT_TOO_LATE)
         val amount = exactAmount(current.quote.amount, current.request.option.decimals, current.request.option.symbol)
@@ -844,16 +897,16 @@ class SendViewModel(
         )
     }
 
-    private fun render(model: Model?, step: Step): SendUiState {
+    private fun render(model: Model?, step: Step, checked: Checked?): SendUiState {
         val network = network.displayName
         val composing = when (step) {
             is Step.Sent -> return SendUiState.Sent(network, step.hash)
             is Step.Queued -> return SendUiState.Queued(network, step.id)
             // A review stands on its quote, whatever the account list says meanwhile: a refresh
             // quotes it again, and the signature finds whether the key is still here.
-            is Step.Reviewing -> return review(model?.accounts ?: step.accounts, step)
+            is Step.Reviewing -> return review(model?.accounts ?: step.accounts, step, checked)
             // A draft's likewise, on its draft.
-            is Step.Drafting -> return draftReview(model?.accounts ?: step.accounts, step)
+            is Step.Drafting -> return draftReview(model?.accounts ?: step.accounts, step, checked)
             is Step.Composing -> step
         }
         model ?: return SendUiState.Loading(network)
@@ -861,10 +914,10 @@ class SendViewModel(
             is Sender.Cannot -> return SendUiState.CannotSend(network, sender.message)
             is Sender.From -> sender.account
         }
-        return compose(model, SendFrom(account.label, display), composing)
+        return compose(model, SendFrom(account.label, display), composing, checked)
     }
 
-    private fun compose(model: Model, sender: SendFrom, step: Step.Composing): SendUiState.Compose {
+    private fun compose(model: Model, sender: SendFrom, step: Step.Composing, checked: Checked?): SendUiState.Compose {
         val inputs = model.inputs
         val at = now()
         val text = inputs.to.trim()
@@ -890,7 +943,7 @@ class SendViewModel(
                 !model.tokensRead -> "Checking this account's tokens…"
                 else -> "The token asked for is not among this account's tokens: choose another asset."
             },
-            recipient = (result as? RecipientLookup.Found)?.let { recipientItem(it, model.accounts, selected) },
+            recipient = (result as? RecipientLookup.Found)?.let { recipientItem(it, model.accounts, selected, checked) },
             toNote = note,
             toError = isError,
             canRetryLookup = result is RecipientLookup.Unavailable,
@@ -901,7 +954,8 @@ class SendViewModel(
             quoting = step.quoting,
             error = step.error,
             simpleError = step.simpleError,
-            canReview = !step.quoting && requestOf(model) != null,
+            canReview = !step.quoting && requestOf(model) != null &&
+                (result as? RecipientLookup.Found)?.address?.let { cleared(it, checked) } == true,
         )
         return SendUiState.Compose(
             form,
@@ -911,7 +965,7 @@ class SendViewModel(
         )
     }
 
-    private fun review(accounts: List<Account>, step: Step.Reviewing): SendUiState.Review {
+    private fun review(accounts: List<Account>, step: Step.Reviewing, checked: Checked?): SendUiState.Review {
         val quote = step.quote
         val option = step.request.option
         val native = network.nativeSymbol
@@ -938,7 +992,7 @@ class SendViewModel(
             from = step.sender,
             amount = exactAmount(quote.amount, option.decimals, option.symbol),
             asset = option.choice(),
-            recipient = recipientItem(step.request.to, accounts, option),
+            recipient = recipientItem(step.request.to, accounts, option, checked),
             maxFee = exactAmount(quote.maxFee, NATIVE_DECIMALS, native),
             feeDetail = feeDetail(quote.level, transaction, quote.feeBlock),
             balances = listOfNotNull(tokenBalance, nativeBalance),
@@ -962,7 +1016,7 @@ class SendViewModel(
      * the block it was last verified at and its age against [now], the balances after "if nothing
      * changed", no simulation and no fiat value.
      */
-    private fun draftReview(accounts: List<Account>, step: Step.Drafting): SendUiState.DraftReview {
+    private fun draftReview(accounts: List<Account>, step: Step.Drafting, checked: Checked?): SendUiState.DraftReview {
         val draft = step.draft
         val basis = draft.builtOn
         val option = step.request.option
@@ -994,7 +1048,7 @@ class SendViewModel(
             from = step.sender,
             amount = exactAmount(draft.amount, option.decimals, option.symbol),
             asset = option.choice(),
-            recipient = recipientItem(step.request.to, accounts, option),
+            recipient = recipientItem(step.request.to, accounts, option, checked),
             preparedOn = "Prepared on data from $oldest. It's checked on chain again before it's sent.",
             maxFee = exactAmount(draft.maxFee, NATIVE_DECIMALS, native),
             feeDetail = "${levelName(draft.level)} fee: ${grouped(transaction.gasLimit)} gas, the most this " +
@@ -1038,14 +1092,37 @@ class SendViewModel(
         return sentences.joinToString(" ") + " The balance after counts it."
     }
 
-    private fun recipientItem(found: RecipientLookup.Found, accounts: List<Account>, asset: AssetOption?) =
-        recipientItem(found, accounts) { address ->
-            when (address) {
-                from -> "The account you send from: only the fee is spent."
-                asset?.contract -> "The token's own contract: nothing sent to it can ever be moved out."
-                else -> null
-            }
+    private fun recipientItem(
+        found: RecipientLookup.Found,
+        accounts: List<Account>,
+        asset: AssetOption?,
+        checked: Checked?,
+    ) = recipientItem(found, accounts) { address ->
+        when (address) {
+            from -> "The account you send from: only the fee is spent."
+            asset?.contract -> "The token's own contract: nothing sent to it can ever be moved out."
+            else -> null
         }
+    }.copy(warning = warningFor(found.address, checked, accounts))
+
+    /** The warning for [to] when [checked] is about it; none while the check has not answered. */
+    private fun warningFor(to: Address?, checked: Checked?, accounts: List<Account>): RecipientWarning? {
+        if (to == null || checked == null || checked.to != to) return null
+        return recipientWarning(checked.check, checked.acknowledged) { known ->
+            accounts.firstOrNull { it.address == known }?.label
+        }
+    }
+
+    /**
+     * Whether the check has answered for [to] and found nothing that stops it. It fails closed: no
+     * answer yet, or one about another address, is not clearance. A planted sender the user
+     * acknowledged is cleared; a look-alike never is.
+     */
+    private fun cleared(to: Address, checked: Checked? = checks.value): Boolean {
+        if (checked == null || checked.to != to) return false
+        return checked.check !is RecipientCheck.Blocked ||
+            checked.check is RecipientCheck.PlantedSender && checked.acknowledged
+    }
 
     /** The compose step's transfer, when it is complete and the recipient is known: what a quote is asked for. */
     private fun requestOf(model: Model): Request? {

@@ -275,7 +275,8 @@ class ActivityDetailViewModelTest {
         assertTrue(shown.note.orEmpty().startsWith("You have not sent to the sender's address"))
         assertEquals(
             listOf(
-                DetailField("From", Eip55.format(bob), DetailKind.ADDRESS),
+                // Never sent to: a possible look-alike, shown in full and with no Copy.
+                DetailField("From", Eip55.format(bob), DetailKind.ADDRESS, copyable = false),
                 DetailField("To", Eip55.format(alice.address), DetailKind.ADDRESS, "Alice"),
                 DetailField("Amount", "40 USDC"),
                 DetailField("Token contract", Eip55.format(usdc.address), DetailKind.ADDRESS, "USDC"),

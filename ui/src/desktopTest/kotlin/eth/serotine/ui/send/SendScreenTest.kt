@@ -25,7 +25,11 @@ import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SEND_AMOUNT_TAG
 import eth.serotine.ui.components.SEND_ASSET_TAG
+import eth.serotine.ui.components.KNOWN_ADDRESS_TAG
+import eth.serotine.ui.components.RECIPIENT_WARNING_TAG
+import eth.serotine.ui.components.RecipientWarning
 import eth.serotine.ui.components.SEND_RECIPIENT_TAG
+import eth.serotine.ui.components.chunkedAddress
 import eth.serotine.ui.components.SEND_REVIEW_TAG
 import eth.serotine.ui.components.SEND_TO_TAG
 import eth.serotine.ui.components.SendFrom
@@ -36,6 +40,7 @@ import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 /** Renders the stateless [SendScreen] headless for its steps. */
 class SendScreenTest {
@@ -185,7 +190,7 @@ class SendScreenTest {
             ),
         )
 
-        rule.onNodeWithTag(SEND_RECIPIENT_TAG).assertTextEquals(savings)
+        rule.onNodeWithTag(SEND_RECIPIENT_TAG).assertTextEquals(chunkedAddress(savings))
         rule.onNodeWithText("Resolved at finalized block 7").assertIsDisplayed()
         rule.onNodeWithText("≈ $250.00 · testnet prices").assertIsDisplayed()
         rule.onNodeWithTag(SEND_REVIEW_TAG).performScrollTo().performClick()
@@ -224,7 +229,7 @@ class SendScreenTest {
         rule.onNodeWithTag(SEND_NETWORK_TAG).assertTextEquals("On ${review.network}")
         rule.onNodeWithTag(SEND_SIGN_TAG).assertTextEquals("Sign and send on ${review.network}")
         rule.onNodeWithTag(SEND_AMOUNT_REVIEWED_TAG).assertTextEquals("0.1 ETH")
-        rule.onNodeWithTag(SEND_RECIPIENT_TAG).assertTextEquals(savings)
+        rule.onNodeWithTag(SEND_RECIPIENT_TAG).assertTextEquals(chunkedAddress(savings))
         rule.onNodeWithText("At most 0.000462 ETH").assertIsDisplayed()
         rule.onNodeWithText("1.5 ETH → at least 1.399538 ETH").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Sign with fingerprint or face").assertDoesNotExist()
@@ -234,6 +239,34 @@ class SendScreenTest {
         rule.onNodeWithContentDescription("Back").performClick()
 
         assertEquals(listOf("password", "sign", "refresh", "edit"), events.distinct())
+    }
+
+    @Test
+    fun aLookalikeRecipientShowsBothAddressesInFullAndCannotBeSigned() {
+        val known = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"
+        val lookalike = "0xdbF03B" + "0".repeat(28) + "C8C6FB"
+        val blocked = review.copy(
+            recipient = RecipientItem(
+                lookalike,
+                warning = RecipientWarning(true, "Looks like an address you know", "Change it.", known, "Friend"),
+            ),
+            unlock = UnlockStep(WalletPassword("correct horse")),
+        )
+        assertFalse(blocked.canSign)
+        show(blocked)
+
+        rule.onNodeWithTag(RECIPIENT_WARNING_TAG).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag(SEND_RECIPIENT_TAG).assertTextEquals(chunkedAddress(lookalike))
+        rule.onNodeWithTag(KNOWN_ADDRESS_TAG).assertTextEquals(chunkedAddress(known))
+        rule.onNodeWithTag(SEND_SIGN_TAG).performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun anAddressIsChunkedInGroupsOfFourAndNeverShortened() {
+        assertEquals(
+            "0x fB69 1609 5ca1 df60 bB79 Ce92 cE3E a74c 37c5 d359",
+            chunkedAddress("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"),
+        )
     }
 
     @Test

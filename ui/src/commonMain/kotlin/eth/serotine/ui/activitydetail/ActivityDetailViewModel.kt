@@ -369,7 +369,9 @@ class ActivityDetailViewModel(
         val names = parties.names
         val transfer = event.transfer
         val row = rows.transferRow(event, parties, tokens)
+        // The counterparty of a cautioned transfer may be a planted look-alike: in full, with no Copy.
         val sides = listOf(addressOf("From", transfer.from, names), addressOf("To", transfer.to, names))
+            .map { if (row.state == ActivityState.CAUTION && it.value == row.about) it.copy(copyable = false) else it }
         if (transfer is TokenTransfer.Fungible && transfer.isEth) {
             val moved = DetailField("Amount", rows.amount(transfer.amount, TransferAsset.Native))
             // A cautioned sender says why; otherwise, what this log is.

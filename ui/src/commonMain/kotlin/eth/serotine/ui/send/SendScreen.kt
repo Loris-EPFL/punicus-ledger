@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +54,7 @@ import eth.serotine.ui.components.Heading
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Note
+import eth.serotine.ui.components.LocalAcknowledgeRecipient
 import eth.serotine.ui.components.RecipientCard
 import eth.serotine.ui.components.ReviewButton
 import eth.serotine.ui.components.TokenIcon
@@ -123,50 +125,52 @@ fun SendRoute(
         if (queued != null) currentOnQueued(queued)
     }
     // The same state in the view the user chose (docs/simple-ui.md).
-    when (LocalInterfaceMode.current) {
-        InterfaceMode.SIMPLE -> SimpleSendScreen(
-            state = state,
-            onAssetChange = viewModel::onAssetChange,
-            onToChange = viewModel::onToChange,
-            onPickAccount = viewModel::onPickAccount,
-            onRetryLookup = viewModel::onRetryLookup,
-            onAmountChange = viewModel::onAmountChange,
-            onMax = viewModel::onMax,
-            onFeeChange = viewModel::onFeeChange,
-            onReview = viewModel::review,
-            onEdit = viewModel::edit,
-            onRefresh = viewModel::refresh,
-            onPasswordChange = viewModel::onPasswordChange,
-            onSign = viewModel::sign,
-            onSignWithBiometrics = viewModel::signWithBiometrics,
-            onRetry = viewModel::retry,
-            onOpenTransfer = onOpenTransfer,
-            onBack = onBack,
-            modifier = modifier,
-            syncLine = lightClient.collectAsStateWithLifecycle().value,
-        )
-        // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
-        InterfaceMode.DETAILED -> SendScreen(
-            state = state,
-            chrome = SendChrome.Strip(lightClient.collectAsStateWithLifecycle().value),
-            onAssetChange = viewModel::onAssetChange,
-            onToChange = viewModel::onToChange,
-            onPickAccount = viewModel::onPickAccount,
-            onRetryLookup = viewModel::onRetryLookup,
-            onAmountChange = viewModel::onAmountChange,
-            onMax = viewModel::onMax,
-            onFeeChange = viewModel::onFeeChange,
-            onReview = viewModel::review,
-            onEdit = viewModel::edit,
-            onRefresh = viewModel::refresh,
-            onPasswordChange = viewModel::onPasswordChange,
-            onSign = viewModel::sign,
-            onSignWithBiometrics = viewModel::signWithBiometrics,
-            onRetry = viewModel::retry,
-            onOpenTransfer = onOpenTransfer,
-            onBack = onBack,
-            modifier = modifier,
-        )
+    CompositionLocalProvider(LocalAcknowledgeRecipient provides viewModel::onAcknowledgeRecipient) {
+        when (LocalInterfaceMode.current) {
+            InterfaceMode.SIMPLE -> SimpleSendScreen(
+                state = state,
+                onAssetChange = viewModel::onAssetChange,
+                onToChange = viewModel::onToChange,
+                onPickAccount = viewModel::onPickAccount,
+                onRetryLookup = viewModel::onRetryLookup,
+                onAmountChange = viewModel::onAmountChange,
+                onMax = viewModel::onMax,
+                onFeeChange = viewModel::onFeeChange,
+                onReview = viewModel::review,
+                onEdit = viewModel::edit,
+                onRefresh = viewModel::refresh,
+                onPasswordChange = viewModel::onPasswordChange,
+                onSign = viewModel::sign,
+                onSignWithBiometrics = viewModel::signWithBiometrics,
+                onRetry = viewModel::retry,
+                onOpenTransfer = onOpenTransfer,
+                onBack = onBack,
+                modifier = modifier,
+                syncLine = lightClient.collectAsStateWithLifecycle().value,
+            )
+            // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
+            InterfaceMode.DETAILED -> SendScreen(
+                state = state,
+                chrome = SendChrome.Strip(lightClient.collectAsStateWithLifecycle().value),
+                onAssetChange = viewModel::onAssetChange,
+                onToChange = viewModel::onToChange,
+                onPickAccount = viewModel::onPickAccount,
+                onRetryLookup = viewModel::onRetryLookup,
+                onAmountChange = viewModel::onAmountChange,
+                onMax = viewModel::onMax,
+                onFeeChange = viewModel::onFeeChange,
+                onReview = viewModel::review,
+                onEdit = viewModel::edit,
+                onRefresh = viewModel::refresh,
+                onPasswordChange = viewModel::onPasswordChange,
+                onSign = viewModel::sign,
+                onSignWithBiometrics = viewModel::signWithBiometrics,
+                onRetry = viewModel::retry,
+                onOpenTransfer = onOpenTransfer,
+                onBack = onBack,
+                modifier = modifier,
+            )
+        }
     }
 }
 

@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 620" width="960" height="620" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="title desc">
+  <title id="title">The envelope: two locks around the seed</title>
+  <desc id="desc">At each unlock the wallet password is stretched with Argon2id into P. The hardware key in the chip gives S_hw. HKDF-SHA256 of P and S_hw makes the key-encryption key, KEK. The envelope file holds plain settings, the DEK locked by the KEK with AES-256-GCM, and the seed locked by the DEK with AES-256-GCM. With biometric unlock on, a second chip key also locks the same DEK, in the address's .bio file.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="958" height="618" rx="16" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="32" y="46" font-size="20" font-weight="700" fill="#1f2328">The envelope: two locks around the seed</text>
+
+  <!-- Left: making the KEK -->
+  <text x="32" y="84" font-size="13" font-weight="700" fill="#57606a">1. AT EACH UNLOCK: THE KEY THAT OPENS THE ENVELOPE</text>
+
+  <rect x="32" y="102" width="240" height="48" rx="10" fill="#eef4ff" stroke="#3b6fd8" stroke-width="1.5"/>
+  <text x="152" y="132" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Wallet password</text>
+  <line x1="152" y1="150" x2="152" y2="182" stroke="#57606a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="32" y="184" width="240" height="64" rx="10" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5"/>
+  <text x="152" y="210" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">Argon2id</text>
+  <text x="152" y="232" font-size="12.5" fill="#57606a" text-anchor="middle">salt · 64–256 MiB · 3–16 passes</text>
+
+  <rect x="300" y="184" width="220" height="64" rx="10" fill="#f3eefe" stroke="#6d4bd1" stroke-width="1.5"/>
+  <text x="410" y="210" font-size="14" font-weight="700" fill="#1f2328" text-anchor="middle">Hardware key in the chip</text>
+  <text x="410" y="232" font-size="12.5" fill="#57606a" text-anchor="middle">gives the hardware secret</text>
+
+  <line x1="152" y1="248" x2="152" y2="298" stroke="#57606a" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="162" y="278" font-size="14" font-weight="700" fill="#1f2328">P</text>
+  <line x1="410" y1="248" x2="410" y2="298" stroke="#57606a" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="420" y="278" font-size="14" font-weight="700" fill="#1f2328">S_hw</text>
+
+  <rect x="32" y="300" width="488" height="58" rx="10" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5"/>
+  <text x="276" y="326" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">HKDF-SHA256 ( P ‖ S_hw )</text>
+  <text x="276" y="347" font-size="12.5" fill="#57606a" text-anchor="middle">salt, info "serotine-envelope-v1 kek"</text>
+  <line x1="276" y1="358" x2="276" y2="390" stroke="#57606a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="132" y="392" width="288" height="48" rx="10" fill="#e9f7ef" stroke="#2e8b57" stroke-width="1.5"/>
+  <text x="276" y="422" font-size="15" font-weight="700" fill="#1f2328" text-anchor="middle">KEK: lives for one unlock</text>
+
+  <text x="32" y="478" font-size="12.5" fill="#57606a">Android: S_hw = HMAC(chip key, P), computed in the chip for every try.</text>
+  <text x="32" y="498" font-size="12.5" fill="#57606a">iPhone, iPad, Mac: S_hw = 32 random bytes the Secure Enclave decrypts.</text>
+  <text x="32" y="518" font-size="12.5" fill="#57606a">Windows, Linux: no S_hw yet; P alone makes the KEK.</text>
+
+  <!-- Right: the file -->
+  <path d="M560,84 h332 l36,36 v408 h-368 z" fill="#fffdf7" stroke="#c98a00" stroke-width="1.5"/>
+  <path d="M892,84 v36 h36" fill="none" stroke="#c98a00" stroke-width="1.5"/>
+  <text x="580" y="116" font-size="15" font-weight="700" fill="#1f2328" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">&lt;address&gt;.seed</text>
+  <text x="580" y="136" font-size="12.5" fill="#57606a">2. ON DISK: ONE JSON FILE PER ACCOUNT</text>
+
+  <rect x="580" y="152" width="328" height="96" rx="8" fill="#f6f8fa" stroke="#d0d7de"/>
+  <text x="596" y="174" font-size="12.5" font-weight="700" fill="#1f2328">Plain, not secret:</text>
+  <text x="596" y="196" font-size="13" fill="#1f2328">version · address · hardware tag</text>
+  <text x="596" y="216" font-size="13" fill="#1f2328">salt · Argon2id cost · nonces · index</text>
+  <text x="596" y="236" font-size="12.5" fill="#cf222e">Edited on disk: nothing opens or signs.</text>
+
+  <rect x="580" y="266" width="328" height="92" rx="8" fill="#f3eefe" stroke="#6d4bd1" stroke-width="1.5"/>
+  <text x="596" y="290" font-size="14" font-weight="700" fill="#1f2328" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">dek</text>
+  <text x="596" y="312" font-size="13" fill="#1f2328">The DEK: 32 random bytes,</text>
+  <text x="596" y="332" font-size="13" fill="#1f2328">locked by the KEK.</text>
+  <text x="596" y="350" font-size="12" fill="#57606a">AES-256-GCM</text>
+
+  <line x1="744" y1="358" x2="744" y2="400" stroke="#57606a" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="756" y="384" font-size="13" fill="#1f2328">the DEK opens</text>
+
+  <rect x="580" y="402" width="328" height="100" rx="8" fill="#fff7e6" stroke="#c98a00" stroke-width="1.5"/>
+  <text x="596" y="426" font-size="14" font-weight="700" fill="#1f2328" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">seed</text>
+  <text x="596" y="448" font-size="13" fill="#1f2328">The BIP-39 seed: 64 bytes,</text>
+  <text x="596" y="468" font-size="13" fill="#1f2328">locked by the DEK.</text>
+  <text x="596" y="486" font-size="12" fill="#57606a">AES-256-GCM</text>
+
+  <!-- KEK opens the DEK -->
+  <path d="M420,416 C500,416 500,312 576,312" fill="none" stroke="#2e8b57" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="474" y="374" font-size="13" font-weight="700" fill="#2e8b57">opens</text>
+
+  <!-- Biometric path -->
+  <line x1="32" y1="552" x2="928" y2="552" stroke="#d0d7de"/>
+  <text x="32" y="578" font-size="13" fill="#1f2328">With biometric unlock on, a second chip key, which works only after a fresh fingerprint or face, also locks</text>
+  <text x="32" y="598" font-size="13" fill="#1f2328">the same DEK, in <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">&lt;address&gt;.bio</tspan>. The password path stays as it is; turning biometrics off deletes that key.</text>
+</svg>

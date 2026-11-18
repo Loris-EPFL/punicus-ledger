@@ -3,6 +3,7 @@ package eth.serotine.ui.activitydetail
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -67,6 +68,26 @@ class ActivityDetailScreenTest {
         rule.onNodeWithContentDescription("Copy transaction hash").performScrollTo().performClick()
 
         assertEquals(listOf(bob, hash), copied)
+    }
+
+    @Test
+    fun aCautionedSenderIsShownInFullWithNoCopy() {
+        show(
+            sent.copy(
+                headline = "Received 0.01 USDC",
+                state = ActivityState.CAUTION,
+                fields = listOf(
+                    DetailField("From", bob, DetailKind.ADDRESS, copyable = false),
+                    DetailField("Transaction hash", hash, DetailKind.HASH),
+                ),
+                opensStatus = null,
+            ),
+        )
+
+        rule.onNodeWithText(bob).assertIsDisplayed()
+        rule.onAllNodesWithContentDescription("Copy from").assertCountEquals(0)
+        rule.onNodeWithContentDescription("Copy transaction hash").performScrollTo().performClick()
+        assertEquals(listOf(hash), copied)
     }
 
     @Test

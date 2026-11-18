@@ -18,9 +18,13 @@ on one chain. A release build starts with Ethereum and Gnosis Chain on and
 Sepolia off, a debug build with Sepolia alone, and each network can be turned
 on or off in Settings.
 
+The website, for people who are not developers, with the downloads and a
+guide to adding accounts and Safes: <https://biafra23.github.io/punicus/>
+(its source: [website/](website/)).
+
 ## Status
 
-Early, with pre-releases only (the version is `0.4.0-SNAPSHOT`; every `v*` tag
+Early, with pre-releases only (the version is `0.5.0-SNAPSHOT`; every `v*` tag
 publishes a pre-release).
 What the app does today:
 
@@ -37,7 +41,8 @@ What the app does today:
   a secret of its secure hardware (the Android Keystore, the Secure Enclave
   of an iPhone or a Mac); Windows and Linux stand on the password alone for
   now, and the app says so. Biometric unlock (Android, Face ID or Touch
-  ID on iOS, and Touch ID on a Mac) is an opt-in, bound to a hardware key (docs/keys-and-signing.md).
+  ID on iOS, and Touch ID on a Mac) is an opt-in, bound to a hardware key (docs/keys-and-signing.md;
+  in plain words, with the code: [docs/how-keys-are-protected.md](docs/how-keys-are-protected.md)).
 - **Verified balances.** ETH and token balances, token metadata and prices are
   read through the embedded light client and labelled with the block they were
   proven at; while no fresh verified head exists, the last proven balance stays
@@ -61,6 +66,23 @@ What the app does today:
   instead. A transaction that would set the fallback handler to anything but
   the pinned one or none (the zero address removes it), or enable a module,
   is shown and never signed, approved or executed here.
+- **Gnosis Pay.** A watched Gnosis Pay account (the Safe behind the Gnosis Pay
+  card, on Gnosis Chain) is recognised. A key held here that controls its
+  Delay module, as a member or as the owner of a member Safe, works through
+  that module, with no relayer (docs/gnosis-pay.md):
+  - **withdraw**: a plain transfer of xDAI or a token out of the account;
+  - **add an owner**: a new member of the Delay module, who can then move the
+    account's funds too;
+  - **remove an owner**: a member taken off the module; the last one never is,
+    since the account's funds would be locked for good.
+  Each is queued first and executed after the module's cooldown, which the
+  app counts down. The account's Safe settings list its current owners. An
+  expired entry that blocks the module's queue, from this app or another, is
+  skipped with the module's own `skipExpired()`, which moves nothing.
+- **NFTs.** An account's NFTs, found in its verified log index and shown only
+  once proven held, with on-chain metadata only; older ones are added by
+  contract and id, ENS names also by name, and the ENS names pointing to an
+  account are shown with it.
 - **Swaps on Uniswap v3** from an account or a Safe: verified quotes from the
   pinned contracts, an exact-amount approval, a slippage tolerance (0.5 % by
   default) and the price impact, with the amount received read from the
@@ -74,8 +96,9 @@ What the app does today:
   does not support, the app warns ahead of it, notifies (on Android also while
   it is closed), and once the upgrade has cut it off shows nothing but the way
   to the update.
-- **dApp connections**, on Sepolia, over WalletConnect v2. A dApp connects
-  with a pasted `wc:` URI (or a `wc:` link on Android), and sees only the
+- **dApp connections** over WalletConnect v2, on Ethereum and Gnosis Chain
+  together or on Sepolia alone. A dApp connects with a pasted `wc:` URI (on
+  Android also a scanned QR code or a `wc:` link), and sees only the
   accounts the user chooses. It can ask to sign in, to sign typed data, and
   to send a transaction: from an account held here, or proposed from a Safe
   as a Safe transaction. Each is reviewed from verified state before
@@ -88,13 +111,17 @@ Store.
 docs/wallet-ux.md describes every screen, with what is built and what is not.
 
 **What leaves the device.** The wallet never takes chain data from a server:
-no RPC provider, no indexer. Two optional features use a third-party
-service. A swap the user sends to CoW Protocol goes to CoW's order API
-(docs/swaps.md). dApp connections go through WalletConnect's relay: today a
+no RPC provider, no indexer. Three optional features use a third-party
+service. A fresh checkpoint, fetched only on the user's tap when a network's
+checkpoint is too old, comes from that network's public checkpoint-sync
+servers, which see the device's IP address and nothing about its accounts
+(docs/privacy-policy.md). A swap the user sends to CoW Protocol goes to
+CoW's order API (docs/swaps.md). dApp connections go through WalletConnect's relay: today a
 centralised service, run by Reown and a selected group of operators. It
 carries end-to-end encrypted messages only. It sees the device's IP address
 and when it is connected, never what is signed, and it cannot sign anything
-(docs/walletconnect.md). The embedded Myotis engine itself uses neither.
+(docs/walletconnect.md). The embedded Myotis engine itself uses neither of
+the last two.
 
 ## Build & run
 
@@ -129,11 +156,14 @@ simulator needs none.
 | `android-app` | the Android host (package `eth.serotine`; the debug build is `eth.serotine.debug`) |
 | `desktop-app` | the desktop JVM host and the jpackage configuration for the three installers |
 | `ios-app` | the iOS host: the SerotineKit framework (its composition root) and the Xcode shell's XcodeGen spec (`xcode/`) |
+| `website` | the public website, plain HTML and CSS, built by `scripts/build_website.py` and published to GitHub Pages ([website/README.md](website/README.md)) |
 
 The dependency rule, the MVVM contract and how to add a feature:
 [docs/architecture.md](docs/architecture.md). How keys are held, what the
 user chooses between, and what a hardware key can and cannot guarantee:
-[docs/keys-and-signing.md](docs/keys-and-signing.md). The rules every change
+[docs/keys-and-signing.md](docs/keys-and-signing.md), and the same explained
+in plain words with the code that does it:
+[docs/how-keys-are-protected.md](docs/how-keys-are-protected.md). The rules every change
 goes through (review, PR, CI, release): [CLAUDE.md](CLAUDE.md), the short
 form, with the full text under [`.claude/`](.claude/). The screens
 and the rules they follow: [docs/wallet-ux.md](docs/wallet-ux.md); swaps:
@@ -142,6 +172,10 @@ and the rules they follow: [docs/wallet-ux.md](docs/wallet-ux.md); swaps:
 [docs/embedding-myotis.md](docs/embedding-myotis.md).
 
 ## Releases
+
+What changed in each release: [CHANGELOG.md](CHANGELOG.md). Every Gradle
+dependency the build downloads is pinned by version (lockfiles) and by
+SHA-256 ([docs/gradle-dependency-pins.md](docs/gradle-dependency-pins.md)).
 
 Every `v*` tag publishes a pre-release with the Android APK signed with
 Punicus's release key, the debug APK, the
@@ -168,6 +202,12 @@ Punicus has no grant or sponsor today: its developer funds it. It is looking
 for funding, from ecosystem grants and from sponsors.
 
 You can support it through [GitHub Sponsors](https://github.com/sponsors/biafra23).
+
+## Reporting a security issue
+
+Please do **not** report a security issue in a public issue, pull request or
+discussion. Report it privately through GitHub's private vulnerability
+reporting, as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

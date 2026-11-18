@@ -8,6 +8,8 @@ import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.ShareItem
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.gnosispay.ActionItem
+import eth.serotine.ui.gnosispay.MemberRow
 import eth.serotine.ui.ScreenPreview
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -96,6 +98,38 @@ private fun SimpleSafeSettingsOverviewPreview() = SimpleSafeSettingsPreview(over
 @Composable
 private fun SimpleSafeSettingsOverviewDarkPreview() = SimpleSafeSettingsPreview(overview, darkTheme = true)
 
+/**
+ * A Gnosis Pay account's settings (owner ruling, 2026-11-18): its Delay's members, checked on chain,
+ * the Delay's block behind Details as the Safe's is.
+ */
+@Preview
+@Composable
+private fun SimpleSafeSettingsGnosisPayPreview() = SimpleSafeSettingsPreview(
+    overview.copy(
+        network = "Gnosis Chain",
+        safe = SendFrom("Card", TREASURY),
+        title = "Safe 1.3.0 · nonce 3",
+        signers = "1 of 1 owners must sign",
+        owners = listOf(SettingsOwner("0x0000000000000000000000000000000000000002", label = null, heldHere = false)),
+        modules = listOf(SAVINGS),
+        checkedAt = "Verified at block 43,000,512",
+        changeReason = "No owner of this Safe has its key on this device: it is watch-only here, so no change of " +
+            "its settings can be proposed from it. An owner's recovery phrase, imported, makes it possible.",
+        delayMembers = DelayMembers(
+            members = listOf(
+                MemberRow(DAILY, "Daily", heldHere = true, remove = ActionItem(true, null)),
+                MemberRow(FRIEND, null, false, "A Safe: 1 of its 9 owners signs", ActionItem(true, null)),
+            ),
+            add = ActionItem(true, null),
+            checkedAt = "Verified by the light client at block 43,000,512",
+            simpleCheckedAt = "Checked on chain",
+            note = "This is a Gnosis Pay account. Its one owner is a placeholder no key holds: the members of its " +
+                "Delay module $SAVINGS control it. A member added or removed is queued through the Delay and " +
+                "takes effect once executed after its wait, like a transfer.",
+        ),
+    ),
+)
+
 /** A change's review: its run should go through, checked on chain. */
 @Preview
 @Composable
@@ -129,6 +163,7 @@ private fun SimpleSafeSettingsReviewRefusedPreview() = SimpleSafeSettingsPreview
 internal val simpleSafeSettingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("overview") { SimpleSafeSettingsOverviewPreview() },
     ScreenPreview("overview-dark") { SimpleSafeSettingsOverviewDarkPreview() },
+    ScreenPreview("gnosis-pay") { SimpleSafeSettingsGnosisPayPreview() },
     ScreenPreview("refused") { SimpleSafeSettingsRefusedPreview() },
     ScreenPreview("review") { SimpleSafeSettingsReviewPreview() },
     ScreenPreview("review-refused") { SimpleSafeSettingsReviewRefusedPreview() },

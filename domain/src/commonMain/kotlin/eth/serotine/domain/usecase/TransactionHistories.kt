@@ -181,8 +181,9 @@ class FollowSentTransactions(
 
 /**
  * The transactions of the account at [address] in the history (issue #85), newest first: those
- * it sent, and for a Safe the approvals and executions of its transactions and its deployment,
- * whichever account of this wallet sent them.
+ * it sent, and for a Safe the approvals and executions of its transactions, its deployment and,
+ * for a Gnosis Pay account, the transfers queued and executed through its Delay, whichever account
+ * of this wallet sent them.
  */
 class ObserveAccountHistory(private val history: TransactionHistory) {
     operator fun invoke(account: AccountId): Flow<HistoryList> = history.observe().map { list ->
@@ -203,8 +204,10 @@ class ObserveAccountHistory(private val history: TransactionHistory) {
  * its signed minimum, arriving in that transaction, is what the user asked for, whoever the pool
  * is. Nothing else in a transaction sent from here vouches for its sender: a dApp's call, a
  * contract paid or an added token's code can run anyone's code, and move dust from anyone.
+ * [readable] is false while the history cannot be read: [addresses] is then empty because nothing
+ * is known, not because nothing was sent.
  */
-data class SentTo(val addresses: Set<Address>, val bought: Map<String, Bought>)
+data class SentTo(val addresses: Set<Address>, val bought: Map<String, Bought>, val readable: Boolean = true)
 
 /** What a swap bought: the [token] (null for the network's own currency) and the [minimum] it was signed for. */
 data class Bought(val token: Address?, val minimum: UInt256)
@@ -223,6 +226,7 @@ class ObserveSentTo(private val history: TransactionHistory) {
             SentTo(
                 addresses = entries.mapNotNullTo(HashSet()) { it.recipient() },
                 bought = entries.mapNotNull { entry -> entry.bought()?.let { entry.transfer.hash to it } }.toMap(),
+                readable = list is HistoryList.Loaded,
             )
         }
         .distinctUntilChanged()
@@ -241,9 +245,13 @@ class ObserveSentTo(private val history: TransactionHistory) {
         is SentAction.Transfer -> action.to
         is SentAction.SafeApproval -> action.request.recipient()
         is SentAction.SafeExecution -> action.request.recipient()
+        // A Gnosis Pay account's transfer, queued or executed from here: the user chose its recipient.
+        is SentAction.DelayQueue -> action.transfer?.recipient
+        is SentAction.DelayExecution -> action.transfer?.recipient
         // A dApp's call names no recipient the app decoded itself: it vouches for no sender.
         is SentAction.TokenApproval, is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap,
         is SentAction.SafeDeployment, is SentAction.CowCancellation, is SentAction.DappCall,
+        is SentAction.DelaySkip,
         -> null
     }
 
@@ -265,6 +273,9 @@ fun HistoryEntry.concerns(id: AccountId): Boolean {
         is SentAction.SafeApproval -> action.request.safe == id.address
         is SentAction.SafeExecution -> action.request.safe == id.address
         is SentAction.SafeDeployment -> action.safe == id.address
+        is SentAction.DelayQueue -> action.call.safe == id.address
+        is SentAction.DelayExecution -> action.call.safe == id.address
+        is SentAction.DelaySkip -> action.safe == id.address
     }
 }
 

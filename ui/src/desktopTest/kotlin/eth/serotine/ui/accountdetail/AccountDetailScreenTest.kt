@@ -27,6 +27,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -103,6 +104,7 @@ class AccountDetailScreenTest {
                 onOpenActivity = { events += "open activity $it" },
                 onTurnOnNetwork = { events += "turn on" },
                 onSafeSettings = { events += "safe settings" },
+                onGnosisPay = { events += "gnosis pay" },
                 onToggleUnlistedNfts = { events += "toggle unlisted nfts" },
             )
         }
@@ -670,6 +672,37 @@ class AccountDetailScreenTest {
         rule.onNodeWithText("Modules: each can move this Safe's funds without the owners' signatures.").assertExists()
         rule.onNodeWithText("Assets").performClick()
         assertEquals(listOf("segment ASSETS"), events)
+    }
+
+    @Test
+    fun aGnosisPayAccountsOwnersOpenItsScreenAndItsSendPointsThere() {
+        show(
+            ready.copy(
+                kind = AccountKind.SAFE,
+                control = Control.WATCH_ONLY,
+                safe = SafeDetails.Shown(
+                    title = "Safe 1.3.0 · nonce 1",
+                    signers = "1 of 1 owners must sign",
+                    owners = listOf(OwnerRow(GNOSIS_PAY_PLACEHOLDER, null, heldHere = false)),
+                    modules = emptyList(),
+                    guard = null,
+                    checkedAt = "Verified at block 1",
+                ),
+                segment = DetailSegment.OWNERS,
+                gnosisPay = "Gnosis Pay account. Its controlling key is on this device.",
+            ),
+        )
+
+        rule.onNodeWithText("Gnosis Pay account. Its controlling key is on this device.").assertExists()
+        rule.onNodeWithTag(ACCOUNT_GNOSIS_PAY_TAG).performScrollTo().performClick()
+        assertEquals(listOf("gnosis pay"), events)
+
+        // Send on the Safe itself: no owner signs for it, so the way is its Gnosis Pay screen.
+        rule.onNodeWithText("Send").performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(GNOSIS_PAY_SEND)
+        // The dialog's way out, drawn over the Owners tab's own entry of the same name.
+        rule.onAllNodesWithText("Gnosis Pay").onLast().performClick()
+        assertEquals(listOf("gnosis pay", "gnosis pay"), events)
     }
 
     @Test

@@ -96,18 +96,38 @@ private val everyday = AccountsUiState.Ready(
 
 @Composable
 private fun SimpleAccountsPreview(state: AccountsUiState, darkTheme: Boolean = false) {
-    SerotineTheme(darkTheme = darkTheme) {
-        SimpleAccountsScreen(
-            state = state,
-            onWatchAddress = {},
-            onImportPhrase = {},
-            onCreateAccount = {},
-            onCreateSafe = {},
-            onAccountAction = {},
-            onRefresh = {},
-        )
-    }
+    SerotineTheme(darkTheme = darkTheme) { SimpleAccountsSample(state) }
 }
+
+@Composable
+private fun SimpleAccountsSample(state: AccountsUiState, selected: SelectedAccount? = null) {
+    SimpleAccountsScreen(
+        state = state,
+        onWatchAddress = {},
+        onImportPhrase = {},
+        onCreateAccount = {},
+        onCreateSafe = {},
+        onAccountAction = {},
+        onRefresh = {},
+        selected = selected,
+    )
+}
+
+/**
+ * The home of three networks (H1), [selected] beside it: the list of the tablet's layout
+ * (SimpleAccountsTabletScreenPreviews.kt), in the theme it is drawn in. Main's detail is the one
+ * [eth.serotine.ui.accountdetail.SimpleAccountDetailMainSample] draws, and its row says the same total.
+ */
+@Composable
+internal fun SimpleAccountsListSample(selected: SelectedAccount?) = SimpleAccountsSample(besideMain, selected)
+
+/** [everyday] with Main valued as its detail values it: ETH, USDC and LINK, €11,275.55 together. */
+private val besideMain = everyday.copy(
+    sections = everyday.sections.map { section ->
+        section.copy(accounts = section.accounts.map { if (it == main) it.copy(accountTotal = "€11,275.55") else it })
+    },
+    total = "€18,625.85",
+)
 
 /** H1: the accounts of three networks, the total with how fresh it is. */
 @Preview
@@ -206,7 +226,7 @@ private fun SimpleAccountsLivePreview() = SimpleAccountsPreview(
     ),
 )
 
-/** Gnosis Chain refusing a stale checkpoint: warned in the error colour, with "Catch up anyway…". */
+/** Gnosis Chain refusing a stale checkpoint: warned in the error colour, with "Catch up…". */
 @Preview
 @Composable
 private fun SimpleAccountsStaleAnchorPreview() = SimpleAccountsPreview(
@@ -226,7 +246,7 @@ private fun SimpleAccountsStaleAnchorPreview() = SimpleAccountsPreview(
 @Composable
 private fun SimpleAccountsEmptyPreview() = SimpleAccountsPreview(AccountsUiState.Ready(emptyList()))
 
-/** No accounts yet, and Gnosis Chain refusing a stale checkpoint: its warning and "Catch up anyway…". */
+/** No accounts yet, and Gnosis Chain refusing a stale checkpoint: its warning and "Catch up…". */
 @Preview
 @Composable
 private fun SimpleAccountsEmptyStaleAnchorPreview() = SimpleAccountsPreview(

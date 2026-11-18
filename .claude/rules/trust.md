@@ -114,6 +114,34 @@ docs/lenient-mode.md, which has the detail.)
   checkpoint too old asks again.
 - The bound itself is never raised: `setWsBoundPeriods` is not called.
 
+## Or from a fresh checkpoint the checkpoint servers and a long-known peer agree on
+
+(Owner's request, 2026-11-14: "In case of a weak subjectivity window expiry
+there should be now the option to find a new checkpoint". It applies Myotis's
+carve-out of 2026-11-10 and its rulings of 2026-11-11 and 2026-11-13 on #761;
+`.claude/rules/data-sources.md`, *Checkpoint servers*.)
+
+- The same warning offers a second way on: **Fetch a fresh checkpoint**, the
+  engine's `refreshAnchorFromCheckpointz`. It is offered first and called
+  recommended, since it starts from a recent checkpoint instead of walking
+  forward from an old one.
+- Only on the user's tap, and only while that network is parked on a stale
+  checkpoint. Never automatically, never remembered for now: the engine's
+  `setStaleAnchorPolicy` is not called.
+- The engine takes a checkpoint only when every checkpoint server that
+  answers names the same finalized epoch and root, run by at least two
+  operators, and a long-known peer (pinned in the release, or known to this
+  device for a week) names it too. One server that differs refuses it, and
+  the outlier is named; the screen shows the engine's reason.
+- **That checkpoint is the servers' word**, as the embedded one is the
+  release's. The dialog says so before the tap, and the outcome names the
+  agreeing operators and how many long-known peers confirmed it. Everything
+  synced from it is verified as usual.
+- When the servers agree but no long-known peer could be reached, the
+  dialog says an attack on the connection cannot be ruled out and offers
+  **Use it anyway**. That is the only call with `allowUnconfirmed`, asked
+  again every time and never remembered.
+
 ## A Safe's fallback handler is set only to a pinned one
 
 (Owner ruling, 2026-10-18, #63.)
@@ -140,6 +168,91 @@ docs/lenient-mode.md, which has the detail.)
 - Disabling a module keeps its warning and is not refused.
 - Which modules may be enabled is still open (#54). A temporary, warned
   "dangerous mode" past it is planned in #78 and not built.
+
+## A Gnosis Pay account sends through its Delay module
+
+(Owner's decisions, 2026-11-15; docs/gnosis-pay.md is the contract.)
+
+- **Recognised on chain.** A Safe on Gnosis Chain is a Gnosis Pay account
+  when one of its enabled modules is a Delay modifier: its code, proven,
+  byte for byte the minimal proxy of a pinned mastercopy, and its avatar,
+  target and owner the Safe itself, read with verified calls at one block.
+  It is detected on a Safe added to the wallet; no other way in.
+- **A member sends.** A member of that Delay (a module enabled on it) whose
+  key is held here, as an account on Gnosis Chain, may queue a transfer for
+  the Safe and then execute it. Both are its own transactions, each quoted,
+  simulated and signed like any other, and it pays both fees.
+- **So does a key that owns a member Safe** (owner's request, 2026-11-17).
+  Members are followed down through Safes to the keys, each address's kind
+  proven (a key held here is taken as a key, unread), at most three Safes
+  deep and 32 addresses per Delay. A key held here whose every Safe on the
+  way needs one signature controls the account by itself: the account shows
+  Full control, and the key queues through those Safes, each executing the
+  call with `execTransaction` as its one owner's transaction (no value,
+  CALL, no refund, a pre-validated signature of the owner that calls it).
+  A Safe of a higher threshold on the way makes the key a co-signer only:
+  nothing is sent. What is not read is never taken for no key.
+- **A verified answer stands over a read that did not answer** (owner's
+  decisions, 2026-11-17; docs/gnosis-pay.md, *A read that did not answer*):
+  the Safe's state, its Delay's and each address's kind on the way to the
+  keys stay as last verified, and are said to be, while a later read only
+  found no proof or the light client catches up. For an hour of the app
+  running at most; a verified answer that differs, or a reason that stands,
+  replaces it at once. No transfer is planned on a held Safe or Delay.
+- **Only plain transfers**, and the two calls below. The Safe's xDAI as the
+  value with no data, or an ERC-20 `transfer` with no value; operation CALL;
+  never to the Safe, its modules or the Delay. Anything else is refused.
+- **A member of the Delay is added or removed the same way** (owner ruling,
+  2026-11-18; docs/gnosis-pay.md, *Adding and removing a member*). It amends
+  *Only plain transfers* and "it enables none" below for this one case:
+  - Only on the account's own Delay of the current mastercopy, by a key that
+    controls it here (as for Send: held here and acting alone), queued, then
+    executed after the cooldown exactly like a transfer, with the same queue
+    checks before the execution. The call is the Safe's own call of its
+    Delay: `enableModule(member)` or `disableModule(previous, member)`, no
+    value, operation CALL.
+  - **Add.** A new member can move all the account's funds after the
+    cooldown; the review says so in plain words. Refused: the zero address
+    and `0x…01` to `0x…ff` (the sentinel among them), the Safe itself, the
+    Delay, any of the Safe's enabled modules, and an existing member.
+  - **Remove.** Refused for the last member: the Safe's one owner is a
+    placeholder, so with no member its funds are locked for good. Warned, not
+    refused, when the member removed is the way this device controls the
+    account (the held key itself, or the member Safe it reaches the Delay
+    through): after its execution this device can no longer send from the
+    account, unless another way remains.
+  - **Never through a Delay whose entries never expire** (owner's decision,
+    2026-11-18, on #323): with an expiration of 0, adding or removing a
+    member is refused, at the queueing and at the execution, and both are
+    greyed out saying why. A change that can no longer run there (one of
+    the members queued elsewhere ahead of it) would stay the queue's next
+    entry for good, since nothing skips an entry that never expires, and
+    hold every entry behind it back. Transfers through such a Delay stay
+    allowed.
+  - Nothing else beyond plain transfers and these two calls is ever queued.
+    *Enabling a Safe module is refused* (modules on the Safe itself) stands
+    unchanged.
+- **The current mastercopy only.** `0x22d9…1ef0`, deployed after the exploit
+  of 2026-06-01, is sent through. The retired `0x4A97…F9f5` is recognised,
+  and Send is greyed out, saying why.
+- **The queue is checked before an execution.** The transfer must be the
+  Delay's next entry, past its cooldown and before its expiration. An entry
+  ahead of it is shown and never executed by Punicus.
+- **An expired entry is skipped with the Delay's own `skipExpired()`**
+  (owner's request, 2026-11-18; docs/gnosis-pay.md, *Skipping expired
+  entries*): a key held here sends it straight to the Delay, after a fresh
+  read proves the Delay the Safe's own of the current mastercopy and its
+  next entry expired. It moves nothing, so it needs no control of the
+  account, and it queues nothing.
+- **No relayer.** The Delay's signed, relayed path needs an off-chain
+  service and is not used.
+- **The card's allowance is never a cap.** The Delay's cooldown and
+  expiration are the limits. The Roles allowance binds Gnosis Pay's spender,
+  not the member; it is shown, display-only, once where today's accounts keep
+  it is known.
+- This uses a module already enabled. It enables none on the Safe, and
+  *Enabling a Safe module is refused* stands. On the Delay it enables a member
+  only as the owner ruling of 2026-11-18 above allows.
 
 ## Network-upgrade warnings are peer reports, and say so
 

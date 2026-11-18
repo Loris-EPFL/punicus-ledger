@@ -69,6 +69,24 @@ only" of 2026-10-15.)
 - Adding a network beyond these three is the owner's decision and is recorded
   here first.
 
+## Checkpoint servers: a fresh checkpoint, only at a stale checkpoint and on the user's tap
+
+(Owner's request, 2026-11-14, applying Myotis's carve-out of 2026-11-10:
+"at a `STALE_ANCHOR` park and only on the user's request, a fresh checkpoint
+that every answering checkpoint-sync server names".)
+
+- The engine reads one HTTPS source beside its peers: the network's public
+  checkpoint-sync servers (Checkpointz), at pinned URLs, through its own HTTP
+  client. Punicus adds no client and no server of its own.
+- Only while a network is parked on a checkpoint past the weak-subjectivity
+  bound, and only when the user taps *Fetch a fresh checkpoint*
+  (`.claude/rules/trust.md`). No other path calls it.
+- The servers see the device's IP address and that it asks for a checkpoint
+  of that network. They learn no account. The privacy policy says so.
+- What they answer is a trust anchor, never chain state: no balance, nonce
+  or transaction comes from it. Every read after it is verified against it
+  as usual.
+
 ## Prices come from Chainlink aggregators, read through the light client
 
 (Owner ruling, 2026-10-16.)
@@ -172,8 +190,22 @@ of a stale feed.)
 - **Older NFTs are added by contract and id.** The index covers the account
   from its start only. The list says so, and offers "Add an NFT": a contract
   and a token id, kept once the account is proven to hold it.
+- **ENS names are also found by name** (owner ruling, 2026-11-15, #274, on
+  #299; it amends the line above for ENS names):
+  - Every verified resolution that lands on one of the user's accounts keeps
+    that name for the account as a candidate. A name that lands on an
+    address not in the wallet is not kept.
+  - The tokens a candidate can be (the .eth registrar's, id = labelhash; the
+    NameWrapper's, id = namehash) are worked out locally by hashing. They are
+    checked like an added NFT and listed only while a verified call shows
+    them held.
+  - "Add an NFT" also takes an ENS name alone. It is kept once a token of it
+    is proven held.
+  - A name that merely points to the account, held or not, is never listed
+    as an NFT. The account shows it separately, as a name pointing here.
 - ENS tokens are decoded on chain (the NameWrapper's `names`, the registrar's
-  labels from logs), never through ENS's metadata service.
+  labels from logs, or a name kept above whose hash is the token id), never
+  through ENS's metadata service.
 - **ENSv2 too** (owner ruling, 2026-11-06, #246): on Sepolia, which runs on
   ENSv2, its .eth registry is a built-in collection, pinned by its code hash.
   A label comes from its label store and is checked by hashing. A redeploy

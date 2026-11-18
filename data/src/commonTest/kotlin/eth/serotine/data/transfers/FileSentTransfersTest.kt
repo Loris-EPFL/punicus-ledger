@@ -3,6 +3,10 @@ package eth.serotine.data.transfers
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrderUid
+import eth.serotine.domain.model.DelayMemberChange
+import eth.serotine.domain.model.DelayMemberChangePlan
+import eth.serotine.domain.model.DelayTransfer
+import eth.serotine.domain.model.DelayTransferPlan
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
@@ -20,6 +24,7 @@ import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -217,7 +222,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(wrap, unwrap), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":9,"""), "written as format 9: $text")
+        assertTrue(text.startsWith("""{"version":12,"""), "written as format 12: $text")
     }
 
     @Test
@@ -241,7 +246,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(cancellation), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":9,"""), "written as format 9: $text")
+        assertTrue(text.startsWith("""{"version":12,"""), "written as format 12: $text")
     }
 
     @Test
@@ -257,7 +262,136 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(call), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":9,"""), "written as format 9: $text")
+        assertTrue(text.startsWith("""{"version":12,"""), "written as format 12: $text")
+    }
+
+    @Test
+    fun aGnosisPayTransferQueuedAndExecutedIsRecordedWithWhatItMoves() = runTest {
+        val safe = Address.of("0x188416e7d22a45e1c5f69c628d9c05bee54bd4fb")
+        val delay = Address.of("0xfc85bcbc2ce6aec1be9d94c77c872269ebddb6c7")
+        val plan = DelayTransfer.of(safe, delay, listOf(delay), TransferAsset.Erc20Token(usdc), bob, UInt256.of(7))
+        val delayed = (plan as DelayTransferPlan.Planned).transfer
+        val queued = transfer(7).copy(action = SentAction.DelayQueue(delayed))
+        val executed = transfer(8).copy(action = SentAction.DelayExecution(delayed))
+
+        record().record(queued)
+        record().record(executed)
+
+        assertEquals(listOf(queued, executed), stored())
+        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
+        assertTrue(text.startsWith("""{"version":12,"""), "written as format 12: $text")
+    }
+
+    @Test
+    fun aDelayMemberAddedAndRemovedIsRecordedWithItsMemberAndTheOneBeforeIt() = runTest {
+        // Owner ruling, 2026-11-18: a change of a Gnosis Pay account's Delay members, queued and executed.
+        val safe = Address.of("0x188416e7d22a45e1c5f69c628d9c05bee54bd4fb")
+        val delay = Address.of("0xfc85bcbc2ce6aec1be9d94c77c872269ebddb6c7")
+        val added = DelayMemberChange.add(safe, delay, emptyList(), listOf(alice), bob)
+            .let { (it as DelayMemberChangePlan.Planned).change }
+        val removed = (DelayMemberChange.remove(safe, delay, listOf(alice, bob), bob) as DelayMemberChangePlan.Planned)
+            .change
+        val calls = listOf(
+            transfer(7).copy(action = SentAction.DelayQueue(added)),
+            transfer(8).copy(action = SentAction.DelayExecution(added)),
+            transfer(9).copy(action = SentAction.DelayQueue(removed)),
+        )
+
+        calls.forEach { record().record(it) }
+
+        assertEquals(calls, stored())
+        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
+        assertTrue(text.startsWith("""{"version":12,"""), "written as format 12: $text")
+        assertTrue(""""change":"remove","member":"${bob.hex}","previous":"${alice.hex}"""" in text, text)
+    }
+
+    @Test
+    fun aFormat10DelayTransferStillReadsAsTheTransferItWas() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val safe = Address.of("0x188416e7d22a45e1c5f69c628d9c05bee54bd4fb")
+        val delay = Address.of("0xfc85bcbc2ce6aec1be9d94c77c872269ebddb6c7")
+        // Written by a build of format 10, before members could change: no change, member or previous.
+        val call = """"delay":{"kind":"queue","safe":"${safe.hex}","delay":"${delay.hex}",""" +
+            """"recipient":"${bob.hex}","amount":"7"}"""
+        val entry = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff",$call,"maxCost":"1","sentAt":1800000008,""" +
+            """"chain":100}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":10,"transfers":[$entry]}""") }
+
+        val action = assertIs<SentAction.DelayQueue>(stored().single().action)
+        val expected = DelayTransfer.of(safe, delay, emptyList(), TransferAsset.Native, bob, UInt256.of(7))
+        assertEquals((expected as DelayTransferPlan.Planned).transfer, action.call)
+    }
+
+    @Test
+    fun aMemberChangeTheRulingRefusesOrHalfATransferIsPassedOver() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val head = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff","""
+        val call = """"delay":{"kind":"queue","safe":"${alice.hex}","delay":"${bob.hex}","""
+        val tail = ""","maxCost":"1","sentAt":1800000008}"""
+        val sentinel = "0x" + "0".repeat(39) + "1"
+        val entries = listOf(
+            // The sentinel as a member: never planned.
+            call + """"change":"add","member":"$sentinel"}""",
+            // A removal without the member before it.
+            call + """"change":"remove","member":"$sentinel"}""",
+            // A change of no known kind.
+            call + """"change":"swap","member":"${alice.hex}"}""",
+            // A change with a transfer's fields beside it.
+            call + """"change":"add","member":"${alice.hex}","amount":"1"}""",
+        ).joinToString(",") { head + it + tail }
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":12,"transfers":[$entries]}""") }
+
+        assertEquals(emptyList(), stored())
+    }
+
+    @Test
+    fun aGnosisPayDelaysSkipIsRecordedAsTheSkipItIs() = runTest {
+        val safe = Address.of("0x188416e7d22a45e1c5f69c628d9c05bee54bd4fb")
+        val delay = Address.of("0xfc85bcbc2ce6aec1be9d94c77c872269ebddb6c7")
+        val skipped = transfer(9).copy(action = SentAction.DelaySkip(safe, delay))
+
+        record().record(skipped)
+
+        assertEquals(listOf(skipped), stored())
+        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
+        assertTrue(text.startsWith("""{"version":12,"""), "written as format 12: $text")
+    }
+
+    @Test
+    fun aFormat11SkipStillReadsAsTheSkipItWas() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val safe = Address.of("0x188416e7d22a45e1c5f69c628d9c05bee54bd4fb")
+        val delay = Address.of("0xfc85bcbc2ce6aec1be9d94c77c872269ebddb6c7")
+        // As a format-11 build wrote it: the Delay as its recipient, nothing moved.
+        val call = """"delay":{"kind":"skip","safe":"${safe.hex}","delay":"${delay.hex}",""" +
+            """"recipient":"${delay.hex}","amount":"0"}"""
+        val entry = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff",$call,"maxCost":"1","sentAt":1800000008,""" +
+            """"chain":100}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":11,"transfers":[$entry]}""") }
+
+        assertEquals(SentAction.DelaySkip(safe, delay), stored().single().action)
+    }
+
+    @Test
+    fun aFormat10FileIsReadAsItIs() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val entry = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff","to":"${bob.hex}","amount":"1",""" +
+            """"maxCost":"1","sentAt":1800000008}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":10,"transfers":[$entry]}""") }
+
+        assertEquals(1, stored().size)
+    }
+
+    @Test
+    fun aDelayCallThatIsNoPlainTransferIsPassedOver() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        // To the Safe itself: never a transfer the Delay may queue.
+        val call = """"delay":{"kind":"queue","safe":"${alice.hex}","delay":"${bob.hex}",""" +
+            """"recipient":"${alice.hex}","amount":"1"}"""
+        val entry = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff",$call,"maxCost":"1","sentAt":1800000008}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":10,"transfers":[$entry]}""") }
+
+        assertEquals(emptyList(), stored())
     }
 
     @Test

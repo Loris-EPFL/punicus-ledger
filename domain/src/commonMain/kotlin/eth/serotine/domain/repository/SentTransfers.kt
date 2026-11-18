@@ -2,6 +2,8 @@ package eth.serotine.domain.repository
 
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayCall
+import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.SignedTransfer
@@ -209,4 +211,32 @@ sealed interface SentAction {
      * sent.
      */
     data class DappCall(val to: Address, val value: UInt256, val dapp: String, val request: DappRequestId) : SentAction
+
+    /**
+     * A Gnosis Pay account's [call] (a transfer, or a member of its Delay added or removed), queued
+     * through its Delay by the account, which controls that Delay (`execTransactionFromModule`;
+     * docs/gnosis-pay.md, *Sending*): it moves nothing yet, and nothing of the account's but the
+     * fee. What it queues takes effect once executed ([DelayExecution]).
+     */
+    data class DelayQueue(val call: DelayCall) : SentAction {
+        /** The [call] when it is a transfer; null for a change of the Delay's members. */
+        val transfer: DelayTransfer? get() = call as? DelayTransfer
+    }
+
+    /**
+     * The execution of a Gnosis Pay account's [call] the account queued before (`executeNextTx`),
+     * sent to the Delay after its cooldown: what it moves or changes is the Safe's, and the account
+     * pays the fee.
+     */
+    data class DelayExecution(val call: DelayCall) : SentAction {
+        /** The [call] when it is a transfer; null for a change of the Delay's members. */
+        val transfer: DelayTransfer? get() = call as? DelayTransfer
+    }
+
+    /**
+     * `skipExpired()` sent to a Gnosis Pay account's [delay], the Safe at [safe]'s own: it moves the
+     * Delay's next entry past every expired one, and nothing of the Safe's or the sender's but the
+     * fee (docs/gnosis-pay.md, *Skipping expired entries*).
+     */
+    data class DelaySkip(val safe: Address, val delay: Address) : SentAction
 }

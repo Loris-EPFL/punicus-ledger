@@ -45,6 +45,7 @@ or edited. A skill (`.claude/skills/<name>/SKILL.md`) loads on demand:
 | `release` | the owner asks for a release, a version bump or a `v*` tag | developer |
 | `reviewer` | you review a diff or a PR | reviewer |
 | `ux` | you design or change a screen, a flow or the words the user sees | UX designer |
+| `security-fix` | you work on, or come across, a vulnerability that is not public yet | developer |
 
 **Roles.** A developer starts with this file; the rules load as code is
 touched; `/pr` comes at step 3 of the Workflow. A reviewer starts with
@@ -119,10 +120,12 @@ Full text: `.claude/rules/platform.md`, `.claude/rules/ui.md`,
 ## Workflow — the mandatory steps for EVERY work item
 
 Full text of steps 3 to 5: `.claude/skills/pr/SKILL.md`. Do every step, in
-order. None is optional, and none waits to be asked for. The only time to
-skip the PR is when the user explicitly says not to open one.
+order. None is optional, and none waits to be asked for. The PR is skipped
+only when the user explicitly says not to open one, or for an embargoed
+security fix (below the steps).
 
-1. **Code** the change on the designated branch.
+1. **Code** the change on the designated branch (an embargoed security fix:
+   a local branch, never pushed).
 2. **Review** your own diff: `/code-review` in Claude Code; in another tool,
    `/reviewer` on your own diff. Fix what it finds.
 3. **PR.** Open the pull request: base `main`, or the feature branch for a
@@ -136,6 +139,13 @@ skip the PR is when the user explicitly says not to open one.
    2026-11-10, #284). "Pushed" is not "done".
 5. **Address every comment** and drive CI to green. Keep watching until the
    PR is merged or closed.
+
+**An embargoed security fix** (a vulnerability that is not public yet,
+reported or found by you; a found one is told to the owner first) takes
+the `security-fix` skill instead of steps 3 to 5: no PR, and no push to any
+branch, the designated one included, before the owner has merged the fix;
+neutral wording until the advisory is published (owner's request,
+2026-11-15, on Myotis #870).
 
 **MERGING IS THE OWNER'S ACTION. NEVER MERGE A PR YOURSELF** (owner ruling,
 2026-08-31). Green CI plus every comment answered means: report "ready to
@@ -167,6 +177,8 @@ Full text: `.claude/skills/release/SKILL.md`.
   initiative (owner rulings, 2026-09-02 and 2026-09-11 in Myotis).
 - Moving the version pin is mandatory, not a question (owner ruling,
   2026-09-24): `version = "X.Y.Z-SNAPSHOT"` in the root `build.gradle.kts`.
+- So is the release's entry in `CHANGELOG.md` (owner's request, 2026-11-09,
+  #281): `[Unreleased]` becomes the release, in the same release PR.
 
 ## Pull requests and code review
 
@@ -199,6 +211,10 @@ Full text: `.claude/rules/platform.md`.
 - Java 17 class files for everything Android loads.
 - Kotlin and Compose Multiplatform everywhere; new code in `commonMain`.
 - Toolchain pins mirror Myotis's (`gradle/libs.versions.toml`).
+- **Every Gradle dependency is pinned by version AND hash** (owner's request,
+  2026-11-09, #281): a bump regenerates the lockfiles and
+  `gradle/verification-metadata.xml` with `scripts/update_gradle_pins.sh`.
+  Never re-pin a verification failure you did not cause.
 
 ## Trust
 
@@ -210,7 +226,9 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
 - One older answer is shown, labelled as one (owner's request, 2026-10-19):
   a balance proved earlier stays on screen, dated, out of totals, never acted
   on. Past the weak-subjectivity window only on the user's word (owner's
-  request, 2026-10-24). In simple mode, on a network without block access
+  request, 2026-10-24), or from a fresh checkpoint the checkpoint servers and
+  a long-known peer agree on, fetched on the user's tap (owner's request,
+  2026-11-14). In simple mode, on a network without block access
   lists, a balance is read on demand and counts in totals with its age for
   up to an hour (owner's decisions, 2026-10-26). In lenient mode, off by
   default, a transaction may be signed on the state last verified; nothing
@@ -219,6 +237,14 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
 - A Safe transaction that sets a fallback handler other than the pinned one,
   or none (owner ruling, 2026-10-18, #63), or enables a module (owner ruling,
   2026-10-18, on #54), is shown and never signed, approved or executed.
+- A Gnosis Pay account sends through its own Delay module: a member whose
+  key is held here queues a plain transfer, then executes it after the
+  cooldown; the current mastercopy only, no relayer, the queue checked
+  first (owner's decisions, 2026-11-15; docs/gnosis-pay.md). So does a key
+  that owns a member Safe, through Safes of threshold 1 (owner's request,
+  2026-11-17). Such a key may also add or remove a member of that Delay the
+  same way, never its last one, and never through a Delay whose entries never
+  expire (owner ruling and decision, 2026-11-18).
 - Network-upgrade warnings are peer reports and say so (owner's request,
   2026-10-17).
 - A parameter that can change the answer is APPLIED or REFUSED, never
@@ -241,6 +267,9 @@ rulings to the screens.
 
 - The only source of chain data is the embedded Myotis engine. HTTP to a node
   is for debugging only.
+- The engine asks the checkpoint-sync servers for a fresh checkpoint only at
+  a stale checkpoint and on the user's tap; it is a trust anchor, never chain
+  state (owner's request, 2026-11-14).
 - Networks: Ethereum, Gnosis Chain and Sepolia; one chain per account; no
   current network; each network can be turned off; Sepolia keeps every
   testnet warning and is never added to a total with real funds (owner
@@ -259,7 +288,8 @@ rulings to the screens.
   swap the user sends to CoW (owner ruling, 2026-10-22).
 - An account's NFTs are found in its verified log index and shown only once
   proven held; on-chain metadata only; unlisted collections collapsed; older
-  NFTs added by contract and id (owner rulings, 2026-11-05, #246).
+  NFTs added by contract and id (owner rulings, 2026-11-05, #246), and ENS
+  names also by name (owner ruling, 2026-11-15, #274).
 - Where no Chainlink feed is pinned, a Uniswap pool's 30-minute average
   prices a token, labelled and counted in totals; a stale feed never falls
   back to it (owner ruling, 2026-10-29, #205).

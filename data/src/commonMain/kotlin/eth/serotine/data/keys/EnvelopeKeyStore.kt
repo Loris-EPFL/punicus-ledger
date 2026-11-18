@@ -601,13 +601,15 @@ class EnvelopeKeyStore internal constructor(
                 var touched = false
                 try {
                     key.unavailable()?.let { return@withContext BiometricChange.Unavailable(it) }
+                    // Whether the hardware's key exists before anything could create it (protection
+                    // may), as describeHere: a lost key is not remade beside the envelopes it sealed.
+                    val provisioned = hardware?.isProvisioned() ?: true
+                    val envelopes = envelopes()
+                    if (hardwareKeyLost(provisioned, envelopes)) return@withContext BiometricChange.Failed
                     if (protection() == KeyProtection.SOFTWARE_KEY_STORE) {
                         return@withContext BiometricChange.Unavailable(BiometricUnavailable.NOT_IN_SECURE_HARDWARE)
                     }
-                    val provisioned = hardware?.isProvisioned() ?: true
-                    val envelopes = envelopes()
                     if (envelopes.isEmpty()) return@withContext BiometricChange.NoKeys
-                    if (hardwareKeyLost(provisioned, envelopes)) return@withContext BiometricChange.Failed
                     passwordBytes = EnvelopeCrypto.passwordBytes(password.text)
                     val refused = mutableListOf<String>()
                     for (envelope in envelopes) {

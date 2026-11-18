@@ -2,11 +2,13 @@ package eth.serotine.ui.settings
 
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.FreshCheckpoint
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.ui.components.LightClientHealth.NOT_RUNNING
 import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientHealth.STALE
 import eth.serotine.ui.components.LightClientHealth.VERIFIED
+import eth.serotine.ui.components.FreshCheckpointFetches
 import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.ScreenPreview
 import eth.serotine.ui.theme.SerotineTheme
@@ -186,7 +188,7 @@ private fun SettingsTurnOffPreview() = SettingsPreview(
     ),
 )
 
-/** Gnosis Chain refusing a checkpoint past its weak-subjectivity window, with "Catch up anyway…" (2026-10-24). */
+/** Gnosis Chain refusing a checkpoint past its weak-subjectivity window, with "Catch up…" (2026-10-24). */
 @Preview
 @Composable
 private fun SettingsStaleAnchorPreview() = SettingsPreview(
@@ -198,6 +200,31 @@ private fun SettingsStaleAnchorPreview() = SettingsPreview(
                     "limit of 3",
                 health = NOT_VERIFIED,
                 staleAnchor = StaleAnchorWarning.of(Network.GNOSIS, LightClientStatus.StaleAnchor(6, 3)),
+            ),
+            sepoliaOff,
+        ),
+    ),
+)
+
+/**
+ * A fresh checkpoint applied for Gnosis Chain on this screen (owner's request, 2026-11-14): said
+ * under its row, with the operators and long-known peers that vouched for it.
+ */
+@Preview
+@Composable
+private fun SettingsCheckpointAppliedPreview() = SettingsPreview(
+    synced.copy(
+        networks = listOf(
+            ethereum,
+            gnosis.copy(
+                checkpointNote = FreshCheckpointFetches.applied(
+                    Network.GNOSIS,
+                    FreshCheckpoint.Applied(
+                        epoch = 1_234_567,
+                        operators = listOf("checkpoint.example.org", "sync.example.net"),
+                        confirmedBy = listOf("a long-known peer", "another"),
+                    ),
+                ),
             ),
             sepoliaOff,
         ),
@@ -321,6 +348,7 @@ internal val settingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("network-not-saved") { SettingsNetworkNotSavedPreview() },
     ScreenPreview("turn-off") { SettingsTurnOffPreview() },
     ScreenPreview("stale-anchor") { SettingsStaleAnchorPreview() },
+    ScreenPreview("checkpoint-applied") { SettingsCheckpointAppliedPreview() },
     ScreenPreview("detailed-view") { SettingsDetailedViewPreview() },
     ScreenPreview("detailed-view-not-saved") { SettingsDetailedViewNotSavedPreview() },
     ScreenPreview("connections-off") { SettingsConnectionsOffPreview() },

@@ -15,7 +15,11 @@ interface HardwareSecret {
     /** Names this secret in an envelope, so it is only ever opened with the same one. */
     val tag: String
 
-    /** Whether the secret really lives in secure hardware, as the platform reports it. */
+    /**
+     * Whether the secret really lives in secure hardware, as the platform reports it. Reading it
+     * may create the hardware key where none exists (Android asks the key itself), so a caller
+     * asks [isProvisioned] first wherever envelopes may have been sealed with a key since lost.
+     */
     val protection: KeyProtection
 
     /**

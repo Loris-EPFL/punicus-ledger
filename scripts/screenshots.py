@@ -29,11 +29,13 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 FOLDER = "docs/screenshots"
 START = "<!-- screenshots:start -->"
 END = "<!-- screenshots:end -->"
 THUMB_WIDTH = 206
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 MAX_ROWS = 40
 TOTAL_BUDGET = 64 * 1024 * 1024
 FILE_BUDGET = 512 * 1024
@@ -78,8 +80,41 @@ def raw_url(repo: str, sha: str, path: str) -> str:
     return f"https://raw.githubusercontent.com/{repo}/{sha}/{path}"
 
 
-def table(changes: list[Change], repo: str, base_sha: str, head_sha: str, max_rows: int = MAX_ROWS) -> str:
-    """The marked block for the description: a summary line, then one row per changed screenshot."""
+def png_width(png: bytes) -> int | None:
+    """The width a PNG declares in its header, or None for bytes that are no PNG."""
+    if len(png) < 24 or png[:8] != PNG_SIGNATURE or png[12:16] != b"IHDR":
+        return None
+    return int.from_bytes(png[16:20], "big")
+
+
+def git_show(sha: str, path: str) -> bytes:
+    """The file at the commit, or nothing where the commit has no such file (or git cannot be run)."""
+    try:
+        return subprocess.run(["git", "show", f"{sha}:{path}"], capture_output=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return b""
+
+
+def thumb_width(sha: str, path: str, read: Callable[[str, str], bytes] = git_show) -> int:
+    """A thumbnail's width: half its screenshot's, at the commit the image is shown from, so a phone's (412 px
+    wide) and a tablet's (1280 px) are drawn at one scale, before and after alike. THUMB_WIDTH, a phone's half,
+    where the file cannot be read.
+    """
+    width = png_width(read(sha, path))
+    return width // 2 if width else THUMB_WIDTH
+
+
+def table(
+    changes: list[Change],
+    repo: str,
+    base_sha: str,
+    head_sha: str,
+    max_rows: int = MAX_ROWS,
+    width_of: Callable[[str, str], int] = lambda _sha, _path: THUMB_WIDTH,
+) -> str:
+    """The marked block for the description: a summary line, then one row per changed screenshot, each image
+    `width_of(sha, path)` wide, its commit's and its path's.
+    """
     lines = [START]
     if not changes:
         lines.append(
@@ -100,8 +135,12 @@ def table(changes: list[Change], repo: str, base_sha: str, head_sha: str, max_ro
     lines.append("| Screen / state | Before | After |")
     lines.append("|---|---|---|")
     for change in changes[:max_rows]:
-        before = img(raw_url(repo, base_sha, change.path), change.state) if change.status != "A" else "—"
-        after = img(raw_url(repo, head_sha, change.path), change.state) if change.status != "D" else "—"
+        before = "—"
+        if change.status != "A":
+            before = img(raw_url(repo, base_sha, change.path), change.state, width_of(base_sha, change.path))
+        after = "—"
+        if change.status != "D":
+            after = img(raw_url(repo, head_sha, change.path), change.state, width_of(head_sha, change.path))
         lines.append(f"| `{change.state}` ({STATUS_WORD[change.status]}) | {before} | {after} |")
     rest = len(changes) - max_rows
     if rest > 0:
@@ -111,8 +150,8 @@ def table(changes: list[Change], repo: str, base_sha: str, head_sha: str, max_ro
     return "\n".join(lines)
 
 
-def img(url: str, alt: str) -> str:
-    return f'<a href="{url}"><img src="{url}" width="{THUMB_WIDTH}" alt="{alt}"></a>'
+def img(url: str, alt: str, width: int = THUMB_WIDTH) -> str:
+    return f'<a href="{url}"><img src="{url}" width="{width}" alt="{alt}"></a>'
 
 
 def opens_fence(line: str) -> str | None:
@@ -231,7 +270,7 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     if args.command == "table":
         changes = parse_changes(sys.stdin.read())
-        block = table(changes, args.repo, args.base_sha, args.head_sha)
+        block = table(changes, args.repo, args.base_sha, args.head_sha, width_of=thumb_width)
         new = update_description(args.repo, args.pr, block, args.dry_run)
         print(new if args.dry_run else f"description of {args.repo}#{args.pr}: {len(changes)} screenshot(s) listed")
         return 0

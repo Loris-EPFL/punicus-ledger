@@ -48,6 +48,15 @@ On `main` it fails when the committed set differs from the render.
   previews*). Each entry of a previews list is
   `ScreenPreview("<state>") { … }`, and the name is the file: lowercase
   words joined by hyphens, a dark twin ending in `-dark`.
+- **A preview is a phone's, unless it shows a wide window's layout**
+  (owner's request, 2026-11-18). It renders at 412 × 892 dp. A layout of a
+  wide window (840 dp and wider) is drawn on a tablet held sideways,
+  `ScreenPreview("<state>", PreviewDevice.TABLET) { … }`, 1280 × 800 dp,
+  with `@Preview(widthDp = TABLET_WIDTH_DP, heightDp = TABLET_HEIGHT_DP)`
+  so Android Studio shows the same size. Such a screen's slug ends in
+  `-tablet` (`accounts-tablet/`). Thumbnails, on the index pages and in the
+  PR's table, are half the screenshot's width, so both devices share a
+  scale.
 - **A new screen is registered in `Screens.kt`** with its slug, the folder's
   name. `ScreensTest` fails until it is.
 - **A slug or a state name, once on `main`, stays.** Renaming one moves its

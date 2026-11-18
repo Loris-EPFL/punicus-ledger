@@ -19,6 +19,8 @@ import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientControl
 import eth.serotine.domain.repository.LightClientRun
 import eth.serotine.domain.repository.EnsNfts
+import eth.serotine.domain.repository.FreshCheckpoint
+import eth.serotine.domain.repository.FreshCheckpoints
 import eth.serotine.domain.repository.LogIndex
 import eth.serotine.domain.repository.NftContracts
 import eth.serotine.domain.repository.NameResolver
@@ -29,6 +31,7 @@ import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.PriceHistory
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
+import eth.serotine.domain.repository.DelayModules
 import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
@@ -63,6 +66,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.Foundation.NSFileManager
@@ -95,7 +99,7 @@ class MyotisHost private constructor(
     private val apiLog: LogSink?,
     keptInputsPath: String?,
     keptSafesPath: String?,
-) : LightClientControl, StaleAnchorConsent, NetworkFreshness {
+) : LightClientControl, StaleAnchorConsent, FreshCheckpoints, NetworkFreshness {
 
     /** The engine of this process: none until a first start, [Absent] when it cannot be created here. */
     private sealed interface EngineState {
@@ -177,6 +181,9 @@ class MyotisHost private constructor(
     /** A Safe's owners' approvals on chain (`approvedHashes`), each a verified call. */
     val safeApprovals: SafeApprovals = routed.safeApprovals
 
+    /** A Gnosis Pay account's Delay modifier and its queue (docs/gnosis-pay.md), each a verified read. */
+    val delayModules: DelayModules = routed.delayModules
+
     /** Uniswap v3 on each network: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = routed.uniswap
 
@@ -225,6 +232,28 @@ class MyotisHost private constructor(
         val node = nodes[network] ?: return
         onControl { node.acceptStaleAnchor() }
     }
+
+    /**
+     * Re-anchors [network]'s light client on a fresh checkpoint its checkpoint-sync servers and a
+     * long-known peer agree on (the engine's `refreshAnchorFromCheckpointz`, which refuses unless
+     * the chain is parked on a stale anchor). Off the control dispatcher: the round takes up to
+     * about a minute, and starting or stopping the other networks must not wait for it. A stop
+     * meanwhile may make the call fail, and a failure is said as a refusal.
+     */
+    override suspend fun fetchFreshCheckpoint(network: Network, useUnconfirmed: Boolean): FreshCheckpoint {
+        val node = nodes[network] ?: return FreshCheckpoint.Refused(notRunning(network))
+        // One at a time per network, whichever screen asked: a second tap is told, never run beside it.
+        val lock = checkpointFetchLocks.getValue(network)
+        if (!lock.tryLock()) return FreshCheckpoint.Refused(alreadyFetching(network))
+        return try {
+            withContext(Dispatchers.IO) { node.fetchFreshCheckpoint(useUnconfirmed) }
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    /** Each network's fetch of a fresh checkpoint, while one runs. */
+    private val checkpointFetchLocks = Network.entries.associateWith { Mutex() }
 
     override fun observeLive(network: Network): Flow<Boolean> {
         val node = nodes[network] ?: return flowOf(false)
@@ -383,6 +412,9 @@ class MyotisHost private constructor(
         /** When this network's balances and prices are proven again: at every head, or on demand in simple mode. */
         val schedule = ProofSchedule(live = activity::hasAccountCoverage)
 
+        /** Spaces out this network's background re-proofs of different accounts (#253). */
+        private val pacer = ReadPacer()
+
         /** Whether this network's values update live: a readable verified head with block access lists. */
         fun live(): Boolean {
             val head = (chain.snapshot() as? EngineSnapshot.Running)?.readableHead ?: return false
@@ -426,6 +458,7 @@ class MyotisHost private constructor(
                 lastBalances,
                 activity,
                 schedule,
+                pacer = pacer,
             ),
             tokenBalances = VerifiedTokenBalances(
                 network,
@@ -436,6 +469,7 @@ class MyotisHost private constructor(
                 activity,
                 gated = BuiltInTokens.of(network).mapTo(HashSet()) { it.address },
                 schedule = schedule,
+                pacer = pacer,
             ),
             tokenMetadata = VerifiedTokenMetadata(network, chain, Dispatchers.IO, POLL_INTERVAL),
             addressKinds = VerifiedAddressKinds(
@@ -465,6 +499,7 @@ class MyotisHost private constructor(
             blockTransactions = EngineBlockTransactions(network, chain, Dispatchers.IO),
             names = EngineNames(network, chain, Dispatchers.IO),
             safeApprovals = VerifiedSafeApprovals(network, chain, Dispatchers.IO),
+            delayModules = VerifiedDelayModules(network, chain, Dispatchers.IO, POLL_INTERVAL),
             uniswap = VerifiedUniswapV3(chain, Dispatchers.IO, network),
             cow = VerifiedCow(chain, Dispatchers.IO, network),
             logIndex = EngineLogIndex(network, chain, Dispatchers.IO, POLL_INTERVAL),
@@ -531,6 +566,22 @@ class MyotisHost private constructor(
                 return
             }
             if (!accepted) log("Punicus: ${network.displayName}'s light client did not take the stale anchor")
+        }
+
+        /** [FreshCheckpoints.fetchFreshCheckpoint] on this chain's handle, while it runs. Blocks. */
+        fun fetchFreshCheckpoint(useUnconfirmed: Boolean): FreshCheckpoint {
+            val handle = (state as? ChainState.Running)?.handle ?: return FreshCheckpoint.Refused(notRunning(network))
+            val refresh = try {
+                handle.refreshAnchorFromCheckpointz(useUnconfirmed)
+            } catch (e: Throwable) {
+                log("Punicus: ${network.displayName}'s light client could not fetch a checkpoint: $e")
+                return FreshCheckpoint.Refused("The checkpoint servers could not be asked: ${e.message ?: e}")
+            }
+            return if (refresh.applied) {
+                FreshCheckpoint.Applied(refresh.epoch, refresh.operators, refresh.confirmedBy)
+            } else {
+                FreshCheckpoint.Refused(refresh.error ?: "refused", refresh.unconfirmed)
+            }
         }
 
         fun followPauseWanted() {
@@ -687,6 +738,13 @@ class MyotisHost private constructor(
             override fun call(to: Address, data: ByteArray): CallOutcome? {
                 val handle = handle() ?: return null
                 return callOutcome(handle.reads().callDetailed(null, to.bytes(), data, null, "latest", null))
+            }
+
+            // The engine applies a block selector or refuses it; the caller checks the block answered at.
+            override fun callAt(to: Address, data: ByteArray, block: Long): CallOutcome? {
+                val handle = handle() ?: return null
+                val at = "0x" + block.toString(16)
+                return callOutcome(handle.reads().callDetailed(null, to.bytes(), data, null, at, null))
             }
 
             // Accepted only with a verified storage proof tied to the beacon chain and a verdict, as

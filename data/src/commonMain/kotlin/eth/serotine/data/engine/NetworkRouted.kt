@@ -35,6 +35,7 @@ import eth.serotine.domain.repository.LogsReading
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
+import eth.serotine.domain.repository.PrimaryName
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.NftCollectionReading
@@ -48,6 +49,9 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
+import eth.serotine.domain.repository.DelayModules
+import eth.serotine.domain.repository.DelayQueueReading
+import eth.serotine.domain.repository.DelayReading
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
@@ -180,12 +184,30 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
     val names: NameResolver = object : NameResolver {
         override suspend fun resolve(network: Network, name: String): NameResolution =
             of(network)?.names?.resolve(network, name) ?: NameResolution.Unavailable(ReadUnavailable.NO_ENGINE)
+
+        override suspend fun primaryName(network: Network, address: Address): PrimaryName =
+            of(network)?.names?.primaryName(network, address) ?: PrimaryName.Unavailable(ReadUnavailable.NO_ENGINE)
     }
 
     val safeApprovals: SafeApprovals = object : SafeApprovals {
         override suspend fun approval(network: Network, safe: Address, owner: Address, hash: Digest): ApprovalReading =
             of(network)?.safeApprovals?.approval(network, safe, owner, hash)
                 ?: ApprovalReading.Unavailable(ReadUnavailable.NO_ENGINE)
+    }
+
+    val delayModules: DelayModules = object : DelayModules {
+        override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> =
+            of(network)?.delayModules?.observeDelay(network, safe, module)
+                ?: flowOf(DelayReading.Unavailable(ReadUnavailable.NO_ENGINE))
+
+        override suspend fun queue(
+            network: Network,
+            safe: Address,
+            delay: Address,
+            hash: Digest,
+            withMembers: Boolean,
+        ): DelayQueueReading = of(network)?.delayModules?.queue(network, safe, delay, hash, withMembers)
+            ?: DelayQueueReading.Unavailable(ReadUnavailable.NO_ENGINE)
     }
 
     val uniswap: UniswapV3Chain = object : UniswapV3Chain {
@@ -255,6 +277,7 @@ class ChainPorts(
     val blockTransactions: BlockTransactions,
     val names: NameResolver,
     val safeApprovals: SafeApprovals,
+    val delayModules: DelayModules,
     val uniswap: UniswapV3Chain,
     val cow: CowChain,
     val logIndex: LogIndex,

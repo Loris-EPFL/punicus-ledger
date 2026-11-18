@@ -2,6 +2,16 @@ package eth.serotine.ui.safesettings
 
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
+import eth.serotine.domain.repository.DelayFinding
+import eth.serotine.domain.repository.DelayGeneration
+import eth.serotine.domain.repository.DelayModule
+import eth.serotine.domain.repository.DelayModules
+import eth.serotine.domain.repository.DelayQueueReading
+import eth.serotine.domain.repository.DelayReading
+import eth.serotine.domain.usecase.ObserveGnosisPay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeSettingsChange
@@ -24,6 +34,8 @@ import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ProposeSafeSettingsChange
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.ui.SafeWorld
+import eth.serotine.ui.gnosispay.ActionItem
+import eth.serotine.ui.gnosispay.GnosisPayTexts
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.GUARD_REMOVED_WARNING
@@ -53,8 +65,23 @@ import kotlinx.coroutines.test.setMain
 @OptIn(ExperimentalCoroutinesApi::class)
 class SafeSettingsViewModelTest {
 
-    private val world = SafeWorld()
+    private var world = SafeWorld()
     private val clock = TestTimeSource()
+
+    /** What every module of the Safe is, as the Delay's reader proves it: no Delay, unless a test says so. */
+    private var delayFinding: DelayFinding = DelayFinding.NotDelay
+    private val delays = object : DelayModules {
+        override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> =
+            flowOf(DelayReading.Verified(delayFinding, 100))
+
+        override suspend fun queue(
+            network: Network,
+            safe: Address,
+            delay: Address,
+            hash: Digest,
+            withMembers: Boolean,
+        ): DelayQueueReading = error("the settings screen queues nothing through a Delay")
+    }
     private val keys = object : KeyStore {
         override suspend fun describe() =
             KeyStoreDescription.Ready(true, KeyProtection.HARDWARE, BiometricUnlock.NotOnThisDevice)
@@ -81,18 +108,87 @@ class SafeSettingsViewModelTest {
     private fun TestScope.viewModel(): SafeSettingsViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = SafeSettingsViewModel(
-            AccountId(Network.SEPOLIA, world.safe),
+            AccountId(world.network, world.safe),
             ObserveAccounts(world.accounts),
             world.observeSafe,
             DescribeKeyStore(keys),
-            ProposeSafeSettingsChange(world.observeSafe, world.inputs, world.queue, Network.SEPOLIA, Outbox.None),
-            SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA),
+            ProposeSafeSettingsChange(world.observeSafe, world.inputs, world.queue, world.network, Outbox.None),
+            SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, world.network),
             EncodeSigningRequest(world.codec),
+            ObserveGnosisPay(world.kinds, delays, world.accounts),
             clock,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
         return viewModel
+    }
+
+    @Test
+    fun aGnosisPayAccountListsItsDelayMembersWithAddAndRemove() = runTest {
+        // A Gnosis Pay account: one owner, the placeholder; its Delay's members control it (owner ruling, 2026-11-18).
+        world = SafeWorld(Network.GNOSIS)
+        val delay = Address.of("0x" + "de".repeat(20))
+        val placeholder = Address.of("0x" + "0".repeat(39) + "2")
+        world.state = world.state.copy(owners = listOf(placeholder), threshold = 1, modules = listOf(delay))
+        delayFinding = DelayFinding.Wired(
+            DelayModule(delay, DelayGeneration.CURRENT, 180, 1_800, 0, 0, listOf(world.alice.address, world.carol)),
+        )
+        val viewModel = viewModel()
+        val members = assertNotNull(viewModel.overview.delayMembers)
+
+        assertEquals(
+            listOf(Eip55.format(world.alice.address), Eip55.format(world.carol)),
+            members.members.map { it.address },
+        )
+        // Alice's key is held here: she controls the account, and so may add or remove a member.
+        assertEquals(listOf(true, false), members.members.map { it.heldHere })
+        assertEquals("Alice", members.members.first().label)
+        assertTrue(members.add.enabled)
+        assertTrue(members.members.all { it.remove?.enabled == true })
+
+        // The last member is never removed: greyed out, saying why (owner ruling, 2026-10-18, #55).
+        delayFinding = DelayFinding.Wired(
+            DelayModule(delay, DelayGeneration.CURRENT, 180, 1_800, 0, 0, members = listOf(world.alice.address)),
+        )
+        val alone = assertNotNull(viewModel().overview.delayMembers).members.single().remove
+        assertEquals(false, alone?.enabled)
+        assertTrue(alone?.reason.orEmpty().contains("only member"))
+    }
+
+    @Test
+    fun aDelayWhoseEntriesNeverExpireGreysTheMemberActionsOut() = runTest {
+        // Owner's decision, 2026-11-18: no member is added or removed through such a Delay.
+        world = SafeWorld(Network.GNOSIS)
+        val delay = Address.of("0x" + "de".repeat(20))
+        world.state = world.state.copy(modules = listOf(delay))
+        delayFinding = DelayFinding.Wired(
+            DelayModule(delay, DelayGeneration.CURRENT, 180, 0, 0, 0, listOf(world.alice.address, world.carol)),
+        )
+        val members = assertNotNull(viewModel().overview.delayMembers)
+
+        assertEquals(ActionItem(false, GnosisPayTexts.MEMBERS_NO_EXPIRATION), members.add)
+        assertTrue(members.members.all { it.remove == ActionItem(false, GnosisPayTexts.MEMBERS_NO_EXPIRATION) })
+    }
+
+    @Test
+    fun aGnosisPayAccountWithoutAControllingKeyGreysTheMemberActionsOut() = runTest {
+        world = SafeWorld(Network.GNOSIS)
+        val delay = Address.of("0x" + "de".repeat(20))
+        world.state = world.state.copy(modules = listOf(delay))
+        // Bob is watched and Carol is not in the wallet: no key here controls the Delay.
+        delayFinding = DelayFinding.Wired(
+            DelayModule(delay, DelayGeneration.CURRENT, 180, 1_800, 0, 0, listOf(world.bob.address, world.carol)),
+        )
+        val members = assertNotNull(viewModel().overview.delayMembers)
+
+        assertFalse(members.add.enabled)
+        assertNotNull(members.add.reason)
+        assertTrue(members.members.all { it.remove?.enabled == false && it.remove?.reason != null })
+    }
+
+    @Test
+    fun anyOtherSafeHasNoDelayMembers() = runTest {
+        assertNull(viewModel().overview.delayMembers)
     }
 
     private val SafeSettingsViewModel.overview get() = assertIs<SafeSettingsUiState.Overview>(uiState.value)

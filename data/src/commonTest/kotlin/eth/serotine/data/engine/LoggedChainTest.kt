@@ -154,6 +154,8 @@ internal class FakeEngineChain(
 
     override fun call(to: Address, data: ByteArray): CallOutcome? = base.call(to, data)
 
+    override fun callAt(to: Address, data: ByteArray, block: Long): CallOutcome? = base.callAt(to, data, block)
+
     override fun proveSlot(address: Address, slot: Long, holder: Address?): ProvenSlot? =
         base.proveSlot(address, slot, holder)
 

@@ -110,7 +110,8 @@ sealed interface GnosisPayStep {
      * null for the network's currency), the recipient [to] and the [amount] as typed, the [sender]
      * (the member whose key signs, by name), [error] what is wrong with them, [quoting] while
      * Review checks them on chain, and [skip] when the Delay's queue holds an expired entry ahead:
-     * then "Skip expired entries" is offered beside the error.
+     * then "Skip expired entries" is offered beside the error; and [note], what the last step did
+     * that is no error (a skip sent), drawn plainly.
      */
     data class Compose(
         val assets: List<AssetItem>,
@@ -121,6 +122,7 @@ sealed interface GnosisPayStep {
         val error: String? = null,
         val quoting: Boolean = false,
         val skip: Boolean = false,
+        val note: String? = null,
     ) : GnosisPayStep
 
     /**
@@ -137,6 +139,7 @@ sealed interface GnosisPayStep {
         val error: String? = null,
         val quoting: Boolean = false,
         val skip: Boolean = false,
+        val note: String? = null,
     ) : GnosisPayStep
 
     /**

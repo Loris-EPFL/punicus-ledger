@@ -283,15 +283,18 @@ first that has not expired. Anyone may call it, and it moves nothing.
   waits behind it ("Skip expired entries"; that transfer's Execute is
   greyed out meanwhile, saying why).
 - It is the transaction of a key held here on Gnosis Chain, which pays its
-  fee: a controlling key first, else any. No control of the account is
+  fee: from a queued transfer's row, the key that queued it, where it is
+  held; then a controlling key; else any. No control of the account is
   needed, since the call moves nothing.
 - Before it is quoted, the Delay's queue is read fresh, which proves the
   Delay the Safe's own of the current mastercopy, and its next entry must
   have expired by that head; a skip of the same Delay from here not mined
-  yet is refused. The call is then quoted, run as a verified call, and
-  reviewed and signed like a queueing. The review says that it moves
-  nothing, and that every expired entry from the next on can never be
-  executed afterwards.
+  yet is refused for as long as a sender's record holds its nonce, three
+  hours. Its gas limit has room to skip every entry still waiting, since
+  more may expire by the block that mines it. The call is then quoted, run
+  as a verified call, and reviewed and signed like a queueing. The review
+  says that it moves nothing, and that every expired entry from the next on
+  can never be executed afterwards.
 - It is recorded as a skip (`SentAction.DelaySkip`) and listed in the
   account's activity.
 

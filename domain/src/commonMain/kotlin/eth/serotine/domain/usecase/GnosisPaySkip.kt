@@ -83,8 +83,10 @@ sealed interface DelaySkipQuoting {
  * queue is read fresh first ([DelayModules.queue]), which proves the Delay the Safe's own of the
  * current mastercopy (owner's decisions, 2026-11-15: nothing is sent to another); its next entry
  * must have expired by the head the queue was read at, else there is nothing to skip. A skip of the
- * same Delay from here that is on its way is refused, as a second would only pay its fee. The
- * sender's call is then quoted ([CallQuoter]): run as a verified call, it must not revert.
+ * same Delay from here that no block has taken is refused for as long as a sender's record holds
+ * its nonce ([RECORD_LIFETIME_SECONDS]), as a second would only pay its fee. The sender's call is
+ * then quoted ([CallQuoter]): run as a verified call, it must not revert, and its gas limit has
+ * room to skip every entry still waiting, since more may expire by the block that mines it.
  * [clock] is in unix seconds.
  */
 class QuoteDelaySkip(
@@ -121,14 +123,18 @@ class QuoteDelaySkip(
         entries.firstOrNull {
             val skip = it.transfer.action as? SentAction.DelaySkip ?: return@firstOrNull false
             it.transfer.network == network && skip.delay == delay &&
-                it.outcome == SentOutcome.NotSeen && it.transfer.sentAt >= now - FOLLOW_SECONDS
+                it.outcome == SentOutcome.NotSeen && it.transfer.sentAt >= now - RECORD_LIFETIME_SECONDS
         }?.let { return DelaySkipQuoting.SkipOnItsWay(it.transfer.hash) }
         quoter.heldBack(sender)?.let { return DelaySkipQuoting.NotQuoted(it) }
         val native = when (val balance = NativeRead.of(nativeBalances.observeBalance(network, sender).first())) {
             is NativeRead.Before -> balance
             is NativeRead.NotRead -> return DelaySkipQuoting.NotQuoted(balance.refusal)
         }
-        return when (val quoted = quoter.quote(sender, delay, UInt256.ZERO, SKIP_EXPIRED, level, native)) {
+        // Every entry still waiting may have expired by the block that mines it: room to skip each.
+        val headroom = (queue.queueNonce - queue.txNonce) * GAS_PER_ENTRY
+        return when (
+            val quoted = quoter.quote(sender, delay, UInt256.ZERO, SKIP_EXPIRED, level, native, extraGas = headroom)
+        ) {
             is CallQuoting.Quoted -> DelaySkipQuoting.Quoted(
                 DelaySkipQuote(
                     network,
@@ -147,6 +153,12 @@ class QuoteDelaySkip(
     private companion object {
         /** A hash no call has: the queue read for its head alone. */
         val NO_CALL = Digest.of("00".repeat(32))
+
+        /**
+         * Gas for one more entry skipped: the loop's cold reads of `txCreatedAt(n)` and its check
+         * (2,100 + 2,100 + the arithmetic), rounded up, and `txNonce`'s write already in the estimate.
+         */
+        const val GAS_PER_ENTRY = 5_000L
     }
 }
 

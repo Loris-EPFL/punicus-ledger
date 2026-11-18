@@ -435,6 +435,7 @@ private fun Compose(state: GnosisPayUiState.Ready, step: GnosisPayStep.Compose, 
         keyboardActions = submitOnDone(!step.quoting, actions.onReview),
         modifier = Modifier.fillMaxWidth().focusRequester(amountField).testTag(GNOSIS_PAY_AMOUNT_TAG),
     )
+    step.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     // An expired entry blocks the Delay's queue: its skip moves nothing, and lets the transfer through.
     if (step.skip) {
@@ -467,6 +468,7 @@ private fun AddMember(state: GnosisPayUiState.Ready, step: GnosisPayStep.AddMemb
         keyboardActions = submitOnDone(!step.quoting, actions.onReviewMember),
         modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_MEMBER_TAG),
     )
+    step.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     // As on the transfer form: an expired entry blocks the queue, and its skip moves nothing.
     if (step.skip) {

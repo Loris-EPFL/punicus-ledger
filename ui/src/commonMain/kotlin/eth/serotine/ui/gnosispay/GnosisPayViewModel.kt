@@ -121,6 +121,7 @@ class GnosisPayViewModel(
             val error: String? = null,
             val quoting: Boolean = false,
             val skip: Boolean = false,
+            val note: String? = null,
         ) : Flow
 
         /** The form that adds a member: the [member]'s address as typed; [skip] as on [Compose]. */
@@ -129,6 +130,7 @@ class GnosisPayViewModel(
             val error: String? = null,
             val quoting: Boolean = false,
             val skip: Boolean = false,
+            val note: String? = null,
         ) : Flow
 
         /**
@@ -221,7 +223,14 @@ class GnosisPayViewModel(
                         val seen = sends.value
                         // A read that throws is no answer this time; the next poll asks again.
                         safely { readDelayTransfers(safe, module) }?.let {
-                            readAt = timeSource.markNow()
+                            // Counted from the first read of a head: a read that finds the same head
+                            // again leaves the countdown where it was, never runs it back.
+                            val head = (it as? DelayTransfersReading.Read)?.transfers?.mapNotNull { q -> q.headTime }
+                                ?.maxOrNull()
+                            if (head == null || head != readHead) {
+                                readAt = timeSource.markNow()
+                                readHead = head
+                            }
                             emit(it)
                         }
                         // The next poll, or a send since this read, whichever comes first; the list
@@ -234,6 +243,9 @@ class GnosisPayViewModel(
 
     /** When the queued transfers were last read, on [timeSource]: a cooldown counts down from that read's head. */
     private var readAt: TimeMark = timeSource.markNow()
+
+    /** The verified head the queue was last read at, whose first read [readAt] marks. */
+    private var readHead: Long? = null
 
     // Shared: the screen and the countdown read the same answers, and the queue is read once per poll.
     private val chain = combine(
@@ -372,7 +384,7 @@ class GnosisPayViewModel(
             // While its execution is being quoted: greyed out, saying so.
             // Anything quoted from the overview, this Execute or a skip, holds every action back meanwhile.
             val checking = action.enabled && busy != null
-            if (checking) ActionItem(false, GnosisPayTexts.CHECKING) else action
+            if (checking) ActionItem(false, busyReason(busy, queued.queuedBy)) else action
         }
         // The Delay's next entry expired, this one or one ahead: its skip is offered here, by any key
         // held on the network. One ahead blocks this one, which says so; this one expired says that.
@@ -384,7 +396,7 @@ class GnosisPayViewModel(
             !skippable -> null
             found.keysHere.isEmpty() -> ActionItem(false, GnosisPayTexts.SKIP_NEEDS_KEY)
             // Anything quoted from the overview, this skip or an Execute, holds it back meanwhile.
-            busy != null -> ActionItem(false, GnosisPayTexts.CHECKING)
+            busy != null -> ActionItem(false, busyReason(busy, queued.queuedBy))
             else -> ActionItem(true, null)
         }
         return QueuedRow(
@@ -420,6 +432,7 @@ class GnosisPayViewModel(
             error = step.error,
             quoting = step.quoting,
             skip = step.skip,
+            note = step.note,
         )
         is Flow.AddMember -> GnosisPayStep.AddMember(
             member = step.member,
@@ -428,6 +441,7 @@ class GnosisPayViewModel(
             error = step.error,
             quoting = step.quoting,
             skip = step.skip,
+            note = step.note,
         )
         is Flow.Review -> GnosisPayStep.Review(
             title = when (val reviewed = step.quote) {
@@ -592,9 +606,10 @@ class GnosisPayViewModel(
     }
 
     /** This form (Send's or Add member's) with [quoting], [error] and [skip] (null: kept) set; else as it is. */
-    private fun Flow.formed(quoting: Boolean, error: String?, skip: Boolean? = null): Flow = when (this) {
-        is Flow.Compose -> copy(quoting = quoting, error = error, skip = skip ?: this.skip)
-        is Flow.AddMember -> copy(quoting = quoting, error = error, skip = skip ?: this.skip)
+    private fun Flow.formed(quoting: Boolean, error: String?, skip: Boolean? = null, note: String? = null): Flow =
+        when (this) {
+        is Flow.Compose -> copy(quoting = quoting, error = error, skip = skip ?: this.skip, note = note)
+        is Flow.AddMember -> copy(quoting = quoting, error = error, skip = skip ?: this.skip, note = note)
         else -> this
     }
 
@@ -607,7 +622,7 @@ class GnosisPayViewModel(
     private fun editCompose(edit: (Flow.Compose) -> Flow.Compose) {
         val current = flowState.value as? Flow.Compose ?: return
         if (current.quoting) return
-        flowState.value = edit(current)
+        flowState.value = edit(current).copy(note = null)
     }
 
     /** Review: the transfer planned from the form and its queueing quoted on chain. */
@@ -653,7 +668,7 @@ class GnosisPayViewModel(
                 return@launch landed(review)
             }
             flowState.value = when (quoting) {
-                null -> compose.copy(quoting = false, error = GnosisPayTexts.QUOTE_FAILED)
+                null -> compose.copy(quoting = false, error = GnosisPayTexts.QUOTE_FAILED, skip = false)
                 // An expired entry ahead blocks every transfer behind it: its skip is offered on the form.
                 DelayQuoting.HeadExpired ->
                     compose.copy(quoting = false, error = GnosisPayTexts.quoteRefused(quoting), skip = true)
@@ -663,7 +678,7 @@ class GnosisPayViewModel(
                         error = GnosisPayTexts.quoteRefused(quoting),
                         skip = quoting.skippable,
                     )
-                else -> compose.copy(quoting = false, error = GnosisPayTexts.quoteRefused(quoting))
+                else -> compose.copy(quoting = false, error = GnosisPayTexts.quoteRefused(quoting), skip = false)
             }
         }
     }
@@ -684,7 +699,12 @@ class GnosisPayViewModel(
             is Flow.Overview -> if (from.busy != null || latestQueued.none { it.expiredHead }) return else null
             is Flow.Review -> return
         }
-        val sender = (found.controllersHeld.map { it.account } + found.keysHere).firstOrNull()?.address
+        // The key that queued a blocked transfer pays for its skip, where it is held; then a controlling
+        // key; then any key held here on the network (docs/gnosis-pay.md, *Skipping expired entries*).
+        val queuers = if (compose == null) latestQueued.filter { it.expiredHead }.map { it.member } else emptyList()
+        val held = found.keysHere.map { it.address }
+        val sender = (queuers.filter { it in held } + found.controllersHeld.map { it.account.address } + held)
+            .firstOrNull()
         if (sender == null) {
             if (compose != null) {
                 flowState.value = compose.formed(quoting = false, error = GnosisPayTexts.SKIP_NEEDS_KEY)
@@ -876,7 +896,7 @@ class GnosisPayViewModel(
             when (sending) {
                 // A skip goes back to the form it was offered on, to review the transfer again once it is mined.
                 is TransferSending.Sent -> if (review.quote is Reviewed.Skip && review.form != null) {
-                    flowState.value = review.form.formed(quoting = false, error = GnosisPayTexts.SKIP_SENT)
+                    flowState.value = review.form.formed(quoting = false, error = null, note = GnosisPayTexts.SKIP_SENT)
                 } else {
                     flowState.value = Flow.Overview()
                     sentHash.value = sending.hash
@@ -984,6 +1004,13 @@ class GnosisPayViewModel(
     }
 
     private fun unavailable(reason: ReadUnavailable): String = GnosisPayTexts.unavailable(reason)
+
+    /** What holds a row's action back while [busy] is quoted from the overview, said for the row [row]. */
+    private fun busyReason(busy: String?, row: String): String = when (busy) {
+        SKIP_BUSY -> GnosisPayTexts.SKIP_CHECKING
+        row -> GnosisPayTexts.CHECKING
+        else -> GnosisPayTexts.OTHER_CHECKING
+    }
 
     /**
      * What is left of a cooldown of [cooldown] seconds ending at [readyAt], at [now] (the chain's time):

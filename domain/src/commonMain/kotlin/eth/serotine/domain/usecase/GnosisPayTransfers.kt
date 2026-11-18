@@ -451,9 +451,10 @@ class QuoteDelayQueue(
             queue.expirationSeconds in 1..DELAY_EXPIRY_MARGIN_SECONDS ->
                 return DelayQuoting.WindowTooShort(queue.expirationSeconds)
             queue.entry != null -> return if (queue.state(read.headTime) is DelayTransferState.Expired) {
-                // Expiry follows queueing order: once this one expired, the next entry did too, and a skip
-                // removes both. Within the margin of its end only, there is nothing to skip yet.
-                DelayQuoting.SameCallExpired(skippable = queue.headExpired(read.headTime))
+                // A skip removes it once it expired itself, as the Delay counts; the next entry then did
+                // too. Within the margin of its own end there is nothing of it to skip yet.
+                val entryEnds = queue.entry.createdAt + queue.cooldownSeconds + queue.expirationSeconds
+                DelayQuoting.SameCallExpired(skippable = queue.expirationSeconds != 0L && read.headTime > entryEnds)
             } else {
                 DelayQuoting.AlreadyQueued(sameCall?.entry?.transfer?.hash)
             }

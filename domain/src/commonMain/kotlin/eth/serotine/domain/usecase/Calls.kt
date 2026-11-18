@@ -234,6 +234,9 @@ internal class CallQuoter(
      * (a token's `transfer` that returns false refused as surely as one that reverts). [heldBack]
      * is asked first, before any other read starts, [holdQueued] passed on.
      *
+     * [extraGas] is added to the engine's estimate for a call whose work can grow by the time it is
+     * mined (a Delay's skip, which skips every entry expired by then): never less than the estimate.
+     *
      * [testFunds] false leaves out the test of the native balance against the value and the most
      * the fee can be at these fresh figures: the check of a queued transaction does, since a peer
      * tests the signed figures, and it tests those itself (docs/lenient-mode.md, *The check before
@@ -248,6 +251,7 @@ internal class CallQuoter(
         native: NativeRead.Before,
         testFunds: Boolean = true,
         holdQueued: Boolean = true,
+        extraGas: Long = 0,
         accepts: (returnHex: String) -> Boolean = { true },
     ): CallQuoting = cancellingReads {
         fun refused(refusal: CallRefusal) = CallQuoting.Refused(refusal)
@@ -270,7 +274,8 @@ internal class CallQuoter(
         val gas = when (val estimate = estimated.await()) {
             // The engine's, priced under the fork the chain runs: on Sepolia's Amsterdam a plain
             // transfer takes less than the 21000 it did before (EIP-2780), so no floor is added.
-            is GasEstimate.Estimated -> estimate.gas
+            // Plus [extraGas], for a call whose work grows between the quote and the block that mines it.
+            is GasEstimate.Estimated -> estimate.gas + extraGas
             is GasEstimate.Reverted -> return@cancellingReads refused(CallRefusal.Reverts(blockNumber = null))
             // The EVM's words: about what the sender can pay, or something else it cannot do.
             is GasEstimate.Infeasible -> return@cancellingReads refused(

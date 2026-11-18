@@ -470,14 +470,19 @@ class GnosisPayViewModelTest {
         // Past its end, while the head read still says Waiting: never 0:00 for good, and the queue is
         // read again every few seconds, a bounded number of times, until a head past its end answers.
         val readsBefore = delays.queueReads
-        time += 120.seconds
-        testScheduler.advanceTimeBy(120_000)
+        // The head reaches 1179, a second short, at 120 s; a few seconds on, re-reads find it again.
+        repeat(125) {
+            time += 1.seconds
+            testScheduler.advanceTimeBy(1_000)
+        }
         val due = (viewModel.uiState.value as GnosisPayUiState.Ready).queued.single()
-        // The last head read is a second short of the end: at most that second, then "shortly".
-        assertTrue(due.status in setOf(GnosisPayTexts.EXECUTABLE_SHORTLY, "Executable in 0:01"), due.status)
-        assertTrue((due.cooldownLeft ?: 1f) <= 1f / 180f, due.cooldownLeft.toString())
-        time += 60.seconds
-        testScheduler.advanceTimeBy(60_000)
+        // Counted from the first read of the last head, never run back by a read of the same head again.
+        assertEquals(GnosisPayTexts.EXECUTABLE_SHORTLY, due.status)
+        assertEquals(0f, due.cooldownLeft)
+        repeat(60) {
+            time += 1.seconds
+            testScheduler.advanceTimeBy(1_000)
+        }
         val reads = delays.queueReads - readsBefore
         assertTrue(reads in 10..20, "$reads reads again")
     }

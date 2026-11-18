@@ -84,11 +84,21 @@ const val GNOSIS_PAY_AMOUNT_TAG = "gnosis-pay-amount"
 
 /** Test tag of Review, for UI tests. */
 const val GNOSIS_PAY_REVIEW_TAG = "gnosis-pay-review"
+
 /** Skip expired entries: on the form, and (suffixed with the queueing's hash) on a queued transfer's row. */
 const val GNOSIS_PAY_SKIP_TAG = "gnosis-pay-skip"
 
 /** A queued transfer's cooldown bar (suffixed with the queueing's hash), for UI tests. */
 const val GNOSIS_PAY_COOLDOWN_TAG = "gnosis-pay-cooldown"
+
+/** Test tag of the new member's address field, for UI tests. */
+const val GNOSIS_PAY_MEMBER_TAG = "gnosis-pay-member"
+
+/** Test tag of the add form's Review, for UI tests. */
+const val GNOSIS_PAY_MEMBER_REVIEW_TAG = "gnosis-pay-member-review"
+
+/** Test tag of the review's warning, for UI tests. */
+const val GNOSIS_PAY_WARNING_TAG = "gnosis-pay-warning"
 
 /** Test tag of the password field, for UI tests. */
 const val GNOSIS_PAY_PASSWORD_TAG = "gnosis-pay-password"
@@ -101,6 +111,8 @@ const val GNOSIS_PAY_SIGN_TAG = "gnosis-pay-sign"
  * through [onGone], a transaction sent opens its status through [onSent], and a screen no longer
  * shown drops the password typed and has its quote made again when it is shown. [lightClient] is
  * Gnosis Chain's: the strip above the screen in Detailed view, the sync line in simple mode.
+ * [start], when the Safe's settings opened it for a change of the Delay's members, is handed to the
+ * ViewModel once the account is read (owner ruling, 2026-11-18).
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -111,6 +123,7 @@ fun GnosisPayRoute(
     onGone: () -> Unit,
     onSent: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
+    start: GnosisPayStart? = null,
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
@@ -120,6 +133,10 @@ fun GnosisPayRoute(
     val opened by rememberUpdatedState(onSent)
     LaunchedEffect(state is GnosisPayUiState.Gone) {
         if (state is GnosisPayUiState.Gone) gone()
+    }
+    val ready = state is GnosisPayUiState.Ready
+    LaunchedEffect(ready, start) {
+        if (ready && start != null) viewModel.start(start)
     }
     LaunchedEffect(sent) {
         sent?.let {
@@ -133,7 +150,8 @@ fun GnosisPayRoute(
     // The system's back steps as the top bar's does: from the form or the review to the overview,
     // and it waits while a signature runs (the ViewModel holds it), never leaving the screen under it.
     val stepped = (state as? GnosisPayUiState.Ready)?.step.let { it != null && it !is GnosisPayStep.Overview }
-    BackHandler(enabled = stepped) { viewModel.back() }
+    // Opened by the Safe's settings for a change of members, Back from its step leaves the screen.
+    BackHandler(enabled = stepped) { if (!viewModel.back()) onBack() }
     DisposableEffect(viewModel) { onDispose { viewModel.onHidden() } }
     GnosisPayScreen(
         state = state,
@@ -148,6 +166,8 @@ fun GnosisPayRoute(
             onPasswordChange = viewModel::onPasswordChange,
             onSign = viewModel::sign,
             onSignWithBiometrics = viewModel::signWithBiometrics,
+            onMemberChange = viewModel::onMemberChange,
+            onReviewMember = { viewModel.reviewAddMember() },
             onSkipExpired = { viewModel.skipExpired() },
         ),
         modifier = modifier,
@@ -168,6 +188,8 @@ data class GnosisPayActions(
     val onPasswordChange: (String) -> Unit = {},
     val onSign: () -> Unit = {},
     val onSignWithBiometrics: () -> Unit = {},
+    val onMemberChange: (String) -> Unit = {},
+    val onReviewMember: () -> Unit = {},
     val onSkipExpired: () -> Unit = {},
 )
 
@@ -221,6 +243,7 @@ fun GnosisPayScreen(
                     is GnosisPayUiState.Ready -> when (val step = state.step) {
                         is GnosisPayStep.Overview -> Overview(state, step, actions) { unavailable = it }
                         is GnosisPayStep.Compose -> Compose(state, step, actions)
+                        is GnosisPayStep.AddMember -> AddMember(state, step, actions)
                         is GnosisPayStep.Review -> Review(step, actions)
                     }
                 }
@@ -310,8 +333,21 @@ private fun Overview(
         modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_SEND_TAG).unavailable(!state.send.enabled),
         colors = if (state.send.enabled) ButtonDefaults.buttonColors() else Unavailable.buttonColors(),
     ) { Text(sendLabel) }
+    step.checking?.let { checking ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CircularProgressIndicator(Modifier.padding(4.dp))
+            Text(checking)
+        }
+    }
     Text("Queued from this device", style = MaterialTheme.typography.titleSmall)
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    // A removal refused for an expired entry ahead: its skip, here, since a removal has no form.
+    if (step.skip) {
+        OutlinedButton(
+            onClick = actions.onSkipExpired,
+            modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_SKIP_TAG),
+        ) { Text("Skip expired entries") }
+    }
     if (state.queued.isEmpty()) Text("Nothing is waiting.", style = MaterialTheme.typography.bodyMedium)
     state.queued.forEach { row ->
         Card(Modifier.fillMaxWidth()) {
@@ -423,9 +459,47 @@ private fun Compose(state: GnosisPayUiState.Ready, step: GnosisPayStep.Compose, 
     ) { Text(if (step.quoting) "Checking on chain…" else "Review") }
 }
 
+/** The form that adds a member to the Delay: what a member can do, then its address (owner ruling, 2026-11-18). */
+@Composable
+private fun AddMember(state: GnosisPayUiState.Ready, step: GnosisPayStep.AddMember, actions: GnosisPayActions) {
+    Text("Add a member to ${state.label}", style = MaterialTheme.typography.titleLarge)
+    Text(step.explains, color = MaterialTheme.colorScheme.error)
+    Text("Signed by ${step.sender.ifBlank { "the controlling account" }}, which pays the fees.")
+    OutlinedTextField(
+        value = step.member,
+        onValueChange = actions.onMemberChange,
+        label = { Text("Member (address)") },
+        singleLine = true,
+        enabled = !step.quoting,
+        keyboardOptions = KeyboardOptions().done(),
+        keyboardActions = submitOnDone(!step.quoting, actions.onReviewMember),
+        modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_MEMBER_TAG),
+    )
+    step.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+    step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    // As on the transfer form: an expired entry blocks the queue, and its skip moves nothing.
+    if (step.skip) {
+        OutlinedButton(
+            onClick = actions.onSkipExpired,
+            enabled = !step.quoting,
+            modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_SKIP_TAG),
+        ) { Text("Skip expired entries") }
+    }
+    Button(
+        onClick = actions.onReviewMember,
+        enabled = !step.quoting,
+        modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_MEMBER_REVIEW_TAG),
+    ) { Text(if (step.quoting) "Checking on chain…" else "Review") }
+}
+
 @Composable
 private fun Review(step: GnosisPayStep.Review, actions: GnosisPayActions) {
     Text(step.title, style = MaterialTheme.typography.titleLarge)
+    step.warning?.let {
+        Card(Modifier.fillMaxWidth().testTag(GNOSIS_PAY_WARNING_TAG)) {
+            Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
+        }
+    }
     step.lines.forEach { (label, value) ->
         Column {
             Text(label, style = MaterialTheme.typography.labelMedium)

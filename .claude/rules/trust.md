@@ -199,9 +199,31 @@ carve-out of 2026-11-10 and its rulings of 2026-11-11 and 2026-11-13 on #761;
   found no proof or the light client catches up. For an hour of the app
   running at most; a verified answer that differs, or a reason that stands,
   replaces it at once. No transfer is planned on a held Safe or Delay.
-- **Only plain transfers.** The Safe's xDAI as the value with no data, or an
-  ERC-20 `transfer` with no value; operation CALL; never to the Safe, its
-  modules or the Delay. Anything else is refused.
+- **Only plain transfers**, and the two calls below. The Safe's xDAI as the
+  value with no data, or an ERC-20 `transfer` with no value; operation CALL;
+  never to the Safe, its modules or the Delay. Anything else is refused.
+- **A member of the Delay is added or removed the same way** (owner ruling,
+  2026-11-18; docs/gnosis-pay.md, *Adding and removing a member*). It amends
+  *Only plain transfers* and "it enables none" below for this one case:
+  - Only on the account's own Delay of the current mastercopy, by a key that
+    controls it here (as for Send: held here and acting alone), queued, then
+    executed after the cooldown exactly like a transfer, with the same queue
+    checks before the execution. The call is the Safe's own call of its
+    Delay: `enableModule(member)` or `disableModule(previous, member)`, no
+    value, operation CALL.
+  - **Add.** A new member can move all the account's funds after the
+    cooldown; the review says so in plain words. Refused: the zero address
+    and `0x…01` to `0x…ff` (the sentinel among them), the Safe itself, the
+    Delay, any of the Safe's enabled modules, and an existing member.
+  - **Remove.** Refused for the last member: the Safe's one owner is a
+    placeholder, so with no member its funds are locked for good. Warned, not
+    refused, when the member removed is the way this device controls the
+    account (the held key itself, or the member Safe it reaches the Delay
+    through): after its execution this device can no longer send from the
+    account, unless another way remains.
+  - Nothing else beyond plain transfers and these two calls is ever queued.
+    *Enabling a Safe module is refused* (modules on the Safe itself) stands
+    unchanged.
 - **The current mastercopy only.** `0x22d9…1ef0`, deployed after the exploit
   of 2026-06-01, is sent through. The retired `0x4A97…F9f5` is recognised,
   and Send is greyed out, saying why.
@@ -220,8 +242,9 @@ carve-out of 2026-11-10 and its rulings of 2026-11-11 and 2026-11-13 on #761;
   expiration are the limits. The Roles allowance binds Gnosis Pay's spender,
   not the member; it is shown, display-only, once where today's accounts keep
   it is known.
-- This uses a module already enabled. It enables none, and *Enabling a Safe
-  module is refused* stands.
+- This uses a module already enabled. It enables none on the Safe, and
+  *Enabling a Safe module is refused* stands. On the Delay it enables a member
+  only as the owner ruling of 2026-11-18 above allows.
 
 ## Network-upgrade warnings are peer reports, and say so
 

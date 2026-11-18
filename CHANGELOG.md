@@ -15,6 +15,12 @@ and issues of this repository.
 - A website, `website/`: what Punicus does in plain words, the downloads and
   a guide to adding accounts and Safes, published to GitHub Pages by the
   `Website` workflow (#316).
+- Gnosis Pay: a Gnosis Pay account's Safe settings list the members of its
+  Delay module, who control it, and a key held here that controls the
+  account can add a member or remove one, never the last, queued through
+  the Delay and executed after its wait like a transfer. Adding one says
+  that the new member can move all the account's funds; removing the way
+  this device controls the account says it ends that control.
 - Gnosis Pay: "Skip expired entries" clears an expired entry that blocks the
   Delay module's queue, with the module's own `skipExpired()`, which moves
   nothing. It is offered on the Send form and on a transfer queued here that

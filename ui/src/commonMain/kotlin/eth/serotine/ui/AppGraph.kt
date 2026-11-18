@@ -691,6 +691,7 @@ class AppGraph(
         ProposeSafeSettingsChange(observeSafe(), transactionInputs, safeTxQueue, safe.network, outbox),
         signSafeTx(safe.network),
         EncodeSigningRequest(signingRequests),
+        observeGnosisPay(),
     )
 
     /** Import a signing request for the Safe at [safe]. */

@@ -36,11 +36,20 @@ interface DelayModules {
      * the next entry to execute was queued, whatever its hash, which tells whether it expired and
      * so blocks every entry behind it. With them,
      * the time of the verified head they were read at, which is when "now" is for the cooldown.
+     * With [withMembers], the Delay's members too, in its own order, at the same block
+     * ([DelayQueue.members], never null then): what a change of its members is checked against
+     * (owner ruling, 2026-11-18). Without, they are not read, and [DelayQueue.members] is null.
      * The one read that what is quoted or sent through a Delay rests on. Blocks on the engine,
      * bounded by it; never throws. A [network] no adapter serves here is refused
      * ([ReadUnavailable.NO_ENGINE]).
      */
-    suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading
+    suspend fun queue(
+        network: Network,
+        safe: Address,
+        delay: Address,
+        hash: Digest,
+        withMembers: Boolean = false,
+    ): DelayQueueReading
 
     companion object {
         /** Entries searched from the next to execute on: an entry further back is not looked for. */
@@ -70,7 +79,8 @@ sealed interface DelayQueueReading {
  * to execute, and [queueNonce], the next to be added; [cooldownSeconds] and [expirationSeconds]
  * (0: for ever) as they are at that block; [entry], the first entry of the call's hash from
  * [txNonce] on, or null when none was found among the [searched] entries from [txNonce] on; and
- * [headCreatedAt], when the entry at [txNonce] was queued, null when the queue is empty.
+ * [headCreatedAt], when the entry at [txNonce] was queued, null when the queue is empty; and
+ * [members], the Delay's members in its own order at that block, null when they were not asked for.
  */
 data class DelayQueue(
     val txNonce: Long,
@@ -80,6 +90,7 @@ data class DelayQueue(
     val entry: DelayEntry?,
     val searched: Int,
     val headCreatedAt: Long? = entry?.takeIf { it.nonce == txNonce }?.createdAt,
+    val members: List<Address>? = null,
 ) {
     init {
         require(txNonce in 0..queueNonce) { "a Delay's next entry is within its queue" }

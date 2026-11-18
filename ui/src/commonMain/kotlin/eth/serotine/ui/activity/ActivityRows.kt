@@ -1,6 +1,9 @@
 package eth.serotine.ui.activity
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayCall
+import eth.serotine.domain.model.DelayMemberChange
+import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PinnedFallbackHandlers
@@ -343,16 +346,8 @@ internal class ActivityRows(
             // The dApp's name is its own claim: said as such.
             is SentAction.DappCall -> Triple("Sent for a dApp stating it is “${action.dapp}”", action.to, "To")
             // A Gnosis Pay account's transfer through its Delay: queued first, executed after the cooldown.
-            is SentAction.DelayQueue -> Triple(
-                "Queued ${amount(action.transfer.amount, action.transfer.asset)} through the Delay",
-                action.transfer.recipient,
-                "To",
-            )
-            is SentAction.DelayExecution -> Triple(
-                "Executed ${amount(action.transfer.amount, action.transfer.asset)} through the Delay",
-                action.transfer.recipient,
-                "To",
-            )
+            is SentAction.DelayQueue -> delayCall("Queued", action.call)
+            is SentAction.DelayExecution -> delayCall("Executed", action.call)
             // Moves nothing: the Delay's next entry past every expired one.
             is SentAction.DelaySkip -> if (transfer.account == address) {
                 Triple("Skipped expired entries of a Delay", action.safe, "Of")
@@ -480,6 +475,18 @@ internal class ActivityRows(
         } else {
             Triple("$verb transaction ${request.nonce}: ${does(request)}", sender, "By")
         }
+
+    /**
+     * A Gnosis Pay account's [call] through its Delay, queued or executed ([verb]): a transfer with its
+     * amount and recipient, or a member of the Delay added or removed, with that member.
+     */
+    private fun delayCall(verb: String, call: DelayCall): Triple<String, Address, String> = when (call) {
+        is DelayTransfer -> Triple("$verb ${amount(call.amount, call.asset)} through the Delay", call.recipient, "To")
+        is DelayMemberChange -> when (call.kind) {
+            DelayMemberChange.Kind.ADD -> Triple("$verb: add a member of the Delay", call.member, "Member")
+            DelayMemberChange.Kind.REMOVE -> Triple("$verb: remove a member of the Delay", call.member, "Member")
+        }
+    }
 
     /** What simple mode says instead of a sent transaction's block: null where [statusOf] names none. */
     private fun simpleStatusOf(entry: HistoryEntry): String? = when (val outcome = entry.outcome) {

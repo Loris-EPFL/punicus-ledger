@@ -491,6 +491,29 @@ class TransferStatusViewModelTest {
     }
 
     @Test
+    fun aQueuedMemberChangeSaysWhichMemberAndWhatItDoes() = runTest {
+        // Owner ruling, 2026-11-18: a member of a Gnosis Pay account's Delay added through the Delay.
+        val safe = Address.of("0x8f0a641f79982b8a89cb34e9a30ffc349b1878a5")
+        val delay = Address.of("0x22bdfd8d6238f034a0937fa2eec3ddbd4b039fe3")
+        val member = Address.of("0x30953638c67022f6d0f72a5ad86e1241c611cf45")
+        val change = (
+            eth.serotine.domain.model.DelayMemberChange.add(safe, delay, emptyList(), emptyList(), member)
+                as eth.serotine.domain.model.DelayMemberChangePlan.Planned
+            ).change
+        val queued =
+            record.copy(signed = SignedTransfer(byteArrayOf(2, 1, 11)), action = SentAction.DelayQueue(change))
+        sent.transfers.value = listOf(queued)
+        val viewModel = viewModel(queued.hash)
+        runCurrent()
+
+        val summary = assertNotNull(viewModel.shown.delay)
+        assertEquals("Queued: add member 0x3095…Cf45", summary.title)
+        assertEquals(Eip55.format(member), summary.lines.toMap()["Member added"])
+        assertEquals(Eip55.format(delay), summary.lines.toMap()["Delay module"])
+        assertTrue("move all of the account's funds" in summary.lines.toMap()["What it does"].orEmpty())
+    }
+
+    @Test
     fun aSwapShowsWhatItSoldAndTheLeastItBuysAndWhyItMayFail() = runTest {
         val router = Address.of("0x3bfa4769fb09eefc5a80d6e87c3b9c650f7ae48e")
         val link = Token(Address.of("0x779877a7b0d9e8603169ddbd7836e478b4624789"), "LINK", "ChainLink", 18, "link")

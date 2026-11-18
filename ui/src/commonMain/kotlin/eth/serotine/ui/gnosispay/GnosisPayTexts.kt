@@ -1,6 +1,9 @@
 package eth.serotine.ui.gnosispay
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayCall
+import eth.serotine.domain.model.DelayMemberChange
+import eth.serotine.domain.model.DelayMemberChangePlan
 import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.DelayTransferPlan
 import eth.serotine.domain.model.Network
@@ -25,6 +28,8 @@ import eth.serotine.domain.usecase.DelayTransfersReading
 import eth.serotine.domain.usecase.GnosisPayReading
 import eth.serotine.domain.usecase.GnosisPaySending
 import eth.serotine.domain.usecase.HeldController
+import eth.serotine.domain.usecase.MemberRemovalEffect
+import eth.serotine.domain.usecase.removalOf
 import eth.serotine.domain.usecase.TokenHoldings
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.displaySymbol
@@ -63,6 +68,13 @@ internal object GnosisPayTexts {
             "block: it may have changed since."
     } else {
         "Verified by the light client at block ${grouped(block)}"
+    }
+
+    /** [checkedAt] in simple mode's words, with no block (docs/simple-ui.md); the block stays under *Details*. */
+    fun simpleCheckedAt(held: Boolean = false): String = if (held) {
+        "Last checked on chain a while ago. It could not be checked again just now: it may have changed since."
+    } else {
+        "Checked on chain"
     }
 
     /** Why Send cannot be done here, and how to get there; null when it can. */
@@ -149,8 +161,7 @@ internal object GnosisPayTexts {
     }
 
     const val EXECUTE_NEEDS_MEMBER =
-        "This transfer was queued by an account whose key is no longer on this device, so it cannot be " +
-            "executed from here."
+        "It was queued by an account whose key is no longer on this device, so it cannot be executed from here."
 
     const val EXECUTE_UNVERIFIED =
         "Where this transfer stands in the Delay module cannot be verified right now, so it is not executed. " +
@@ -174,6 +185,110 @@ internal object GnosisPayTexts {
 
     fun transferTitle(transfer: DelayTransfer, network: Network): String =
         "${amount(transfer.amount, transfer.asset, network)} to ${shortAddress(eip55(transfer.recipient))}"
+
+    /** What a queued call does, in a line: a transfer's amount and recipient, or the member added or removed. */
+    fun callTitle(call: DelayCall, network: Network): String = when (call) {
+        is DelayTransfer -> transferTitle(call, network)
+        is DelayMemberChange -> memberChangeTitle(call, shortAddress(eip55(call.member)))
+    }
+
+    private fun memberChangeTitle(change: DelayMemberChange, member: String): String = when (change.kind) {
+        DelayMemberChange.Kind.ADD -> "Add member $member"
+        DelayMemberChange.Kind.REMOVE -> "Remove member $member"
+    }
+
+    /**
+     * The Delay's members as the screens list them (the Gnosis Pay screen, and the Safe's settings):
+     * each with its name in the wallet, what it is, and whether a key on this device controls the
+     * account through it; with Remove when [withRemove] (the settings screen's, owner ruling,
+     * 2026-11-18), greyed out with its reason when it cannot be done here.
+     */
+    fun memberRows(found: GnosisPayReading.Found, withRemove: Boolean = false): List<MemberRow> {
+        // Names in the wallet, for the members shown: any network's entry names the address.
+        val labels = (found.controllersHeld.map { it.account } + found.keysHeldElsewhere + found.keysCoSigning)
+            .associate { it.address to it.label }
+        return found.delay.members.map { member ->
+            val node = found.control?.members?.firstOrNull { it.address == member }
+            MemberRow(
+                eip55(member),
+                labels[member],
+                found.controllersHeld.any { it.account.address == member || it.via.firstOrNull() == member },
+                memberWhat(node),
+                remove = if (withRemove) removeMember(found) else null,
+            )
+        }
+    }
+
+    /**
+     * Add member: as Send, greyed out with Send's reason when no key here controls the Delay, and
+     * while the account is shown as last verified, on which nothing is planned.
+     */
+    fun addMember(found: GnosisPayReading.Found): ActionItem = when {
+        found.sending != GnosisPaySending.AVAILABLE -> ActionItem(false, sendReason(found.sending))
+        found.held -> ActionItem(false, NOT_VERIFIED_NOW)
+        else -> ActionItem(true, null)
+    }
+
+    /** Remove: as Add member, and never the last member. */
+    fun removeMember(found: GnosisPayReading.Found): ActionItem = when {
+        found.sending != GnosisPaySending.AVAILABLE -> ActionItem(false, sendReason(found.sending))
+        found.delay.members.size <= 1 -> ActionItem(false, LAST_MEMBER)
+        found.held -> ActionItem(false, NOT_VERIFIED_NOW)
+        else -> ActionItem(true, null)
+    }
+
+    /** What the overview says while a removal of [member] (EIP-55) is checked on chain. */
+    fun checkingRemoval(member: String): String = "Checking the removal of ${shortAddress(member)} on chain…"
+
+    /** What a member of the Delay can do, in the account's own figures: said on the form that adds one. */
+    fun memberExplains(cooldown: Long, expiration: Long): String =
+        "A member of the Delay module can queue any transaction of this account: once its wait of " +
+            "${period(cooldown)} has passed, anyone can execute it" +
+            (if (expiration == 0L) "" else ", within ${period(expiration)}") +
+            ". A member can move all of this account's funds, without this device. Add only an address whose " +
+            "key you hold, or whose holder you trust with all of it."
+
+    /**
+     * What a change of the Delay's members puts at stake, said on its review (owner ruling,
+     * 2026-11-18): a new member can move all the funds; a removal of the way this device controls the
+     * account ends that control. Null for a transfer, and for a removal that leaves this device's ways.
+     */
+    fun memberWarning(quote: DelayQuote, found: GnosisPayReading.Found): String? {
+        val change = quote.delayCall as? DelayMemberChange ?: return null
+        return when (change.kind) {
+            DelayMemberChange.Kind.ADD ->
+                "Once this is executed, ${eip55(change.member)} can move all of this account's funds after the " +
+                    "Delay's wait of ${period(found.delay.cooldownSeconds)}, without this device. Add it only if " +
+                    "you hold its key, or trust its holder with all of it."
+            DelayMemberChange.Kind.REMOVE -> when (found.removalOf(change.member)) {
+                MemberRemovalEffect.NOT_A_WAY_HERE -> null
+                MemberRemovalEffect.LAST_WAY_HERE ->
+                    "This member is how this device controls the account. Once this is executed, this device can " +
+                        "no longer send from this account, nor change its members."
+                MemberRemovalEffect.ANOTHER_WAY_REMAINS ->
+                    "This member is one of the ways this device controls the account. Once this is executed, this " +
+                        "device controls it only through the others."
+            }
+        }
+    }
+
+    const val LAST_MEMBER = "This is the Delay module's only member. The account's one owner is a placeholder that " +
+        "no key holds, so with no member left its funds would be locked for good. Add another member first."
+
+    const val MEMBER_BAD_ADDRESS = "Enter the new member's address: 0x and 40 hex digits. Gnosis Chain resolves no " +
+        "names."
+
+    /** Why a change of the Delay's members is refused, planned here or checked on chain. */
+    fun memberPlanRefused(plan: DelayMemberChangePlan): String = when (plan) {
+        is DelayMemberChangePlan.Planned -> ""
+        DelayMemberChangePlan.NoKeyAddress -> "No key holds that address: it would be a member nobody can act as, " +
+            "and the module's list of members could break."
+        DelayMemberChangePlan.TheAccount -> "That is this account itself, its Delay module or one of its modules. " +
+            "None of them can be a member."
+        DelayMemberChangePlan.AlreadyMember -> "That address is a member already."
+        DelayMemberChangePlan.NotAMember -> "That address is no longer a member."
+        DelayMemberChangePlan.LastMember -> LAST_MEMBER
+    }
 
     fun amount(amount: UInt256, asset: TransferAsset, network: Network): String = when (asset) {
         TransferAsset.Native -> "${amount.formatUnits(NATIVE_DECIMALS)} ${network.nativeSymbol}"
@@ -259,13 +374,25 @@ internal object GnosisPayTexts {
 
     const val CHECKING = "Its execution is being checked on chain."
     const val SKIP_CHECKING = "A skip of the expired entries is being checked on chain. Wait for it."
-    const val OTHER_CHECKING = "Another transfer's execution is being checked on chain. Wait for it."
+    const val OTHER_CHECKING = "Another queued entry's execution is being checked on chain. Wait for it."
+
+    /** New transfer, while an execution from the list is being checked. */
+    const val EXECUTION_CHECKING = "The execution of a queued entry is being checked on chain. Wait for it."
+
+    /** Any action, while the removal of a member is being checked. */
+    const val REMOVAL_CHECKING = "The removal of a member is being checked on chain. Wait for it."
     const val NO_ASSET = "Choose the asset to send."
     const val BAD_ADDRESS = "Enter the recipient's address: 0x and 40 hex digits. Gnosis Chain resolves no names."
     const val BAD_CHECKSUM = "That address's capital letters do not match its checksum (EIP-55): a character may " +
         "be mistyped. Copy the address again, or enter it all in lower case only if you are sure of it."
     const val BAD_AMOUNT = "Enter an amount, in the asset's units."
     const val QUOTE_FAILED = "The transfer could not be checked on chain. Try again."
+
+    /** [QUOTE_FAILED] of a change of the Delay's members. */
+    const val MEMBER_QUOTE_FAILED = "The change of members could not be checked on chain. Try again."
+
+    /** [QUOTE_FAILED] or [MEMBER_QUOTE_FAILED], as [call] is. */
+    fun quoteFailed(call: DelayCall): String = if (call is DelayMemberChange) MEMBER_QUOTE_FAILED else QUOTE_FAILED
 
     /** The account's reading is an earlier one standing over a read that did not answer: nothing is planned on it. */
     const val NOT_VERIFIED_NOW = "This account could not be verified at the latest block, so nothing is sent on " +
@@ -282,7 +409,34 @@ internal object GnosisPayTexts {
         DelayTransferPlan.NothingToSend -> "There is nothing to send, and no fee is worth paying for it."
     }
 
-    fun quoteRefused(quoting: DelayQuoting): String = when (quoting) {
+    /** Why [call]'s quote was refused, said of what [call] is: a transfer, or a change of members. */
+    fun quoteRefused(quoting: DelayQuoting, call: DelayCall): String =
+        quoteRefused(quoting, memberChange = call is DelayMemberChange)
+
+    /**
+     * Why a quote was refused; [memberChange] when it was a change of the Delay's members, which the
+     * texts that name what was refused say instead of "transfer".
+     */
+    fun quoteRefused(quoting: DelayQuoting, memberChange: Boolean = false): String {
+        val what = if (memberChange) "change of members" else "transfer"
+        return when (quoting) {
+            is DelayQuoting.AlreadyQueued -> "The same $what is queued already and waits in the Delay module. " +
+                "Execute it, or let it expire, before queuing it again."
+            is DelayQuoting.SameCallExpired -> if (quoting.skippable) {
+                "The same $what is still in the Delay module's queue, expired. It stays there until it is skipped, " +
+                    "and it holds back every entry queued after it. Skip expired entries, then review again."
+            } else {
+                "The same $what is still in the Delay module's queue, too close to its expiration to be executed " +
+                    "in time. Once it has expired it can be skipped; review again then."
+            }
+            DelayQuoting.HeadExpired -> "The next entry in the Delay module's queue has expired. Until it is " +
+                "skipped, nothing behind it can be executed: a $what queued now would wait, expire and do nothing, " +
+                "its fees paid. Skip expired entries, then review again."
+            else -> refusedAsTransfer(quoting)
+        }
+    }
+
+    private fun refusedAsTransfer(quoting: DelayQuoting): String = when (quoting) {
         is DelayQuoting.Quoted -> ""
         is DelayQuoting.NotTheSafesDelay -> when (quoting.generation) {
             DelayGeneration.RETIRED ->
@@ -295,18 +449,8 @@ internal object GnosisPayTexts {
             "The account holds less than that beside what transfers queued from here will move. It would be " +
                 "queued, wait, and then fail, its fees paid."
         }
-        is DelayQuoting.AlreadyQueued -> "The same transfer is queued already and waits in the Delay module. " +
-            "Execute it, or let it expire, before queuing it again."
-        is DelayQuoting.SameCallExpired -> if (quoting.skippable) {
-            "The same transfer is still in the Delay module's queue, expired. It stays there until it is skipped, " +
-                "and it holds back every transfer queued after it. Skip expired entries, then review again."
-        } else {
-            "The same transfer is still in the Delay module's queue, too close to its expiration to be executed " +
-                "in time. Once it has expired it can be skipped; review again then."
-        }
-        DelayQuoting.HeadExpired -> "The next entry in the Delay module's queue has expired. Until it is skipped, " +
-            "nothing behind it can be executed: a transfer queued now would wait, expire and move nothing, its fees " +
-            "paid. Skip expired entries, then review again."
+        is DelayQuoting.AlreadyQueued, is DelayQuoting.SameCallExpired, DelayQuoting.HeadExpired ->
+            quoteRefused(quoting, memberChange = false)
         is DelayQuoting.WindowTooShort -> sendReason(GnosisPaySending.WINDOW_TOO_SHORT).orEmpty()
         is DelayQuoting.SafeCallReverts -> "The account's own transfer reverts, run as a verified call" +
             (quoting.blockNumber?.let { " at block ${grouped(it)}" } ?: "") + ": the recipient does not accept it. " +
@@ -320,6 +464,15 @@ internal object GnosisPayTexts {
             "The record of what this wallet sent cannot be read right now, so what is already queued cannot be told."
         is DelayQuoting.NotQuoted -> refusalText(quoting.refusal)
         is DelayQuoting.NotReady -> whyNotYet(quoting.state)
+        is DelayQuoting.MemberChangeRefused -> memberPlanRefused(quoting.refusal)
+        DelayQuoting.MembersChanged -> "The Delay module's members changed since this was planned. Go back and " +
+            "start again from the members as they are now."
+        is DelayQuoting.MemberChangeReverts -> "The account's own change of its Delay module's members reverts, run " +
+            "as a verified call" + (quoting.blockNumber?.let { " at block ${grouped(it)}" } ?: "") + ": the " +
+            "members changed since it was queued (the member before the one removed is another now, or the " +
+            "member was added or removed already). Executed, it would fail. Nothing was signed."
+        is DelayQuoting.MemberChangeWaiting -> "A change of the Delay module's members queued from this device " +
+            "still waits. Execute it, or let it expire, before queuing another."
     }
 
     private fun refusalText(refusal: CallRefusal): String = when (refusal) {
@@ -336,21 +489,34 @@ internal object GnosisPayTexts {
                 "status, never replaced."
     }
 
-    fun reviewTitle(quote: DelayQuote, network: Network): String {
-        val what = transferTitle(quote.transfer, network)
-        return when (quote.step) {
-            DelayStep.QUEUE -> "Queue $what"
-            DelayStep.EXECUTE -> "Execute $what"
-        }
-    }
+    /** The review's title: "Queue 50 EURe to 0x1234…abcd", "Execute: add member 0x1234…abcd". */
+    fun reviewTitle(quote: DelayQuote, network: Network): String = stepped(
+        quote,
+        when (val call = quote.delayCall) {
+            is DelayTransfer -> transferTitle(call, network)
+            is DelayMemberChange -> callTitle(call, network)
+        },
+    )
 
-    /** What the biometric prompt says: the step and the recipient in full, the last thing read before signing. */
-    fun biometricReason(quote: DelayQuote, network: Network): String {
-        val transfer = quote.transfer
-        val what = "${amount(transfer.amount, transfer.asset, network)} to ${eip55(transfer.recipient)}"
-        return when (quote.step) {
-            DelayStep.QUEUE -> "Queue $what"
-            DelayStep.EXECUTE -> "Execute $what"
+    /**
+     * What the biometric prompt says: the step and the recipient, or the member, in full, the last
+     * thing read before signing.
+     */
+    fun biometricReason(quote: DelayQuote, network: Network): String = stepped(
+        quote,
+        when (val call = quote.delayCall) {
+            is DelayTransfer -> "${amount(call.amount, call.asset, network)} to ${eip55(call.recipient)}"
+            is DelayMemberChange -> memberChangeTitle(call, eip55(call.member))
+        },
+    )
+
+    /** [what] after the step: "Queue 50 EURe to …" for a transfer, "Queue: add member …" for a member change. */
+    private fun stepped(quote: DelayQuote, what: String): String {
+        val step = if (quote.step == DelayStep.QUEUE) "Queue" else "Execute"
+        return if (quote.delayCall is DelayMemberChange) {
+            "$step: ${what.replaceFirstChar { it.lowercase() }}"
+        } else {
+            "$step $what"
         }
     }
 
@@ -410,7 +576,7 @@ internal object GnosisPayTexts {
         network: Network,
         sharesBuiltInSymbol: Boolean = false,
     ): List<Pair<String, String>> {
-        val transfer = quote.transfer
+        val transfer = quote.transfer ?: return memberChangeLines(quote, found, member, network)
         val symbol = network.nativeSymbol
         val call = quote.call
         val maxFee = "${call.maxFee.formatUnits(NATIVE_DECIMALS)} $symbol at most, ${feeLevel(call.level)} " +
@@ -443,9 +609,55 @@ internal object GnosisPayTexts {
                 "${call.nativeAfterAtLeast.formatUnits(NATIVE_DECIMALS)} $symbol after" +
                 (call.balanceBlock?.let { " (block ${grouped(it)})" } ?: ""),
             "What happens" to step,
-            "Account balance" to amount(quote.safeBalance, transfer.asset, network) +
+            "Account balance" to amount(quote.safeBalance ?: UInt256.ZERO, transfer.asset, network) +
                 (quote.safeBalanceBlock?.let { " (block ${grouped(it)})" } ?: ""),
         ) + listOfNotNull(
+            call.simulationBlock?.let { "Simulated" to "Run as a verified call at block ${grouped(it)}" },
+        )
+    }
+
+    /** The review's lines for a change of the Delay's members: the account, the member, the signer's transaction. */
+    private fun memberChangeLines(
+        quote: DelayQuote,
+        found: GnosisPayReading.Found,
+        member: Address,
+        network: Network,
+    ): List<Pair<String, String>> {
+        val change = quote.delayCall as DelayMemberChange
+        val call = quote.call
+        val symbol = network.nativeSymbol
+        val step = when (quote.step) {
+            DelayStep.QUEUE -> "Queued now. It waits ${period(found.delay.cooldownSeconds)}, then needs a second " +
+                "transaction to execute it" +
+                (if (found.delay.expirationSeconds == 0L) "." else ", within ${period(found.delay.expirationSeconds)}.")
+            DelayStep.EXECUTE -> "Executes the change: the Delay module's members change now."
+        }
+        return listOfNotNull(
+            "Account" to eip55(change.safe),
+            when (change.kind) {
+                DelayMemberChange.Kind.ADD -> "Add member" to eip55(change.member)
+                DelayMemberChange.Kind.REMOVE -> "Remove member" to eip55(change.member)
+            },
+            change.previous?.let { previous ->
+                "Member before it" to if (previous == DelayMemberChange.SENTINEL) {
+                    "None: it is the first in the module's list"
+                } else {
+                    eip55(previous)
+                }
+            },
+            "Through" to "Delay module ${eip55(change.delay)}, as the account's own call of it",
+            quote.via.takeIf { it.isNotEmpty() }?.let { via ->
+                val safes = via.reversed().joinToString(" → ") { eip55(it) }
+                "Through ${if (via.size == 1) "Safe" else "Safes"}" to safes +
+                    ": ${if (via.size == 1) "it executes" else "each executes"} the call as its one owner's transaction"
+            },
+            "Signed by" to eip55(member),
+            "Fee" to "${call.maxFee.formatUnits(NATIVE_DECIMALS)} $symbol at most, ${feeLevel(call.level)} " +
+                "(fees at block ${grouped(call.feeBlock)})",
+            "Signer's $symbol" to "${call.nativeBefore.formatUnits(NATIVE_DECIMALS)} $symbol now, at least " +
+                "${call.nativeAfterAtLeast.formatUnits(NATIVE_DECIMALS)} $symbol after" +
+                (call.balanceBlock?.let { " (block ${grouped(it)})" } ?: ""),
+            "What happens" to step,
             call.simulationBlock?.let { "Simulated" to "Run as a verified call at block ${grouped(it)}" },
         )
     }

@@ -1,7 +1,13 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayCall
+import eth.serotine.domain.model.DelayMemberChange
+import eth.serotine.domain.model.DelayMemberChangePlan
 import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.DelayTransferPlan
 import eth.serotine.domain.model.Digest
@@ -13,6 +19,7 @@ import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.Wei
+import eth.serotine.domain.model.sameCall
 import eth.serotine.domain.model.toHex
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.DelayEntry
@@ -147,12 +154,25 @@ class GnosisPayTransfersTest {
         override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> =
             error("a quote reads the queue fresh, never the screen's reading")
 
-        override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading {
+        override suspend fun queue(
+            network: Network,
+            safe: Address,
+            delay: Address,
+            hash: Digest,
+            withMembers: Boolean,
+        ): DelayQueueReading {
             assertEquals(this@GnosisPayTransfersTest.safe, safe, "the Safe is applied")
             asked += hash
-            return answers[hash] ?: queueAnswer
+            membersAsked += withMembers
+            val answer = answers[hash] ?: queueAnswer
+            // Applied, never ignored: members only when asked for.
+            if (withMembers || answer !is DelayQueueReading.Read) return answer
+            return answer.copy(queue = answer.queue.copy(members = null))
         }
     }
+
+    /** Whether each read of the queue asked for the Delay's members too. */
+    private val membersAsked = mutableListOf<Boolean>()
     private val history = MemoryTransactionHistory()
 
     private fun funded(safeWei: String = "2000000000000000000") {
@@ -608,9 +628,9 @@ class GnosisPayTransfersTest {
         val reading = ReadDelayTransfers(history, delays) { 1_000 }(AccountId(Network.GNOSIS, safe), delay)
             as DelayTransfersReading.Read
 
-        assertEquals(listOf(second, third), reading.transfers.map { it.transfer })
+        assertEquals(listOf(second, third), reading.transfers.map { it.call })
         val listed = reading.transfers.first()
-        assertEquals(second, listed.transfer)
+        assertEquals(second, listed.call)
         assertEquals(member, listed.member)
         assertEquals(DelayTransferState.Waiting(91_000, 202_600, 0), listed.state)
 
@@ -650,9 +670,239 @@ class GnosisPayTransfersTest {
             as DelayTransfersReading.Read
 
         // One row per call: the newest queueing of it, whose entry the queue holds.
-        assertEquals(listOf(recent), reading.transfers.map { it.transfer })
+        assertEquals(listOf(recent), reading.transfers.map { it.call })
         assertEquals(now - 50, reading.transfers.single().queuedAt)
         assertEquals(listOf(recent.hash), asked)
+    }
+
+    // A member of the Delay added or removed (owner ruling, 2026-11-18): queued and executed like a
+    // transfer, checked against the members read with the queue, no balance of the Safe's checked.
+
+    private val other = Address.of("0x" + "0c".repeat(20))
+    private val newcomer = Address.of("0x30953638c67022f6d0f72a5ad86e1241c611cf45")
+
+    /** The queue from entry 5 with [members], holding [entry] (none: empty), read at a head produced at [head]. */
+    private fun withMembers(members: List<Address>, entry: DelayEntry? = null, head: Long = 1_000) =
+        DelayQueueReading.Read(
+            DelayQueue(
+                5,
+                if (entry == null) 5 else 6,
+                90_000,
+                111_600,
+                entry,
+                if (entry == null) 0 else 1,
+                members = members,
+            ),
+            120,
+            head,
+        )
+
+    private fun addition() =
+        DelayMemberChange.add(safe, delay, listOf(roles, delay), listOf(member), newcomer)
+            .let { (it as DelayMemberChangePlan.Planned).change }
+
+    private fun removal() =
+        (DelayMemberChange.remove(safe, delay, listOf(member, other), other) as DelayMemberChangePlan.Planned).change
+
+    private fun memberFunded() {
+        // The Safe's balance is left unread: a change of members moves nothing, so none is checked.
+        native.of(member).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 100)
+    }
+
+    @Test
+    fun aMemberIsAddedAsTheSafesOwnCallOfItsDelayQueuedByTheMember() = runTest {
+        memberFunded()
+        queueAnswer = withMembers(listOf(member))
+
+        val quote = (queueing()(member, addition(), FeeLevel.NORMAL) as DelayQuoting.Quoted).quote
+
+        assertEquals(SentAction.DelayQueue(addition()), quote.action)
+        assertEquals(null, quote.safeBalance)
+        assertEquals(delay, quote.call.transaction.to)
+        assertEquals(addition().queueData().toHex(), quote.call.transaction.data.toHex())
+        // The Safe's own call of its Delay first, then the member's queueing.
+        assertEquals(listOf(safe to delay, member to delay), inputs.simulated.map { it.first to it.second })
+        assertEquals(listOf(true), membersAsked)
+    }
+
+    @Test
+    fun theOwnerOfAMemberSafeQueuesAMemberChangeThroughThatSafe() = runTest {
+        val owner = Address.of("0x" + "91".repeat(20))
+        native.of(owner).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 100)
+        queueAnswer = withMembers(listOf(member, other))
+
+        val quote = (queueing()(owner, removal(), FeeLevel.NORMAL, via = listOf(member)) as DelayQuoting.Quoted).quote
+
+        assertEquals(member, quote.call.transaction.to)
+        assertEquals(removal().queueCall(owner, listOf(member)).second.toHex(), quote.call.transaction.data.toHex())
+        assertEquals(listOf(member), quote.via)
+        assertEquals(listOf(safe to delay, owner to member), inputs.simulated.map { it.first to it.second })
+    }
+
+    @Test
+    fun aChangeIsCheckedAgainstTheMembersReadWithTheQueue() = runTest {
+        memberFunded()
+        // Removed elsewhere meanwhile: the member removed would be the last.
+        queueAnswer = withMembers(listOf(other))
+        assertEquals(
+            DelayQuoting.MemberChangeRefused(DelayMemberChangePlan.LastMember),
+            queueing()(member, removal(), FeeLevel.NORMAL),
+        )
+        // Added meanwhile, first in the list: the member before the one removed is another now.
+        queueAnswer = withMembers(listOf(member, newcomer, other))
+        assertEquals(DelayQuoting.MembersChanged, queueing()(member, removal(), FeeLevel.NORMAL))
+        queueAnswer = withMembers(listOf(member, newcomer))
+        assertEquals(
+            DelayQuoting.MemberChangeRefused(DelayMemberChangePlan.AlreadyMember),
+            queueing()(member, addition(), FeeLevel.NORMAL),
+        )
+        // A read without members proves nothing of them.
+        queueAnswer = DelayQueueReading.Read(DelayQueue(5, 5, 90_000, 111_600, null, 0), 120, 1_000)
+        assertTrue(queueing()(member, removal(), FeeLevel.NORMAL) is DelayQuoting.NotQuoted)
+        assertTrue(inputs.simulated.isEmpty())
+    }
+
+    @Test
+    fun aMemberChangeThatRevertsOrWaitsBehindAnotherIsRefused() = runTest {
+        memberFunded()
+        queueAnswer = withMembers(listOf(member, other))
+        inputs.simulationOf = { from, _ ->
+            if (from == safe) Simulation.Reverted(120) else Simulation.Succeeded("", 120)
+        }
+        assertEquals(DelayQuoting.MemberChangeReverts(120), queueing()(member, removal(), FeeLevel.NORMAL))
+
+        // Another change of the members queued from here and on its way: one at a time.
+        inputs.simulationOf = null
+        val waiting = sentBy(SentAction.DelayQueue(addition()), 900, 1)
+        history.entries.value = listOf(HistoryEntry(waiting, SentOutcome.NotSeen))
+        assertEquals(DelayQuoting.MemberChangeWaiting(waiting.hash), queueing()(member, removal(), FeeLevel.NORMAL))
+        // A transfer queued from here does not hold a change back.
+        val transferQueued = sentBy(SentAction.DelayQueue(transfer()), 900, 2)
+        history.entries.value = listOf(HistoryEntry(transferQueued, SentOutcome.NotSeen))
+        assertTrue(queueing()(member, removal(), FeeLevel.NORMAL) is DelayQuoting.Quoted)
+    }
+
+    @Test
+    fun aRemovalIsExecutedOnlyWhileItStandsAndNeverLeavesNoMember() = runTest {
+        memberFunded()
+        val ours = removal()
+        val entry = DelayEntry(5, ours.hash, 1_000)
+        queueAnswer = withMembers(listOf(member, other), entry, head = 95_000)
+        val quote = (execution()(member, ours, FeeLevel.NORMAL) as DelayQuoting.Quoted).quote
+        assertEquals(SentAction.DelayExecution(ours), quote.action)
+        assertEquals(ours.executeData().toHex(), quote.call.transaction.data.toHex())
+
+        // A member added meanwhile went first: the member before the one removed is stale, and the
+        // Safe's own call reverts, which the run says.
+        queueAnswer = withMembers(listOf(member, newcomer, other), entry, head = 95_000)
+        inputs.simulationOf = { from, _ ->
+            if (from == safe) Simulation.Reverted(130) else Simulation.Succeeded("", 130)
+        }
+        assertEquals(DelayQuoting.MemberChangeReverts(130), execution()(member, ours, FeeLevel.NORMAL))
+
+        // The others removed meanwhile: executing it would leave the Delay with no member.
+        inputs.simulationOf = null
+        queueAnswer = withMembers(listOf(other), entry, head = 95_000)
+        assertEquals(
+            DelayQuoting.MemberChangeRefused(DelayMemberChangePlan.LastMember),
+            execution()(member, ours, FeeLevel.NORMAL),
+        )
+    }
+
+    @Test
+    fun aQueuedMemberChangeIsListedLikeATransfer() = runTest {
+        val ours = addition()
+        val queueing = sentBy(SentAction.DelayQueue(ours), 900, 1)
+        history.entries.value = listOf(HistoryEntry(queueing, SentOutcome.NotSeen))
+        queueAnswer = withMembers(listOf(member), DelayEntry(5, ours.hash, 1_000), head = 1_000)
+
+        val reading = ReadDelayTransfers(history, delays) { 1_000 }(AccountId(Network.GNOSIS, safe), delay)
+            as DelayTransfersReading.Read
+
+        assertEquals(listOf<DelayCall>(ours), reading.transfers.map { it.call })
+        assertEquals(DelayTransferState.Waiting(91_000, 202_600, 0), reading.transfers.single().state)
+    }
+
+    @Test
+    fun aRemovalSaysWhetherItEndsThisDevicesControl() {
+        val keyAddress = Address.of("0x" + "91".repeat(20))
+        val key = Account(Network.GNOSIS, keyAddress, AccountKind.EOA, "Key", AccountCustody.InKeyStore)
+        val asMember = Account(Network.GNOSIS, member, AccountKind.EOA, "Member", AccountCustody.InKeyStore)
+        fun found(vararg held: HeldController) = GnosisPayReading.Found(
+            delay = DelayModule(delay, DelayGeneration.CURRENT, 180, 1_800, 0, 0, listOf(member, other)),
+            blockNumber = 1,
+            controllersHeld = held.toList(),
+            keysHeldElsewhere = emptyList(),
+            safeModules = listOf(delay),
+        )
+        // Through the member Safe `other`, the only way here.
+        assertEquals(MemberRemovalEffect.LAST_WAY_HERE, found(HeldController(key, listOf(other))).removalOf(other))
+        assertEquals(MemberRemovalEffect.NOT_A_WAY_HERE, found(HeldController(key, listOf(other))).removalOf(member))
+        // The member's own key, and a key through another member: another way remains.
+        val both = found(HeldController(asMember, emptyList()), HeldController(key, listOf(other)))
+        assertEquals(MemberRemovalEffect.ANOTHER_WAY_REMAINS, both.removalOf(member))
+        assertEquals(MemberRemovalEffect.ANOTHER_WAY_REMAINS, both.removalOf(other))
+    }
+
+    @Test
+    fun oneKeyThatReachesTheDelayTwoWaysKeepsTheOtherWhenOneIsRemoved() {
+        // The key is a member itself and also the one owner of the member Safe `other`: two ways,
+        // though the account keeps one controller per key, its shortest way.
+        val keyAccount = Account(Network.GNOSIS, member, AccountKind.EOA, "Key", AccountCustody.InKeyStore)
+        val control = DelayControl(
+            listOf(
+                ControlNode.Key(member),
+                ControlNode.Safe(other, threshold = 1, owners = listOf(ControlNode.Key(member))),
+            ),
+        )
+        val found = GnosisPayReading.Found(
+            delay = DelayModule(delay, DelayGeneration.CURRENT, 180, 1_800, 0, 0, listOf(member, other)),
+            blockNumber = 1,
+            controllersHeld = listOf(HeldController(keyAccount, emptyList())),
+            keysHeldElsewhere = emptyList(),
+            safeModules = listOf(delay),
+            control = control,
+        )
+        assertEquals(2, control.controllers.size)
+        assertEquals(MemberRemovalEffect.ANOTHER_WAY_REMAINS, found.removalOf(member))
+        assertEquals(MemberRemovalEffect.ANOTHER_WAY_REMAINS, found.removalOf(other))
+        // A way through a Safe that needs co-owners is no way this device controls the account by.
+        val coSigned = found.copy(
+            control = DelayControl(
+                listOf(
+                    ControlNode.Key(member),
+                    ControlNode.Safe(other, 2, listOf(ControlNode.Key(member), ControlNode.Key(roles))),
+                ),
+            ),
+        )
+        assertEquals(MemberRemovalEffect.LAST_WAY_HERE, coSigned.removalOf(member))
+        assertEquals(MemberRemovalEffect.NOT_A_WAY_HERE, coSigned.removalOf(other))
+    }
+
+    @Test
+    fun aMemberChangeFromHereHoldsTheNextBackOnlyWhileItsEntryWaits() = runTest {
+        // A Delay whose entries never expire: the age of a queueing tells nothing.
+        memberFunded()
+        val ours = removal()
+        val earlier = addition()
+        val noExpiration = DelayQueue(5, 5, 90_000, 0, null, 0, members = listOf(member, other))
+        queueAnswer = DelayQueueReading.Read(noExpiration, 120, 1_000)
+        val queueing = sentBy(SentAction.DelayQueue(earlier), 10, 1)
+        history.entries.value = listOf(HistoryEntry(queueing, SentOutcome.NonceUsed))
+
+        // Executed elsewhere, or never mined: its hash is no longer in the queue, so nothing waits.
+        answers[earlier.hash] = DelayQueueReading.Read(noExpiration, 120, 1_000)
+        assertTrue(queueing()(member, ours, FeeLevel.NORMAL) is DelayQuoting.Quoted)
+
+        // Still in the queue, or where it stands cannot be told: it waits.
+        answers[earlier.hash] = DelayQueueReading.Read(
+            DelayQueue(5, 6, 90_000, 0, DelayEntry(5, earlier.hash, 900), 1, members = listOf(member, other)),
+            120,
+            1_000,
+        )
+        assertEquals(DelayQuoting.MemberChangeWaiting(queueing.hash), queueing()(member, ours, FeeLevel.NORMAL))
+        answers[earlier.hash] = DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
+        assertEquals(DelayQuoting.MemberChangeWaiting(queueing.hash), queueing()(member, ours, FeeLevel.NORMAL))
     }
 
     @Test

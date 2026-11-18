@@ -24,11 +24,28 @@ two repositories in step when one changes.
   absent. Why, what a part PR does about it, and what a retargeted PR must
   do: `.claude/skills/feature-branch/SKILL.md`, *What the workflows do with
   part PRs*.
+- **On a PR, the macOS and APK builds run only where they can tell
+  something** (owner's request, 2026-11-18). `pr-scope.yml` lists the
+  PR's files. A PR of docs alone skips the iOS jobs and the APKs. The dmg
+  builds only for a change to the desktop packaging or the build. The iOS
+  device link runs only for a change to the iOS host or the build. `main`
+  builds everything on every push. The label `full-ci` on a PR builds
+  everything too: add it, then push or use *Re-run all jobs* (not *Re-run
+  failed jobs*, which leaves skipped jobs skipped). Build and Test
+  and the Screenshots workflow run on every PR. The desktop UI tests on macOS
+  moved from the dmg leg to ios.yml's targets job, so they still run on
+  every PR that changes code.
+- `pr-scope.yml` is fail-open: an API error or a file list it cannot trust
+  builds everything. A caller tests its outputs with `!= 'false'`.
+- A superseded PR run of Build and Test is cancelled; a run on `main` or a
+  tag never is (owner's request, 2026-11-18).
 - Build and Test and the other push triggers fire only on `main` and on `v*`
   tags. A clean `main` merge into a feature branch is first fully tested by
   the next PR into or out of the feature branch.
 - A job that calls `wait-for-claude-review.yml` may carry an `if:` only if it
   is true on every event but `pull_request` (that file's header says why).
+  The same holds for a job that needs `pr-scope.yml`: its outputs are `true`
+  on every other event.
 
 ## The Claude reviewer
 

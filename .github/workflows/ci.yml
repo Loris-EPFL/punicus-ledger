@@ -11,6 +11,16 @@ on:
   # (CLAUDE.md, "Multi-PR plans").
   pull_request:
 
+# A new push to a PR cancels that PR's run still building the commit it replaced
+# (owner's request, 2026-11-18): only the head's result counts, and the
+# Screenshots workflow's commit lands minutes after each push that changes a
+# screen. A push to main or a tag gets a group of its own run, so none of their
+# commits loses its result: in a shared group, even with cancel-in-progress
+# off, GitHub cancels a run that is still pending when a newer one queues.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build and Test

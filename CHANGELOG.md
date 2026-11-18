@@ -15,6 +15,8 @@ and issues of this repository.
 - A website, `website/`: what Punicus does in plain words, the downloads and
   a guide to adding accounts and Safes, published to GitHub Pages by the
   `Website` workflow (#316).
+- On a wide window (840 dp and wider: a desktop window, a tablet, an unfolded
+  phone) the Accounts tab shows the list and the account chosen side by side.
 
 ### Fixed
 

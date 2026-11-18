@@ -3,6 +3,7 @@ package eth.serotine.ui
 import eth.serotine.ui.accountdetail.accountDetailScreenPreviews
 import eth.serotine.ui.accountdetail.simpleAccountDetailScreenPreviews
 import eth.serotine.ui.accounts.accountsScreenPreviews
+import eth.serotine.ui.accounts.noAccountOpenScreenPreviews
 import eth.serotine.ui.accounts.simpleAccountsScreenPreviews
 import eth.serotine.ui.activitydetail.activityDetailScreenPreviews
 import eth.serotine.ui.activitydetail.simpleActivityDetailScreenPreviews
@@ -82,6 +83,7 @@ internal object Screens {
     val gnosisPay = Screen("gnosis-pay", "Gnosis Pay account", gnosisPayScreenPreviews)
     val handoff = Screen("handoff", "Send from another wallet", handoffScreenPreviews)
     val mnemonicImport = Screen("mnemonic-import", "Import recovery phrase", mnemonicImportScreenPreviews)
+    val noAccountOpen = Screen("no-account-open", "No account open (wide window)", noAccountOpenScreenPreviews)
     val pairDapp = Screen("pair-dapp", "Connect a dApp", pairDappScreenPreviews)
     val receive = Screen("receive", "Receive", receiveScreenPreviews)
     val removeAccountDialog = Screen("remove-account-dialog", "Remove account (dialog)", removeAccountDialogPreviews)
@@ -145,6 +147,7 @@ internal object Screens {
         gnosisPay,
         handoff,
         mnemonicImport,
+        noAccountOpen,
         pairDapp,
         receive,
         removeAccountDialog,

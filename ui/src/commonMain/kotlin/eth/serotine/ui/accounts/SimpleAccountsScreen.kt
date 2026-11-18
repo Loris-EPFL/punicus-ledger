@@ -70,6 +70,8 @@ const val ACCOUNTS_UNREACHABLE_TAG = "accounts-unreachable-"
  * banners and a stale checkpoint's warning with its "Catch up…", and the eye at the top left
  * that hides or shows every amount ([onToggleAmounts]). What lenient mode's outbox holds is said
  * per network under the freshness line, and a queued transaction lost once, until [onDismissLost].
+ * Beside an account's detail on a wide window, the row of the account shown there, [selected], is
+ * drawn selected.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,6 +91,7 @@ fun SimpleAccountsScreen(
     onMessageShown: () -> Unit = {},
     onToggleAmounts: () -> Unit = {},
     onDismissLost: () -> Unit = {},
+    selected: SelectedAccount? = null,
 ) {
     val snackbar = remember { SnackbarHostState() }
     val message = (state as? AccountsUiState.Ready)?.message
@@ -183,6 +186,7 @@ fun SimpleAccountsScreen(
                 } else {
                     SimpleAccountList(
                         state,
+                        selected,
                         act,
                         onTurnOnNetwork,
                         onCatchUp = { asking = it },
@@ -197,6 +201,7 @@ fun SimpleAccountsScreen(
 @Composable
 private fun SimpleAccountList(
     state: AccountsUiState.Ready,
+    selected: SelectedAccount?,
     onAccountAction: (AccountAction) -> Unit,
     onTurnOnNetwork: (Long) -> Unit,
     onCatchUp: (StaleAnchorWarning) -> Unit,
@@ -227,14 +232,16 @@ private fun SimpleAccountList(
             )
         }
         items(state.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
+            val shown = selected?.matches(account) == true
             WithActionMenu(
                 actions = accountMenu(account, onAccountAction, onTurnOnNetwork, onUnavailable),
                 menuLabel = "Actions for ${account.label}",
                 onClick = { onAccountAction(AccountAction.Open(account.chainId, account.address)) },
+                modifier = Modifier.selectedRow(shown),
                 clickLabel = "Open ${account.label}",
             ) {
                 // A balance from before, or a network that is off: the row dimmed, its age said.
-                SimpleAccountRow(account, Modifier.alpha(if (account.ageNote != null) DIMMED else 1f))
+                SimpleAccountRow(account, shown, Modifier.alpha(if (account.ageNote != null) DIMMED else 1f))
             }
             HorizontalDivider()
         }
@@ -334,10 +341,11 @@ private fun NetworkAlarm(
 }
 
 @Composable
-private fun SimpleAccountRow(account: AccountItem, modifier: Modifier = Modifier) {
+private fun SimpleAccountRow(account: AccountItem, shown: Boolean, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     ListItem(
         modifier = modifier,
+        colors = selectedRowColors(shown),
         leadingContent = { AccountAvatar(account.address, threshold = account.signers, network = account.network) },
         headlineContent = { NameWithControlBadge(account.label, account.control) },
         supportingContent = {

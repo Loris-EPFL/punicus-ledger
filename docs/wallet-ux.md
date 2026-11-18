@@ -209,6 +209,36 @@ has left this version unable to follow Sepolia, and gives way to the Accounts
 tab's start when it no longer has (docs/embedding-myotis.md, *Network
 upgrades*).
 
+**On a wide window the Accounts tab is a list and its detail, side by side**
+(owner's request, 2026-11-18). From 840 dp on, the width at which the rail
+replaces the bar (Material's expanded window size class):
+
+- The Accounts list (1) is a pane of its own, 360 dp wide, between the rail
+  and the screen shown, in either view. It is the same list, with its +
+  button, its long-press menu and its greyed-out actions.
+- Beside it is the Accounts tab's screen: the account's detail (3) and every
+  screen opened from it, Activity detail and Receive among them. While no
+  account is open there, the pane says so: "No account open", and either
+  "Choose an account in the list" or, with no account in the wallet yet,
+  that one is added with the + button first. It says nothing about the
+  chain: the list beside it does.
+- A row's tap opens its account beside the list, in place of whatever the
+  tab showed there. Back from that account returns to the list alone, as on
+  a phone. The row of the account open beside the list is drawn selected,
+  in the secondary container colour, and says so to a screen reader. A tap
+  on that row returns to its detail as it was.
+- A row's menu, for the account open beside the list, opens what it asks
+  over that account, as its detail's own buttons do. For another account,
+  Rename, Remove and Add on another network open over what is shown, being
+  dialogs; anything else starts from the list, as on a phone, so the pane
+  never shows one account's screen under another's selected row.
+- The list leaves with the tab: Settings and Debug take the whole width
+  beside the rail, and a flow that covers the bar (send, import, create
+  account, a Safe transaction) covers the list too.
+- The back stack is the same at every width, so a window that crosses
+  840 dp keeps the screen it shows: narrowed, the account alone, back from it
+  to the list; widened, the list joins it.
+
 ## Screens
 
 ### Accounts tab

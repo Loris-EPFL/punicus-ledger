@@ -90,7 +90,12 @@ private val withAccounts = AccountsUiState.Ready(
 )
 
 @Composable
-private fun AccountsPreview(state: AccountsUiState, darkTheme: Boolean = false, fabExpanded: Boolean = false) {
+private fun AccountsPreview(
+    state: AccountsUiState,
+    darkTheme: Boolean = false,
+    fabExpanded: Boolean = false,
+    selected: SelectedAccount? = null,
+) {
     SerotineTheme(darkTheme = darkTheme) {
         AccountsScreen(
             state = state,
@@ -100,6 +105,7 @@ private fun AccountsPreview(state: AccountsUiState, darkTheme: Boolean = false, 
             onCreateSafe = {},
             onAccountAction = {},
             fabExpandedAtStart = fabExpanded,
+            selected = selected,
         )
     }
 }
@@ -155,6 +161,24 @@ private fun AccountsHiddenDarkPreview() = AccountsPreview(withAccounts.withAmoun
 @Preview
 @Composable
 private fun AccountsNarrowPreview() = Box(Modifier.width(360.dp).fillMaxHeight()) { AccountsPreview(withAccounts) }
+
+/** Savings, shown beside the list on a wide window. */
+private val savingsShown = SelectedAccount(Network.SEPOLIA.chainId, "0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359")
+
+/**
+ * The list as the pane beside an account's detail on a wide window (docs/wallet-ux.md, *Navigation*):
+ * at the pane's width, the row of the account shown beside it selected.
+ */
+@Preview
+@Composable
+private fun AccountsBesideDetailPreview() =
+    Box(Modifier.width(360.dp).fillMaxHeight()) { AccountsPreview(withAccounts, selected = savingsShown) }
+
+@Preview
+@Composable
+private fun AccountsBesideDetailDarkPreview() = Box(Modifier.width(360.dp).fillMaxHeight()) {
+    AccountsPreview(withAccounts, darkTheme = true, selected = savingsShown)
+}
 
 /** No verified head yet and no balance proven before: the strip red, every row syncing. */
 private val catchingUp = AccountsUiState.Ready(
@@ -733,6 +757,8 @@ internal val accountsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("list-unavailable") { AccountsListUnavailablePreview() },
     ScreenPreview("catching-up-dark") { AccountsCatchingUpDarkPreview() },
     ScreenPreview("narrow") { AccountsNarrowPreview() },
+    ScreenPreview("beside-detail") { AccountsBesideDetailPreview() },
+    ScreenPreview("beside-detail-dark") { AccountsBesideDetailDarkPreview() },
     ScreenPreview("ens-names") { AccountsEnsNamesPreview() },
     ScreenPreview("three-networks") { AccountsThreeNetworksPreview() },
     ScreenPreview("three-networks-dark") { AccountsThreeNetworksDarkPreview() },

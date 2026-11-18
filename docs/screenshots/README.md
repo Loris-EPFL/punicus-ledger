@@ -41,7 +41,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Safe transaction](#safe-tx) | `safe-tx/` | 45 |
 | [Screen capture warning (dialog)](#screen-capture-warning-dialog) | `screen-capture-warning-dialog/` | 3 |
 | [Security](#security) | `security/` | 15 |
-| [Send](#send) | `send/` | 32 |
+| [Send](#send) | `send/` | 34 |
 | [Settings](#settings) | `settings/` | 29 |
 | [Account detail (simple mode)](#simple-account-detail) | `simple-account-detail/` | 12 |
 | [Home (simple mode)](#simple-accounts) | `simple-accounts/` | 18 |
@@ -716,7 +716,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="send"></a>
 ## Send
 
-`send/`, 32 states: `compose-empty`, `compose-empty-dark`, `composed-token-to-name`, `compose-resolving`, `compose-input-errors`, `compose-gnosis-no-names`, `compose-name-unavailable`, `compose-quoting`, `compose-refused`, `compose-earlier-maybe-sent`, `compose-token-not-found`, `review`, `review-dark`, `review-token-with-biometrics`, `review-wrong-password`, `review-biometrics-cancelled`, `review-signing`, `review-refreshing`, `review-not-sent`, `review-rejected`, `loading`, `watch-only`, `sent`, `compose-lenient-last-verified`, `compose-draft-waits`, `compose-queued-first`, `draft-review`, `draft-review-dark`, `draft-review-token`, `draft-review-not-kept`, `draft-review-signing`, `queued`
+`send/`, 34 states: `compose-empty`, `compose-empty-dark`, `composed-token-to-name`, `compose-resolving`, `compose-input-errors`, `compose-gnosis-no-names`, `compose-name-unavailable`, `compose-quoting`, `compose-refused`, `compose-earlier-maybe-sent`, `compose-token-not-found`, `review`, `review-dark`, `review-token-with-biometrics`, `review-wrong-password`, `review-biometrics-cancelled`, `review-signing`, `review-refreshing`, `review-not-sent`, `review-rejected`, `review-lookalike-blocked`, `review-new-recipient`, `loading`, `watch-only`, `sent`, `compose-lenient-last-verified`, `compose-draft-waits`, `compose-queued-first`, `draft-review`, `draft-review-dark`, `draft-review-token`, `draft-review-not-kept`, `draft-review-signing`, `queued`
 
 <a href="send/compose-empty.png"><img src="send/compose-empty.png" width="206" alt="compose-empty"></a>
 <a href="send/compose-empty-dark.png"><img src="send/compose-empty-dark.png" width="206" alt="compose-empty-dark"></a>
@@ -738,6 +738,8 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="send/review-refreshing.png"><img src="send/review-refreshing.png" width="206" alt="review-refreshing"></a>
 <a href="send/review-not-sent.png"><img src="send/review-not-sent.png" width="206" alt="review-not-sent"></a>
 <a href="send/review-rejected.png"><img src="send/review-rejected.png" width="206" alt="review-rejected"></a>
+<a href="send/review-lookalike-blocked.png"><img src="send/review-lookalike-blocked.png" width="206" alt="review-lookalike-blocked"></a>
+<a href="send/review-new-recipient.png"><img src="send/review-new-recipient.png" width="206" alt="review-new-recipient"></a>
 <a href="send/loading.png"><img src="send/loading.png" width="206" alt="loading"></a>
 <a href="send/watch-only.png"><img src="send/watch-only.png" width="206" alt="watch-only"></a>
 <a href="send/sent.png"><img src="send/sent.png" width="206" alt="sent"></a>

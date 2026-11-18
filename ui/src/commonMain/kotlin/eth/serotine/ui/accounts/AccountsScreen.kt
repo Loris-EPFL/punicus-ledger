@@ -22,6 +22,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemColors
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -41,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -86,6 +89,9 @@ const val ACCOUNTS_EMPTY_LIGHT_CLIENT_TAG = "accounts-empty-light-client-"
 /** Test tag of the portfolio's total, for UI tests. */
 const val ACCOUNTS_TOTAL_TAG = "accounts-total"
 
+/** The row of the account whose detail is shown beside the list, on a wide window. */
+const val ACCOUNTS_SELECTED_TAG = "accounts-selected"
+
 /**
  * Binds [AccountsScreen], or in simple mode [SimpleAccountsScreen], to its ViewModel: the only
  * composable that knows the ViewModel exists. Copy is done here, on the platform's clipboard;
@@ -100,6 +106,7 @@ fun AccountsRoute(
     onCreateSafe: () -> Unit,
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
+    selected: SelectedAccount? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val copy = rememberCopyText()
@@ -123,6 +130,7 @@ fun AccountsRoute(
             onMessageShown = viewModel::messageShown,
             onToggleAmounts = viewModel::toggleAmounts,
             onDismissLost = viewModel::dismissLost,
+            selected = selected,
         )
         InterfaceMode.DETAILED -> AccountsScreen(
             state = state,
@@ -138,6 +146,7 @@ fun AccountsRoute(
             onMessageShown = viewModel::messageShown,
             onToggleAmounts = viewModel::toggleAmounts,
             onDismissLost = viewModel::dismissLost,
+            selected = selected,
         )
     }
 }
@@ -159,7 +168,8 @@ fun AccountsRoute(
  * [fabExpandedAtStart] opens the button's fan from the start (a preview). Once the list is read, the
  * eye at the top left hides or shows every amount ([onToggleAmounts]; docs/wallet-ux.md, *Hiding
  * amounts*). What lenient mode's outbox holds is said under each network's line, and a queued
- * transaction lost once, until [onDismissLost].
+ * transaction lost once, until [onDismissLost]. Beside an account's detail on a wide window, the row of
+ * the account shown there, [selected], is drawn selected.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -178,6 +188,7 @@ fun AccountsScreen(
     onMessageShown: () -> Unit = {},
     onToggleAmounts: () -> Unit = {},
     onDismissLost: () -> Unit = {},
+    selected: SelectedAccount? = null,
 ) {
     val snackbar = remember { SnackbarHostState() }
     // Said once: a network that could not be turned on.
@@ -240,7 +251,9 @@ fun AccountsScreen(
                 )
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                Rows(state, act, onTurnOnNetwork, onDismissLost, onCatchUp = { asking = it }) { unavailable = it }
+                Rows(state, selected, act, onTurnOnNetwork, onDismissLost, onCatchUp = { asking = it }) {
+                    unavailable = it
+                }
             }
         }
     }
@@ -314,6 +327,7 @@ private fun PortfolioTotal(total: String, label: String?, note: String?) {
 @Composable
 private fun BoxScope.Rows(
     state: AccountsUiState,
+    selected: SelectedAccount?,
     onAccountAction: (AccountAction) -> Unit,
     onTurnOnNetwork: (Long) -> Unit,
     onDismissLost: () -> Unit,
@@ -339,6 +353,7 @@ private fun BoxScope.Rows(
                 AccountList(
                     state.sections,
                     state.lostNotice,
+                    selected,
                     onAccountAction,
                     onTurnOnNetwork,
                     onDismissLost,
@@ -410,6 +425,7 @@ private fun EmptyWalletLightClient(network: NetworkLightClient, onCatchUp: (Stal
 private fun AccountList(
     sections: List<NetworkSection>,
     lostNotice: String?,
+    selected: SelectedAccount?,
     onAccountAction: (AccountAction) -> Unit,
     onTurnOnNetwork: (Long) -> Unit,
     onDismissLost: () -> Unit,
@@ -422,14 +438,16 @@ private fun AccountList(
         sections.forEach { section ->
             item(key = "section/${section.chainId}") { SectionHeader(section, onCatchUp) }
             items(section.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
+                val shown = selected?.matches(account) == true
                 WithActionMenu(
                     actions = accountMenu(account, onAccountAction, onTurnOnNetwork, onUnavailable),
                     menuLabel = "Actions for ${account.label}",
                     onClick = { onAccountAction(AccountAction.Open(account.chainId, account.address)) },
+                    modifier = Modifier.selectedRow(shown),
                     clickLabel = "Open ${account.label}",
                 ) {
                     // An account on a network that is off stays listed, dimmed (N18).
-                    AccountRow(account, Modifier.alpha(if (section.on) 1f else DIMMED))
+                    AccountRow(account, shown, Modifier.alpha(if (section.on) 1f else DIMMED))
                 }
                 HorizontalDivider()
             }
@@ -580,10 +598,27 @@ internal fun accountMenu(
     )
 }
 
+/**
+ * The row of the account whose detail is shown beside the list, [shown]: said selected to a screen
+ * reader and tagged, the colour being the row's own ([selectedRowColors]). Nothing for any other row.
+ */
+internal fun Modifier.selectedRow(shown: Boolean): Modifier =
+    if (shown) semantics { selected = true }.testTag(ACCOUNTS_SELECTED_TAG) else this
+
+/** A row's colours: the secondary container behind the account shown beside the list ([shown]). */
 @Composable
-private fun AccountRow(account: AccountItem, modifier: Modifier = Modifier) {
+internal fun selectedRowColors(shown: Boolean): ListItemColors =
+    if (shown) {
+        ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    } else {
+        ListItemDefaults.colors()
+    }
+
+@Composable
+private fun AccountRow(account: AccountItem, shown: Boolean, modifier: Modifier = Modifier) {
     ListItem(
         modifier = modifier,
+        colors = selectedRowColors(shown),
         leadingContent = { AccountAvatar(account.address, threshold = account.signers) },
         headlineContent = { NameWithControlBadge(account.label, account.control) },
         supportingContent = {

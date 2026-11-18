@@ -361,6 +361,18 @@ data class AccountItem(
     }
 }
 
+/**
+ * The account whose detail is shown beside the list on a wide window (docs/wallet-ux.md, *Navigation*),
+ * by the chain id of its network and its [address]: its row is drawn selected. Not part of the
+ * [AccountsUiState]: where the user is in the app, not what the list holds.
+ */
+data class SelectedAccount(val chainId: Long, val address: String) {
+
+    /** Whether [account] is this one; addresses compare whatever their case, EIP-55 or lower. */
+    fun matches(account: AccountItem): Boolean =
+        account.chainId == chainId && account.address.equals(address, ignoreCase = true)
+}
+
 /** What the user asks of an account row, by its [AccountItem.address]. */
 sealed interface AccountAction {
     /** The chain id of the account's network. */

@@ -1,15 +1,27 @@
 package eth.serotine.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -19,6 +31,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -123,6 +136,10 @@ import eth.serotine.ui.accountdetail.ACCOUNT_REFRESH_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_SWAP_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
 import eth.serotine.ui.accounts.ACCOUNTS_LIST_TAG
+import eth.serotine.ui.accounts.ACCOUNTS_SELECTED_TAG
+import eth.serotine.ui.accounts.NO_ACCOUNT_OPEN_HINT
+import eth.serotine.ui.accounts.NO_ACCOUNT_OPEN_TAG
+import eth.serotine.ui.accounts.NO_ACCOUNT_YET_HINT
 import eth.serotine.ui.accounts.ACCOUNTS_REFRESH_TAG
 import eth.serotine.ui.accounts.NO_ACCOUNTS_HINT
 import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
@@ -488,6 +505,13 @@ class AppNavigationTest {
     fun clearHost() = host.viewModelStore.clear()
 
     /**
+     * The width of the window the [App] is drawn in: a phone's, the app's first platform, unless a test
+     * asks for the test window's own ([WIDE]: 1024 dp, the tabs in a rail and the Accounts list beside
+     * the account it opens).
+     */
+    private val windowWidth = mutableStateOf<Dp?>(PHONE)
+
+    /**
      * Shows the [App] in the [host]; with [followDeployments], beside it the deployments' follower,
      * on the graph's own ports, as the hosts run it (`SerotineApplication`, `main()`).
      */
@@ -501,7 +525,9 @@ class AppNavigationTest {
             }
             val controller = rememberNavController()
             if (navController.isEmpty()) navController += controller
-            App(graph, controller)
+            Box(windowWidth.value?.let { Modifier.width(it) } ?: Modifier.fillMaxSize()) {
+                App(graph, controller)
+            }
         }
     }
 
@@ -695,6 +721,9 @@ class AppNavigationTest {
         )
     }
 
+    /** The row of the account [label] in the Accounts list, wherever else its name is shown. */
+    private fun listRow(label: String) = rule.onNode(hasText(label) and hasAnyAncestor(hasTestTag(ACCOUNTS_LIST_TAG)))
+
     /** The screens on the back stack, bottom first, without the graphs that hold them. */
     private fun screens(): List<String?> = rule.runOnIdle {
         navController.single().currentBackStack.value.filter { it.destination !is NavGraph }.map { it.destination.route }
@@ -720,7 +749,7 @@ class AppNavigationTest {
 
         rule.onNodeWithText("Settings").performClick()
         rule.onNodeWithTag(SETTINGS_VERSION_TAG).performScrollTo().assertIsDisplayed()
-        rule.onNodeWithTag(SETTINGS_NETWORK_TAG + Network.SEPOLIA.chainId).assertIsDisplayed()
+        rule.onNodeWithTag(SETTINGS_NETWORK_TAG + Network.SEPOLIA.chainId).performScrollTo().assertIsDisplayed()
 
         rule.onNodeWithText("Accounts").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
@@ -807,6 +836,154 @@ class AppNavigationTest {
         rule.onNodeWithText("Only send Sepolia assets to this address").assertIsDisplayed()
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(ACCOUNT_TOTAL_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun aWideWindowShowsTheListBesideTheAccountItOpens() {
+        accounts.value = listOf(daily, savings)
+        windowWidth.value = WIDE
+        showApp()
+
+        // Nothing open yet: the pane beside the list says how to open an account.
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(NO_ACCOUNT_OPEN_TAG).assertIsDisplayed()
+        rule.onNodeWithText(NO_ACCOUNT_OPEN_HINT).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNTS_SELECTED_TAG).assertDoesNotExist()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals("0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2")
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
+        rule.onNode(hasTestTag(ACCOUNTS_SELECTED_TAG) and hasAnyDescendant(hasText("Daily"))).assertExists()
+        rule.onNodeWithTag(NO_ACCOUNT_OPEN_TAG).assertDoesNotExist()
+
+        // Another row opens its account in this one's place: back still returns to the list alone.
+        rule.onNodeWithText("Savings").performClick()
+        rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
+        rule.onNode(hasTestTag(ACCOUNTS_SELECTED_TAG) and hasAnyDescendant(hasText("Savings"))).assertExists()
+        assertEquals(
+            listOf(ACCOUNTS_ROUTE, ACCOUNT_DETAIL_ROUTE),
+            screens(),
+        )
+
+        // A screen opened from the account is left too when another row is chosen.
+        rule.onNodeWithText("Receive").performClick()
+        rule.onNodeWithTag(RECEIVE_ADDRESS_TAG).assertIsDisplayed()
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals("0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2")
+        assertEquals(listOf(ACCOUNTS_ROUTE, ACCOUNT_DETAIL_ROUTE), screens())
+
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithTag(NO_ACCOUNT_OPEN_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNTS_SELECTED_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun aWideWindowWithNoAccountSaysToAddOneFirst() {
+        windowWidth.value = WIDE
+        showApp()
+
+        rule.onNodeWithText("No accounts yet").assertIsDisplayed()
+        rule.onNodeWithText(NO_ACCOUNT_YET_HINT).assertIsDisplayed()
+        rule.onNodeWithText(NO_ACCOUNT_OPEN_HINT).assertDoesNotExist()
+
+        // The first account added: the pane says how to open it.
+        accounts.value = listOf(daily)
+        rule.onNodeWithText(NO_ACCOUNT_OPEN_HINT).assertIsDisplayed()
+    }
+
+    @Test
+    fun aRowOfTheListBesideTheAccountOpensAsTheAccountShownSays() {
+        accounts.value = listOf(daily, savings)
+        // Daily's key is here and its balance verified: its Send is open.
+        nativeBalance.value = BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118)
+        windowWidth.value = WIDE
+        showApp()
+        listRow("Daily").performClick()
+        rule.onNodeWithText("Receive").performClick()
+        rule.onNodeWithTag(RECEIVE_ADDRESS_TAG).assertIsDisplayed()
+
+        // The row of the account open beside the list: back to its detail as it was, not a new one.
+        val detail = rule.runOnIdle {
+            navController.single().currentBackStack.value.last { it.destination.route == ACCOUNT_DETAIL_ROUTE }
+        }
+        listRow("Daily").performClick()
+        rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals("0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2")
+        rule.runOnIdle { assertEquals(detail, navController.single().currentBackStack.value.last()) }
+
+        // Its menu's Receive opens over its detail, as the detail's own button does.
+        listRow("Daily").performTouchInput { longClick() }
+        rule.onNode(hasText("Receive") and hasAnyAncestor(isPopup())).performSemanticsAction(SemanticsActions.OnClick)
+        rule.onNodeWithTag(RECEIVE_ADDRESS_TAG).assertTextEquals("0x8f3A2C71E5B9d04A6f1e3C2BA7D90E5F4c6B91c2")
+        assertEquals(listOf(ACCOUNTS_ROUTE, ACCOUNT_DETAIL_ROUTE, RECEIVE_ROUTE), screens())
+
+        // Another account's Receive starts from the list: back from it returns there, nothing selected.
+        listRow("Savings").performTouchInput { longClick() }
+        rule.onNode(hasText("Receive") and hasAnyAncestor(isPopup())).performSemanticsAction(SemanticsActions.OnClick)
+        rule.onNodeWithTag(RECEIVE_ADDRESS_TAG).assertTextEquals("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
+        assertEquals(listOf(ACCOUNTS_ROUTE, RECEIVE_ROUTE), screens())
+        rule.onNodeWithTag(ACCOUNTS_SELECTED_TAG).assertDoesNotExist()
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithTag(NO_ACCOUNT_OPEN_TAG).assertIsDisplayed()
+
+        // A flow that covers the list, from another account, opens over the one open: back returns to it.
+        listRow("Savings").performClick()
+        listRow("Daily").performTouchInput { longClick() }
+        rule.onNode(hasText("Send") and hasAnyAncestor(isPopup())).performSemanticsAction(SemanticsActions.OnClick)
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertDoesNotExist()
+        rule.runOnIdle { navController.single().popBackStack() }
+        rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
+        rule.onNode(hasTestTag(ACCOUNTS_SELECTED_TAG) and hasAnyDescendant(hasText("Savings"))).assertExists()
+    }
+
+    @Test
+    fun theListComesAndGoesBesideTheAccountAsTheWindowCrossesTheWideWidth() {
+        accounts.value = listOf(daily, savings)
+        windowWidth.value = WIDE
+        showApp()
+        rule.onNodeWithText("Savings").performClick()
+        rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
+
+        // Narrowed: the account alone, where it was, and back from it to the list.
+        windowWidth.value = PHONE
+        rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertDoesNotExist()
+        assertEquals(listOf(ACCOUNTS_ROUTE, ACCOUNT_DETAIL_ROUTE), screens())
+
+        // Widened again: the list is back beside it, the same account still open.
+        windowWidth.value = WIDE
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
+        rule.onNode(hasTestTag(ACCOUNTS_SELECTED_TAG) and hasAnyDescendant(hasText("Savings"))).assertExists()
+        rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
+
+        // Back to the list, then narrowed: the list fills the window, not the empty pane.
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithTag(NO_ACCOUNT_OPEN_TAG).assertIsDisplayed()
+        windowWidth.value = PHONE
+        rule.onNodeWithTag(NO_ACCOUNT_OPEN_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun theListStaysOutOfTheSettingsTabAndOfAFlowThatCoversTheBar() {
+        accounts.value = listOf(daily)
+        windowWidth.value = WIDE
+        showApp()
+        rule.onNodeWithText("Daily").performClick()
+
+        rule.onNode(hasText("Settings") and hasClickAction()).performClick()
+        rule.onNodeWithTag(SETTINGS_VERSION_TAG).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertDoesNotExist()
+
+        rule.onNode(hasText("Accounts") and hasClickAction()).performClick()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
+        rule.onNode(hasTestTag(ACCOUNTS_SELECTED_TAG) and hasAnyDescendant(hasText("Daily"))).assertExists()
+
+        // Add account covers the bar, and the list with it.
+        rule.onNodeWithContentDescription("Add account").performClick()
+        rule.onNodeWithText("Import recovery phrase").performClick()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertDoesNotExist()
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNode(hasTestTag(ACCOUNTS_SELECTED_TAG) and hasAnyDescendant(hasText("Daily"))).assertExists()
     }
 
     @Test
@@ -1394,3 +1571,18 @@ private object NoDelayModules : eth.serotine.domain.repository.DelayModules {
             eth.serotine.domain.repository.ReadUnavailable.NO_ENGINE,
         )
 }
+
+/** A phone's window: the tabs in a bar at the bottom, and the Accounts list a screen of its own. */
+private val PHONE = 400.dp
+
+/** The test window's own width, 1024 dp: the tabs in a rail, and the Accounts list beside the account. */
+private val WIDE: Dp? = null
+
+/** The Accounts tab's start, as [AppNavigationTest]'s back stack names it. */
+private const val ACCOUNTS_ROUTE = "accounts"
+
+/** An account's detail, as [AppNavigationTest]'s back stack names it. */
+private const val ACCOUNT_DETAIL_ROUTE = "account/{chain}/{address}"
+
+/** An account's Receive screen, as [AppNavigationTest]'s back stack names it. */
+private const val RECEIVE_ROUTE = "receive/{chain}/{address}"

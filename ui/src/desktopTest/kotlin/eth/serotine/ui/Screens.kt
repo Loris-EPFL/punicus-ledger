@@ -3,7 +3,10 @@ package eth.serotine.ui
 import eth.serotine.ui.accountdetail.accountDetailScreenPreviews
 import eth.serotine.ui.accountdetail.simpleAccountDetailScreenPreviews
 import eth.serotine.ui.accounts.accountsScreenPreviews
+import eth.serotine.ui.accounts.accountsTabletScreenPreviews
+import eth.serotine.ui.accounts.noAccountOpenScreenPreviews
 import eth.serotine.ui.accounts.simpleAccountsScreenPreviews
+import eth.serotine.ui.accounts.simpleAccountsTabletScreenPreviews
 import eth.serotine.ui.activitydetail.activityDetailScreenPreviews
 import eth.serotine.ui.activitydetail.simpleActivityDetailScreenPreviews
 import eth.serotine.ui.addnetwork.addOnNetworksDialogPreviews
@@ -66,6 +69,7 @@ import eth.serotine.ui.watch.watchScreenPreviews
 internal object Screens {
     val accountDetail = Screen("account-detail", "Account detail", accountDetailScreenPreviews)
     val accounts = Screen("accounts", "Accounts", accountsScreenPreviews)
+    val accountsTablet = Screen("accounts-tablet", "Accounts on a tablet", accountsTabletScreenPreviews)
     val activityDetail = Screen("activity-detail", "Activity detail", activityDetailScreenPreviews)
     val addOnNetworksDialog = Screen("add-on-networks-dialog", "Add on networks (dialog)", addOnNetworksDialogPreviews)
     val addToken = Screen("add-token", "Add token", addTokenScreenPreviews)
@@ -82,6 +86,7 @@ internal object Screens {
     val gnosisPay = Screen("gnosis-pay", "Gnosis Pay account", gnosisPayScreenPreviews)
     val handoff = Screen("handoff", "Send from another wallet", handoffScreenPreviews)
     val mnemonicImport = Screen("mnemonic-import", "Import recovery phrase", mnemonicImportScreenPreviews)
+    val noAccountOpen = Screen("no-account-open", "No account open (wide window)", noAccountOpenScreenPreviews)
     val pairDapp = Screen("pair-dapp", "Connect a dApp", pairDappScreenPreviews)
     val receive = Screen("receive", "Receive", receiveScreenPreviews)
     val removeAccountDialog = Screen("remove-account-dialog", "Remove account (dialog)", removeAccountDialogPreviews)
@@ -99,6 +104,8 @@ internal object Screens {
     val simpleAccountDetail =
         Screen("simple-account-detail", "Account detail (simple mode)", simpleAccountDetailScreenPreviews)
     val simpleAccounts = Screen("simple-accounts", "Home (simple mode)", simpleAccountsScreenPreviews)
+    val simpleAccountsTablet =
+        Screen("simple-accounts-tablet", "Home on a tablet (simple mode)", simpleAccountsTabletScreenPreviews)
     val simpleActivityDetail =
         Screen("simple-activity-detail", "Activity detail (simple mode)", simpleActivityDetailScreenPreviews)
     val simpleAddToken = Screen("simple-add-token", "Add token (simple mode)", simpleAddTokenScreenPreviews)
@@ -129,6 +136,7 @@ internal object Screens {
     val all: List<Screen> = listOf(
         accountDetail,
         accounts,
+        accountsTablet,
         activityDetail,
         addOnNetworksDialog,
         addToken,
@@ -145,6 +153,7 @@ internal object Screens {
         gnosisPay,
         handoff,
         mnemonicImport,
+        noAccountOpen,
         pairDapp,
         receive,
         removeAccountDialog,
@@ -160,6 +169,7 @@ internal object Screens {
         settings,
         simpleAccountDetail,
         simpleAccounts,
+        simpleAccountsTablet,
         simpleActivityDetail,
         simpleAddToken,
         simpleCowOrder,

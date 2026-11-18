@@ -1677,12 +1677,13 @@ opens **Gnosis Pay**, a screen of its own:
   accounts on the way are shown as last verified. Send stays enabled;
   Review then says "This account could not be verified at the latest block,
   so nothing is sent on what was verified before."
-- **Send through the Delay**, greyed out with its reason where it cannot be
-  done here: no controlling key, the key on another network only, the key
-  watched here while held elsewhere, the account list unreadable, who
-  controls the Delay not all verified yet, more accounts behind it than
-  Punicus reads, a held key that acts only with co-owners, or the retired
-  module.
+- **New transfer** (owner's request, 2026-11-18: it was "Send through the
+  Delay", which read as if something were waiting to be sent), greyed out
+  with its reason where it cannot be done here: no controlling key, the key
+  on another network only, the key watched here while held elsewhere, the
+  account list unreadable, who controls the Delay not all verified yet, more
+  accounts behind it than Punicus reads, a held key that acts only with
+  co-owners, or the retired module.
 - **Queued from this device**: each transfer queued here and not executed,
   with where it stands ("Waits until …", "Ready to execute until …",
   "Expired …: nothing moved"). Execute is offered once it is the next entry

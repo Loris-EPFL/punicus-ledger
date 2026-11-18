@@ -66,7 +66,7 @@ import eth.serotine.ui.mode.LocalInterfaceMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 
-/** Test tag of Send through the Delay, for UI tests. */
+/** Test tag of New transfer (a transfer queued through the Delay), for UI tests. */
 const val GNOSIS_PAY_SEND_TAG = "gnosis-pay-send"
 
 /** Test tag of a queued transfer's Execute, for UI tests: one per row, suffixed with its id. */
@@ -294,7 +294,7 @@ private fun Overview(
         }
     }
     state.controlNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-    val sendLabel = "Send through the Delay"
+    val sendLabel = "New transfer"
     Button(
         onClick = {
             if (state.send.enabled) {

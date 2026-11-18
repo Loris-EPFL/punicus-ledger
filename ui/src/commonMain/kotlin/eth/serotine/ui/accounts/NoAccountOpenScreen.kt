@@ -39,17 +39,27 @@ internal const val NO_ACCOUNT_YET_HINT =
 @Composable
 fun NoAccountOpenRoute(viewModel: AccountsViewModel, modifier: Modifier = Modifier) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    NoAccountOpenScreen(walletEmpty = (state as? AccountsUiState.Ready)?.accounts?.isEmpty() == true, modifier)
+    NoAccountOpenScreen(noAccountOpenHint(state), modifier)
+}
+
+/**
+ * What the pane beside the list says under its title, by what the list [state] holds: how to open an
+ * account, or that one is added first. Nothing while the list is read, or cannot be: the list beside
+ * it says so, and there is nothing to choose yet.
+ */
+internal fun noAccountOpenHint(state: AccountsUiState): String? = when (state) {
+    is AccountsUiState.Ready -> if (state.accounts.isEmpty()) NO_ACCOUNT_YET_HINT else NO_ACCOUNT_OPEN_HINT
+    is AccountsUiState.Loading, is AccountsUiState.ListUnavailable -> null
 }
 
 /**
  * The detail pane on a wide window while no account is open in it (docs/wallet-ux.md, *Navigation*):
- * the Accounts list is beside it, and choosing a row there opens that account here. Says how, or,
- * while the wallet holds no account ([walletEmpty]), that one has to be added first. Shows nothing
- * about the chain: the list beside it does.
+ * the Accounts list is beside it, and choosing a row there opens that account here. Its title, and
+ * under it the display-ready [hint] when there is one ([noAccountOpenHint]). Shows nothing about the
+ * chain: the list beside it does.
  */
 @Composable
-fun NoAccountOpenScreen(walletEmpty: Boolean, modifier: Modifier = Modifier) {
+fun NoAccountOpenScreen(hint: String?, modifier: Modifier = Modifier) {
     Surface(modifier.fillMaxSize().testTag(NO_ACCOUNT_OPEN_TAG), color = MaterialTheme.colorScheme.surface) {
         Box(contentAlignment = Alignment.Center) {
             Column(
@@ -64,12 +74,14 @@ fun NoAccountOpenScreen(walletEmpty: Boolean, modifier: Modifier = Modifier) {
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text("No account open", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    if (walletEmpty) NO_ACCOUNT_YET_HINT else NO_ACCOUNT_OPEN_HINT,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
+                hint?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
     }

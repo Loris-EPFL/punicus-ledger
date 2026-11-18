@@ -24,9 +24,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.SaveableStateHolder
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -169,6 +170,9 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
             Tab.entries.firstOrNull { it.graph == destination.route }
         }
         val select: (Tab) -> Unit = { tab -> navController.select(tab, current = selected) }
+        // What the list beside the tab's screens keeps (its scroll position) while it is gone: the NavHost
+        // keeps the list's when it is its destination, and this the pane's, outside the NavHost.
+        val paneState = rememberSaveableStateHolder()
         BoxWithConstraints(Modifier.fillMaxSize()) {
             // Read by the Accounts destination as a State, so the NavHost's graph is not built again as it
             // changes: that destination is the empty detail pane on a wide window, whatever the tab, so that
@@ -190,7 +194,7 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
                     }
                 }
                 // The Accounts list beside the tab's screens: on a wide window, while that tab is shown.
-                if (wide.value && selected == Tab.ACCOUNTS) AccountsPane(graph, navController)
+                if (wide.value && selected == Tab.ACCOUNTS) AccountsPane(graph, navController, entry, paneState)
                 Scaffold(
                     modifier = Modifier.weight(1f),
                     // The screens' own scaffolds take the system insets; this one only makes
@@ -238,22 +242,40 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
  * beside it is drawn selected; what a row asks opens as [openFromPane] says.
  */
 @Composable
-private fun AccountsPane(graph: AppGraph, navController: NavHostController) {
-    val backStack by navController.currentBackStack.collectAsState()
-    // An entry already popped (a frame before the back stack's state catches up) has no ViewModels left to give.
-    val start = backStack.lastOrNull {
-        it.destination.route == Destination.ACCOUNTS && it.lifecycle.currentState != Lifecycle.State.DESTROYED
-    } ?: return
-    val shown = backStack.lastOrNull { it.destination.route == ACCOUNT_ROUTE }?.account()
-    AccountsTabList(
-        navController,
-        viewModel(start) { graph.accountsViewModel() },
-        onAccountAction = { action -> navController.openFromPane(action, shown) },
-        modifier = Modifier.width(ACCOUNTS_PANE).fillMaxHeight(),
-        selected = shown?.let { SelectedAccount(it.network.chainId, it.address.hex) },
-    )
+private fun AccountsPane(
+    graph: AppGraph,
+    navController: NavHostController,
+    current: NavBackStackEntry?,
+    saved: SaveableStateHolder,
+) {
+    // Looked up again as the screen shown changes, through NavController's public API (its back stack's flow
+    // is the library's own, @RestrictTo). The Accounts tab's start, and the account open beside the list.
+    val entries = remember(current) {
+        navController.entryOrNull(Destination.ACCOUNTS) to navController.entryOrNull(ACCOUNT_ROUTE)
+    }
+    // An entry popped since (a frame before the screen shown catches up) has no ViewModels left to give.
+    val start = entries.first?.takeIf { it.lifecycle.currentState != Lifecycle.State.DESTROYED } ?: return
+    val shown = entries.second?.account()
+    // Kept per Accounts start: a new one (the update screen emptied the stack) starts at the top.
+    saved.SaveableStateProvider("accounts-pane/${start.id}") {
+        AccountsTabList(
+            navController,
+            viewModel(start) { graph.accountsViewModel() },
+            onAccountAction = { action -> navController.openFromPane(action, shown) },
+            modifier = Modifier.width(ACCOUNTS_PANE).fillMaxHeight(),
+            selected = shown?.let { SelectedAccount(it.network.chainId, it.address.hex) },
+        )
+    }
     VerticalDivider()
 }
+
+/** The topmost entry of [route] on the back stack, or null when there is none. */
+private fun NavController.entryOrNull(route: String): NavBackStackEntry? =
+    try {
+        getBackStackEntry(route)
+    } catch (_: IllegalArgumentException) {
+        null
+    }
 
 /**
  * The Accounts list, as the tab's start or as the pane beside it: its + button opens the ways to add an
@@ -966,8 +988,9 @@ private fun Destinations(
 /**
  * Opens what [action] asks of a row of the list beside the tab's screens on a wide window, [shown] being
  * the account open there. For that account: its detail again, as it was ([AccountAction.Open]), or the
- * screen asked for over it, as from its detail. For another account: a dialog over what is shown, and a
- * screen from the list, as on a phone, so the account open beside the list is the one it shows.
+ * screen asked for over it, as from its detail. For another account: a screen of the tab from the list, as
+ * on a phone, so the account open beside the list is the one it shows; a dialog, or a flow that covers the
+ * list (Send and the like), over what is shown, which back returns to.
  */
 private fun NavController.openFromPane(action: AccountAction, shown: AccountId?) {
     val network = Network.ofChainId(action.chainId) ?: return
@@ -975,13 +998,11 @@ private fun NavController.openFromPane(action: AccountAction, shown: AccountId?)
     when {
         account == shown && action is AccountAction.Open -> popBackStack(ACCOUNT_ROUTE, inclusive = false)
         account == shown -> open(action)
-        action is AccountAction.Rename || action is AccountAction.Remove || action is AccountAction.AddOnNetwork ->
-            open(action)
-        action is AccountAction.Copy -> Unit
-        else -> {
+        action is AccountAction.Open || action is AccountAction.Receive || action is AccountAction.Derive -> {
             popBackStack(Destination.ACCOUNTS, inclusive = false)
             open(action)
         }
+        else -> open(action)
     }
 }
 

@@ -229,9 +229,14 @@ replaces the bar (Material's expanded window size class):
   on that row returns to its detail as it was.
 - A row's menu, for the account open beside the list, opens what it asks
   over that account, as its detail's own buttons do. For another account,
-  Rename, Remove and Add on another network open over what is shown, being
-  dialogs; anything else starts from the list, as on a phone, so the pane
-  never shows one account's screen under another's selected row.
+  a screen of the tab (Receive, Add account from the same phrase) starts
+  from the list, as on a phone, so the pane never shows one account's
+  screen under another's selected row. A dialog (Rename, Remove, Add on
+  another network) and a flow that covers the list (Send, Send from
+  another wallet, a Safe's proposal, Gnosis Pay) open over what is shown,
+  and back from them returns to it.
+- While the list is read, or cannot be, the empty pane shows its title
+  alone: there is nothing to choose yet, and the list says why.
 - The list leaves with the tab: Settings and Debug take the whole width
   beside the rail, and a flow that covers the bar (send, import, create
   account, a Safe transaction) covers the list too.

@@ -137,7 +137,9 @@ import eth.serotine.ui.accountdetail.ACCOUNT_SWAP_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
 import eth.serotine.ui.accounts.ACCOUNTS_LIST_TAG
 import eth.serotine.ui.accounts.ACCOUNTS_SELECTED_TAG
+import eth.serotine.ui.accounts.NO_ACCOUNT_OPEN_HINT
 import eth.serotine.ui.accounts.NO_ACCOUNT_OPEN_TAG
+import eth.serotine.ui.accounts.NO_ACCOUNT_YET_HINT
 import eth.serotine.ui.accounts.ACCOUNTS_REFRESH_TAG
 import eth.serotine.ui.accounts.NO_ACCOUNTS_HINT
 import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
@@ -503,10 +505,11 @@ class AppNavigationTest {
     fun clearHost() = host.viewModelStore.clear()
 
     /**
-     * The width of the window the [App] is drawn in: the test window's own (1024 dp, a wide one, with
-     * the tabs in a rail and the Accounts list beside the account it opens) while null.
+     * The width of the window the [App] is drawn in: a phone's, the app's first platform, unless a test
+     * asks for the test window's own ([WIDE]: 1024 dp, the tabs in a rail and the Accounts list beside
+     * the account it opens).
      */
-    private val windowWidth = mutableStateOf<Dp?>(null)
+    private val windowWidth = mutableStateOf<Dp?>(PHONE)
 
     /**
      * Shows the [App] in the [host]; with [followDeployments], beside it the deployments' follower,
@@ -740,7 +743,6 @@ class AppNavigationTest {
     @Test
     fun theSettingsTabKeepsTheAccountsTabWhereItWas() {
         accounts.value = listOf(daily)
-        windowWidth.value = PHONE
         showApp()
         rule.onNodeWithText("Daily").performClick()
         rule.onNodeWithText("Receive").assertIsDisplayed()
@@ -839,11 +841,13 @@ class AppNavigationTest {
     @Test
     fun aWideWindowShowsTheListBesideTheAccountItOpens() {
         accounts.value = listOf(daily, savings)
+        windowWidth.value = WIDE
         showApp()
 
         // Nothing open yet: the pane beside the list says how to open an account.
         rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
         rule.onNodeWithTag(NO_ACCOUNT_OPEN_TAG).assertIsDisplayed()
+        rule.onNodeWithText(NO_ACCOUNT_OPEN_HINT).assertIsDisplayed()
         rule.onNodeWithTag(ACCOUNTS_SELECTED_TAG).assertDoesNotExist()
 
         rule.onNodeWithText("Daily").performClick()
@@ -874,8 +878,25 @@ class AppNavigationTest {
     }
 
     @Test
+    fun aWideWindowWithNoAccountSaysToAddOneFirst() {
+        windowWidth.value = WIDE
+        showApp()
+
+        rule.onNodeWithText("No accounts yet").assertIsDisplayed()
+        rule.onNodeWithText(NO_ACCOUNT_YET_HINT).assertIsDisplayed()
+        rule.onNodeWithText(NO_ACCOUNT_OPEN_HINT).assertDoesNotExist()
+
+        // The first account added: the pane says how to open it.
+        accounts.value = listOf(daily)
+        rule.onNodeWithText(NO_ACCOUNT_OPEN_HINT).assertIsDisplayed()
+    }
+
+    @Test
     fun aRowOfTheListBesideTheAccountOpensAsTheAccountShownSays() {
         accounts.value = listOf(daily, savings)
+        // Daily's key is here and its balance verified: its Send is open.
+        nativeBalance.value = BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118)
+        windowWidth.value = WIDE
         showApp()
         listRow("Daily").performClick()
         rule.onNodeWithText("Receive").performClick()
@@ -903,11 +924,21 @@ class AppNavigationTest {
         rule.onNodeWithTag(ACCOUNTS_SELECTED_TAG).assertDoesNotExist()
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithTag(NO_ACCOUNT_OPEN_TAG).assertIsDisplayed()
+
+        // A flow that covers the list, from another account, opens over the one open: back returns to it.
+        listRow("Savings").performClick()
+        listRow("Daily").performTouchInput { longClick() }
+        rule.onNode(hasText("Send") and hasAnyAncestor(isPopup())).performSemanticsAction(SemanticsActions.OnClick)
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertDoesNotExist()
+        rule.runOnIdle { navController.single().popBackStack() }
+        rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
+        rule.onNode(hasTestTag(ACCOUNTS_SELECTED_TAG) and hasAnyDescendant(hasText("Savings"))).assertExists()
     }
 
     @Test
     fun theListComesAndGoesBesideTheAccountAsTheWindowCrossesTheWideWidth() {
         accounts.value = listOf(daily, savings)
+        windowWidth.value = WIDE
         showApp()
         rule.onNodeWithText("Savings").performClick()
         rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
@@ -919,7 +950,7 @@ class AppNavigationTest {
         assertEquals(listOf(ACCOUNTS_ROUTE, ACCOUNT_DETAIL_ROUTE), screens())
 
         // Widened again: the list is back beside it, the same account still open.
-        windowWidth.value = null
+        windowWidth.value = WIDE
         rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertIsDisplayed()
         rule.onNode(hasTestTag(ACCOUNTS_SELECTED_TAG) and hasAnyDescendant(hasText("Savings"))).assertExists()
         rule.onNodeWithTag(ACCOUNT_ADDRESS_TAG).assertTextEquals("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
@@ -935,6 +966,7 @@ class AppNavigationTest {
     @Test
     fun theListStaysOutOfTheSettingsTabAndOfAFlowThatCoversTheBar() {
         accounts.value = listOf(daily)
+        windowWidth.value = WIDE
         showApp()
         rule.onNodeWithText("Daily").performClick()
 
@@ -958,8 +990,6 @@ class AppNavigationTest {
     fun theLightClientsStripShowsWhereTheScreenDependsOnItAndNotInSettings() {
         accounts.value = listOf(daily)
         status.value = LightClientStatus.CatchingUp(done = 1, total = 4)
-        // The account's screen alone, without the list's sections, which say the same beside it.
-        windowWidth.value = PHONE
         showApp()
 
         rule.onNodeWithText("Daily").performClick()
@@ -1544,6 +1574,9 @@ private object NoDelayModules : eth.serotine.domain.repository.DelayModules {
 
 /** A phone's window: the tabs in a bar at the bottom, and the Accounts list a screen of its own. */
 private val PHONE = 400.dp
+
+/** The test window's own width, 1024 dp: the tabs in a rail, and the Accounts list beside the account. */
+private val WIDE: Dp? = null
 
 /** The Accounts tab's start, as [AppNavigationTest]'s back stack names it. */
 private const val ACCOUNTS_ROUTE = "accounts"

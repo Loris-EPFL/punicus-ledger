@@ -20,6 +20,7 @@ class ConnectionsScreenTest {
     private val extended = mutableListOf<String>()
     private val disconnected = mutableListOf<String>()
     private var paired = 0
+    private var perApp = 0
 
     private fun show(state: ConnectionsUiState) = rule.setContent {
         SerotineTheme {
@@ -32,6 +33,7 @@ class ConnectionsScreenTest {
                 onTransaction = { opened += "transaction:$it" },
                 onExtend = { extended += it },
                 onDisconnect = { disconnected += it },
+                onPerApp = { perApp++ },
             )
         }
     }
@@ -57,6 +59,8 @@ class ConnectionsScreenTest {
         assertEquals(listOf("t1"), disconnected)
         rule.onNodeWithText("Connect a dApp").performScrollTo().performClick()
         assertEquals(1, paired)
+        rule.onNodeWithTag(CONNECTIONS_PER_APP_TAG).performScrollTo().performClick()
+        assertEquals(1, perApp)
     }
 
     @Test

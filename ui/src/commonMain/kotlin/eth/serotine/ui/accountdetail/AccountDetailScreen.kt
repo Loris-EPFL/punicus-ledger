@@ -92,6 +92,7 @@ import eth.serotine.ui.components.HideAmountsButton
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.NetworkMark
+import eth.serotine.ui.perapp.PerAppAddressRow
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.Unavailable
@@ -149,6 +150,12 @@ const val ADD_NFT_ID_TAG = "add-nft-id"
 /** Test tag of the Swap button, for UI tests. */
 const val ACCOUNT_SWAP_TAG = "account-swap"
 
+/** Test tag of a per-app address's mark under its name, for UI tests. */
+const val ACCOUNT_PER_APP_MARK_TAG = "account-per-app-mark"
+
+/** Test tag of the Per-app tab's "Restore a per-app address", for UI tests. */
+const val ACCOUNT_PER_APP_RESTORE_TAG = "account-per-app-restore"
+
 /** Test tag of each queued Safe transaction, for UI tests. */
 const val ACCOUNT_QUEUE_ROW_TAG = "account-queue-row"
 
@@ -184,6 +191,7 @@ fun AccountDetailRoute(
     onDerive: () -> Unit = {},
     onContinueSwap: (sell: String) -> Unit = {},
     onSendElsewhere: (contract: String?) -> Unit = {},
+    perAppActions: PerAppActions = PerAppActions(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
@@ -235,6 +243,7 @@ fun AccountDetailRoute(
                 onAdd = viewModel::addNft,
                 onRemove = viewModel::removeNft,
             ),
+            perAppActions = perAppActions,
         )
         // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
         InterfaceMode.DETAILED -> AccountDetailScreen(
@@ -272,6 +281,7 @@ fun AccountDetailRoute(
                 onAdd = viewModel::addNft,
                 onRemove = viewModel::removeNft,
             ),
+            perAppActions = perAppActions,
         )
     }
 }
@@ -331,6 +341,7 @@ fun AccountDetailScreen(
     onToggleUnlistedNfts: () -> Unit = {},
     nftActions: NftActions = NftActions(),
     onSendElsewhere: (contract: String?) -> Unit = {},
+    perAppActions: PerAppActions = PerAppActions(),
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -544,6 +555,7 @@ fun AccountDetailScreen(
                     onToggleUnlistedNfts = onToggleUnlistedNfts,
                     nftActions = nftsShown,
                     onSendElsewhere = sendElsewhere,
+                    perAppActions = perAppActions,
                 )
             }
         }
@@ -585,6 +597,7 @@ private fun Details(
     onToggleUnlistedNfts: () -> Unit,
     nftActions: NftActions,
     onSendElsewhere: (String?) -> Unit,
+    perAppActions: PerAppActions,
 ) {
     // Each item ends with the space before the next, but an Activity's rows, which follow one another.
     val spaced = Modifier.padding(bottom = 16.dp)
@@ -652,6 +665,15 @@ private fun Details(
                             color = MaterialTheme.colorScheme.tertiary,
                         )
                     }
+                    // A per-app address (#252): the site it was made for and its path, so another wallet finds it.
+                    state.perAppMark?.let {
+                        Text(
+                            it,
+                            Modifier.testTag(ACCOUNT_PER_APP_MARK_TAG),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     // The names that point here (#274): their records, never a claim the account holds them.
                     state.ensNames?.let {
                         Text(
@@ -715,6 +737,9 @@ private fun Details(
                     state.gnosisPay,
                     onGnosisPay,
                 )
+            }
+            state.segment == DetailSegment.PER_APP -> item {
+                PerAppTabBody(checkNotNull(state.perApp), perAppActions, onCopy)
             }
             else -> item { SafeQueueList(checkNotNull(state.queue), onOpenSafeTx, onImportRequest) }
         }
@@ -999,6 +1024,28 @@ class NftActions(
     fun withOpenAdd(open: () -> Unit) = NftActions(open, onCloseAdd, onAdd, onRemove)
 }
 
+/**
+ * What the Per-app tab's rows and its Restore do (issue #252): [onOpen] opens a per-app address's account by its chain
+ * id and address, and [onRestore] opens screen D9 for the phrase named by its address, ready to restore one.
+ */
+class PerAppActions(
+    val onOpen: (chainId: Long, address: String) -> Unit = { _, _ -> },
+    val onRestore: (phrase: String) -> Unit = {},
+)
+
+/** The Per-app tab: the phrase's per-app addresses as D9 lists them, and "Restore a per-app address". */
+@Composable
+private fun PerAppTabBody(tab: PerAppTab, actions: PerAppActions, onCopy: (String) -> Unit) {
+    Column {
+        tab.empty?.let { Text(it, Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodyMedium) }
+        tab.rows.forEach { row -> PerAppAddressRow(row, actions.onOpen, onCopy) }
+        OutlinedButton(
+            onClick = { actions.onRestore(tab.phrase) },
+            modifier = Modifier.padding(top = 8.dp).fillMaxWidth().testTag(ACCOUNT_PER_APP_RESTORE_TAG),
+        ) { Text("Restore a per-app address") }
+    }
+}
+
 /** Why no NFT shows an image (owner ruling, 2026-11-05, #246: on-chain metadata only). */
 private const val NO_IMAGES = "Images are not shown: nothing is fetched that is not on chain."
 
@@ -1065,6 +1112,7 @@ private fun SegmentChoice(
                             DetailSegment.OWNERS -> "Owners"
                             DetailSegment.QUEUE -> (queue as? SafeQueue.Shown)?.let { "Queue (${it.rows.size})" }
                                 ?: "Queue"
+                            DetailSegment.PER_APP -> "Per-app"
                         },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

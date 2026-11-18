@@ -44,6 +44,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.accountdetail.AccountDetailRoute
+import eth.serotine.ui.accountdetail.PerAppActions
 import eth.serotine.ui.accounts.AccountAction
 import eth.serotine.ui.accounts.AccountsRoute
 import eth.serotine.ui.accounts.AccountsViewModel
@@ -79,6 +80,7 @@ import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.mode.LocalInterfaceMode
 import eth.serotine.ui.pairdapp.PairDappRoute
+import eth.serotine.ui.perapp.PerAppRoute
 import eth.serotine.ui.platform.LocalScreenCaptureDebugSwitch
 import eth.serotine.ui.platform.ScreenCaptureWarnings
 import eth.serotine.ui.receive.ReceiveRoute
@@ -463,6 +465,10 @@ private fun Destinations(
                     onOpenActivity = { key -> navController.openActivityDetail(account, key) },
                     onContinueSwap = { sell -> navController.continueSwap(account, sell) },
                     onSendElsewhere = { contract -> navController.sendElsewhere(account, contract) },
+                    perAppActions = PerAppActions(
+                        onOpen = { chain, address -> navController.open(AccountAction.Open(chain, address)) },
+                        onRestore = { phrase -> navController.perApp(phrase) },
+                    ),
                 )
             }
             composable(
@@ -553,6 +559,7 @@ private fun Destinations(
                     viewModel { graph.connectionsViewModel() },
                     onBack = { navController.leave(Destination.CONNECTIONS) },
                     onPair = { navController.navigate(Destination.PAIR_DAPP) { launchSingleTop = true } },
+                    onPerApp = { navController.perApp(phrase = null) },
                     onProposal = { key ->
                         navController.navigate("${Destination.DAPP_PROPOSAL}/$key") { launchSingleTop = true }
                     },
@@ -646,6 +653,29 @@ private fun Destinations(
         navigation(startDestination = Destination.DEBUG, route = Tab.DEBUG.graph) {
             composable(Destination.DEBUG) {
                 DebugRoute(debug)
+            }
+        }
+        // Screen D9 (#252), outside the tabs: an account's Per-app tab and Connected dApps both open it.
+        composable(
+            PER_APP_ROUTE,
+            arguments = listOf(
+                navArgument(PHRASE) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            val asked = entry.savedStateHandle.get<String>(PHRASE)
+            val phrase = asked?.let(Address::parse)
+            if (asked == null || phrase != null) {
+                PerAppRoute(
+                    viewModel { graph.perAppViewModel(phrase) },
+                    onBack = { navController.popBackStack(PER_APP_ROUTE, inclusive = true) },
+                    onOpen = { chain, address -> navController.open(AccountAction.Open(chain, address)) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(PER_APP_ROUTE, inclusive = true) }
             }
         }
         // Outside the tabs: a key operation covers the bar until it ends.
@@ -1012,6 +1042,13 @@ private fun NavController.openFromPane(action: AccountAction, shown: AccountId?)
     }
 }
 
+/** Opens screen D9 (#252): the per-app addresses of the phrase [phrase] names (its address, in lower case), or all. */
+private fun NavController.perApp(phrase: String?) {
+    navigate(if (phrase == null) Destination.PER_APP else "${Destination.PER_APP}?$PHRASE=$phrase") {
+        launchSingleTop = true
+    }
+}
+
 /** Opens what [action] asks for; Copy is the screen's own, done on the clipboard. */
 private fun NavController.open(action: AccountAction) {
     val network = Network.ofChainId(action.chainId) ?: return
@@ -1364,6 +1401,7 @@ private object Destination {
     const val ACCOUNTS = "accounts"
     const val CONNECTIONS = "connections"
     const val PAIR_DAPP = "pairdapp"
+    const val PER_APP = "perapp"
     const val DAPP_PROPOSAL = "dappproposal"
     const val DAPP_REQUEST = "dapprequest"
     const val DAPP_TRANSACTION = "dapptransaction"
@@ -1440,6 +1478,12 @@ private const val FEE = "fee"
 /** Send from an account, with a token chosen or not, filled in or not ([TO], [AMOUNT], [FEE]). */
 private const val SEND_ROUTE =
     "${Destination.SEND}/{$CHAIN}/{$ADDRESS}?$ASSET={$ASSET}&$TO={$TO}&$AMOUNT={$AMOUNT}&$FEE={$FEE}"
+
+/** The phrase screen D9 lists the per-app addresses of, by the address of its first account; none for every phrase. */
+private const val PHRASE = "phrase"
+
+/** Screen D9, the per-app addresses (#252): of every phrase, or of the one [PHRASE] names. */
+private const val PER_APP_ROUTE = "${Destination.PER_APP}?$PHRASE={$PHRASE}"
 
 /** Send from another wallet (#255), with a token chosen or not. */
 private const val HANDOFF_ROUTE = "${Destination.SEND_ELSEWHERE}/{$CHAIN}/{$ADDRESS}?$ASSET={$ASSET}"

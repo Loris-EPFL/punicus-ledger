@@ -136,6 +136,7 @@ import eth.serotine.domain.usecase.ObserveNetworkOverview
 import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveNfts
 import eth.serotine.domain.usecase.ObserveOutbox
+import eth.serotine.domain.usecase.ObservePerAppAddresses
 import eth.serotine.domain.usecase.ObservePerAppChoice
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafe
@@ -191,6 +192,7 @@ import eth.serotine.domain.usecase.RemoveQueuedSafeTx
 import eth.serotine.domain.usecase.RemoveToken
 import eth.serotine.domain.usecase.RenameAccount
 import eth.serotine.domain.usecase.ResolveRecipient
+import eth.serotine.domain.usecase.RestorePerAppAddress
 import eth.serotine.domain.usecase.RouteRanking
 import eth.serotine.domain.usecase.SendCowCancellation
 import eth.serotine.domain.usecase.SendDappTransaction
@@ -242,6 +244,7 @@ import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 import eth.serotine.ui.mode.InterfaceModeViewModel
 import eth.serotine.ui.pairdapp.IncomingDappLink
 import eth.serotine.ui.pairdapp.PairDappViewModel
+import eth.serotine.ui.perapp.PerAppViewModel
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
@@ -513,6 +516,7 @@ class AppGraph(
             ObserveOutbox(outbox),
             offerHandoff = OfferHandoff(walletHandoff),
             observeGnosisPay = observeGnosisPay(),
+            observePerAppAddresses = ObservePerAppAddresses(accounts, perAppKeys, networkSettings),
         )
 
     /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it. */
@@ -1087,6 +1091,16 @@ class AppGraph(
         RejectDappProposal(dappSessions),
         ObservePerAppChoice(accounts, perAppKeys, dappSites, networkSettings),
         MakePerAppAddress(perAppKeys, accounts, walletChanges),
+    )
+
+    /**
+     * Screen D9, the per-app addresses held here (issue #252): of every phrase, or of the one [phrase] names (the
+     * address of its first account) when opened from that phrase's account.
+     */
+    fun perAppViewModel(phrase: Address?): PerAppViewModel = PerAppViewModel(
+        phrase,
+        ObservePerAppAddresses(accounts, perAppKeys, networkSettings),
+        RestorePerAppAddress(MakePerAppAddress(perAppKeys, accounts, walletChanges), networkSettings),
     )
 
     fun currencyViewModel(): CurrencyViewModel =

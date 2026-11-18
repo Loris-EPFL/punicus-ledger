@@ -7,9 +7,13 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
+import eth.serotine.domain.model.AppIsolation
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.model.NftStandard
 import eth.serotine.domain.model.NftRef
 import eth.serotine.domain.model.NetworkUpgrade
@@ -79,6 +83,7 @@ import eth.serotine.ui.FakeFreshness
 import eth.serotine.ui.FakeLogIndex
 import eth.serotine.ui.FakeEnsNfts
 import eth.serotine.ui.FakeNftContracts
+import eth.serotine.ui.FakePerAppKeys
 import eth.serotine.ui.MemoryAddedNfts
 import eth.serotine.ui.MemorySeenEnsNames
 import eth.serotine.ui.FakeReceiptsNever
@@ -129,6 +134,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import eth.serotine.domain.usecase.ObserveOutbox
+import eth.serotine.domain.usecase.ObservePerAppAddresses
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountDetailViewModelTest {
@@ -189,7 +195,10 @@ class AccountDetailViewModelTest {
     /** The outbox: the Safe signatures held in lenient mode, which a Safe's queue lists too. */
     private val outbox = MemoryOutbox()
 
-    private fun viewModel(address: Address = daily.address) = AccountDetailViewModel(
+    private fun viewModel(
+        address: Address = daily.address,
+        perApp: ObservePerAppAddresses? = null,
+    ) = AccountDetailViewModel(
         AccountId(Network.SEPOLIA, address),
         ObserveAccount(accounts),
         ObserveAccountValue(
@@ -230,6 +239,7 @@ class AccountDetailViewModelTest {
         ObserveOutbox(outbox),
         formatTime = { "<$it>" },
         clock = { NOW },
+        observePerAppAddresses = perApp,
     )
 
     private val upgradeReports = FakeUpgradeReports()
@@ -260,6 +270,45 @@ class AccountDetailViewModelTest {
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
+
+    @Test
+    fun aPhrasesFirstAccountHasAPerAppTabAndAPerAppAddressItsMark() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val site = (AppHost.parse("uniswap.org") as AppHostResult.Host).host
+        val mark = PerAppAccount(site, AppIsolation.pathOf(site), daily.address)
+        val perApp = Account(
+            Network.SEPOLIA,
+            Address.of("0x" + "6".repeat(40)),
+            AccountKind.EOA,
+            "uniswap.org",
+            AccountCustody.InKeyStore,
+            perApp = mark,
+        )
+        accounts.accounts.value = listOf(daily, perApp)
+        val observe = ObservePerAppAddresses(
+            accounts,
+            FakePerAppKeys(phrases = mapOf(daily.address to daily.address)),
+            networks,
+        )
+
+        val first = viewModel(perApp = observe)
+        backgroundScope.launch { first.uiState.collect {} }
+        runCurrent()
+        val shown = first.uiState.value as AccountDetailUiState.Ready
+        assertEquals(listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY, DetailSegment.PER_APP), shown.segments)
+        val tab = assertNotNull(shown.perApp)
+        assertEquals(daily.address.hex, tab.phrase)
+        assertEquals(listOf("uniswap.org"), tab.rows.map { it.site })
+        assertNull(shown.perAppMark)
+
+        val made = viewModel(perApp.address, perApp = observe)
+        backgroundScope.launch { made.uiState.collect {} }
+        runCurrent()
+        val marked = made.uiState.value as AccountDetailUiState.Ready
+        assertEquals("Per-app address for uniswap.org · ${AppIsolation.pathOf(site)}", marked.perAppMark)
+        assertNull(marked.perApp, "a per-app address is not the account its phrase is known by")
+        assertEquals(listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY), marked.segments)
+    }
 
     @Test
     fun theNftsAreBelowTheAssetsAndTheUnlistedOnesOpenOnlyWhenAsked() = runTest {

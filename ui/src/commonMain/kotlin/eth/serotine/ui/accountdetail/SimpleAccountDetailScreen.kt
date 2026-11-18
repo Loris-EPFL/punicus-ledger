@@ -45,6 +45,7 @@ fun SimpleAccountDetailScreen(
     onToggleUnlistedNfts: () -> Unit = {},
     nftActions: NftActions = NftActions(),
     onSendElsewhere: (contract: String?) -> Unit = {},
+    perAppActions: PerAppActions = PerAppActions(),
 ) {
     val ready = state as? AccountDetailUiState.Ready
     AccountDetailScreen(
@@ -77,6 +78,7 @@ fun SimpleAccountDetailScreen(
         onToggleUnlistedNfts = onToggleUnlistedNfts,
         nftActions = nftActions,
         onSendElsewhere = onSendElsewhere,
+        perAppActions = perAppActions,
     )
 }
 

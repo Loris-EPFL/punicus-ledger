@@ -44,6 +44,7 @@
           <li><a href="#add-safe">Add a Safe you already have</a></li>
           <li><a href="#create-safe">Create a new Safe</a></li>
           <li><a href="#walletconnect">Connect to a web app (WalletConnect)</a></li>
+          <li><a href="#gnosis-pay">Use the account behind your Gnosis Pay card</a></li>
           <li><a href="#after">What to do next</a></li>
         </ul>
       </div>
@@ -409,7 +410,50 @@
       </div>
     </section>
 
-    <section class="section tinted" id="after">
+    <section class="section tinted" id="gnosis-pay">
+      <div class="wrap walk wide">
+        <div>
+          <h2>Use the account behind your Gnosis Pay card</h2>
+          <p class="when">The money on a Gnosis Pay card sits in a Safe on Gnosis Chain. Its owners, which the Gnosis Pay app calls owners and Punicus calls members, act through the Safe's Delay module: whatever they ask waits a few minutes, then can be carried out. You need the key of one owner in Punicus, on Gnosis Chain, with a little xDAI for the fees.</p>
+          <ol class="steps">
+            <li>
+              <span class="ui">Add the card's account</span> as a watched address on Gnosis Chain (<a href="#watch">Watch an address</a>).
+              <p>Its address is the one Gnosis Pay shows for the card's account. Punicus recognises it as a Gnosis Pay account by itself and says so on its Owners tab, with Full control once an owner's key is in the wallet.</p>
+            </li>
+            <li>
+              <span class="ui">Withdraw:</span> on the Owners tab, open <span class="ui">Gnosis Pay</span>, tap <span class="ui">New transfer</span>, choose the asset, the recipient and the amount, then <span class="ui">Review</span> and sign.
+              <p>This queues the transfer. Nothing moves yet.</p>
+            </li>
+            <li>
+              <span class="ui">Wait for the countdown.</span> Under "Queued from this device" the transfer counts down the account's waiting time (three minutes on most cards), then <span class="ui">Execute</span> becomes available. Tap it and sign again.
+              <p>The execution must be sent within the account's window, thirty minutes on most cards. Past it the transfer expires and nothing moves.</p>
+            </li>
+            <li>
+              <span class="ui">Add or remove an owner:</span> on the Owners tab, open <span class="ui">Safe settings</span>. "Delay module members" lists the account's current owners. Tap <span class="ui">Add a member</span>, or <span class="ui">Remove</span> next to one, review, and sign. It waits and is executed like a transfer.
+              <p>A new owner can move all the money on the card once added, so add only an address you control. The last owner cannot be removed: nobody could ever move the money again.</p>
+            </li>
+          </ol>
+          <p class="caution">The module carries out what is queued strictly in order. If something queued earlier, here or in another app, was never carried out in time, it blocks everything after it. Punicus then offers <span class="ui">Skip expired entries</span>: it clears the expired entries and moves no money.</p>
+          <p class="proofline">Punicus checks each step itself through its own light client, without a relay service. Transfers made this way may not show up in the Gnosis Pay app's own list; the card's balance there changes all the same.</p>
+        </div>
+        <ul class="shots">
+          <li>
+            <figure>
+              <img loading="lazy" src="../docs/screenshots/gnosis-pay/queued.png" width="412" height="892" alt="The Gnosis Pay screen: the account's Delay module with its waiting time, the owner whose key is on this device, New transfer, and two queued transfers, one counting down with a bar, one ready to execute.">
+              <figcaption>A queued transfer counts down; then Execute</figcaption>
+            </figure>
+          </li>
+          <li>
+            <figure>
+              <img loading="lazy" src="../docs/screenshots/safe-settings/gnosis-pay.png" width="412" height="892" alt="Safe settings of a Gnosis Pay account: the members of its Delay module, each with Remove, and Add a member.">
+              <figcaption>The account's owners, in Safe settings</figcaption>
+            </figure>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" id="after">
       <div class="wrap">
         <div class="section-head">
           <h2>What to do next</h2>

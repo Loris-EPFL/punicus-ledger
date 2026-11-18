@@ -67,10 +67,18 @@ What the app does today:
   the pinned one or none (the zero address removes it), or enable a module,
   is shown and never signed, approved or executed here.
 - **Gnosis Pay.** A watched Gnosis Pay account (the Safe behind the Gnosis Pay
-  card, on Gnosis Chain) is recognised, and a key held here that controls its
-  Delay module, as a member or as the owner of a member Safe, sends a plain
-  transfer through it: queued first, executed after the cooldown, with no
-  relayer (docs/gnosis-pay.md).
+  card, on Gnosis Chain) is recognised. A key held here that controls its
+  Delay module, as a member or as the owner of a member Safe, works through
+  that module, with no relayer (docs/gnosis-pay.md):
+  - **withdraw**: a plain transfer of xDAI or a token out of the account;
+  - **add an owner**: a new member of the Delay module, who can then move the
+    account's funds too;
+  - **remove an owner**: a member taken off the module; the last one never is,
+    since the account's funds would be locked for good.
+  Each is queued first and executed after the module's cooldown, which the
+  app counts down. The account's Safe settings list its current owners. An
+  expired entry that blocks the module's queue, from this app or another, is
+  skipped with the module's own `skipExpired()`, which moves nothing.
 - **NFTs.** An account's NFTs, found in its verified log index and shown only
   once proven held, with on-chain metadata only; older ones are added by
   contract and id, ENS names also by name, and the ENS names pointing to an

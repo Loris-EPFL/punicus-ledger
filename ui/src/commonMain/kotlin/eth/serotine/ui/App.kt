@@ -73,6 +73,7 @@ import eth.serotine.ui.debug.DebugRoute
 import eth.serotine.ui.debug.DebugViewModel
 import eth.serotine.ui.deriveaccount.DeriveAccountRoute
 import eth.serotine.ui.gnosispay.GnosisPayRoute
+import eth.serotine.ui.gnosispay.GnosisPayStart
 import eth.serotine.ui.handoff.HandoffRoute
 import eth.serotine.ui.lightclient.LightClientViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
@@ -881,16 +882,33 @@ private fun Destinations(
                     onBack = { navController.popBackStack(SAFE_SETTINGS_ROUTE, inclusive = true) },
                     // Signed and queued: the change's screen, and back from it to the Safe.
                     onProposed = { hash -> navController.openSafeTx(account, hash, replacing = SAFE_SETTINGS_ROUTE) },
+                    // A change of a Gnosis Pay account's Delay members: queued through the Delay on its screen.
+                    onDelayMember = { start -> navController.gnosisPay(account, start) },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SAFE_SETTINGS_ROUTE, inclusive = true) }
             }
         }
-        composable(GNOSIS_PAY_ROUTE) { entry ->
+        composable(
+            GNOSIS_PAY_ROUTE,
+            arguments = listOf(
+                navArgument(MEMBERS) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
             val account = entry.account()
+            val start = when (val members = entry.savedStateHandle.get<String>(MEMBERS)) {
+                null -> null
+                ADD_MEMBER -> GnosisPayStart.AddMember
+                else -> Address.parse(members)?.let { GnosisPayStart.RemoveMember(Eip55.format(it)) }
+            }
             if (account != null) {
                 GnosisPayRoute(
                     viewModel = viewModel { graph.gnosisPayViewModel(account) },
+                    start = start,
                     lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(GNOSIS_PAY_ROUTE, inclusive = true) },
                     onGone = { navController.popBackStack(GNOSIS_PAY_ROUTE, inclusive = true) },
@@ -1250,10 +1268,18 @@ private fun NavController.safeSettings(safe: AccountId) {
     navigate("${Destination.SAFE}/${safe.route}/${Destination.SAFE_SETTINGS}")
 }
 
-/** Opens the Gnosis Pay account [safe]'s screen (docs/gnosis-pay.md), once. */
-private fun NavController.gnosisPay(safe: AccountId) {
+/**
+ * Opens the Gnosis Pay account [safe]'s screen (docs/gnosis-pay.md), once; at the step [start] names
+ * when the Safe's settings ask for a change of the Delay's members (owner ruling, 2026-11-18).
+ */
+private fun NavController.gnosisPay(safe: AccountId, start: GnosisPayStart? = null) {
     if (currentDestination?.route == GNOSIS_PAY_ROUTE) return
-    navigate("${Destination.SAFE}/${safe.route}/${Destination.GNOSIS_PAY}")
+    val members = when (start) {
+        null -> ""
+        GnosisPayStart.AddMember -> "?$MEMBERS=$ADD_MEMBER"
+        is GnosisPayStart.RemoveMember -> "?$MEMBERS=${start.member}"
+    }
+    navigate("${Destination.SAFE}/${safe.route}/${Destination.GNOSIS_PAY}$members")
 }
 
 /**
@@ -1483,8 +1509,16 @@ private const val SAFE_SWAP_ROUTE =
 /** A Safe's settings, and the changes of them proposed. */
 private const val SAFE_SETTINGS_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.SAFE_SETTINGS}"
 
+/**
+ * The Gnosis Pay screen's optional route argument: [ADD_MEMBER] for the add form, or a member's
+ * address for its removal's review, as the Safe's settings ask (owner ruling, 2026-11-18).
+ */
+private const val MEMBERS = "members"
+private const val ADD_MEMBER = "add"
+
 /** A Gnosis Pay account: its Delay module, its queued transfers, and Send through the Delay. */
-private const val GNOSIS_PAY_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.GNOSIS_PAY}"
+private const val GNOSIS_PAY_ROUTE =
+    "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.GNOSIS_PAY}?$MEMBERS={$MEMBERS}"
 
 /** Import a signing request for a Safe. */
 private const val SAFE_IMPORT_ROUTE = "${Destination.SAFE}/{$CHAIN}/{$ADDRESS}/${Destination.IMPORT}"

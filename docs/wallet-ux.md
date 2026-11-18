@@ -1026,6 +1026,23 @@ replaces the bar (Material's expanded window size class):
       (owner ruling, 2026-10-18, on #54), and a version update runs a
       migration contract's code as the Safe, a delegate call, which this
       wallet does not sign (#57) until a migration contract is pinned.
+    - **A Gnosis Pay account's Delay members** (owner ruling and request,
+      2026-11-18; docs/gnosis-pay.md, *Adding and removing a member*): above
+      the owners, since its one owner is a placeholder, "Delay module
+      members" lists who controls the account: each member's address, its
+      name in the wallet, what it is ("A key", "A Safe: 1 of its 9 owners
+      signs"), and "A key on this device controls the account through it"
+      where one does, with Remove; then Add a member, and the block the Delay
+      was verified at (in simple mode "Checked on chain", the block under
+      *Details*). Both are greyed out where they cannot be done here,
+      with Send through the Delay's reason, and Remove of the only member
+      with "This is the Delay module's only member … its funds would be
+      locked for good. Add another member first." Through a Delay whose
+      entries never expire both are greyed out with "This account's Delay
+      module never lets an entry expire … So Punicus adds and removes no
+      member through it. Transfers still go through it." (owner's decision,
+      2026-11-18). A tap opens the Gnosis Pay
+      screen at the add form or the removal's review; Back returns here.
     - Each change has its form: the owner it removes or replaces; the new
       owner's address, typed or picked from the wallet's accounts on the
       Safe's network that are not owners yet (an address only, no name); and
@@ -1749,6 +1766,27 @@ opens **Gnosis Pay**, a screen of its own:
   Safes the queueing goes through, the key's xDAI before and after, and the
   blocks each figure was read at. A quote over a minute old is made again before it is signed,
   as on Send (screen 8). A transaction sent opens its status (screen 9).
+- **A member of the Delay added or removed** (owner ruling, 2026-11-18;
+  docs/gnosis-pay.md, *Adding and removing a member*), opened from the
+  Safe's settings (screen 28). Add is a form: what a member can do, in the
+  account's own figures ("A member of the Delay module can queue any
+  transaction of this account … A member can move all of this account's
+  funds, without this device."), the key that signs, and the address,
+  checked against its EIP-55 checksum. Its review is titled "Queue: add
+  member 0x…" and warns: "Once this is executed, 0x… can move all of this
+  account's funds after the Delay's wait of 3 min, without this device."
+  Remove goes straight to its review, "Queue: remove member 0x…", which
+  names the member before it in the Delay's list and, where the member is
+  the way this device controls the account, warns that once executed this
+  device can no longer send from it (or controls it only through the
+  others). While it is checked, the overview says "Checking the removal of
+  0x… on chain…", and New transfer is greyed out saying what is being
+  checked. Refused for an expired entry ahead, the overview offers **Skip
+  expired entries**. The reviews sign with the same unlock as Send. Queued changes
+  are listed under **Queued from this device** ("Add member 0x…", "Remove
+  member 0x…") with Execute after the cooldown, as transfers are; an
+  execution whose change no longer fits the members says so, and is not
+  sent.
 - The light client's strip (Detailed view) or sync line (simple mode) sits
   above the screen, as on every screen that reads the chain.
 - On the account's own screen, and on its row in the list, an account a key

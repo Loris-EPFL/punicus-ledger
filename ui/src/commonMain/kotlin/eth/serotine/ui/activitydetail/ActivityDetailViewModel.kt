@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayCall
+import eth.serotine.domain.model.DelayMemberChange
 import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
@@ -272,8 +274,8 @@ class ActivityDetailViewModel(
                 fields += DetailField("Value", rows.amount(action.value, TransferAsset.Native))
                 fields += DetailField("For the dApp", "${action.dapp} (stated by the dApp, not verified)")
             }
-            is SentAction.DelayQueue -> fields += delayFields(action.transfer, names, rows)
-            is SentAction.DelayExecution -> fields += delayFields(action.transfer, names, rows)
+            is SentAction.DelayQueue -> fields += delayFields(action.call, names, rows)
+            is SentAction.DelayExecution -> fields += delayFields(action.call, names, rows)
             is SentAction.DelaySkip -> {
                 fields += addressOf("Gnosis Pay account", action.safe, names)
                 fields += addressOf("Delay module", action.delay, names)
@@ -294,14 +296,26 @@ class ActivityDetailViewModel(
         addressOf("Safe transaction to", request.tx.to, names),
     )
 
-    /** What a Gnosis Pay account's [transfer] through its Delay concerns: the account, the Delay, whom and what. */
-    private fun delayFields(transfer: DelayTransfer, names: Map<Address, String>, rows: ActivityRows) =
+    /**
+     * What a Gnosis Pay account's [call] through its Delay concerns: the account, the Delay, and whom
+     * and what for a transfer, or the member added or removed.
+     */
+    private fun delayFields(call: DelayCall, names: Map<Address, String>, rows: ActivityRows) =
         mutableListOf<DetailField>().apply {
-            this += addressOf("Gnosis Pay account", transfer.safe, names)
-            this += addressOf("Delay module", transfer.delay, names)
-            this += addressOf("To", transfer.recipient, names)
-            this += DetailField("Amount", rows.amount(transfer.amount, transfer.asset))
-            addContract("Token contract", transfer.asset, names)
+            this += addressOf("Gnosis Pay account", call.safe, names)
+            this += addressOf("Delay module", call.delay, names)
+            when (call) {
+                is DelayTransfer -> {
+                    this += addressOf("To", call.recipient, names)
+                    this += DetailField("Amount", rows.amount(call.amount, call.asset))
+                    addContract("Token contract", call.asset, names)
+                }
+                is DelayMemberChange -> this += addressOf(
+                    if (call.kind == DelayMemberChange.Kind.ADD) "Member added" else "Member removed",
+                    call.member,
+                    names,
+                )
+            }
         }
 
     /** The contract of [asset], when it is a token, named by its symbol. */

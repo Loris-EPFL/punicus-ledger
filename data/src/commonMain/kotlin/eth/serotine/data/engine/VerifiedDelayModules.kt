@@ -196,9 +196,10 @@ class VerifiedDelayModules internal constructor(
          * Where the call of hash [wanted] stands, at one block: avatar, target and owner first, which
          * must be [safe] (null otherwise); the nonces and periods, then `txHash(n)` from the
          * next entry on until the first of that hash, at most [DelayModules.MAX_QUEUE_READ] of them,
-         * and that one's `txCreatedAt(n)`, all at the one block.
+         * and that one's `txCreatedAt(n)`, all at the one block; with [withMembers], the Delay's
+         * members after the periods, at the same block.
          */
-        fun queue(safe: Address, wanted: Digest): Read<DelayQueue?> {
+        fun queue(safe: Address, wanted: Digest, withMembers: Boolean): Read<DelayQueue?> {
             val avatar = address(AVATAR) ?: return stopped
             val target = address(TARGET) ?: return stopped
             val owner = address(OWNER) ?: return stopped
@@ -210,6 +211,7 @@ class VerifiedDelayModules internal constructor(
             if (txNonce > queueNonce) return Read.Stopped(Ended.NOT_A_DELAYS_ANSWER)
             val cooldown = number(TX_COOLDOWN) ?: return stopped
             val expiration = number(TX_EXPIRATION) ?: return stopped
+            val members = if (withMembers) members() ?: return stopped else null
             // The next entry's time, whatever its hash: an expired one blocks all behind it.
             val headCreatedAt = if (txNonce < queueNonce) number(txCreatedAt(txNonce)) ?: return stopped else null
             val last = minOf(queueNonce, txNonce + DelayModules.MAX_QUEUE_READ)
@@ -222,12 +224,14 @@ class VerifiedDelayModules internal constructor(
                         ?: return stopped
                     val entry = DelayEntry(nonce, entryHash, createdAt)
                     val searched = (nonce - txNonce + 1).toInt()
-                    return done(DelayQueue(txNonce, queueNonce, cooldown, expiration, entry, searched, headCreatedAt))
+                    return done(
+                        DelayQueue(txNonce, queueNonce, cooldown, expiration, entry, searched, headCreatedAt, members),
+                    )
                 }
                 nonce++
             }
             val searched = (last - txNonce).toInt()
-            return done(DelayQueue(txNonce, queueNonce, cooldown, expiration, null, searched, headCreatedAt))
+            return done(DelayQueue(txNonce, queueNonce, cooldown, expiration, null, searched, headCreatedAt, members))
         }
 
         /**
@@ -294,16 +298,23 @@ class VerifiedDelayModules internal constructor(
      * and owner read at the queue's block; the getters at one block, read again at once
      * while they straddle two or a call gives no answer, [READ_TRIES] reads in all; the head's time
      * read before them, so that a cooldown is never judged over before it is, and an expiration
-     * judged with the margin the use case keeps.
+     * judged with the margin the use case keeps. With [withMembers], the Delay's members are read too, at the
+     * same block (one more call); without, they are not, and the queue holds none.
      */
-    override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading {
+    override suspend fun queue(
+        network: Network,
+        safe: Address,
+        delay: Address,
+        hash: Digest,
+        withMembers: Boolean,
+    ): DelayQueueReading {
         if (network != served) return DelayQueueReading.Unavailable(ReadUnavailable.NO_ENGINE)
         val unproven = DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
         // Each try is one verified read; a lost peer is asked again after RETRY_PAUSE, as readDelay
         // does, never in a tight loop.
         for (attempt in 1..READ_TRIES) {
             when (val tried = chain.askVerified(dispatcher, { QueueTry.Final(DelayQueueReading.Unavailable(it)) }) {
-                queueOnce(it, safe, delay, hash)
+                queueOnce(it, safe, delay, hash, withMembers)
             }) {
                 is QueueTry.Final -> return tried.reading
                 QueueTry.Straddled -> Unit
@@ -315,7 +326,13 @@ class VerifiedDelayModules internal constructor(
     }
 
     /** One try of [queue]: the code proven, then the getters read at one block. */
-    private fun queueOnce(verified: VerifiedChain, safe: Address, delay: Address, hash: Digest): QueueTry {
+    private fun queueOnce(
+        verified: VerifiedChain,
+        safe: Address,
+        delay: Address,
+        hash: Digest,
+        withMembers: Boolean,
+    ): QueueTry {
         val unproven = QueueTry.Final(DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN))
         val headTime = (verified.snapshot() as? EngineSnapshot.Running)?.headTimestamp ?: return unproven
         val code = verified.proveCode(delay) ?: return unproven
@@ -323,7 +340,7 @@ class VerifiedDelayModules internal constructor(
         if (generation != DelayGeneration.CURRENT) {
             return QueueTry.Final(DelayQueueReading.NotTheSafes(generation, code.blockNumber))
         }
-        return when (val read = Getters(verified, delay).queue(safe, hash)) {
+        return when (val read = Getters(verified, delay).queue(safe, hash, withMembers)) {
             is Read.Done -> QueueTry.Final(
                 read.value?.let { DelayQueueReading.Read(it, read.block, headTime) }
                     ?: DelayQueueReading.NotTheSafes(DelayGeneration.CURRENT, read.block),

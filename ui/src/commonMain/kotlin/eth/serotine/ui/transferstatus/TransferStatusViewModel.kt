@@ -3,6 +3,7 @@ package eth.serotine.ui.transferstatus
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayMemberChange
 import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
@@ -31,6 +32,7 @@ import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.SentTransferStatus
 import eth.serotine.domain.usecase.TransferSending
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.displaySymbol
@@ -696,20 +698,55 @@ class TransferStatusViewModel(
             "Delay module" to Eip55.format(delayed.delay),
             "What it does" to what,
         )
+        fun memberLines(change: DelayMemberChange, what: String) = listOf(
+            "Account" to Eip55.format(change.safe),
+            when (change.kind) {
+                DelayMemberChange.Kind.ADD -> "Member added"
+                DelayMemberChange.Kind.REMOVE -> "Member removed"
+            } to Eip55.format(change.member),
+            "Delay module" to Eip55.format(change.delay),
+            "What it does" to what,
+        )
+        // "add member 0x1234…abcd", "remove member 0x1234…abcd".
+        fun memberChange(change: DelayMemberChange): String = when (change.kind) {
+            DelayMemberChange.Kind.ADD -> "add member"
+            DelayMemberChange.Kind.REMOVE -> "remove member"
+        } + " " + shortAddress(Eip55.format(change.member))
+        fun memberQueued(change: DelayMemberChange): String = when (change.kind) {
+            DelayMemberChange.Kind.ADD -> "Queues the account's own call that adds this member to its Delay: nothing " +
+                "changes yet. Once executed after the cooldown, the member can move all of the account's funds."
+            DelayMemberChange.Kind.REMOVE -> "Queues the account's own call that removes this member from its Delay: " +
+                "nothing changes yet. It takes effect once executed after the cooldown."
+        }
+        fun memberExecuted(change: DelayMemberChange): String = when (change.kind) {
+            DelayMemberChange.Kind.ADD ->
+                "Executes the queued addition: the member can now queue any transaction of the account."
+            DelayMemberChange.Kind.REMOVE ->
+                "Executes the queued removal: the member can no longer queue anything for the account."
+        }
         return when (val action = transfer.action) {
-            is SentAction.DelayQueue -> DelaySummary(
-                "Queued ${moved(action.transfer)} through the Delay",
-                transferLines(
-                    action.transfer,
-                    "Queues the transfer: nothing moves yet. It can be executed once the Delay's cooldown has passed.",
-                ),
-                from,
-            )
-            is SentAction.DelayExecution -> DelaySummary(
-                "Executed ${moved(action.transfer)} through the Delay",
-                transferLines(action.transfer, "Executes the queued transfer: the account's funds move with it."),
-                from,
-            )
+            is SentAction.DelayQueue -> when (val call = action.call) {
+                is DelayTransfer -> DelaySummary(
+                    "Queued ${moved(call)} through the Delay",
+                    transferLines(
+                        call,
+                        "Queues the transfer: nothing moves yet. It can be executed once the Delay's cooldown has " +
+                            "passed.",
+                    ),
+                    from,
+                )
+                is DelayMemberChange ->
+                    DelaySummary("Queued: ${memberChange(call)}", memberLines(call, memberQueued(call)), from)
+            }
+            is SentAction.DelayExecution -> when (val call = action.call) {
+                is DelayTransfer -> DelaySummary(
+                    "Executed ${moved(call)} through the Delay",
+                    transferLines(call, "Executes the queued transfer: the account's funds move with it."),
+                    from,
+                )
+                is DelayMemberChange ->
+                    DelaySummary("Executed: ${memberChange(call)}", memberLines(call, memberExecuted(call)), from)
+            }
             is SentAction.DelaySkip -> DelaySummary(
                 "Skipped expired entries of the Delay",
                 listOf(

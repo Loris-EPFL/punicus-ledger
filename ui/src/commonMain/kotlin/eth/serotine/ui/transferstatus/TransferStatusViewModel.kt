@@ -3,6 +3,7 @@ package eth.serotine.ui.transferstatus
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.Token
@@ -542,6 +543,7 @@ class TransferStatusViewModel(
             approval = transfer?.let(::approvalSummary),
             swap = transfer?.let { swapSummary(it, status.received) ?: wrapSummary(it) },
             cancellation = transfer?.let(::cancellationSummary),
+            delay = transfer?.let(::delaySummary),
             // A retry turned away keeps the record: what it came to stays on screen with Try again.
             notSent = if (maybeSent) {
                 retry.outcome ?: NotSentItem(maybeSentText(transfer?.let(::whatOf) ?: "transaction"), true)
@@ -565,7 +567,8 @@ class TransferStatusViewModel(
     /**
      * What [transfer] is called in a sentence: "transfer", "approval", "execution", "deployment",
      * "swap", "wrap", "unwrap", "cancellation", for a dApp's "transaction", or for a Gnosis Pay
-     * account's transfer through its Delay "queueing" or "execution".
+     * account's transfer through its Delay "queueing" or "execution", and for its Delay's skip of
+     * expired entries "skip".
      */
     private fun whatOf(transfer: SentTransfer): String = when (transfer.action) {
         is SentAction.Transfer -> "transfer"
@@ -580,6 +583,7 @@ class TransferStatusViewModel(
         is SentAction.DappCall -> "transaction"
         is SentAction.DelayQueue -> "queueing"
         is SentAction.DelayExecution -> "execution"
+        is SentAction.DelaySkip -> "skip"
     }
 
     private fun maybeSentText(what: String) = "No peer answered when this $what was broadcast, so it may not have " +
@@ -676,6 +680,47 @@ class TransferStatusViewModel(
             spender = Eip55.format(approval.spender),
             from = Eip55.format(transfer.account),
         )
+    }
+
+    /** What [transfer] did through a Gnosis Pay account's Delay module, when it is a call of one. */
+    private fun delaySummary(transfer: SentTransfer): DelaySummary? {
+        val from = Eip55.format(transfer.account)
+        fun moved(delayed: DelayTransfer): String {
+            val (symbol, decimals, _) = shown(delayed.asset)
+            return "${delayed.amount.formatUnits(decimals)} $symbol"
+        }
+        fun transferLines(delayed: DelayTransfer, what: String) = listOf(
+            "Account" to Eip55.format(delayed.safe),
+            "To" to Eip55.format(delayed.recipient),
+            "Amount" to moved(delayed),
+            "Delay module" to Eip55.format(delayed.delay),
+            "What it does" to what,
+        )
+        return when (val action = transfer.action) {
+            is SentAction.DelayQueue -> DelaySummary(
+                "Queued ${moved(action.transfer)} through the Delay",
+                transferLines(
+                    action.transfer,
+                    "Queues the transfer: nothing moves yet. It can be executed once the Delay's cooldown has passed.",
+                ),
+                from,
+            )
+            is SentAction.DelayExecution -> DelaySummary(
+                "Executed ${moved(action.transfer)} through the Delay",
+                transferLines(action.transfer, "Executes the queued transfer: the account's funds move with it."),
+                from,
+            )
+            is SentAction.DelaySkip -> DelaySummary(
+                "Skipped expired entries of the Delay",
+                listOf(
+                    "Account" to Eip55.format(action.safe),
+                    "Delay module" to Eip55.format(action.delay),
+                    "What it does" to "Moves the Delay's queue past its expired entries. It moves no funds.",
+                ),
+                from,
+            )
+            else -> null
+        }
     }
 
     /** Which CoW order [transfer] invalidates, when it is that order's cancellation on chain. */
@@ -776,6 +821,7 @@ class TransferStatusViewModel(
             is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
             is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap, is SentAction.CowCancellation,
             is SentAction.DappCall, is SentAction.DelayQueue, is SentAction.DelayExecution,
+            is SentAction.DelaySkip,
             -> return null
         }
         return SafeTxSummary(

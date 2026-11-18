@@ -15,6 +15,10 @@ and issues of this repository.
 - A website, `website/`: what Punicus does in plain words, the downloads and
   a guide to adding accounts and Safes, published to GitHub Pages by the
   `Website` workflow (#316).
+- Gnosis Pay: "Skip expired entries" clears an expired entry that blocks the
+  Delay module's queue, with the module's own `skipExpired()`, which moves
+  nothing. It is offered on the Send form and on a transfer queued here that
+  waits behind such an entry.
 
 ### Fixed
 

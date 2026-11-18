@@ -25,7 +25,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 20 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
-| [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 23 |
+| [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 28 |
 | [Send from another wallet](#handoff) | `handoff/` | 18 |
 | [Import recovery phrase](#mnemonic-import) | `mnemonic-import/` | 12 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
@@ -60,7 +60,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Watch address (simple mode)](#simple-watch) | `simple-watch/` | 9 |
 | [Swap](#swap) | `swap/` | 38 |
 | [Tokens](#tokens) | `tokens/` | 7 |
-| [Transfer status](#transfer-status) | `transfer-status/` | 36 |
+| [Transfer status](#transfer-status) | `transfer-status/` | 37 |
 | [Update required](#update-required) | `update-required/` | 2 |
 | [Watch address](#watch) | `watch/` | 26 |
 | [Widget setup](#widget-pair) | `widget-pair/` | 9 |
@@ -404,7 +404,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="gnosis-pay"></a>
 ## Gnosis Pay account
 
-`gnosis-pay/`, 23 states: `overview`, `overview-dark`, `queued`, `execute-refused`, `watched`, `compose`, `compose-error`, `review`, `review-requoted`, `compose-quoting`, `review-signing`, `review-checking`, `review-wrong-password`, `review-not-sent`, `review-biometrics`, `queued-unverified`, `member-safe`, `co-signer`, `review-member-safe`, `control-unread`, `overview-held`, `loading`, `unavailable`
+`gnosis-pay/`, 28 states: `overview`, `overview-dark`, `queued`, `execute-refused`, `watched`, `compose`, `compose-error`, `compose-skip`, `blocked-by-expired`, `waiting-long`, `expired-skip`, `skip-review`, `review`, `review-requoted`, `compose-quoting`, `review-signing`, `review-checking`, `review-wrong-password`, `review-not-sent`, `review-biometrics`, `queued-unverified`, `member-safe`, `co-signer`, `review-member-safe`, `control-unread`, `overview-held`, `loading`, `unavailable`
 
 <a href="gnosis-pay/overview.png"><img src="gnosis-pay/overview.png" width="206" alt="overview"></a>
 <a href="gnosis-pay/overview-dark.png"><img src="gnosis-pay/overview-dark.png" width="206" alt="overview-dark"></a>
@@ -413,6 +413,11 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="gnosis-pay/watched.png"><img src="gnosis-pay/watched.png" width="206" alt="watched"></a>
 <a href="gnosis-pay/compose.png"><img src="gnosis-pay/compose.png" width="206" alt="compose"></a>
 <a href="gnosis-pay/compose-error.png"><img src="gnosis-pay/compose-error.png" width="206" alt="compose-error"></a>
+<a href="gnosis-pay/compose-skip.png"><img src="gnosis-pay/compose-skip.png" width="206" alt="compose-skip"></a>
+<a href="gnosis-pay/blocked-by-expired.png"><img src="gnosis-pay/blocked-by-expired.png" width="206" alt="blocked-by-expired"></a>
+<a href="gnosis-pay/waiting-long.png"><img src="gnosis-pay/waiting-long.png" width="206" alt="waiting-long"></a>
+<a href="gnosis-pay/expired-skip.png"><img src="gnosis-pay/expired-skip.png" width="206" alt="expired-skip"></a>
+<a href="gnosis-pay/skip-review.png"><img src="gnosis-pay/skip-review.png" width="206" alt="skip-review"></a>
 <a href="gnosis-pay/review.png"><img src="gnosis-pay/review.png" width="206" alt="review"></a>
 <a href="gnosis-pay/review-requoted.png"><img src="gnosis-pay/review-requoted.png" width="206" alt="review-requoted"></a>
 <a href="gnosis-pay/compose-quoting.png"><img src="gnosis-pay/compose-quoting.png" width="206" alt="compose-quoting"></a>
@@ -1049,7 +1054,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="transfer-status"></a>
 ## Transfer status
 
-`transfer-status/`, 36 states: `pending`, `pending-dark`, `included`, `finalized`, `failed`, `unavailable`, `no-record`, `safe-execution`, `safe-deployment`, `safe-listed`, `safe-listed-dark`, `safe-not-listed`, `maybe-sent`, `retrying`, `turned-away`, `loading`, `swap`, `swap-failed`, `approval`, `allowance-reset`, `swap-dark`, `swap-received`, `nonce-used`, `maybe-sent-nonce-used`, `cow-cancellation`, `wrap`, `queued`, `queued-dark`, `queued-sending`, `queued-past-its-hour`, `queued-conflict`, `discarded`, `queued-discarding`, `queued-not-discarded`, `queued-outbox-unreadable`, `queued-safe-approval`
+`transfer-status/`, 37 states: `pending`, `pending-dark`, `included`, `finalized`, `failed`, `unavailable`, `no-record`, `safe-execution`, `safe-deployment`, `safe-listed`, `safe-listed-dark`, `safe-not-listed`, `maybe-sent`, `retrying`, `turned-away`, `loading`, `swap`, `swap-failed`, `approval`, `allowance-reset`, `swap-dark`, `swap-received`, `nonce-used`, `maybe-sent-nonce-used`, `cow-cancellation`, `gnosis-pay-queued`, `wrap`, `queued`, `queued-dark`, `queued-sending`, `queued-past-its-hour`, `queued-conflict`, `discarded`, `queued-discarding`, `queued-not-discarded`, `queued-outbox-unreadable`, `queued-safe-approval`
 
 <a href="transfer-status/pending.png"><img src="transfer-status/pending.png" width="206" alt="pending"></a>
 <a href="transfer-status/pending-dark.png"><img src="transfer-status/pending-dark.png" width="206" alt="pending-dark"></a>
@@ -1076,6 +1081,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="transfer-status/nonce-used.png"><img src="transfer-status/nonce-used.png" width="206" alt="nonce-used"></a>
 <a href="transfer-status/maybe-sent-nonce-used.png"><img src="transfer-status/maybe-sent-nonce-used.png" width="206" alt="maybe-sent-nonce-used"></a>
 <a href="transfer-status/cow-cancellation.png"><img src="transfer-status/cow-cancellation.png" width="206" alt="cow-cancellation"></a>
+<a href="transfer-status/gnosis-pay-queued.png"><img src="transfer-status/gnosis-pay-queued.png" width="206" alt="gnosis-pay-queued"></a>
 <a href="transfer-status/wrap.png"><img src="transfer-status/wrap.png" width="206" alt="wrap"></a>
 <a href="transfer-status/queued.png"><img src="transfer-status/queued.png" width="206" alt="queued"></a>
 <a href="transfer-status/queued-dark.png"><img src="transfer-status/queued-dark.png" width="206" alt="queued-dark"></a>

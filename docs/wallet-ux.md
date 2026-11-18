@@ -1677,19 +1677,33 @@ opens **Gnosis Pay**, a screen of its own:
   accounts on the way are shown as last verified. Send stays enabled;
   Review then says "This account could not be verified at the latest block,
   so nothing is sent on what was verified before."
-- **Send through the Delay**, greyed out with its reason where it cannot be
-  done here: no controlling key, the key on another network only, the key
-  watched here while held elsewhere, the account list unreadable, who
-  controls the Delay not all verified yet, more accounts behind it than
-  Punicus reads, a held key that acts only with co-owners, or the retired
-  module.
+- **New transfer** (owner's request, 2026-11-18: it was "Send through the
+  Delay", which read as if something were waiting to be sent), greyed out
+  with its reason where it cannot be done here: no controlling key, the key
+  on another network only, the key watched here while held elsewhere, the
+  account list unreadable, who controls the Delay not all verified yet, more
+  accounts behind it than Punicus reads, a held key that acts only with
+  co-owners, or the retired module.
 - **Queued from this device**: each transfer queued here and not executed,
   with where it stands ("Waits until …", "Ready to execute until …",
-  "Expired …: nothing moved"). Execute is offered once it is the next entry
+  "Expired …: nothing moved"). While it waits out a cooldown of under an
+  hour it counts down ("Executable in 2:41"), over a bar that drains to zero
+  (owner's request, 2026-11-18). It counts on the chain's time, the verified
+  head the queue was read at plus the time since, never the device's clock.
+  Past the end it says "Executable shortly: waiting for a block past its
+  cooldown", and the queue is read again every few seconds for half a
+  minute, until a verified head says it is ready and Execute is offered. Execute is offered once it is the next entry
   and its cooldown has passed, to the key that queued it while that key is
   held here on Gnosis Chain, whoever controls the Delay by then: anyone may
   execute an entry. Until then it is greyed out, and a tap says why: the
   time until then, the entries ahead, or what cannot be verified.
+  Behind an expired entry, it says "An entry ahead of it in the Delay
+  module's queue has expired and blocks it. Skip expired entries, then
+  execute it before it expires too.", Execute is greyed out with that
+  reason, and **Skip expired entries** is offered beside it. The Send form
+  offers the same when Review is refused for an expired entry ahead. The
+  skip's review says it moves nothing and that the skipped entries can never
+  be executed afterwards (docs/gnosis-pay.md, *Skipping expired entries*).
 - Send is a form (the Safe's assets, the recipient's address, checked
   against its EIP-55 checksum, and the amount), then a review of the
   signing key's transaction with the unlock that signs it. The form names

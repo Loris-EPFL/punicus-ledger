@@ -43,6 +43,8 @@ import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.QuoteDelayExecution
 import eth.serotine.domain.usecase.QuoteDelayQueue
+import eth.serotine.domain.usecase.QuoteDelaySkip
+import eth.serotine.domain.usecase.SendDelaySkip
 import eth.serotine.domain.usecase.ReadDelayTransfers
 import eth.serotine.domain.usecase.SendDelayCall
 import eth.serotine.ui.FakeAccounts
@@ -111,7 +113,13 @@ class GnosisPayViewModelTest {
 
     private var queueAnswer: DelayQueueReading =
         DelayQueueReading.Read(DelayQueue(0, 0, 180, 1_800, null, 0), 41, 0)
+    /** The queue's answer as the chain moves on, where a test makes it so; [queueAnswer] otherwise. */
+    private var queueAnswerNow: (() -> DelayQueueReading)? = null
+
     private val delays = object : DelayModules {
+        /** How many times the queue was read. */
+        var queueReads = 0
+
         override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> = flowOf(
             DelayReading.Verified(
                 DelayFinding.Wired(DelayModule(delay, DelayGeneration.CURRENT, 180, 1_800, 0, 0, listOf(member))),
@@ -119,8 +127,10 @@ class GnosisPayViewModelTest {
             ),
         )
 
-        override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading =
-            queueAnswer
+        override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading {
+            queueReads++
+            return queueAnswerNow?.invoke() ?: queueAnswer
+        }
     }
 
     private val balances = FakeBalances()
@@ -131,6 +141,7 @@ class GnosisPayViewModelTest {
     private val outbox = MemoryOutbox()
     private val signer = FakeSigner()
     private val time = TestTimeSource()
+
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -149,6 +160,8 @@ class GnosisPayViewModelTest {
             QuoteDelayQueue(delays, history, inputs, balances, tokens, sent, Network.GNOSIS, outbox),
             QuoteDelayExecution(delays, history, inputs, balances, tokens, sent, Network.GNOSIS, outbox),
             SendDelayCall(signer, FakeBroadcaster(), sent),
+            QuoteDelaySkip(delays, history, inputs, balances, sent, Network.GNOSIS, outbox),
+            SendDelaySkip(signer, FakeBroadcaster(), sent),
             DescribeKeyStore(FakeKeys()),
             timeSource = time,
         )
@@ -351,6 +364,105 @@ class GnosisPayViewModelTest {
         viewModel.execute(row.id)
         val review = viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.step is GnosisPayStep.Review }
         assertTrue(((review as GnosisPayUiState.Ready).step as GnosisPayStep.Review).title.startsWith("Execute"))
+    }
+
+    @Test
+    fun aQueuedTransferBehindAnExpiredEntryOffersItsSkipAndItsReviewSaysItMovesNothing() = runTest {
+        val transfer = (
+            DelayTransfer.of(safe, delay, listOf(delay), TransferAsset.Native, recipient, UInt256.of(7))
+                as DelayTransferPlan.Planned
+            ).transfer
+        val queueing = SentTransfer(
+            Network.GNOSIS,
+            member,
+            3,
+            SignedTransfer(byteArrayOf(1, 2, 3)),
+            SentAction.DelayQueue(transfer),
+            UInt256.ZERO,
+            100,
+        )
+        history.entries.value = listOf(HistoryEntry(queueing, SentOutcome.NonceUsed))
+        // Entry 0 was queued elsewhere at 0 and expired (180 + 1800 s) by the head at 5000; ours is entry 1.
+        queueAnswer = DelayQueueReading.Read(
+            DelayQueue(0, 2, 180, 1_800, DelayEntry(1, transfer.hash, 4_000), 2, headCreatedAt = 0),
+            41,
+            5_000,
+        )
+        val viewModel = viewModel()
+        val row = viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.queued?.isNotEmpty() == true }
+            .let { (it as GnosisPayUiState.Ready).queued.single() }
+
+        assertEquals(GnosisPayTexts.BLOCKED_BY_EXPIRED, row.status)
+        assertEquals(ActionItem(false, GnosisPayTexts.BLOCKED_BY_EXPIRED), row.execute)
+        assertEquals(ActionItem(enabled = true, reason = null), row.skip)
+
+        viewModel.skipExpired()
+        val review = viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.step is GnosisPayStep.Review }
+        val step = (review as GnosisPayUiState.Ready).step as GnosisPayStep.Review
+        assertEquals(GnosisPayTexts.SKIP_TITLE, step.title)
+        assertTrue(step.lines.any { (_, value) -> value.contains("It moves nothing") }, step.lines.toString())
+    }
+
+    @Test
+    fun aTransferWaitingOutItsCooldownDrainsABarAndCountsDown() = runTest {
+        val transfer = (
+            DelayTransfer.of(safe, delay, listOf(delay), TransferAsset.Native, recipient, UInt256.of(7))
+                as DelayTransferPlan.Planned
+            ).transfer
+        val queueing = SentTransfer(
+            Network.GNOSIS,
+            member,
+            3,
+            SignedTransfer(byteArrayOf(1, 2, 3)),
+            SentAction.DelayQueue(transfer),
+            UInt256.ZERO,
+            100,
+        )
+        history.entries.value = listOf(HistoryEntry(queueing, SentOutcome.NonceUsed))
+        // Queued at 1000 with a cooldown of 180 s: ready at 1180. Read at a head of 1060: a third is gone.
+        // The device's clock plays no part: the countdown runs on the head's time plus the time since.
+        // The chain's head moves on with the test's time; its block past the cooldown is slow to come
+        // (held at 1179 here), as on a light client a few seconds behind.
+        val start = time.markNow()
+        queueAnswerNow = {
+            DelayQueueReading.Read(
+                DelayQueue(0, 1, 180, 1_800, DelayEntry(0, transfer.hash, 1_000), 1),
+                41,
+                minOf(1_060 + start.elapsedNow().inWholeSeconds, 1_179),
+            )
+        }
+        val viewModel = viewModel()
+        val row = viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.queued?.isNotEmpty() == true }
+            .let { (it as GnosisPayUiState.Ready).queued.single() }
+
+        assertEquals("Executable in 2:00", row.status)
+        assertEquals(120f / 180f, row.cooldownLeft)
+
+        // A second later the bar has drained a little more.
+        time += 1.seconds
+        testScheduler.advanceTimeBy(1_001)
+        val later = (viewModel.uiState.value as GnosisPayUiState.Ready).queued.single()
+        assertEquals("Executable in 1:59", later.status)
+        assertEquals(119f / 180f, later.cooldownLeft)
+
+        // Past its end, while the head read still says Waiting: never 0:00 for good, and the queue is
+        // read again every few seconds, a bounded number of times, until a head past its end answers.
+        val readsBefore = delays.queueReads
+        // The head reaches 1179, a second short, at 120 s; a few seconds on, re-reads find it again.
+        repeat(125) {
+            time += 1.seconds
+            testScheduler.advanceTimeBy(1_000)
+        }
+        val due = (viewModel.uiState.value as GnosisPayUiState.Ready).queued.single()
+        // Counted from the first read of the last head, never run back by a read of the same head again.
+        assertEquals(GnosisPayTexts.EXECUTABLE_SHORTLY, due.status)
+        assertEquals(0f, due.cooldownLeft)
+        repeat(60) {
+            time += 1.seconds
+            testScheduler.advanceTimeBy(1_000)
+        }
+        val reads = delays.queueReads - readsBefore
+        assertTrue(reads in 10..20, "$reads reads again")
     }
 
     private suspend fun GnosisPayViewModel.reviewTransfer(to: String = recipient.hex): GnosisPayStep.Review {

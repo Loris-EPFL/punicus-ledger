@@ -17,6 +17,8 @@ import eth.serotine.domain.usecase.ControlNode
 import eth.serotine.domain.usecase.DelayControl
 import eth.serotine.domain.usecase.DelayQuote
 import eth.serotine.domain.usecase.DelayQuoting
+import eth.serotine.domain.usecase.DelaySkipQuote
+import eth.serotine.domain.usecase.DelaySkipQuoting
 import eth.serotine.domain.usecase.DelayStep
 import eth.serotine.domain.usecase.DelayTransferState
 import eth.serotine.domain.usecase.DelayTransfersReading
@@ -180,15 +182,24 @@ internal object GnosisPayTexts {
             "${amount.formatUnits(asset.token.decimals)} ${displaySymbol(asset.token.symbol)}"
     }
 
-    /** Where a queued transfer stands, after how its queueing ended. */
-    fun status(state: DelayTransferState?, outcome: SentOutcome): String = when {
+    /**
+     * Where a queued transfer stands, in a line: [state] in its queue, [outcome] its queueing's; [now],
+     * the chain's time (unix seconds), gives a cooldown within the hour as the minutes and seconds left.
+     */
+    fun status(state: DelayTransferState?, outcome: SentOutcome, now: Long? = null): String = when {
         outcome == SentOutcome.NotSeen && state is DelayTransferState.NotInQueue -> "Queueing: waiting for a block"
         state == null -> "Where it stands cannot be verified right now"
         else -> when (state) {
-            is DelayTransferState.Waiting -> if (state.ahead > 0) {
-                "Waits until ${formatDateTime(state.readyAt)}, behind ${entries(state.ahead)}"
-            } else {
-                "Waits until ${formatDateTime(state.readyAt)}"
+            is DelayTransferState.Waiting -> {
+                // Within the hour, on the chain's time: the minutes and seconds left, which the bar under
+                // it drains with; past its end, until a verified head says so, that it comes shortly.
+                val left = now?.let { state.readyAt - it }
+                val waits = when {
+                    left == null || left >= 3_600 -> "Waits until ${formatDateTime(state.readyAt)}"
+                    left <= 0 -> EXECUTABLE_SHORTLY
+                    else -> "Executable in ${left / 60}:${(left % 60).toString().padStart(2, '0')}"
+                }
+                if (state.ahead > 0) "$waits, behind ${entries(state.ahead)}" else waits
             }
             is DelayTransferState.Ready ->
                 "Ready to execute" + (state.expiresAt?.let { " until ${formatDateTime(it)}" } ?: "")
@@ -207,8 +218,8 @@ internal object GnosisPayTexts {
             "Execute is offered then."
         is DelayTransferState.Behind -> "${entries(state.ahead).replaceFirstChar { it.uppercase() }} queued before " +
             "it come first. One queued from this device is listed above, with its own Execute. Any other is " +
-            "executed by whoever can, or skipped by anyone once expired, which Punicus does not offer yet; " +
-            "Punicus never executes an entry it did not queue here."
+            "executed by whoever can, or skipped by anyone once expired (Skip expired entries, offered here " +
+            "then); Punicus never executes an entry it did not queue here."
         is DelayTransferState.Expired -> "Its window to execute closes at ${formatDateTime(state.expiresAt)}, too " +
             "soon for a transaction sent now to be mined in time."
         is DelayTransferState.FurtherBack -> "It is further back in the queue than Punicus reads."
@@ -247,6 +258,8 @@ internal object GnosisPayTexts {
     }
 
     const val CHECKING = "Its execution is being checked on chain."
+    const val SKIP_CHECKING = "A skip of the expired entries is being checked on chain. Wait for it."
+    const val OTHER_CHECKING = "Another transfer's execution is being checked on chain. Wait for it."
     const val NO_ASSET = "Choose the asset to send."
     const val BAD_ADDRESS = "Enter the recipient's address: 0x and 40 hex digits. Gnosis Chain resolves no names."
     const val BAD_CHECKSUM = "That address's capital letters do not match its checksum (EIP-55): a character may " +
@@ -284,12 +297,16 @@ internal object GnosisPayTexts {
         }
         is DelayQuoting.AlreadyQueued -> "The same transfer is queued already and waits in the Delay module. " +
             "Execute it, or let it expire, before queuing it again."
-        DelayQuoting.SameCallExpired -> "The same transfer is still in the Delay module's queue, expired. It stays " +
-            "there until someone skips it with the module's skipExpired, which Punicus does not offer yet, and it " +
-            "holds back every transfer queued after it."
-        DelayQuoting.HeadExpired -> "The next entry in the Delay module's queue has expired. Until someone skips it " +
-            "with the module's skipExpired, which Punicus does not offer yet, nothing behind it can be executed: a " +
-            "transfer queued now would wait, expire and move nothing, its fees paid."
+        is DelayQuoting.SameCallExpired -> if (quoting.skippable) {
+            "The same transfer is still in the Delay module's queue, expired. It stays there until it is skipped, " +
+                "and it holds back every transfer queued after it. Skip expired entries, then review again."
+        } else {
+            "The same transfer is still in the Delay module's queue, too close to its expiration to be executed " +
+                "in time. Once it has expired it can be skipped; review again then."
+        }
+        DelayQuoting.HeadExpired -> "The next entry in the Delay module's queue has expired. Until it is skipped, " +
+            "nothing behind it can be executed: a transfer queued now would wait, expire and move nothing, its fees " +
+            "paid. Skip expired entries, then review again."
         is DelayQuoting.WindowTooShort -> sendReason(GnosisPaySending.WINDOW_TOO_SHORT).orEmpty()
         is DelayQuoting.SafeCallReverts -> "The account's own transfer reverts, run as a verified call" +
             (quoting.blockNumber?.let { " at block ${grouped(it)}" } ?: "") + ": the recipient does not accept it. " +
@@ -335,6 +352,55 @@ internal object GnosisPayTexts {
             DelayStep.QUEUE -> "Queue $what"
             DelayStep.EXECUTE -> "Execute $what"
         }
+    }
+
+    /** What a skip refused says, on the form it was offered on. */
+    fun skipRefused(quoting: DelaySkipQuoting): String = when (quoting) {
+        is DelaySkipQuoting.Quoted -> ""
+        DelaySkipQuoting.NothingExpired -> "The Delay module's next entry has not expired, or was skipped meanwhile: " +
+            "nothing to skip."
+        is DelaySkipQuoting.NotTheSafesDelay -> quoteRefused(DelayQuoting.NotTheSafesDelay(quoting.generation))
+        is DelaySkipQuoting.SkipOnItsWay -> "A skip of this Delay module's expired entries is on its way, not in a " +
+            "block yet."
+        DelaySkipQuoting.HistoryUnreadable -> quoteRefused(DelayQuoting.HistoryUnreadable)
+        is DelaySkipQuoting.NotQuoted -> quoteRefused(DelayQuoting.NotQuoted(quoting.refusal))
+    }
+
+    const val BLOCKED_BY_EXPIRED = "An entry ahead of it in the Delay module's queue has expired and blocks it. " +
+        "Skip expired entries, then execute it before it expires too."
+
+    const val SKIP_NEEDS_KEY = "Skipping expired entries is a transaction of an account whose key is on this " +
+        "device, on Gnosis Chain, which pays its fee. Add or import one."
+
+    const val EXECUTABLE_SHORTLY = "Executable shortly: waiting for a block past its cooldown"
+
+    const val SKIP_SENT = "The skip of the expired entries was sent. Once it is in a block, Review again."
+
+    const val SKIP_TITLE = "Skip expired entries of the Delay module"
+
+    const val SKIP_BIOMETRIC_REASON = "Skip the expired entries of this Gnosis Pay account's Delay module"
+
+    /** The review of a skip of expired entries: what it does, and what it moves (nothing). */
+    fun skipLines(quote: DelaySkipQuote, member: Address, network: Network): List<Pair<String, String>> {
+        val symbol = network.nativeSymbol
+        val call = quote.call
+        val maxFee = "${call.maxFee.formatUnits(NATIVE_DECIMALS)} $symbol at most, ${feeLevel(call.level)} " +
+            "(fees at block ${grouped(call.feeBlock)})"
+        val entries = if (quote.waiting == 1L) "1 entry waits" else "${quote.waiting} entries wait"
+        return listOf(
+            "Account" to eip55(quote.safe),
+            "Delay module" to eip55(quote.delay),
+            "Queue" to "$entries; the next one expired. Every expired entry from the next on is skipped: it can " +
+                "never be executed afterwards.",
+            "What happens" to "The Delay module's skipExpired. It moves nothing: no funds leave the account.",
+            "Signed by" to eip55(member),
+            "Fee" to maxFee,
+            "Signer's $symbol" to "${call.nativeBefore.formatUnits(NATIVE_DECIMALS)} $symbol now, at least " +
+                "${call.nativeAfterAtLeast.formatUnits(NATIVE_DECIMALS)} $symbol after" +
+                (call.balanceBlock?.let { " (block ${grouped(it)})" } ?: ""),
+        ) + listOfNotNull(
+            call.simulationBlock?.let { "Simulated" to "Run as a verified call at block ${grouped(it)}" },
+        )
     }
 
     fun reviewLines(

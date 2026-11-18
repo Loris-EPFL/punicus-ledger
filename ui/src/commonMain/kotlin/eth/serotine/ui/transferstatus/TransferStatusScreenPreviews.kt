@@ -492,6 +492,26 @@ private fun TransferStatusNonceUsedPreview() = TransferStatusPreview(
 /** Every preview above, which TransferStatusScreenPreviewsTest renders: a new preview goes in here too. */
 @Preview
 @Composable
+private fun TransferStatusGnosisPayQueuedPreview() = TransferStatusPreview(
+    pending.copy(
+        sent = null,
+        delay = DelaySummary(
+            title = "Queued 0.01 EURe through the Delay",
+            lines = listOf(
+                "Account" to "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+                "To" to "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+                "Amount" to "0.01 EURe",
+                "Delay module" to "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+                "What it does" to "Queues the transfer: nothing moves yet. It can be executed once the Delay's " +
+                    "cooldown has passed.",
+            ),
+            from = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+        ),
+    ),
+)
+
+@Preview
+@Composable
 private fun TransferStatusCowCancellationPreview() = TransferStatusPreview(
     pending.copy(
         sent = null,
@@ -550,6 +570,7 @@ internal val transferStatusScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("nonce-used") { TransferStatusNonceUsedPreview() },
     ScreenPreview("maybe-sent-nonce-used") { TransferStatusMaybeSentNonceUsedPreview() },
     ScreenPreview("cow-cancellation") { TransferStatusCowCancellationPreview() },
+    ScreenPreview("gnosis-pay-queued") { TransferStatusGnosisPayQueuedPreview() },
     ScreenPreview("wrap") { TransferStatusWrapPreview() },
     ScreenPreview("queued") { TransferStatusQueuedPreview() },
     ScreenPreview("queued-dark") { TransferStatusQueuedDarkPreview() },

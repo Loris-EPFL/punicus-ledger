@@ -19,8 +19,9 @@ sealed interface TransferStatusUiState {
     /**
      * The transaction [hash]: what was sent ([sent] for a transfer, [safeTx] for a Safe
      * transaction's approval or execution, [deployment] for a Safe's deployment, [approval] for a
-     * token approval, [swap] for a swap, [cancellation] for a CoW order's cancellation on chain; all
-     * null when this device has no record of it), its
+     * token approval, [swap] for a swap, [cancellation] for a CoW order's cancellation on chain,
+     * [delay] for a Gnosis Pay account's call of its Delay module; all null when this device has no
+     * record of it), its
      * [steps] in order, and [note], what to know about where it stands (a failure, or that it
      * cannot be verified right now), or null. [finished] once its
      * block is finalized. [notSent] while it is recorded as maybe sent (no peer answered its
@@ -39,6 +40,7 @@ sealed interface TransferStatusUiState {
         val approval: ApprovalSummary? = null,
         val swap: SwapSummary? = null,
         val cancellation: CancellationSummary? = null,
+        val delay: DelaySummary? = null,
         val notSent: NotSentItem? = null,
         val retrying: Boolean = false,
     ) : TransferStatusUiState
@@ -196,6 +198,13 @@ data class SwapSummary(
  * is invalidated at, and the EIP-55 [from], the account that signed the order and sent this.
  */
 data class CancellationSummary(val title: String, val order: String, val settlement: String, val from: String)
+
+/**
+ * A Gnosis Pay account's call of its Delay module, from this device's record: [title] ("Queued 0.01
+ * EURe to 0x91f8…89af through the Delay"), its [lines] (label to value: the account, the Delay
+ * module, the recipient, what it moves and when), and the EIP-55 [from], the key that sent it.
+ */
+data class DelaySummary(val title: String, val lines: List<Pair<String, String>>, val from: String)
 
 /**
  * One step of a transfer: its [label] ("Included"), where it stands ([state]) and its [detail] (its

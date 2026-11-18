@@ -25,7 +25,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 20 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
-| [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 35 |
+| [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 36 |
 | [Send from another wallet](#handoff) | `handoff/` | 18 |
 | [Import recovery phrase](#mnemonic-import) | `mnemonic-import/` | 12 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
@@ -49,7 +49,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Create Safe (simple mode)](#simple-create-safe) | `simple-create-safe/` | 3 |
 | [Import Safe (simple mode)](#simple-safe-import) | `simple-safe-import/` | 3 |
 | [Propose Safe transaction (simple mode)](#simple-safe-propose) | `simple-safe-propose/` | 6 |
-| [Safe settings (simple mode)](#simple-safe-settings) | `simple-safe-settings/` | 5 |
+| [Safe settings (simple mode)](#simple-safe-settings) | `simple-safe-settings/` | 6 |
 | [Safe swap (simple mode)](#simple-safe-swap) | `simple-safe-swap/` | 4 |
 | [Safe transaction (simple mode)](#simple-safe-tx) | `simple-safe-tx/` | 15 |
 | [Send (simple mode)](#simple-send) | `simple-send/` | 8 |
@@ -404,7 +404,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="gnosis-pay"></a>
 ## Gnosis Pay account
 
-`gnosis-pay/`, 35 states: `overview`, `overview-dark`, `queued`, `execute-refused`, `watched`, `compose`, `compose-error`, `compose-skip`, `blocked-by-expired`, `waiting-long`, `expired-skip`, `skip-review`, `review`, `review-requoted`, `compose-quoting`, `review-signing`, `review-checking`, `review-wrong-password`, `review-not-sent`, `review-biometrics`, `queued-unverified`, `member-safe`, `co-signer`, `review-member-safe`, `control-unread`, `overview-held`, `add-member`, `add-member-error`, `add-member-skip`, `review-add-member`, `review-remove-member`, `queued-member-change`, `checking-removal`, `loading`, `unavailable`
+`gnosis-pay/`, 36 states: `overview`, `overview-dark`, `queued`, `execute-refused`, `watched`, `compose`, `compose-error`, `compose-skip`, `blocked-by-expired`, `waiting-long`, `expired-skip`, `skip-review`, `review`, `review-requoted`, `compose-quoting`, `review-signing`, `review-checking`, `review-wrong-password`, `review-not-sent`, `review-biometrics`, `queued-unverified`, `member-safe`, `co-signer`, `review-member-safe`, `control-unread`, `overview-held`, `add-member`, `add-member-error`, `add-member-skip`, `review-add-member`, `review-remove-member`, `queued-member-change`, `checking-removal`, `removal-skip`, `loading`, `unavailable`
 
 <a href="gnosis-pay/overview.png"><img src="gnosis-pay/overview.png" width="206" alt="overview"></a>
 <a href="gnosis-pay/overview-dark.png"><img src="gnosis-pay/overview-dark.png" width="206" alt="overview-dark"></a>
@@ -439,6 +439,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="gnosis-pay/review-remove-member.png"><img src="gnosis-pay/review-remove-member.png" width="206" alt="review-remove-member"></a>
 <a href="gnosis-pay/queued-member-change.png"><img src="gnosis-pay/queued-member-change.png" width="206" alt="queued-member-change"></a>
 <a href="gnosis-pay/checking-removal.png"><img src="gnosis-pay/checking-removal.png" width="206" alt="checking-removal"></a>
+<a href="gnosis-pay/removal-skip.png"><img src="gnosis-pay/removal-skip.png" width="206" alt="removal-skip"></a>
 <a href="gnosis-pay/loading.png"><img src="gnosis-pay/loading.png" width="206" alt="loading"></a>
 <a href="gnosis-pay/unavailable.png"><img src="gnosis-pay/unavailable.png" width="206" alt="unavailable"></a>
 
@@ -875,10 +876,11 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="simple-safe-settings"></a>
 ## Safe settings (simple mode)
 
-`simple-safe-settings/`, 5 states: `overview`, `overview-dark`, `refused`, `review`, `review-refused`
+`simple-safe-settings/`, 6 states: `overview`, `overview-dark`, `gnosis-pay`, `refused`, `review`, `review-refused`
 
 <a href="simple-safe-settings/overview.png"><img src="simple-safe-settings/overview.png" width="206" alt="overview"></a>
 <a href="simple-safe-settings/overview-dark.png"><img src="simple-safe-settings/overview-dark.png" width="206" alt="overview-dark"></a>
+<a href="simple-safe-settings/gnosis-pay.png"><img src="simple-safe-settings/gnosis-pay.png" width="206" alt="gnosis-pay"></a>
 <a href="simple-safe-settings/refused.png"><img src="simple-safe-settings/refused.png" width="206" alt="refused"></a>
 <a href="simple-safe-settings/review.png"><img src="simple-safe-settings/review.png" width="206" alt="review"></a>
 <a href="simple-safe-settings/review-refused.png"><img src="simple-safe-settings/review-refused.png" width="206" alt="review-refused"></a>

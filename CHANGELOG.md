@@ -25,6 +25,8 @@ and issues of this repository.
   Delay module's queue, with the module's own `skipExpired()`, which moves
   nothing. It is offered on the Send form and on a transfer queued here that
   waits behind such an entry.
+- On a wide window (840 dp and wider: a desktop window, a tablet, an unfolded
+  phone) the Accounts tab shows the list and the account chosen side by side.
 
 ### Fixed
 

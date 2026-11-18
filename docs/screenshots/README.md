@@ -12,6 +12,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 |---|---|---|
 | [Account detail](#account-detail) | `account-detail/` | 47 |
 | [Accounts](#accounts) | `accounts/` | 41 |
+| [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 3 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 11 |
 | [Add on networks (dialog)](#add-on-networks-dialog) | `add-on-networks-dialog/` | 5 |
 | [Add token](#add-token) | `add-token/` | 11 |
@@ -28,6 +29,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 36 |
 | [Send from another wallet](#handoff) | `handoff/` | 18 |
 | [Import recovery phrase](#mnemonic-import) | `mnemonic-import/` | 12 |
+| [No account open (wide window)](#no-account-open) | `no-account-open/` | 4 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
 | [Receive](#receive) | `receive/` | 7 |
 | [Remove account (dialog)](#remove-account-dialog) | `remove-account-dialog/` | 7 |
@@ -43,6 +45,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Settings](#settings) | `settings/` | 29 |
 | [Account detail (simple mode)](#simple-account-detail) | `simple-account-detail/` | 12 |
 | [Home (simple mode)](#simple-accounts) | `simple-accounts/` | 18 |
+| [Home on a tablet (simple mode)](#simple-accounts-tablet) | `simple-accounts-tablet/` | 3 |
 | [Activity detail (simple mode)](#simple-activity-detail) | `simple-activity-detail/` | 4 |
 | [Add token (simple mode)](#simple-add-token) | `simple-add-token/` | 2 |
 | [CoW order (simple mode)](#simple-cow-order) | `simple-cow-order/` | 3 |
@@ -164,6 +167,15 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="accounts/queued.png"><img src="accounts/queued.png" width="206" alt="queued"></a>
 <a href="accounts/queued-dark.png"><img src="accounts/queued-dark.png" width="206" alt="queued-dark"></a>
 <a href="accounts/lost-queued.png"><img src="accounts/lost-queued.png" width="206" alt="lost-queued"></a>
+
+<a name="accounts-tablet"></a>
+## Accounts on a tablet
+
+`accounts-tablet/`, 3 states: `account-open`, `account-open-dark`, `no-account-open`
+
+<a href="accounts-tablet/account-open.png"><img src="accounts-tablet/account-open.png" width="640" alt="account-open"></a>
+<a href="accounts-tablet/account-open-dark.png"><img src="accounts-tablet/account-open-dark.png" width="640" alt="account-open-dark"></a>
+<a href="accounts-tablet/no-account-open.png"><img src="accounts-tablet/no-account-open.png" width="640" alt="no-account-open"></a>
 
 <a name="activity-detail"></a>
 ## Activity detail
@@ -484,6 +496,16 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="mnemonic-import/imported.png"><img src="mnemonic-import/imported.png" width="206" alt="imported"></a>
 <a href="mnemonic-import/imported-stepped-down.png"><img src="mnemonic-import/imported-stepped-down.png" width="206" alt="imported-stepped-down"></a>
 <a href="mnemonic-import/no-network.png"><img src="mnemonic-import/no-network.png" width="206" alt="no-network"></a>
+
+<a name="no-account-open"></a>
+## No account open (wide window)
+
+`no-account-open/`, 4 states: `choose`, `choose-dark`, `empty`, `no-list`
+
+<a href="no-account-open/choose.png"><img src="no-account-open/choose.png" width="206" alt="choose"></a>
+<a href="no-account-open/choose-dark.png"><img src="no-account-open/choose-dark.png" width="206" alt="choose-dark"></a>
+<a href="no-account-open/empty.png"><img src="no-account-open/empty.png" width="206" alt="empty"></a>
+<a href="no-account-open/no-list.png"><img src="no-account-open/no-list.png" width="206" alt="no-list"></a>
 
 <a name="pair-dapp"></a>
 ## Connect a dApp
@@ -815,6 +837,15 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="simple-accounts/queued.png"><img src="simple-accounts/queued.png" width="206" alt="queued"></a>
 <a href="simple-accounts/queued-dark.png"><img src="simple-accounts/queued-dark.png" width="206" alt="queued-dark"></a>
 <a href="simple-accounts/lost-queued.png"><img src="simple-accounts/lost-queued.png" width="206" alt="lost-queued"></a>
+
+<a name="simple-accounts-tablet"></a>
+## Home on a tablet (simple mode)
+
+`simple-accounts-tablet/`, 3 states: `account-open`, `account-open-dark`, `no-account-open`
+
+<a href="simple-accounts-tablet/account-open.png"><img src="simple-accounts-tablet/account-open.png" width="640" alt="account-open"></a>
+<a href="simple-accounts-tablet/account-open-dark.png"><img src="simple-accounts-tablet/account-open-dark.png" width="640" alt="account-open-dark"></a>
+<a href="simple-accounts-tablet/no-account-open.png"><img src="simple-accounts-tablet/no-account-open.png" width="640" alt="no-account-open"></a>
 
 <a name="simple-activity-detail"></a>
 ## Activity detail (simple mode)

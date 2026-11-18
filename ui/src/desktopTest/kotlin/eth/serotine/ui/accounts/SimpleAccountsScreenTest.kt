@@ -1,14 +1,18 @@
 package eth.serotine.ui.accounts
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import eth.serotine.domain.model.AccountKind
@@ -22,9 +26,9 @@ import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.SHOW_AMOUNTS
 import eth.serotine.ui.theme.SerotineTheme
+import kotlin.test.assertEquals
 import org.junit.Rule
 import org.junit.Test
-import kotlin.test.assertEquals
 
 /** Renders the stateless [SimpleAccountsScreen] headless. */
 class SimpleAccountsScreenTest {
@@ -52,10 +56,11 @@ class SimpleAccountsScreenTest {
 
     private var toggles = 0
 
-    private fun show(state: AccountsUiState) = rule.setContent {
+    private fun show(state: AccountsUiState, selected: SelectedAccount? = null) = rule.setContent {
         SerotineTheme {
             SimpleAccountsScreen(
                 state = state,
+                selected = selected,
                 onWatchAddress = {},
                 onImportPhrase = {},
                 onCreateAccount = {},
@@ -72,6 +77,28 @@ class SimpleAccountsScreenTest {
         total = "€12,025.55",
         freshness = "Updated 2 min ago · pull down to refresh",
     )
+
+    @Test
+    fun theAccountShownBesideTheListIsTheOneRowSelected() {
+        // Its address in lower case, as a route carries it: the row's is EIP-55.
+        show(
+            ready(main, main.copy(label = "Spare", address = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")),
+            SelectedAccount(ethereum.chainId, "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"),
+        )
+
+        val selected = SemanticsMatcher.expectValue(SemanticsProperties.Selected, true)
+        rule.onAllNodes(selected).assertCountEquals(1)
+        rule.onNode(selected and hasAnyDescendant(hasText("Main"))).assertExists()
+        rule.onNodeWithTag(ACCOUNTS_SELECTED_TAG).assertExists()
+    }
+
+    @Test
+    fun noRowIsSelectedWhileNoAccountIsShownBesideTheList() {
+        show(ready(main, main.copy(label = "Spare", address = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")))
+
+        rule.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true)).assertCountEquals(0)
+        rule.onNodeWithTag(ACCOUNTS_SELECTED_TAG).assertDoesNotExist()
+    }
 
     @Test
     fun anEmptyWalletSaysWhichNetworksAreStillSyncing() {

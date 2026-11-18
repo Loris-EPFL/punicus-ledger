@@ -15,6 +15,14 @@ on:
   # run this on demand from the Actions tab (workflow_dispatch): the same single
   # arm64 leg a PR builds; dispatched on a v* tag it builds both legs and
   # republishes them.
+  # A PR into main builds the dmg only when it changes the desktop packaging or
+  # the build (pr-scope.yml's `dmg` output; owner's request, 2026-11-18). Its
+  # failures on PRs until then were compile errors Build and Test reports too,
+  # PRs that changed the build (#182, #298, #301), and the macOS UI tests
+  # (#152), which ios.yml now runs on every PR that changes code. main builds
+  # it on every push, and the label `full-ci` on a PR builds it too. Scoped in
+  # the review gate's `if`, not by trigger paths as desktop-windows-msi.yml is,
+  # so the label can override it.
   pull_request:
   workflow_dispatch:
 
@@ -28,6 +36,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # What the PR changes (pr-scope.yml). Every output is 'true' on every event but pull_request.
+  scope:
+    name: PR scope
+    uses: ./.github/workflows/pr-scope.yml
+    permissions:
+      pull-requests: read
+
   # Holds the builds until this PR's Claude review has finished, so the macOS
   # jpackage legs do not build a commit the review might still ask to change. It
   # passes straight through on every other event — see wait-for-claude-review.yml.
@@ -35,9 +50,13 @@ jobs:
     name: Review gate
     # Everything below needs this job, so skipping it here skips the build legs
     # too — and on a tag the release uploads. So an `if:` on this job MUST be
-    # true on every non-pull_request event; the only safe test is the PR's base
-    # branch, which is all this one does.
-    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    # true on every non-pull_request event; the safe tests are the PR's base
+    # branch and pr-scope.yml's outputs, which are 'true' on every other event.
+    # `!= 'false'`: a scope job that failed leaves the output empty, and empty
+    # builds. `!cancelled()` runs this job after a failed scope job; the jobs
+    # behind it rely on pr-scope.yml's continue-on-error.
+    needs: scope
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.base_ref == 'main' && needs.scope.outputs.dmg != 'false')) }}
     uses: ./.github/workflows/wait-for-claude-review.yml
     permissions:
       actions: read
@@ -140,10 +159,13 @@ jobs:
           echo "::error::DMG build failed after 3 attempts"
           exit 1
 
-      # The desktop UI tests on macOS too (ci.yml runs them on Linux only): skiko's
-      # macOS backend is a different code path. One leg is enough.
+      # The desktop UI tests on macOS (ci.yml runs them on Linux only): skiko's macOS backend
+      # is a different code path. On a PR and on main they run in ios.yml's targets job, which
+      # runs on every PR that changes code, while this leg builds on a PR only for a packaging
+      # or build change (2026-11-18). ios.yml has no tag trigger, so they still run here on a
+      # tag, before the upload: a macOS-only UI failure keeps the dmgs off the release.
       - name: Run the shared UI tests on macOS
-        if: matrix.arch == 'arm64'
+        if: matrix.arch == 'arm64' && startsWith(github.ref, 'refs/tags/')
         run: |
           GRADLE_ARGS="-Porg.gradle.java.installations.auto-detect=false -Porg.gradle.java.installations.auto-download=false -Porg.gradle.java.installations.paths=$JAVA_HOME"
           ./gradlew :ui:desktopTest --stacktrace $GRADLE_ARGS

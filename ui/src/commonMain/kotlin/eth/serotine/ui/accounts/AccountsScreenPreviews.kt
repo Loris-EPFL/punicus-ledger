@@ -91,18 +91,30 @@ private val withAccounts = AccountsUiState.Ready(
 
 @Composable
 private fun AccountsPreview(state: AccountsUiState, darkTheme: Boolean = false, fabExpanded: Boolean = false) {
-    SerotineTheme(darkTheme = darkTheme) {
-        AccountsScreen(
-            state = state,
-            onWatchAddress = {},
-            onImportPhrase = {},
-            onCreateAccount = {},
-            onCreateSafe = {},
-            onAccountAction = {},
-            fabExpandedAtStart = fabExpanded,
-        )
-    }
+    SerotineTheme(darkTheme = darkTheme) { AccountsSample(state, fabExpanded) }
 }
+
+@Composable
+private fun AccountsSample(state: AccountsUiState, fabExpanded: Boolean = false, selected: SelectedAccount? = null) {
+    AccountsScreen(
+        state = state,
+        onWatchAddress = {},
+        onImportPhrase = {},
+        onCreateAccount = {},
+        onCreateSafe = {},
+        onAccountAction = {},
+        fabExpandedAtStart = fabExpanded,
+        selected = selected,
+    )
+}
+
+/**
+ * Daily, Savings and Treasury on Sepolia, [selected] beside them: the list of the tablet's layout
+ * (AccountsTabletScreenPreviews.kt), in the theme it is drawn in. Daily's detail is the one
+ * [eth.serotine.ui.accountdetail.AccountDetailDailySample] draws.
+ */
+@Composable
+internal fun AccountsListSample(selected: SelectedAccount?) = AccountsSample(withAccounts, selected = selected)
 
 /** No account whose key is held here: Create Safe greyed out in the open + menu (owner ruling #55). */
 private val noKeyHere = AccountsUiState.Ready(emptyList())

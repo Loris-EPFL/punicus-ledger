@@ -16,7 +16,9 @@ on:
   # once the Windows natives ship. A dispatch on a tag still publishes it.
   push:
     branches: [ "main" ]
-  # Path-filtered, unlike the dmg. A Windows packaging leg on every PR would
+  # Path-filtered by its trigger. (The dmg is scoped by pr-scope.yml in its
+  # review gate's `if`, so the label full-ci can override it; this trigger's
+  # paths no label reaches.) A Windows packaging leg on every PR would
   # cost more than it tells (the reason desktop-linux-deb.yml has no PR trigger
   # at all), but a change to the packaging should prove the msi before it
   # merges. Base branches stay unscoped (CLAUDE.md, "Multi-PR plans"); the

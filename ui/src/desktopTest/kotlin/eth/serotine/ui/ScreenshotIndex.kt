@@ -15,7 +15,8 @@ import java.io.File
  * directory is left alone.
  */
 internal object ScreenshotIndex {
-    private const val THUMB_WIDTH = 206
+    /** A thumbnail is half its screenshot's size, so a phone's and a tablet's are at one scale: a phone's 206 px. */
+    private fun thumbWidth(preview: ScreenPreview): Int = preview.device.widthDp / 2
 
     private val intro = """
         Every screen of Punicus in every state its previews draw, rendered headless from the
@@ -70,7 +71,8 @@ internal object ScreenshotIndex {
             appendLine()
             screen.previews.forEach { preview ->
                 val path = screenshotPath(screen, preview)
-                appendLine("<a href=\"$path\"><img src=\"$path\" width=\"$THUMB_WIDTH\" alt=\"${preview.name}\"></a>")
+                val width = thumbWidth(preview)
+                appendLine("<a href=\"$path\"><img src=\"$path\" width=\"$width\" alt=\"${preview.name}\"></a>")
             }
         }
     }
@@ -89,8 +91,8 @@ internal object ScreenshotIndex {
         appendLine("section { margin-top: 2.5rem; }")
         appendLine("h2 small { font-weight: normal; color: #666; font-size: .7em; }")
         appendLine(".shots { display: flex; flex-wrap: wrap; gap: .75rem; }")
-        appendLine("figure { margin: 0; width: ${THUMB_WIDTH}px; }")
-        appendLine("img { width: ${THUMB_WIDTH}px; height: auto; border: 1px solid #ccc; background: #fff; }")
+        appendLine("figure { margin: 0; max-width: 100%; }")
+        appendLine("img { width: 100%; height: auto; border: 1px solid #ccc; background: #fff; }")
         appendLine("figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-word; }")
         appendLine("</style>")
         appendLine("</head>")
@@ -107,7 +109,8 @@ internal object ScreenshotIndex {
             appendLine("<div class=\"shots\">")
             screen.previews.forEach { preview ->
                 val path = screenshotPath(screen, preview)
-                append("<figure><a href=\"$path\"><img src=\"$path\" loading=\"lazy\" alt=\"${preview.name}\"></a>")
+                append("<figure style=\"width: ${thumbWidth(preview)}px\">")
+                append("<a href=\"$path\"><img src=\"$path\" loading=\"lazy\" alt=\"${preview.name}\"></a>")
                 appendLine("<figcaption>${preview.name}</figcaption></figure>")
             }
             appendLine("</div>")

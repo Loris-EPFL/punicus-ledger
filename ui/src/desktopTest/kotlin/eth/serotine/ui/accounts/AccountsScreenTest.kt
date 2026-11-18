@@ -13,6 +13,8 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
@@ -101,11 +103,12 @@ class AccountsScreenTest {
         upgrades = upgrades,
     )
 
-    private fun show(state: AccountsUiState) =
+    private fun show(state: AccountsUiState, selected: SelectedAccount? = null) =
         rule.setContent {
             SerotineTheme {
                 AccountsScreen(
                     state,
+                    selected = selected,
                     onWatchAddress = { adds += "watch" },
                     onImportPhrase = { adds += "import" },
                     onCreateAccount = { adds += "create" },
@@ -117,6 +120,28 @@ class AccountsScreenTest {
                 )
             }
         }
+
+    @Test
+    fun theAccountShownBesideTheListIsTheOneRowSelected() {
+        // Its address in lower case, as a route carries it: the row's is EIP-55.
+        show(
+            ready(listOf(daily, savings)),
+            SelectedAccount(Network.SEPOLIA.chainId, "0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2"),
+        )
+
+        val selected = SemanticsMatcher.expectValue(SemanticsProperties.Selected, true)
+        rule.onAllNodes(selected).assertCountEquals(1)
+        rule.onNode(selected and hasAnyDescendant(hasText("Daily"))).assertExists()
+        rule.onNodeWithTag(ACCOUNTS_SELECTED_TAG).assertExists()
+    }
+
+    @Test
+    fun noRowIsSelectedWhileNoAccountIsShownBesideTheList() {
+        show(ready(listOf(daily, savings)))
+
+        rule.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true)).assertCountEquals(0)
+        rule.onNodeWithTag(ACCOUNTS_SELECTED_TAG).assertDoesNotExist()
+    }
 
     @Test
     fun emptyStateInvitesTheFirstAccount() {

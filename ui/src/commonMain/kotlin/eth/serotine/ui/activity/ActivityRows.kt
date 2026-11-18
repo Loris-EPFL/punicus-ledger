@@ -353,6 +353,12 @@ internal class ActivityRows(
                 action.transfer.recipient,
                 "To",
             )
+            // Moves nothing: the Delay's next entry past every expired one.
+            is SentAction.DelaySkip -> if (transfer.account == address) {
+                Triple("Skipped expired entries of a Delay", action.safe, "Of")
+            } else {
+                Triple("Skipped expired entries of the Delay", transfer.account, "Paid by")
+            }
         }
         val (status, state) = statusOf(entry)
         return ActivityRow(

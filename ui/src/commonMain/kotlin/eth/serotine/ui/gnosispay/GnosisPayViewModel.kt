@@ -29,6 +29,11 @@ import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.QuoteDelayExecution
 import eth.serotine.domain.usecase.QuoteDelayQueue
+import eth.serotine.domain.usecase.CallQuote
+import eth.serotine.domain.usecase.SendDelaySkip
+import eth.serotine.domain.usecase.QuoteDelaySkip
+import eth.serotine.domain.usecase.DelaySkipQuoting
+import eth.serotine.domain.usecase.DelaySkipQuote
 import eth.serotine.domain.usecase.QueuedDelayTransfer
 import eth.serotine.domain.usecase.ReadDelayTransfers
 import eth.serotine.domain.usecase.SendDelayCall
@@ -64,6 +69,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -90,6 +96,8 @@ class GnosisPayViewModel(
     private val quoteDelayQueue: QuoteDelayQueue,
     private val quoteDelayExecution: QuoteDelayExecution,
     private val sendDelayCall: SendDelayCall,
+    private val quoteDelaySkip: QuoteDelaySkip,
+    private val sendDelaySkip: SendDelaySkip,
     private val describeKeyStore: DescribeKeyStore,
     private val pollInterval: Duration = 15.seconds,
     private val timeSource: TimeSource = TimeSource.Monotonic,
@@ -105,6 +113,8 @@ class GnosisPayViewModel(
             val amount: String,
             val error: String? = null,
             val quoting: Boolean = false,
+            val skip: Boolean = false,
+            val note: String? = null,
         ) : Flow
 
         /**
@@ -113,7 +123,7 @@ class GnosisPayViewModel(
          * while it is made again, and [note] why it was.
          */
         data class Review(
-            val quote: DelayQuote,
+            val quote: Reviewed,
             val member: Address,
             val unlock: UnlockStep,
             val quotedAt: TimeMark,
@@ -124,6 +134,19 @@ class GnosisPayViewModel(
             val requoting: Boolean = false,
             val note: String? = null,
         ) : Flow
+    }
+
+    /** What a review signs: a transfer's queueing or execution, or a skip of the Delay's expired entries. */
+    private sealed interface Reviewed {
+        val call: CallQuote
+
+        data class Transfer(val quote: DelayQuote) : Reviewed {
+            override val call: CallQuote get() = quote.call
+        }
+
+        data class Skip(val quote: DelaySkipQuote) : Reviewed {
+            override val call: CallQuote get() = quote.call
+        }
     }
 
     private val flowState = MutableStateFlow<Flow>(Flow.Overview())
@@ -171,7 +194,17 @@ class GnosisPayViewModel(
                     while (true) {
                         val seen = sends.value
                         // A read that throws is no answer this time; the next poll asks again.
-                        safely { readDelayTransfers(safe, module) }?.let { emit(it) }
+                        safely { readDelayTransfers(safe, module) }?.let {
+                            // Counted from the first read of a head: a read that finds the same head
+                            // again leaves the countdown where it was, never runs it back.
+                            val head = (it as? DelayTransfersReading.Read)?.transfers?.mapNotNull { q -> q.headTime }
+                                ?.maxOrNull()
+                            if (head == null || head != readHead) {
+                                readAt = timeSource.markNow()
+                                readHead = head
+                            }
+                            emit(it)
+                        }
                         // The next poll, or a send since this read, whichever comes first; the list
                         // stays as read meanwhile.
                         withTimeoutOrNull(pollInterval) { sends.first { it != seen } }
@@ -180,12 +213,20 @@ class GnosisPayViewModel(
             }
         }
 
+    /** When the queued transfers were last read, on [timeSource]: a cooldown counts down from that read's head. */
+    private var readAt: TimeMark = timeSource.markNow()
+
+    /** The verified head the queue was last read at, whose first read [readAt] marks. */
+    private var readHead: Long? = null
+
+    // Shared: the screen and the countdown read the same answers, and the queue is read once per poll.
     private val chain = combine(
         reading,
         observeNativeBalance(safe.network, safe.address),
         observeTokenHoldings(safe.network, safe.address),
         queued,
     ) { reading, native, holdings, transfers -> Chain(reading, native, holdings, transfers) }
+        .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1)
 
     private data class Chain(
         val reading: GnosisPayReading,
@@ -194,7 +235,55 @@ class GnosisPayViewModel(
         val transfers: DelayTransfersReading?,
     )
 
-    val uiState: StateFlow<GnosisPayUiState> = combine(observeAccount(safe), chain, flowState) { lookup, chain, step ->
+    /**
+     * The seconds since the queued transfers were last read, once a second while one of them waits
+     * out a cooldown that ends within the hour, so that its countdown runs and its bar drains; held
+     * otherwise. A cooldown is counted on the chain's time: the head the queue was read at, plus the
+     * time since ([QueuedDelayTransfer.headTime]), never the device's clock. Once it ends, the queue
+     * is read again every few seconds for a while, until a verified head past its end says Ready.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val sinceRead = chain
+        .map { chain ->
+            ((chain.transfers as? DelayTransfersReading.Read)?.transfers.orEmpty())
+                .mapNotNull { queued ->
+                    val readyAt = (queued.state as? DelayTransferState.Waiting)?.readyAt ?: return@mapNotNull null
+                    queued.headTime?.let { readyAt - it }
+                }
+                .minOrNull()
+        }
+        .distinctUntilChanged()
+        .flatMapLatest { leftAtRead ->
+            if (leftAtRead == null) {
+                flowOf(0L)
+            } else {
+                flow {
+                    // A cooldown over an hour away shows its time, not a countdown: nothing ticks until then.
+                    val quiet = leftAtRead - COUNTDOWN_SECONDS
+                    if (quiet > 0) {
+                        emit(0L)
+                        delay(quiet.seconds)
+                    }
+                    var rereads = 0
+                    while (true) {
+                        val elapsed = readAt.elapsedNow().inWholeSeconds
+                        emit(elapsed)
+                        if (elapsed >= leftAtRead && rereads < REREADS_AFTER_COOLDOWN) {
+                            if (rereads % REREAD_EVERY == 0) sends.value++
+                            rereads++
+                        }
+                        delay(1.seconds)
+                    }
+                }
+            }
+        }
+
+    val uiState: StateFlow<GnosisPayUiState> = combine(
+        observeAccount(safe),
+        chain,
+        flowState,
+        sinceRead,
+    ) { lookup, chain, step, sinceRead ->
         // What the intents act on is this reading's, or nothing: never one an earlier reading left.
         latest = null
         latestHoldings = null
@@ -245,13 +334,18 @@ class GnosisPayViewModel(
             },
             controlNote = GnosisPayTexts.controlNote(found.control),
             send = ActionItem(found.sending == GnosisPaySending.AVAILABLE, GnosisPayTexts.sendReason(found.sending)),
-            queued = latestQueued.map { queuedRow(it, found, (step as? Flow.Overview)?.busy) },
+            queued = latestQueued.map { queuedRow(it, found, (step as? Flow.Overview)?.busy, sinceRead) },
             queuedNote = GnosisPayTexts.queuedNote(chain.transfers),
             step = stepOf(step, found, chain),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GnosisPayUiState.Loading)
 
-    private fun queuedRow(queued: QueuedDelayTransfer, found: GnosisPayReading.Found, busy: String?): QueuedRow {
+    private fun queuedRow(
+        queued: QueuedDelayTransfer,
+        found: GnosisPayReading.Found,
+        busy: String?,
+        sinceRead: Long,
+    ): QueuedRow {
         // Anyone may execute an entry: the key that queued it, held here, needs no control now.
         val held = found.keysHere.any { it.address == queued.member }
         val ready = queued.state is DelayTransferState.Ready
@@ -268,18 +362,38 @@ class GnosisPayViewModel(
             else -> ActionItem(true, null)
         }.let { action ->
             // While its execution is being quoted: greyed out, saying so.
-            val checking = action.enabled && busy == queued.queuedBy
-            if (checking) ActionItem(false, GnosisPayTexts.CHECKING) else action
+            // Anything quoted from the overview, this Execute or a skip, holds every action back meanwhile.
+            val checking = action.enabled && busy != null
+            if (checking) ActionItem(false, busyReason(busy, queued.queuedBy)) else action
+        }
+        // The Delay's next entry expired, this one or one ahead: its skip is offered here, by any key
+        // held on the network. One ahead blocks this one, which says so; this one expired says that.
+        // The chain's time now, as the head the queue was read at plus the time since; null when unread.
+        val chainNow = queued.headTime?.plus(sinceRead)
+        val skippable = queued.expiredHead && queued.executing == null
+        val blocked = skippable && queued.state !is DelayTransferState.Expired
+        val skip = when {
+            !skippable -> null
+            found.keysHere.isEmpty() -> ActionItem(false, GnosisPayTexts.SKIP_NEEDS_KEY)
+            // Anything quoted from the overview, this skip or an Execute, holds it back meanwhile.
+            busy != null -> ActionItem(false, busyReason(busy, queued.queuedBy))
+            else -> ActionItem(true, null)
         }
         return QueuedRow(
             id = queued.queuedBy,
             title = GnosisPayTexts.transferTitle(queued.transfer, safe.network),
-            status = if (queued.executing != null) {
-                GnosisPayTexts.EXECUTING_STATUS
-            } else {
-                GnosisPayTexts.status(queued.state, queued.queueOutcome)
+            status = when {
+                queued.executing != null -> GnosisPayTexts.EXECUTING_STATUS
+                blocked -> GnosisPayTexts.BLOCKED_BY_EXPIRED
+                else -> GnosisPayTexts.status(queued.state, queued.queueOutcome, chainNow)
             },
-            execute = execute,
+            // Under an hour from its end, and not blocked: the bar that drains to zero.
+            cooldownLeft = (queued.state as? DelayTransferState.Waiting)
+                ?.takeIf { queued.executing == null && !blocked && chainNow != null }
+                ?.takeIf { it.readyAt - chainNow!! < COUNTDOWN_SECONDS }
+                ?.let { cooldownLeft(it.readyAt, found.delay.cooldownSeconds, chainNow!!) },
+            execute = if (blocked) ActionItem(false, GnosisPayTexts.BLOCKED_BY_EXPIRED) else execute,
+            skip = skip,
         )
     }
 
@@ -293,16 +407,24 @@ class GnosisPayViewModel(
             sender = found.controllersHeld.firstOrNull()?.let { GnosisPayTexts.sender(it) } ?: "",
             error = step.error,
             quoting = step.quoting,
+            skip = step.skip,
+            note = step.note,
         )
         is Flow.Review -> GnosisPayStep.Review(
-            title = GnosisPayTexts.reviewTitle(step.quote, safe.network),
-            lines = GnosisPayTexts.reviewLines(
-                step.quote,
-                found,
-                step.member,
-                safe.network,
-                sharesBuiltInSymbol = sharesBuiltInSymbol(step.quote.transfer.asset, chain.holdings),
-            ),
+            title = when (val reviewed = step.quote) {
+                is Reviewed.Transfer -> GnosisPayTexts.reviewTitle(reviewed.quote, safe.network)
+                is Reviewed.Skip -> GnosisPayTexts.SKIP_TITLE
+            },
+            lines = when (val reviewed = step.quote) {
+                is Reviewed.Transfer -> GnosisPayTexts.reviewLines(
+                    reviewed.quote,
+                    found,
+                    step.member,
+                    safe.network,
+                    sharesBuiltInSymbol = sharesBuiltInSymbol(reviewed.quote.transfer.asset, chain.holdings),
+                )
+                is Reviewed.Skip -> GnosisPayTexts.skipLines(reviewed.quote, step.member, safe.network)
+            },
             fee = step.quote.call.level,
             unlock = step.unlock,
             signing = step.signing || step.requoting,
@@ -335,7 +457,7 @@ class GnosisPayViewModel(
     private fun editCompose(edit: (Flow.Compose) -> Flow.Compose) {
         val current = flowState.value as? Flow.Compose ?: return
         if (current.quoting) return
-        flowState.value = edit(current)
+        flowState.value = edit(current).copy(note = null)
     }
 
     /** Review: the transfer planned from the form and its queueing quoted on chain. */
@@ -376,12 +498,71 @@ class GnosisPayViewModel(
             if (request != mine || flowState.value !is Flow.Compose) return@launch
             if (quoting is DelayQuoting.Quoted) {
                 val hidden = hides != hidesAtQuote || !shown
-                val review = Flow.Review(quoting.quote, member, unlock, quotedAt, form = compose, hidden = hidden)
+                val reviewed = Reviewed.Transfer(quoting.quote)
+                val review = Flow.Review(reviewed, member, unlock, quotedAt, form = compose, hidden = hidden)
                 return@launch landed(review)
             }
             flowState.value = when (quoting) {
-                null -> compose.copy(quoting = false, error = GnosisPayTexts.QUOTE_FAILED)
-                else -> compose.copy(quoting = false, error = GnosisPayTexts.quoteRefused(quoting))
+                null -> compose.copy(quoting = false, error = GnosisPayTexts.QUOTE_FAILED, skip = false)
+                // An expired entry ahead blocks every transfer behind it: its skip is offered on the form.
+                DelayQuoting.HeadExpired ->
+                    compose.copy(quoting = false, error = GnosisPayTexts.quoteRefused(quoting), skip = true)
+                is DelayQuoting.SameCallExpired ->
+                    compose.copy(
+                        quoting = false,
+                        error = GnosisPayTexts.quoteRefused(quoting),
+                        skip = quoting.skippable,
+                    )
+                else -> compose.copy(quoting = false, error = GnosisPayTexts.quoteRefused(quoting), skip = false)
+            }
+        }
+    }
+
+    /**
+     * Skip expired entries, offered on the form when an expired entry blocks the Delay's queue:
+     * `skipExpired()` quoted from a key held here on the account's network (it moves nothing, so any
+     * key may send it; a controlling key first), then reviewed and signed like a queueing.
+     */
+    fun skipExpired(fee: FeeLevel = FeeLevel.NORMAL) {
+        val found = latest ?: return
+        val from = flowState.value
+        val compose = from as? Flow.Compose
+        when (from) {
+            is Flow.Compose -> if (from.quoting || !from.skip) return
+            // From a queued transfer's row, while an expired entry blocks it.
+            is Flow.Overview -> if (from.busy != null || latestQueued.none { it.expiredHead }) return
+            is Flow.Review -> return
+        }
+        // The key that queued a blocked transfer pays for its skip, where it is held; then a controlling
+        // key; then any key held here on the network (docs/gnosis-pay.md, *Skipping expired entries*).
+        val queuers = if (compose == null) latestQueued.filter { it.expiredHead }.map { it.member } else emptyList()
+        val held = found.keysHere.map { it.address }
+        val sender = (queuers.filter { it in held } + found.controllersHeld.map { it.account.address } + held)
+            .firstOrNull()
+        if (sender == null) {
+            if (compose != null) showCompose(GnosisPayTexts.SKIP_NEEDS_KEY)
+            return
+        }
+        flowState.value = compose?.copy(quoting = true, error = null) ?: Flow.Overview(busy = SKIP_BUSY)
+        val mine = ++request
+        viewModelScope.launch {
+            val quotedAt = timeSource.markNow()
+            val hidesAtQuote = hides
+            val quoting = safely { quoteDelaySkip(sender, safe.address, found.delay.address, fee) }
+            val unlock = if (quoting is DelaySkipQuoting.Quoted) unlockStep() else UnlockStep()
+            if (request != mine || flowState.value::class != from::class) return@launch
+            if (quoting is DelaySkipQuoting.Quoted) {
+                val hidden = hides != hidesAtQuote || !shown
+                val form = compose?.copy(error = null, skip = false)
+                return@launch landed(
+                    Flow.Review(Reviewed.Skip(quoting.quote), sender, unlock, quotedAt, form = form, hidden = hidden),
+                )
+            }
+            val why = if (quoting == null) GnosisPayTexts.QUOTE_FAILED else GnosisPayTexts.skipRefused(quoting)
+            flowState.value = when {
+                compose == null -> Flow.Overview(error = why)
+                quoting == DelaySkipQuoting.NothingExpired -> compose.copy(quoting = false, error = why, skip = false)
+                else -> compose.copy(quoting = false, error = why)
             }
         }
     }
@@ -408,7 +589,9 @@ class GnosisPayViewModel(
             if (request != mine || flowState.value !is Flow.Overview) return@launch
             if (quoting is DelayQuoting.Quoted) {
                 val hidden = hides != hidesAtQuote || !shown
-                return@launch landed(Flow.Review(quoting.quote, queued.member, unlock, quotedAt, hidden = hidden))
+                return@launch landed(
+                    Flow.Review(Reviewed.Transfer(quoting.quote), queued.member, unlock, quotedAt, hidden = hidden),
+                )
             }
             flowState.value = when (quoting) {
                 null -> Flow.Overview(error = GnosisPayTexts.QUOTE_FAILED)
@@ -435,7 +618,10 @@ class GnosisPayViewModel(
         // The prompt gets what is left of the quote's age: past it, nothing is signed, and it is made again.
         val notAfter = promptDeadline(review.quotedAt) ?: return requote(review, PROMPT_TOO_LATE)
         // The recipient in full: the prompt is the last thing read before the key signs.
-        val reason = GnosisPayTexts.biometricReason(review.quote, safe.network)
+        val reason = when (val reviewed = review.quote) {
+            is Reviewed.Transfer -> GnosisPayTexts.biometricReason(reviewed.quote, safe.network)
+            is Reviewed.Skip -> GnosisPayTexts.SKIP_BIOMETRIC_REASON
+        }
         send(review, Unlock.WithBiometrics(reason, notAfter))
     }
 
@@ -462,24 +648,48 @@ class GnosisPayViewModel(
             val quotedAt = timeSource.markNow()
             val hidesAtQuote = hides
             val level = review.quote.call.level
-            val quoting = safely {
-                when (review.quote.step) {
-                    DelayStep.QUEUE ->
-                        quoteDelayQueue(review.member, review.quote.transfer, level, via = review.quote.via)
-                    DelayStep.EXECUTE -> quoteDelayExecution(review.member, review.quote.transfer, level)
+            // The same call quoted again: a transfer's step, or the skip; null when it was not.
+            val quoted: Reviewed?
+            val why: String?
+            // Whether the form, when the requote is refused, offers the skip: an expired entry ahead, or a
+            // skip refused for anything but nothing left to skip.
+            val offersSkip: Boolean
+            when (val reviewed = review.quote) {
+                is Reviewed.Transfer -> {
+                    val quote = reviewed.quote
+                    val quoting = safely {
+                        when (quote.step) {
+                            DelayStep.QUEUE -> quoteDelayQueue(review.member, quote.transfer, level, via = quote.via)
+                            DelayStep.EXECUTE -> quoteDelayExecution(review.member, quote.transfer, level)
+                        }
+                    }
+                    quoted = (quoting as? DelayQuoting.Quoted)?.let { Reviewed.Transfer(it.quote) }
+                    why = when (quoting) {
+                        is DelayQuoting.Quoted -> null
+                        null -> GnosisPayTexts.QUOTE_FAILED
+                        else -> GnosisPayTexts.quoteRefused(quoting)
+                    }
+                    offersSkip = quoting == DelayQuoting.HeadExpired ||
+                        (quoting as? DelayQuoting.SameCallExpired)?.skippable == true
+                }
+                is Reviewed.Skip -> {
+                    val quote = reviewed.quote
+                    val quoting = safely { quoteDelaySkip(review.member, quote.safe, quote.delay, level) }
+                    quoted = (quoting as? DelaySkipQuoting.Quoted)?.let { Reviewed.Skip(it.quote) }
+                    why = when (quoting) {
+                        is DelaySkipQuoting.Quoted -> null
+                        null -> GnosisPayTexts.QUOTE_FAILED
+                        else -> GnosisPayTexts.skipRefused(quoting)
+                    }
+                    offersSkip = quoting != DelaySkipQuoting.NothingExpired
                 }
             }
             val current = flowState.value as? Flow.Review ?: return@launch
             if (request != mine) return@launch
-            val why = when (quoting) {
-                is DelayQuoting.Quoted -> null
-                null -> GnosisPayTexts.QUOTE_FAILED
-                else -> GnosisPayTexts.quoteRefused(quoting)
-            }
-            if (quoting is DelayQuoting.Quoted) {
+            if (quoted != null) {
                 return@launch landed(
                     current.copy(
-                        quote = quoting.quote,
+                        quote = quoted,
                         quotedAt = quotedAt,
                         hidden = hides != hidesAtQuote || !shown,
                         requoting = false,
@@ -487,7 +697,10 @@ class GnosisPayViewModel(
                     ),
                 )
             }
-            flowState.value = current.form?.copy(quoting = false, error = why) ?: Flow.Overview(error = why)
+            // A skip refused other than for nothing left to skip keeps its button on the form.
+            val keepSkip = offersSkip
+            flowState.value = current.form?.copy(quoting = false, error = why, skip = keepSkip)
+                ?: Flow.Overview(error = why)
         }
     }
 
@@ -497,14 +710,22 @@ class GnosisPayViewModel(
         flowState.value = signing
         val hidesAtSign = hides
         viewModelScope.launch {
-            val sending = safely { sendDelayCall(review.quote, unlock) }
+            val sending = safely {
+                when (val reviewed = review.quote) {
+                    is Reviewed.Transfer -> sendDelayCall(reviewed.quote, unlock)
+                    is Reviewed.Skip -> sendDelaySkip(reviewed.quote, unlock)
+                }
+            }
             // Hidden while it signed: a review it leaves open is made again before the next signature.
             val hiddenMeanwhile = hides != hidesAtSign || !shown
             // Whatever it became, the queued transfers are read again now rather than at the next poll.
             sends.value++
             val current = flowState.value as? Flow.Review ?: return@launch
             when (sending) {
-                is TransferSending.Sent -> {
+                // A skip goes back to the form it was offered on, to review the transfer again once it is mined.
+                is TransferSending.Sent -> if (review.quote is Reviewed.Skip && review.form != null) {
+                    flowState.value = review.form.copy(quoting = false, error = null, note = GnosisPayTexts.SKIP_SENT)
+                } else {
                     flowState.value = Flow.Overview()
                     sentHash.value = sending.hash
                 }
@@ -523,7 +744,10 @@ class GnosisPayViewModel(
                     flowState.value = Flow.Overview()
                     sentHash.value = sending.transfer.hash
                 } else {
-                    val what = if (review.quote.step == DelayStep.QUEUE) "queueing" else "execution"
+                    val what = when (val reviewed = review.quote) {
+                        is Reviewed.Skip -> "skip"
+                        is Reviewed.Transfer -> if (reviewed.quote.step == DelayStep.QUEUE) "queueing" else "execution"
+                    }
                     val why = notSentItem(sending.broadcast, false, what).message
                     landed(current.copy(signing = false, error = why, hidden = current.hidden || hiddenMeanwhile))
                 }
@@ -603,8 +827,34 @@ class GnosisPayViewModel(
 
     private fun unavailable(reason: ReadUnavailable): String = GnosisPayTexts.unavailable(reason)
 
+    /** What holds a row's action back while [busy] is quoted from the overview, said for the row [row]. */
+    private fun busyReason(busy: String?, row: String): String = when (busy) {
+        SKIP_BUSY -> GnosisPayTexts.SKIP_CHECKING
+        row -> GnosisPayTexts.CHECKING
+        else -> GnosisPayTexts.OTHER_CHECKING
+    }
+
+    /**
+     * What is left of a cooldown of [cooldown] seconds ending at [readyAt], at [now] (the chain's time):
+     * 1 when it began, 0 when over.
+     */
+    private fun cooldownLeft(readyAt: Long, cooldown: Long, now: Long): Float =
+        if (cooldown <= 0) 0f else ((readyAt - now).toFloat() / cooldown).coerceIn(0f, 1f)
+
     private companion object {
         const val NATIVE_DECIMALS = 18
+
+        /** How long before its end a cooldown counts down, in seconds: an hour. */
+        const val COUNTDOWN_SECONDS = 3_600L
+
+        /** How many seconds after a cooldown ends the queue is still read again, until a head says Ready. */
+        const val REREADS_AFTER_COOLDOWN = 30
+
+        /** Every how many of those seconds it is read again. */
+        const val REREAD_EVERY = 3
+
+        /** The overview's busy mark while a skip of expired entries is quoted from a queued transfer's row. */
+        const val SKIP_BUSY = "skip-expired"
         const val LIST_UNREADABLE = "The wallet's list of accounts cannot be read right now."
         const val NOT_GNOSIS_PAY =
             "This Safe has no Delay module of its own, so it is no Gnosis Pay account this wallet can send from."

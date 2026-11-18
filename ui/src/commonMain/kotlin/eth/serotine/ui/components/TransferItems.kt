@@ -84,6 +84,7 @@ data class RecipientItem(
     val resolvedAt: String? = null,
     val label: String? = null,
     val note: String? = null,
+    val warning: RecipientWarning? = null,
 )
 
 /**

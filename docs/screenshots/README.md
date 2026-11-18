@@ -41,7 +41,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Safe transaction](#safe-tx) | `safe-tx/` | 45 |
 | [Screen capture warning (dialog)](#screen-capture-warning-dialog) | `screen-capture-warning-dialog/` | 3 |
 | [Security](#security) | `security/` | 15 |
-| [Send](#send) | `send/` | 32 |
+| [Send](#send) | `send/` | 37 |
 | [Settings](#settings) | `settings/` | 29 |
 | [Account detail (simple mode)](#simple-account-detail) | `simple-account-detail/` | 12 |
 | [Home (simple mode)](#simple-accounts) | `simple-accounts/` | 18 |
@@ -55,7 +55,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Safe settings (simple mode)](#simple-safe-settings) | `simple-safe-settings/` | 6 |
 | [Safe swap (simple mode)](#simple-safe-swap) | `simple-safe-swap/` | 4 |
 | [Safe transaction (simple mode)](#simple-safe-tx) | `simple-safe-tx/` | 15 |
-| [Send (simple mode)](#simple-send) | `simple-send/` | 8 |
+| [Send (simple mode)](#simple-send) | `simple-send/` | 10 |
 | [Settings (simple mode)](#simple-settings) | `simple-settings/` | 10 |
 | [Swap (simple mode)](#simple-swap) | `simple-swap/` | 11 |
 | [Tokens (simple mode)](#simple-tokens) | `simple-tokens/` | 2 |
@@ -726,7 +726,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="send"></a>
 ## Send
 
-`send/`, 32 states: `compose-empty`, `compose-empty-dark`, `composed-token-to-name`, `compose-resolving`, `compose-input-errors`, `compose-gnosis-no-names`, `compose-name-unavailable`, `compose-quoting`, `compose-refused`, `compose-earlier-maybe-sent`, `compose-token-not-found`, `review`, `review-dark`, `review-token-with-biometrics`, `review-wrong-password`, `review-biometrics-cancelled`, `review-signing`, `review-refreshing`, `review-not-sent`, `review-rejected`, `loading`, `watch-only`, `sent`, `compose-lenient-last-verified`, `compose-draft-waits`, `compose-queued-first`, `draft-review`, `draft-review-dark`, `draft-review-token`, `draft-review-not-kept`, `draft-review-signing`, `queued`
+`send/`, 37 states: `compose-empty`, `compose-empty-dark`, `composed-token-to-name`, `compose-resolving`, `compose-input-errors`, `compose-gnosis-no-names`, `compose-name-unavailable`, `compose-quoting`, `compose-refused`, `compose-earlier-maybe-sent`, `compose-token-not-found`, `review`, `review-dark`, `review-token-with-biometrics`, `review-wrong-password`, `review-biometrics-cancelled`, `review-signing`, `review-refreshing`, `review-not-sent`, `review-rejected`, `review-lookalike-blocked`, `review-new-recipient`, `compose-lookalike-blocked`, `review-planted-sender`, `review-planted-acknowledged`, `loading`, `watch-only`, `sent`, `compose-lenient-last-verified`, `compose-draft-waits`, `compose-queued-first`, `draft-review`, `draft-review-dark`, `draft-review-token`, `draft-review-not-kept`, `draft-review-signing`, `queued`
 
 <a href="send/compose-empty.png"><img src="send/compose-empty.png" width="206" alt="compose-empty"></a>
 <a href="send/compose-empty-dark.png"><img src="send/compose-empty-dark.png" width="206" alt="compose-empty-dark"></a>
@@ -748,6 +748,11 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="send/review-refreshing.png"><img src="send/review-refreshing.png" width="206" alt="review-refreshing"></a>
 <a href="send/review-not-sent.png"><img src="send/review-not-sent.png" width="206" alt="review-not-sent"></a>
 <a href="send/review-rejected.png"><img src="send/review-rejected.png" width="206" alt="review-rejected"></a>
+<a href="send/review-lookalike-blocked.png"><img src="send/review-lookalike-blocked.png" width="206" alt="review-lookalike-blocked"></a>
+<a href="send/review-new-recipient.png"><img src="send/review-new-recipient.png" width="206" alt="review-new-recipient"></a>
+<a href="send/compose-lookalike-blocked.png"><img src="send/compose-lookalike-blocked.png" width="206" alt="compose-lookalike-blocked"></a>
+<a href="send/review-planted-sender.png"><img src="send/review-planted-sender.png" width="206" alt="review-planted-sender"></a>
+<a href="send/review-planted-acknowledged.png"><img src="send/review-planted-acknowledged.png" width="206" alt="review-planted-acknowledged"></a>
 <a href="send/loading.png"><img src="send/loading.png" width="206" alt="loading"></a>
 <a href="send/watch-only.png"><img src="send/watch-only.png" width="206" alt="watch-only"></a>
 <a href="send/sent.png"><img src="send/sent.png" width="206" alt="sent"></a>
@@ -950,7 +955,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="simple-send"></a>
 ## Send (simple mode)
 
-`simple-send/`, 8 states: `compose`, `syncing`, `review`, `review-dark`, `compose-refused`, `compose-lenient-last-verified`, `draft-review`, `draft-review-dark`
+`simple-send/`, 10 states: `compose`, `syncing`, `review`, `review-dark`, `compose-refused`, `compose-lenient-last-verified`, `draft-review`, `draft-review-dark`, `compose-lookalike-blocked`, `review-planted-sender`
 
 <a href="simple-send/compose.png"><img src="simple-send/compose.png" width="206" alt="compose"></a>
 <a href="simple-send/syncing.png"><img src="simple-send/syncing.png" width="206" alt="syncing"></a>
@@ -960,6 +965,8 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="simple-send/compose-lenient-last-verified.png"><img src="simple-send/compose-lenient-last-verified.png" width="206" alt="compose-lenient-last-verified"></a>
 <a href="simple-send/draft-review.png"><img src="simple-send/draft-review.png" width="206" alt="draft-review"></a>
 <a href="simple-send/draft-review-dark.png"><img src="simple-send/draft-review-dark.png" width="206" alt="draft-review-dark"></a>
+<a href="simple-send/compose-lookalike-blocked.png"><img src="simple-send/compose-lookalike-blocked.png" width="206" alt="compose-lookalike-blocked"></a>
+<a href="simple-send/review-planted-sender.png"><img src="simple-send/review-planted-sender.png" width="206" alt="review-planted-sender"></a>
 
 <a name="simple-settings"></a>
 ## Settings (simple mode)

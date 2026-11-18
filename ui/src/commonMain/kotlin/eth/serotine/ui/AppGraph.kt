@@ -138,6 +138,7 @@ import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveSafes
+import eth.serotine.domain.usecase.ObserveRecipientCheck
 import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.ObserveSwapVenue
@@ -729,6 +730,12 @@ class AppGraph(
         accountValue(),
         DescribeKeyStore(keys),
         ResolveRecipient(resolver),
+        ObserveRecipientCheck(
+            ObserveSentTo(transactionHistory),
+            ObserveAccounts(accounts),
+            ObserveTokenTransfers(logIndex, historyStarts),
+            knownTokens(),
+        ),
         QuoteTransfer(
             transactionInputs,
             nativeBalances,

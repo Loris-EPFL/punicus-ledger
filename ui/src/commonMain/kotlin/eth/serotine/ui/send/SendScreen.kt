@@ -140,6 +140,7 @@ fun SendRoute(
             onSign = viewModel::sign,
             onSignWithBiometrics = viewModel::signWithBiometrics,
             onRetry = viewModel::retry,
+            onAcknowledgeRecipient = viewModel::onAcknowledgeRecipient,
             onOpenTransfer = onOpenTransfer,
             onBack = onBack,
             modifier = modifier,
@@ -163,6 +164,7 @@ fun SendRoute(
             onSign = viewModel::sign,
             onSignWithBiometrics = viewModel::signWithBiometrics,
             onRetry = viewModel::retry,
+            onAcknowledgeRecipient = viewModel::onAcknowledgeRecipient,
             onOpenTransfer = onOpenTransfer,
             onBack = onBack,
             modifier = modifier,
@@ -197,6 +199,7 @@ fun SendScreen(
     onSign: () -> Unit,
     onSignWithBiometrics: () -> Unit,
     onRetry: () -> Unit,
+    onAcknowledgeRecipient: () -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -278,18 +281,25 @@ fun SendScreen(
                     onMax,
                     onFeeChange,
                     onReview,
+                    onAcknowledgeRecipient,
                     onOpenTransfer,
                 )
                 is SendUiState.Review -> when (chrome) {
                     is SendChrome.Strip ->
-                        ReviewContent(state, onRefresh, onPasswordChange, onSign, onSignWithBiometrics, onRetry)
+                        ReviewContent(state, onRefresh, onPasswordChange, onSign, onSignWithBiometrics, onRetry, onAcknowledgeRecipient)
                     is SendChrome.Simple ->
-                        SimpleReviewContent(state, onRefresh, onPasswordChange, onSign, onSignWithBiometrics, onRetry)
+                        SimpleReviewContent(state, onRefresh, onPasswordChange, onSign, onSignWithBiometrics, onRetry, onAcknowledgeRecipient)
                 }
                 is SendUiState.DraftReview -> when (chrome) {
-                    is SendChrome.Strip -> DraftReviewContent(state, onPasswordChange, onSign, onSignWithBiometrics)
-                    is SendChrome.Simple ->
-                        SimpleDraftReviewContent(state, onPasswordChange, onSign, onSignWithBiometrics)
+                    is SendChrome.Strip ->
+                        DraftReviewContent(state, onPasswordChange, onSign, onSignWithBiometrics, onAcknowledgeRecipient)
+                    is SendChrome.Simple -> SimpleDraftReviewContent(
+                        state,
+                        onPasswordChange,
+                        onSign,
+                        onSignWithBiometrics,
+                        onAcknowledgeRecipient,
+                    )
                 }
             }
         }
@@ -324,6 +334,7 @@ private fun ComposeContent(
     onMax: () -> Unit,
     onFeeChange: (FeeLevel) -> Unit,
     onReview: () -> Unit,
+    onAcknowledgeRecipient: () -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
 ) {
     Column(
@@ -339,6 +350,7 @@ private fun ComposeContent(
             onAmountChange,
             onMax,
             onReview = onReview,
+            onAcknowledgeRecipient = onAcknowledgeRecipient,
         )
         Heading("Fee")
         FeeChoice(state.fee, enabled = !state.form.quoting, onFeeChange)
@@ -361,6 +373,7 @@ private fun ReviewContent(
     onSign: () -> Unit,
     onSignWithBiometrics: () -> Unit,
     onRetry: () -> Unit,
+    onAcknowledgeRecipient: () -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -381,7 +394,7 @@ private fun ReviewContent(
         }
         state.asset.warning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Heading("To")
-        RecipientCard(state.recipient)
+        RecipientCard(state.recipient, onAcknowledgeRecipient)
         Heading("From")
         FromLine(state.from)
         Heading("Network fee")
@@ -430,6 +443,7 @@ private fun SimpleReviewContent(
     onSign: () -> Unit,
     onSignWithBiometrics: () -> Unit,
     onRetry: () -> Unit,
+    onAcknowledgeRecipient: () -> Unit,
 ) {
     var details by rememberSaveable { mutableStateOf(false) }
     Column(
@@ -451,7 +465,7 @@ private fun SimpleReviewContent(
         state.asset.warning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Heading("To")
         // In full, as everywhere the user confirms an address; the block it was resolved at is in Details.
-        RecipientCard(state.recipient.copy(resolvedAt = null))
+        RecipientCard(state.recipient.copy(resolvedAt = null), onAcknowledgeRecipient)
         Heading("From")
         FromLine(state.from)
         ReviewLine("Network fee, at most", state.maxFee)
@@ -513,6 +527,7 @@ private fun DraftReviewContent(
     onPasswordChange: (String) -> Unit,
     onSign: () -> Unit,
     onSignWithBiometrics: () -> Unit,
+    onAcknowledgeRecipient: () -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -533,7 +548,7 @@ private fun DraftReviewContent(
         }
         state.asset.warning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Heading("To")
-        RecipientCard(state.recipient)
+        RecipientCard(state.recipient, onAcknowledgeRecipient)
         Heading("From")
         FromLine(state.from)
         Heading("Network fee")
@@ -566,6 +581,7 @@ private fun SimpleDraftReviewContent(
     onPasswordChange: (String) -> Unit,
     onSign: () -> Unit,
     onSignWithBiometrics: () -> Unit,
+    onAcknowledgeRecipient: () -> Unit,
 ) {
     var details by rememberSaveable { mutableStateOf(false) }
     Column(
@@ -586,7 +602,7 @@ private fun SimpleDraftReviewContent(
         }
         state.asset.warning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Heading("To")
-        RecipientCard(state.recipient.copy(resolvedAt = null))
+        RecipientCard(state.recipient.copy(resolvedAt = null), onAcknowledgeRecipient)
         Heading("From")
         FromLine(state.from)
         ReviewLine("Network fee, at most", state.maxFee)

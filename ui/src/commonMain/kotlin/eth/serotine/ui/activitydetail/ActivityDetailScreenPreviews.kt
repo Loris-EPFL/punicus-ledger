@@ -79,7 +79,7 @@ private val unfamiliarSender = ActivityDetailUiState.Shown(
     status = "From an address you have not sent to: compare every character before you copy it",
     state = ActivityState.CAUTION,
     fields = listOf(
-        DetailField("From", STRANGER, DetailKind.ADDRESS),
+        DetailField("From", STRANGER, DetailKind.ADDRESS, copyable = false),
         DetailField("To", ALICE, DetailKind.ADDRESS, "Alice"),
         DetailField("Amount", "0.01 USDC"),
         DetailField("Token contract", USDC, DetailKind.ADDRESS, "USDC"),
@@ -90,7 +90,8 @@ private val unfamiliarSender = ActivityDetailUiState.Shown(
     ),
     note = "You have not sent to the sender's address from this device, and it is not one of your accounts. " +
         "Anyone can send you a little from an address made to look like one you use, so that you copy it from " +
-        "your history later: compare every character before you send anything to it.",
+        "your history later: compare every character before you send anything to it. Copy is off for it here, " +
+        "so that it is not pasted by mistake.",
 )
 
 /** The network's own log of an ETH transfer (EIP-7708): both sides and the ETH, no contract. */

@@ -8,6 +8,7 @@ import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.blocks
 
 /**
  * Everything the Send screen renders (docs/wallet-ux.md, screens 7 and 8): the transfer being
@@ -78,11 +79,11 @@ sealed interface SendUiState {
 
         /** Something is typed, and nothing else runs or has run: the password may sign. */
         val canSign: Boolean
-            get() = idle && unlock.password.text.isNotEmpty()
+            get() = idle && unlock.password.text.isNotEmpty() && !recipient.warning.blocks
 
         /** The biometric prompt may be offered now. */
         val canSignWithBiometrics: Boolean
-            get() = idle && unlock.biometrics
+            get() = idle && unlock.biometrics && !recipient.warning.blocks
 
         /** Neither a refresh nor a signature runs, and nothing was signed yet. */
         val idle: Boolean
@@ -122,11 +123,11 @@ sealed interface SendUiState {
 
         /** Something is typed, and no signature runs: the password may sign. */
         val canSign: Boolean
-            get() = !signing && unlock.password.text.isNotEmpty()
+            get() = !signing && unlock.password.text.isNotEmpty() && !recipient.warning.blocks
 
         /** The biometric prompt may be offered now. */
         val canSignWithBiometrics: Boolean
-            get() = !signing && unlock.biometrics
+            get() = !signing && unlock.biometrics && !recipient.warning.blocks
     }
 
     /** Broadcast: [hash] is the transaction's, which the status screen follows. */

@@ -406,6 +406,7 @@ private fun Compose(state: GnosisPayUiState.Ready, step: GnosisPayStep.Compose, 
         keyboardActions = submitOnDone(!step.quoting, actions.onReview),
         modifier = Modifier.fillMaxWidth().focusRequester(amountField).testTag(GNOSIS_PAY_AMOUNT_TAG),
     )
+    step.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     // An expired entry blocks the Delay's queue: its skip moves nothing, and lets the transfer through.
     if (step.skip) {

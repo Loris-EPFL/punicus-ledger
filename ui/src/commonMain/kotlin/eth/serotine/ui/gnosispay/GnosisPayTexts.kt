@@ -258,6 +258,8 @@ internal object GnosisPayTexts {
     }
 
     const val CHECKING = "Its execution is being checked on chain."
+    const val SKIP_CHECKING = "A skip of the expired entries is being checked on chain. Wait for it."
+    const val OTHER_CHECKING = "Another transfer's execution is being checked on chain. Wait for it."
     const val NO_ASSET = "Choose the asset to send."
     const val BAD_ADDRESS = "Enter the recipient's address: 0x and 40 hex digits. Gnosis Chain resolves no names."
     const val BAD_CHECKSUM = "That address's capital letters do not match its checksum (EIP-55): a character may " +

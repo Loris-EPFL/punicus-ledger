@@ -277,14 +277,23 @@ class GnosisPayTransfersTest {
             DelayQuoting.SameCallExpired(skippable = false),
             queueing()(member, ours, FeeLevel.entries.first()),
         )
-        // Behind another entry and expired: the one ahead, queued earlier, expired first, and a skip
-        // removes both.
+        // Behind another entry and expired itself: the one ahead, queued earlier, expired first, and a
+        // skip removes both. In its own last minutes, behind an expired one: not yet skippable itself.
         answers[ours.hash] = DelayQueueReading.Read(
             DelayQueue(5, 7, 90_000, 111_600, DelayEntry(6, ours.hash, 900), 2, headCreatedAt = 800),
             120,
             900 + 90_000 + 111_600 + 1,
         )
         assertEquals(DelayQuoting.SameCallExpired(), queueing()(member, ours, FeeLevel.entries.first()))
+        answers[ours.hash] = DelayQueueReading.Read(
+            DelayQueue(5, 7, 90_000, 111_600, DelayEntry(6, ours.hash, 900), 2, headCreatedAt = 800),
+            120,
+            900 + 90_000 + 111_600 - 10,
+        )
+        assertEquals(
+            DelayQuoting.SameCallExpired(skippable = false),
+            queueing()(member, ours, FeeLevel.entries.first()),
+        )
 
         // More entries than are read: whether one is this call cannot be told.
         answers[ours.hash] = DelayQueueReading.Read(DelayQueue(5, 25, 90_000, 111_600, null, 8), 120, 1_000)
@@ -511,6 +520,8 @@ class GnosisPayTransfersTest {
         assertTrue(quote.call.transaction.value.isZero)
         // cast sig "skipExpired()"
         assertEquals("b19d4758", quote.call.transaction.data.toHex())
+        // Room to skip both waiting entries, should they expire before it is mined.
+        assertTrue(quote.call.transaction.gasLimit >= 2 * 5_000, quote.call.transaction.gasLimit.toString())
         assertEquals(SentAction.DelaySkip(safe, delay), quote.action)
         assertEquals(2, quote.waiting)
         assertEquals(1_000, quote.headCreatedAt)

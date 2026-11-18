@@ -221,6 +221,14 @@ carve-out of 2026-11-10 and its rulings of 2026-11-11 and 2026-11-13 on #761;
     account (the held key itself, or the member Safe it reaches the Delay
     through): after its execution this device can no longer send from the
     account, unless another way remains.
+  - **Never through a Delay whose entries never expire** (owner's decision,
+    2026-11-18, on #323): with an expiration of 0, adding or removing a
+    member is refused, at the queueing and at the execution, and both are
+    greyed out saying why. A change that can no longer run there (one of
+    the members queued elsewhere ahead of it) would stay the queue's next
+    entry for good, since nothing skips an entry that never expires, and
+    hold every entry behind it back. Transfers through such a Delay stay
+    allowed.
   - Nothing else beyond plain transfers and these two calls is ever queued.
     *Enabling a Safe module is refused* (modules on the Safe itself) stands
     unchanged.

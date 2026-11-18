@@ -34,6 +34,8 @@ import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ProposeSafeSettingsChange
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.ui.SafeWorld
+import eth.serotine.ui.gnosispay.ActionItem
+import eth.serotine.ui.gnosispay.GnosisPayTexts
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.GUARD_REMOVED_WARNING
@@ -151,6 +153,21 @@ class SafeSettingsViewModelTest {
         val alone = assertNotNull(viewModel().overview.delayMembers).members.single().remove
         assertEquals(false, alone?.enabled)
         assertTrue(alone?.reason.orEmpty().contains("only member"))
+    }
+
+    @Test
+    fun aDelayWhoseEntriesNeverExpireGreysTheMemberActionsOut() = runTest {
+        // Owner's decision, 2026-11-18: no member is added or removed through such a Delay.
+        world = SafeWorld(Network.GNOSIS)
+        val delay = Address.of("0x" + "de".repeat(20))
+        world.state = world.state.copy(modules = listOf(delay))
+        delayFinding = DelayFinding.Wired(
+            DelayModule(delay, DelayGeneration.CURRENT, 180, 0, 0, 0, listOf(world.alice.address, world.carol)),
+        )
+        val members = assertNotNull(viewModel().overview.delayMembers)
+
+        assertEquals(ActionItem(false, GnosisPayTexts.MEMBERS_NO_EXPIRATION), members.add)
+        assertTrue(members.members.all { it.remove == ActionItem(false, GnosisPayTexts.MEMBERS_NO_EXPIRATION) })
     }
 
     @Test

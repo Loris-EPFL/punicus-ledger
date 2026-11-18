@@ -243,7 +243,8 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
   first (owner's decisions, 2026-11-15; docs/gnosis-pay.md). So does a key
   that owns a member Safe, through Safes of threshold 1 (owner's request,
   2026-11-17). Such a key may also add or remove a member of that Delay the
-  same way, never its last one (owner ruling, 2026-11-18).
+  same way, never its last one, and never through a Delay whose entries never
+  expire (owner ruling and decision, 2026-11-18).
 - Network-upgrade warnings are peer reports and say so (owner's request,
   2026-10-17).
 - A parameter that can change the answer is APPLIED or REFUSED, never

@@ -489,10 +489,16 @@ class GnosisPayViewModel(
 
     /**
      * Opens what the Safe's settings asked for ([action]), once: the add form, or the removal's
-     * review. Later calls, after a configuration change among them, do nothing.
+     * review. While the account's reading refuses it for a reason that passes (who controls the
+     * Delay is not all read yet, or the reading is held over one that did not answer), nothing
+     * happens and the Route asks again at the next reading; once the step opens, or a reason that
+     * stands is said on the overview, it is used up, and later calls (after a configuration change
+     * among them) do nothing.
      */
     fun start(action: GnosisPayStart) {
-        if (openedFor != null || latest == null) return
+        if (openedFor != null) return
+        val found = latest ?: return
+        if (found.held || found.sending == GnosisPaySending.CONTROL_UNREAD) return
         openedFor = action
         when (action) {
             GnosisPayStart.AddMember -> startAddMember(fromSettings = true)
@@ -704,7 +710,6 @@ class GnosisPayViewModel(
         val compose: Flow? = when (from) {
             is Flow.Compose -> if (from.quoting || !from.skip) return else from
             is Flow.AddMember -> if (from.quoting || !from.skip) return else from
-            // From a queued row, while an expired entry blocks it.
             // From a queued row while an expired entry blocks it, or after a removal refused for one.
             is Flow.Overview -> if (from.busy != null || (!from.skip && latestQueued.none { it.expiredHead })) {
                 return
@@ -725,6 +730,8 @@ class GnosisPayViewModel(
             }
             return
         }
+        // Gone on from the overview the settings opened to: Back from the skip's review steps back to it.
+        if (compose == null) leaveOnBack = false
         flowState.value = compose?.formed(quoting = true, error = null) ?: Flow.Overview(busy = SKIP_BUSY)
         val mine = ++request
         viewModelScope.launch {
@@ -912,6 +919,8 @@ class GnosisPayViewModel(
                 is TransferSending.Sent -> if (review.quote is Reviewed.Skip && review.form != null) {
                     flowState.value = review.form.formed(quoting = false, error = null, note = GnosisPayTexts.SKIP_SENT)
                 } else {
+                    // Sent: the step the settings opened is over, and Back from the overview leaves as usual.
+                    leaveOnBack = false
                     flowState.value = Flow.Overview()
                     sentHash.value = sending.hash
                 }
@@ -927,6 +936,7 @@ class GnosisPayViewModel(
                 )
                 // Maybe taken: its record is what its status retries from, byte for byte.
                 is TransferSending.NotSent -> if (sending.transfer.maybeSent) {
+                    leaveOnBack = false
                     flowState.value = Flow.Overview()
                     sentHash.value = sending.transfer.hash
                 } else {
@@ -938,6 +948,7 @@ class GnosisPayViewModel(
                     landed(current.copy(signing = false, error = why, hidden = current.hidden || hiddenMeanwhile))
                 }
                 is TransferSending.RejectionUnverified -> {
+                    leaveOnBack = false
                     flowState.value = Flow.Overview()
                     sentHash.value = sending.transfer.hash
                 }

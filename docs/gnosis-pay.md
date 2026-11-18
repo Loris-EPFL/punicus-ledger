@@ -334,7 +334,17 @@ The rules:
    through): the review says that once it is executed this device can no
    longer send from the account, or that it then controls it only through the
    others, when another way remains.
-4. **Nothing else** beyond plain transfers and these two calls is ever
+4. **Never through a Delay whose entries never expire** (owner's decision,
+   2026-11-18, on #323). With an expiration of 0, adding and removing a
+   member are refused, at the queueing and at the execution, and greyed out
+   in the Safe's settings and on the Gnosis Pay screen, saying why. A change
+   that can no longer run there (a change of the members queued elsewhere
+   ahead of it: both removing the same member, or theirs leaving ours the
+   last) would stay the queue's next entry for good, since nothing skips an
+   entry that never expires, and every entry behind it, transfers included,
+   could never be executed. Transfers through such a Delay stay allowed: one
+   that cannot run is cured by funding the Safe.
+5. **Nothing else** beyond plain transfers and these two calls is ever
    queued. *Enabling a Safe module is refused* (a module on the Safe itself)
    stands unchanged.
 
@@ -364,7 +374,9 @@ How it is checked:
   meanwhile, is refused. The Safe's own call is run again: a removal whose
   `previous` went stale (a member added since goes first in the list), or a
   member added or removed already, reverts, and the screen says so. Such an
-  entry is not executed; it expires.
+  entry is not executed; it expires, and can then be skipped (*Skipping
+  expired entries*). That holds only where the Delay's entries expire, which
+  is why no member is changed through one whose entries never do (rule 4).
 - **The record** keeps the change as it was queued: the Safe, the Delay,
   added or removed, the member and `previous` (`FileSentTransfers` format 12;
   a record of an earlier build reads as before). Queued from this device, it

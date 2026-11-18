@@ -880,29 +880,55 @@ class GnosisPayTransfersTest {
     }
 
     @Test
-    fun aMemberChangeFromHereHoldsTheNextBackOnlyWhileItsEntryWaits() = runTest {
-        // A Delay whose entries never expire: the age of a queueing tells nothing.
+    fun aMemberChangeFromHereHoldsTheNextBackOnlyWhileItsEntryWaitsWhateverItsAge() = runTest {
+        // A short window (100 s of cooldown, 400 s to execute): the earlier change was sent at 10, long
+        // before now (1000) less its window, but mined late, at 900, so its entry still waits.
         memberFunded()
         val ours = removal()
         val earlier = addition()
-        val noExpiration = DelayQueue(5, 5, 90_000, 0, null, 0, members = listOf(member, other))
-        queueAnswer = DelayQueueReading.Read(noExpiration, 120, 1_000)
+        val delayQueue = DelayQueue(5, 5, 100, 400, null, 0, members = listOf(member, other))
+        queueAnswer = DelayQueueReading.Read(delayQueue, 120, 1_000)
         val queueing = sentBy(SentAction.DelayQueue(earlier), 10, 1)
         history.entries.value = listOf(HistoryEntry(queueing, SentOutcome.NonceUsed))
 
-        // Executed elsewhere, or never mined: its hash is no longer in the queue, so nothing waits.
-        answers[earlier.hash] = DelayQueueReading.Read(noExpiration, 120, 1_000)
-        assertTrue(queueing()(member, ours, FeeLevel.NORMAL) is DelayQuoting.Quoted)
-
-        // Still in the queue, or where it stands cannot be told: it waits.
+        // Its age alone never decides: a fresh read of its hash still finds its entry.
         answers[earlier.hash] = DelayQueueReading.Read(
-            DelayQueue(5, 6, 90_000, 0, DelayEntry(5, earlier.hash, 900), 1, members = listOf(member, other)),
+            DelayQueue(5, 6, 100, 400, DelayEntry(5, earlier.hash, 900), 1, members = listOf(member, other)),
             120,
             1_000,
         )
         assertEquals(DelayQuoting.MemberChangeWaiting(queueing.hash), queueing()(member, ours, FeeLevel.NORMAL))
         answers[earlier.hash] = DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
         assertEquals(DelayQuoting.MemberChangeWaiting(queueing.hash), queueing()(member, ours, FeeLevel.NORMAL))
+
+        // Executed by anyone, or never mined: its hash is no longer in the queue, so nothing waits.
+        answers[earlier.hash] = DelayQueueReading.Read(delayQueue, 120, 1_000)
+        assertTrue(queueing()(member, ours, FeeLevel.NORMAL) is DelayQuoting.Quoted)
+    }
+
+    @Test
+    fun noMemberIsAddedOrRemovedThroughADelayWhoseEntriesNeverExpire() = runTest {
+        // Owner's decision, 2026-11-18: a change that can no longer run would block such a queue for good.
+        memberFunded()
+        val noExpiration = DelayQueue(5, 5, 90_000, 0, null, 0, members = listOf(member, other))
+        queueAnswer = DelayQueueReading.Read(noExpiration, 120, 1_000)
+        assertEquals(DelayQuoting.NoExpiration, queueing()(member, removal(), FeeLevel.NORMAL))
+        assertEquals(DelayQuoting.NoExpiration, queueing()(member, addition(), FeeLevel.NORMAL))
+
+        // Nor executed, should one be queued there all the same.
+        val ours = removal()
+        queueAnswer = DelayQueueReading.Read(
+            DelayQueue(5, 6, 90_000, 0, DelayEntry(5, ours.hash, 1_000), 1, members = listOf(member, other)),
+            120,
+            95_000,
+        )
+        assertEquals(DelayQuoting.NoExpiration, execution()(member, ours, FeeLevel.NORMAL))
+        assertTrue(inputs.simulated.isEmpty())
+
+        // Transfers stay allowed there.
+        funded()
+        queueAnswer = DelayQueueReading.Read(DelayQueue(5, 5, 90_000, 0, null, 0), 120, 1_000)
+        assertTrue(queueing()(member, transfer(), FeeLevel.NORMAL) is DelayQuoting.Quoted)
     }
 
     @Test

@@ -244,6 +244,14 @@ sealed interface DelayQuoting {
      * other's execution or end.
      */
     data class MemberChangeWaiting(val queuedBy: String) : DelayQuoting
+
+    /**
+     * A change of the Delay's members through a Delay whose entries never expire (expiration 0):
+     * refused, queued or executed (owner's decision, 2026-11-18). One that can no longer run (a
+     * change of the members queued elsewhere ahead of it) would stay the queue's next entry for good,
+     * since nothing skips an entry that never expires, and hold every entry behind it back.
+     */
+    data object NoExpiration : DelayQuoting
 }
 
 /**
@@ -441,6 +449,8 @@ class QuoteDelayQueue(
             is DelayCallQuoter.Fresh.Read -> fresh.reading
             is DelayCallQuoter.Fresh.Refused -> return fresh.quoting
         }
+        // Never through a Delay whose entries never expire (owner's decision, 2026-11-18).
+        if (call is DelayMemberChange && read.queue.expirationSeconds == 0L) return DelayQuoting.NoExpiration
         val entries = (history.observe().first() as? HistoryList.Loaded)?.entries
             ?: return DelayQuoting.HistoryUnreadable
         val waiting = entries.waitingQueueings(network, call.safe, call.delay, clock(), read.queue)
@@ -473,7 +483,9 @@ class QuoteDelayQueue(
             }
             is DelayMemberChange -> {
                 // One change of the members at a time from here: each is planned against them as they are.
-                waitingMemberChange(waiting, network, delays, clock())
+                // Every candidate, never cut by age: each is read fresh instead.
+                val candidates = entries.candidateQueueings(network, call.safe, call.delay)
+                waitingMemberChange(candidates, network, delays, clock())
                     ?.let { return DelayQuoting.MemberChangeWaiting(it) }
                 memberCheck(call, queue)?.let { return it }
                 return quoter.quote(sender, call, DelayStep.QUEUE, level, via = via)
@@ -484,10 +496,10 @@ class QuoteDelayQueue(
 
 /**
  * The queueing hash of a change of the members queued from here that still waits, of those in
- * [waiting]; null when none does. One waits while it is on its way, or while a fresh read of its
- * own hash finds its entry in the queue, not expired, or cannot tell (an entry further back, a
- * read that did not answer). Its age alone never decides: on a Delay with no expiration a change
- * executed by anyone, or never mined, would hold every later one back for good.
+ * [waiting] (every candidate, never cut by age); null when none does. One waits while it is on its
+ * way, or while a fresh read of its own hash finds its entry in the queue, not expired, or cannot
+ * tell (an entry further back, a read that did not answer). Its age never decides: it is counted
+ * from when it was sent, while its entry's window runs from the block that mined it.
  */
 private suspend fun waitingMemberChange(
     waiting: List<Queueing>,
@@ -554,6 +566,8 @@ class QuoteDelayExecution(
             is DelayCallQuoter.Fresh.Read -> fresh.reading
             is DelayCallQuoter.Fresh.Refused -> return fresh.quoting
         }
+        // Never through a Delay whose entries never expire (owner's decision, 2026-11-18).
+        if (call is DelayMemberChange && read.queue.expirationSeconds == 0L) return DelayQuoting.NoExpiration
         val entries = (history.observe().first() as? HistoryList.Loaded)?.entries
             ?: return DelayQuoting.HistoryUnreadable
         // Until it is mined the queue still shows the entry next: the history tells it is on its way.

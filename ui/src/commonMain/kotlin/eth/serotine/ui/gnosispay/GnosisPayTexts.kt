@@ -225,6 +225,7 @@ internal object GnosisPayTexts {
      */
     fun addMember(found: GnosisPayReading.Found): ActionItem = when {
         found.sending != GnosisPaySending.AVAILABLE -> ActionItem(false, sendReason(found.sending))
+        found.delay.expirationSeconds == 0L -> ActionItem(false, MEMBERS_NO_EXPIRATION)
         found.held -> ActionItem(false, NOT_VERIFIED_NOW)
         else -> ActionItem(true, null)
     }
@@ -232,10 +233,20 @@ internal object GnosisPayTexts {
     /** Remove: as Add member, and never the last member. */
     fun removeMember(found: GnosisPayReading.Found): ActionItem = when {
         found.sending != GnosisPaySending.AVAILABLE -> ActionItem(false, sendReason(found.sending))
+        found.delay.expirationSeconds == 0L -> ActionItem(false, MEMBERS_NO_EXPIRATION)
         found.delay.members.size <= 1 -> ActionItem(false, LAST_MEMBER)
         found.held -> ActionItem(false, NOT_VERIFIED_NOW)
         else -> ActionItem(true, null)
     }
+
+    /**
+     * Why no member is added or removed through a Delay whose entries never expire (owner's decision,
+     * 2026-11-18); transfers still go through it.
+     */
+    const val MEMBERS_NO_EXPIRATION = "This account's Delay module never lets an entry expire. A change of its " +
+        "members that could no longer run would then stay first in its queue for good, and nothing behind it, " +
+        "transfers included, could ever be executed. So Punicus adds and removes no member through it. " +
+        "Transfers still go through it."
 
     /** What the overview says while a removal of [member] (EIP-55) is checked on chain. */
     fun checkingRemoval(member: String): String = "Checking the removal of ${shortAddress(member)} on chain…"
@@ -473,6 +484,7 @@ internal object GnosisPayTexts {
             "member was added or removed already). Executed, it would fail. Nothing was signed."
         is DelayQuoting.MemberChangeWaiting -> "A change of the Delay module's members queued from this device " +
             "still waits. Execute it, or let it expire, before queuing another."
+        DelayQuoting.NoExpiration -> MEMBERS_NO_EXPIRATION
     }
 
     private fun refusalText(refusal: CallRefusal): String = when (refusal) {

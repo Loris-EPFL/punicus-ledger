@@ -1037,7 +1037,11 @@ replaces the bar (Material's expanded window size class):
       *Details*). Both are greyed out where they cannot be done here,
       with Send through the Delay's reason, and Remove of the only member
       with "This is the Delay module's only member … its funds would be
-      locked for good. Add another member first." A tap opens the Gnosis Pay
+      locked for good. Add another member first." Through a Delay whose
+      entries never expire both are greyed out with "This account's Delay
+      module never lets an entry expire … So Punicus adds and removes no
+      member through it. Transfers still go through it." (owner's decision,
+      2026-11-18). A tap opens the Gnosis Pay
       screen at the add form or the removal's review; Back returns here.
     - Each change has its form: the owner it removes or replaces; the new
       owner's address, typed or picked from the wallet's accounts on the

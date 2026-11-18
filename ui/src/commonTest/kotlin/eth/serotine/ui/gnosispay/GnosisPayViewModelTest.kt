@@ -108,15 +108,22 @@ class GnosisPayViewModelTest {
 
     /** The card Safe's own kind as it changes, where a test makes it change. */
     private var cardKinds: Flow<KindReading>? = null
+
+    /** Kinds that change while the screen is open, by address, where a test makes them. */
+    private val changingKinds = mutableMapOf<Address, Flow<KindReading>>()
     private val kinds = object : AddressKinds {
         override fun observeKind(network: Network, address: Address): Flow<KindReading> =
-            cardKinds?.takeIf { address == safe } ?: flowOf(otherKinds[address] ?: cardKind)
+            cardKinds?.takeIf { address == safe } ?: changingKinds[address]
+                ?: flowOf(otherKinds[address] ?: cardKind)
     }
 
     private var queueAnswer: DelayQueueReading =
         DelayQueueReading.Read(DelayQueue(0, 0, 180, 1_800, null, 0), 41, 0)
     /** The Delay's members, in its own order: the screen's reading and the queue's alike. */
     private var delayMembers = listOf(member)
+
+    /** The Delay's expiration, as the screen's reading gives it: 30 min unless a test says otherwise. */
+    private var delayExpiration = 1_800L
 
     /** While set, a read of the queue waits for it. */
     private var readGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
@@ -130,7 +137,9 @@ class GnosisPayViewModelTest {
 
         override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> = flowOf(
             DelayReading.Verified(
-                DelayFinding.Wired(DelayModule(delay, DelayGeneration.CURRENT, 180, 1_800, 0, 0, delayMembers)),
+                DelayFinding.Wired(
+                    DelayModule(delay, DelayGeneration.CURRENT, 180, delayExpiration, 0, 0, delayMembers),
+                ),
                 41,
             ),
         )
@@ -887,5 +896,76 @@ class GnosisPayViewModelTest {
         assertTrue(text.startsWith("The same change of members"), text)
         assertTrue("transfer" !in GnosisPayTexts.quoteRefused(DelayQuoting.HeadExpired, memberChange = true))
         assertTrue("transfer" in GnosisPayTexts.quoteRefused(DelayQuoting.HeadExpired))
+    }
+
+    @Test
+    fun aStartFromTheSettingsWaitsForWhoControlsTheDelayToBeRead() = runTest {
+        // The key controls the account through the member Safe `member`, whose kind is not read yet: the
+        // first reading cannot take the start; the next one, complete, opens the removal's review.
+        delayMembers = listOf(member, other)
+        val key = Address.of("0x" + "91".repeat(20))
+        val memberKind = MutableStateFlow<KindReading>(KindReading.Syncing)
+        changingKinds[member] = memberKind
+        otherKinds[other] = KindReading.Verified(AddressKind.Eoa, 40)
+        val keyHeld = Account(Network.GNOSIS, key, AccountKind.EOA, "Signer", AccountCustody.InKeyStore)
+        accounts.accounts.value = listOf(card, keyHeld)
+        balances.of(key).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 41)
+        val viewModel = viewModel()
+        val start = GnosisPayStart.RemoveMember(Eip55.format(other))
+
+        assertEquals(false, viewModel.ready().send.enabled)
+        viewModel.start(start)
+        // Not used up, and nothing said: who controls the Delay is still being read.
+        assertEquals(GnosisPayStep.Overview(), viewModel.ready().step)
+
+        memberKind.value = KindReading.Verified(
+            AddressKind.Safe(SafeState("1.4.1", true, listOf(key), 1, 80, emptyList(), null)),
+            40,
+        )
+        viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.send?.enabled == true }
+        viewModel.start(start)
+        val review = viewModel.ready().step as GnosisPayStep.Review
+        assertEquals("Queue: remove member ${shortAddress(Eip55.format(other))}", review.title)
+        // Used up now: asked again, it opens nothing more.
+        viewModel.back()
+        viewModel.start(start)
+        assertEquals(GnosisPayStep.Overview(), viewModel.ready().step)
+    }
+
+    @Test
+    fun backFromASkipStartedOnTheOverviewTheSettingsOpenedStepsBackToIt() = runTest {
+        delayMembers = listOf(member, other)
+        // Entry 0 expired by the head at 5000: the removal the settings asked for is refused for it.
+        queueAnswer = DelayQueueReading.Read(DelayQueue(0, 1, 180, 1_800, null, 1, headCreatedAt = 0), 41, 5_000)
+        val viewModel = viewModel()
+        viewModel.ready()
+        viewModel.start(GnosisPayStart.RemoveMember(Eip55.format(other)))
+        assertTrue((viewModel.ready().step as GnosisPayStep.Overview).skip)
+
+        viewModel.skipExpired()
+        assertTrue(viewModel.ready().step is GnosisPayStep.Review)
+        // The user went on from the overview: Back from the skip's review returns to it, not to the settings.
+        assertTrue(viewModel.back())
+        assertTrue(viewModel.ready().step is GnosisPayStep.Overview)
+    }
+
+    @Test
+    fun noMemberChangeThroughADelayWhoseEntriesNeverExpire() = runTest {
+        // Owner's decision, 2026-11-18: Add and Remove greyed out, saying why; a start opens nothing.
+        delayMembers = listOf(member, other)
+        delayExpiration = 0
+        val viewModel = viewModel()
+        viewModel.ready()
+        val found = ObserveGnosisPay(kinds, delays, accounts)(id)
+            .first { it is GnosisPayReading.Found } as GnosisPayReading.Found
+        assertEquals(ActionItem(false, GnosisPayTexts.MEMBERS_NO_EXPIRATION), GnosisPayTexts.addMember(found))
+        assertEquals(ActionItem(false, GnosisPayTexts.MEMBERS_NO_EXPIRATION), GnosisPayTexts.removeMember(found))
+        // Transfers stay allowed through it.
+        assertEquals(ActionItem(enabled = true, reason = null), viewModel.ready().send)
+
+        viewModel.start(GnosisPayStart.AddMember)
+        val overview = viewModel.ready().step as GnosisPayStep.Overview
+        assertEquals(GnosisPayTexts.MEMBERS_NO_EXPIRATION, overview.error)
+        assertEquals(GnosisPayTexts.MEMBERS_NO_EXPIRATION, GnosisPayTexts.quoteRefused(DelayQuoting.NoExpiration))
     }
 }

@@ -134,9 +134,9 @@ fun GnosisPayRoute(
     LaunchedEffect(state is GnosisPayUiState.Gone) {
         if (state is GnosisPayUiState.Gone) gone()
     }
-    val ready = state is GnosisPayUiState.Ready
-    LaunchedEffect(ready, start) {
-        if (ready && start != null) viewModel.start(start)
+    // Asked at every reading until the ViewModel takes it: a first reading may not be able to yet.
+    LaunchedEffect(state, start) {
+        if (state is GnosisPayUiState.Ready && start != null) viewModel.start(start)
     }
     LaunchedEffect(sent) {
         sent?.let {

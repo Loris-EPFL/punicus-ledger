@@ -71,6 +71,7 @@ internal fun TransferFormFields(
     onAmountChange: (String) -> Unit,
     onMax: () -> Unit,
     onReview: () -> Unit,
+    onAcknowledgeRecipient: (() -> Unit)? = null,
 ) {
     val amountField = remember { FocusRequester() }
     Heading("From")
@@ -88,7 +89,7 @@ internal fun TransferFormFields(
     }
     Heading("To")
     RecipientField(form, onToChange, amountField)
-    form.recipient?.let { RecipientCard(it) }
+    form.recipient?.let { RecipientCard(it, onAcknowledgeRecipient) }
     if (form.canRetryLookup) RetryLookupButton(form.retryLookupWaits, onRetryLookup)
     if (form.accounts.isNotEmpty()) {
         Row(
@@ -170,12 +171,16 @@ private fun RecipientField(form: TransferForm, onToChange: (String) -> Unit, amo
     )
 }
 
-/** The recipient in full, with what is known of it: the name it was resolved from, its name in the wallet. */
+/**
+ * The recipient in full, with what is known of it: the name it was resolved from, its name in the
+ * wallet, and what the address poisoning check found. [onAcknowledge] is how the user sends anyway
+ * to a recipient whose block may be overridden; null on a screen that runs no check.
+ */
 @Composable
-internal fun RecipientCard(recipient: RecipientItem) {
+internal fun RecipientCard(recipient: RecipientItem, onAcknowledge: (() -> Unit)? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         RecipientCardBody(recipient)
-        recipient.warning?.let { RecipientWarningCard(recipient, it) }
+        recipient.warning?.let { RecipientWarningCard(recipient, it, onAcknowledge) }
     }
 }
 
@@ -196,7 +201,8 @@ private fun RecipientCardBody(recipient: RecipientItem) {
                 val title = listOfNotNull(recipient.name, recipient.label?.let { "$it, in your wallet" })
                 if (title.isNotEmpty()) Text(title.joinToString(" · "), style = MaterialTheme.typography.titleSmall)
                 // In full, in groups of four: this is the address the user confirms, and what is signed.
-                // Not selectable: a recipient is chosen from the address book, a name or a QR code.
+                // Not selectable: a copy would carry the spaces between the groups. The address as entered
+                // stays in the compose step's field, one tap back.
                 Text(
                     chunkedAddress(recipient.address),
                     Modifier.testTag(SEND_RECIPIENT_TAG),

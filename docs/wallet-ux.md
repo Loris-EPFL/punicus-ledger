@@ -396,6 +396,9 @@ replaces the bar (Material's expanded window size class):
      sent. Send or discard it first.", with its status (9). Swap, a CoW
      order's cancellation, a Safe transaction's approval or execution, Create
      Safe and a dApp's transaction say the same.
+   - The recipient, once resolved, is checked for address poisoning, and
+     what the check finds is shown under it; a block greys Review out (8,
+     *Address poisoning check*).
    - **In lenient mode** (Settings → Advanced → *Sign while syncing*, 18;
      docs/lenient-mode.md; owner rulings, 2026-11-06), while the network's
      light client catches up:
@@ -457,6 +460,48 @@ replaces the bar (Material's expanded window size class):
      for a new one. Nothing is signed twice. One no peer answered may have
      reached one all the same, so it is recorded as maybe sent: leaving the
      screen, or the app, keeps its bytes for Try again on its status (9).
+   - **The recipient in full, in groups of four** ("0x fB69 1609 …"), never
+     shortened, and not selectable: a copy would carry the spaces, and the
+     address as entered is one tap back, in 7's field (the requirements of
+     #324, 2026-11-18).
+   - **Address poisoning check** (`ObserveRecipientCheck`; the requirements
+     of #324, 2026-11-18), on 7 and here, the draft's review included. Only
+     Send runs it: Send from another wallet (7H) and a Safe's proposal of a
+     transfer show the recipient chunked, with no check yet.
+     - **What it compares with.** The addresses this device sent to
+       (`ObserveSentTo`: transactions it signed, so their `tx.from` is the
+       user) and the wallet's accounts on the network, the only address
+       book there is.
+     - **A look-alike blocks, with no way past it.** Same first 4 and last
+       4 hex digits as one of those, but another address: both addresses
+       in full, the differing middle in bold red. Review is refused and
+       nothing is signed until the recipient is changed. A send refused
+       with no override is a new kind of refusal; whether it becomes a rule
+       beside those of `.claude/rules/trust.md` is open, the owner's to
+       decide.
+     - **A planted address blocks until the user confirms.** The account's
+       history (the log index) holds a transfer between it and the
+       recipient that this device never signed, of the kind that plants a
+       look-alike: a transfer of nothing either way (`transferFrom(account,
+       recipient, 0)` needs no allowance), a transfer of an ERC-20 token
+       the wallet does not list (built in, or added without a built-in
+       token's symbol; matched by contract address), or dust received (at
+       most 0.00001 of the network's currency). ERC-721 transfers are not
+       judged. "I checked it: send anyway" lifts the block for that
+       recipient, and the warning then says the user chose to.
+     - **An unreadable history blocks the same way.** While this device's
+       history of what it sent cannot be read, a recipient cannot be
+       compared with it: said, and lifted only by the same confirmation.
+       The wallet's own accounts are still compared.
+     - **A new recipient is a notice.** "This device has not sent to this
+       address before": a restored account's earlier transfers, sent from
+       elsewhere, are not in it. While the account's history is not read
+       from the log index yet, the notice says a planted sender cannot be
+       ruled out: the log index may stay unread (a metered connection, the
+       walk not started), and that must not block every send.
+     - **It fails closed.** Review and every signature wait for the check's
+       answer about the recipient on screen; an answer about another one,
+       or none yet, clears nothing.
    - **A draft's review** (lenient mode; docs/lenient-mode.md, *The draft's
      review*; owner rulings, 2026-11-06). The same screen, with these
      differences:
@@ -515,20 +560,6 @@ replaces the bar (Material's expanded window size class):
      when none was verified in time; No matching
      transfer seen yet. Not recorded in Activity: the record of sent
      transactions holds signed bytes, and none are signed here.
-   - **Address poisoning check** (`ObserveRecipientCheck`), on the form and
-     on the review. The recipient is compared with every address this
-     wallet really sent to (`ObserveSentTo`: transactions it signed, so
-     `tx.from` is the user) and with the wallet's own accounts, the only
-     address book there is. Same first 4 and last 4 hex digits but another
-     address: a blocking warning, both addresses in full with the
-     differing middle highlighted; Review is refused and nothing is signed
-     until the recipient is changed. The same block for a recipient that
-     once sent this account a transfer of nothing, dust (at most 0.00001 of
-     the network's currency) or a token the built-in list does not hold,
-     matched by contract address. An address never sent to gets a
-     non-blocking "New recipient" notice. The review always shows the
-     recipient in full, in groups of four, not selectable. In Activity, the
-     counterparty of a cautioned transfer is shown in full with no Copy.
 9. **Send, status**: what was sent (amount, asset, recipient, from this
    device's record; for a Safe's deployment "Deployment of a Safe", the Safe
    with its `t/n`, its version and the account that paid), then Signed → Broadcast → Included (receipt verified,
@@ -1165,7 +1196,10 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       character before you copy it" (owner's request on #136, 2026-10-21):
       anyone can send a little from a look-alike of an address the user
       uses, so that it is copied from the history later. ETH a Safe
-      received is cautioned alike. What a swap sent from here bought (an
+      received is cautioned alike. Since the address poisoning protection
+      (the requirements of #324, 2026-11-18), the detail (26) shows such a
+      sender with no Copy; whether the status's words change with it is
+      the owner's to decide. What a swap sent from here bought (an
       account's own, or a Safe's executed from here), arriving in its
       transaction, is not (its proceeds come from a pool never sent to): its
       ETH, or a built-in token whose contract does not contradict it, of at
@@ -1203,7 +1237,8 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     event). Its row's headline and status first, then every party it
     concerns, each address in full (EIP-55, its blockie, the wallet's name
     for it) and every hash (the transaction's, a Safe transaction's, a
-    message's), each selectable and with Copy, then what it moved, its
+    message's), each selectable and with Copy (but for a sender its row
+    cautions, below), then what it moved, its
     nonce, when a peer took it (an event: when its block was produced, where
     the engine reported it) and its block. Read from what 25 is read from,
     so it says what the row says.
@@ -1232,7 +1267,10 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     - A transfer whose row is cautioned about its sender says why beside
       its fields: the sender is none of the user's accounts and was never
       sent to from this device, and a look-alike is compared in full before
-      anything is sent to it.
+      anything is sent to it. That sender, a token's, ETH's or the ETH a
+      Safe received, is shown in full but not selectable and with no Copy,
+      and the note says so (the requirements of #324, 2026-11-18): a
+      planted look-alike is never one tap from the clipboard.
     - One no longer there (a reorganisation replaced its block, once every
       block from the history's start is checked again) says so; while the
       blocks it is in are still being checked, or its history cannot be

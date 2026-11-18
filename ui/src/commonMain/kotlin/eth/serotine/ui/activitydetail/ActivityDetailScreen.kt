@@ -100,7 +100,7 @@ fun ActivityDetailRoute(
 /**
  * The detail of one row of an account's Activity (docs/wallet-ux.md, screen 26) as a pure function
  * of [state]: what it did and how it ended, as its row says, then every address and hash it
- * concerns in full, each with Copy ([onCopy]); Status ([onStatus]) for a transaction sent from
+ * concerns in full, each with Copy ([onCopy]) but for a cautioned sender, which is shown with none; Status ([onStatus]) for a transaction sent from
  * here, and Add token ([onAddToken]) for an ERC-20 contract the wallet does not list.
  * [lightClient] is the strip above it, Detailed view's; simple mode ([SimpleActivityDetailScreen])
  * has none, and keeps the block behind *Details* ([details]). Once it is shown, the eye beside Back

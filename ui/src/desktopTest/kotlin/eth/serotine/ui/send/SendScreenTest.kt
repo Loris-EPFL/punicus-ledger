@@ -26,6 +26,7 @@ import eth.serotine.ui.components.RecipientItem
 import eth.serotine.ui.components.SEND_AMOUNT_TAG
 import eth.serotine.ui.components.SEND_ASSET_TAG
 import eth.serotine.ui.components.KNOWN_ADDRESS_TAG
+import eth.serotine.ui.components.RECIPIENT_ACKNOWLEDGE_TAG
 import eth.serotine.ui.components.RECIPIENT_WARNING_TAG
 import eth.serotine.ui.components.RecipientWarning
 import eth.serotine.ui.components.SEND_RECIPIENT_TAG
@@ -41,6 +42,8 @@ import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+
+private const val FRIEND_ADDRESS = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"
 
 /** Renders the stateless [SendScreen] headless for its steps. */
 class SendScreenTest {
@@ -97,6 +100,7 @@ class SendScreenTest {
                 onSign = { events += "sign" },
                 onSignWithBiometrics = { events += "biometrics" },
                 onRetry = { events += "retry" },
+                onAcknowledgeRecipient = { events += "acknowledge" },
                 onOpenTransfer = { events += "open $it" },
                 onBack = { events += "back" },
             )
@@ -243,7 +247,7 @@ class SendScreenTest {
 
     @Test
     fun aLookalikeRecipientShowsBothAddressesInFullAndCannotBeSigned() {
-        val known = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"
+        val known = FRIEND_ADDRESS
         val lookalike = "0xdbF03B" + "0".repeat(28) + "C8C6FB"
         val blocked = review.copy(
             recipient = RecipientItem(
@@ -259,6 +263,37 @@ class SendScreenTest {
         rule.onNodeWithTag(SEND_RECIPIENT_TAG).assertTextEquals(chunkedAddress(lookalike))
         rule.onNodeWithTag(KNOWN_ADDRESS_TAG).assertTextEquals(chunkedAddress(known))
         rule.onNodeWithTag(SEND_SIGN_TAG).performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun aPlantedSendersBlockIsLiftedOnlyByTheUsersConfirmation() {
+        val blocked = review.copy(
+            recipient = RecipientItem(
+                savings,
+                warning = RecipientWarning(true, "This address sent you a dust amount", "Compare it.", overridable = true),
+            ),
+            unlock = UnlockStep(WalletPassword("correct horse")),
+        )
+        assertFalse(blocked.canSign)
+        show(blocked)
+
+        rule.onNodeWithTag(SEND_SIGN_TAG).performScrollTo().assertIsNotEnabled()
+        rule.onNodeWithTag(RECIPIENT_ACKNOWLEDGE_TAG).performScrollTo().performClick()
+        assertEquals(listOf("acknowledge"), events)
+    }
+
+    @Test
+    fun aLookalikeOffersNoWayToSendAnyway() {
+        val lookalike = "0xdbF03B" + "0".repeat(28) + "C8C6FB"
+        show(
+            review.copy(
+                recipient = RecipientItem(
+                    lookalike,
+                    warning = RecipientWarning(true, "Looks like an address you know", "Change it.", FRIEND_ADDRESS),
+                ),
+            ),
+        )
+        rule.onAllNodesWithTag(RECIPIENT_ACKNOWLEDGE_TAG).assertCountEquals(0)
     }
 
     @Test
@@ -399,6 +434,7 @@ class SendScreenTest {
                     onSign = { events += "sign" },
                     onSignWithBiometrics = {},
                     onRetry = {},
+                    onAcknowledgeRecipient = {},
                     onOpenTransfer = {},
                     onBack = {},
                 )

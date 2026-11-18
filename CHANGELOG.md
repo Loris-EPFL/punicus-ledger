@@ -12,13 +12,15 @@ and issues of this repository.
 
 ### Added
 
-- Address poisoning protection on Send: a recipient that starts and ends like
-  an address you sent to (or own) but differs in the middle, or that once
-  sent you a transfer of nothing, dust or an unlisted token, blocks the send,
-  with both addresses shown and the differing middle highlighted. A new
-  recipient gets a notice. The review shows the recipient in full in groups
-  of four, and the counterparty of a cautioned transfer in Activity has no
-  Copy.
+- Address poisoning protection on Send. A recipient that starts and ends
+  like an address you sent to from this device (or one of your accounts) but
+  differs in the middle blocks the send, with both addresses shown and the
+  differing middle highlighted; it can only be changed. A recipient that a
+  transfer of nothing, dust or an unlisted token ties to your account in
+  your history, or one checked while the history of what you sent cannot be
+  read, blocks the send until you confirm you checked it. A new recipient
+  gets a notice. The review shows the recipient in full in groups of four,
+  and the sender of a cautioned transfer in Activity has no Copy (#324).
 - A website, `website/`: what Punicus does in plain words, the downloads and
   a guide to adding accounts and Safes, published to GitHub Pages by the
   `Website` workflow (#316).

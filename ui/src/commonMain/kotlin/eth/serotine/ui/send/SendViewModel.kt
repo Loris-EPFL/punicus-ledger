@@ -366,16 +366,21 @@ class SendViewModel(
             null,
         )
 
-    /** The recipient the user chose to send to although it once sent this account a planted transfer. */
+    /** The recipient the user chose to send to anyway, where its block may be overridden. */
     private val acknowledged = MutableStateFlow<Address?>(null)
 
-    /** The user chose to send to the planted sender under review or being composed, after comparing it. */
+    /**
+     * The user chose to send anyway to the recipient being composed or reviewed, after comparing it,
+     * where its block may be overridden (a planted sender, or a history of what was sent that cannot
+     * be read). A look-alike is never overridden.
+     */
     fun onAcknowledgeRecipient() {
-        val to = checks.value?.takeIf { it.check is RecipientCheck.PlantedSender }?.to ?: return
-        acknowledged.value = to
+        val checked = checks.value ?: return
+        if ((checked.check as? RecipientCheck.Blocked)?.overridable != true) return
+        acknowledged.value = checked.to
     }
 
-    /** A [check] of the recipient [to]; [acknowledged] when the user chose to send to a planted sender anyway. */
+    /** A [check] of the recipient [to]; [acknowledged] when the user chose to send to it anyway. */
     private data class Checked(val to: Address, val check: RecipientCheck, val acknowledged: Boolean = false)
 
     val uiState: StateFlow<SendUiState> = combine(model, step, checks) { model, step, checked ->
@@ -1115,13 +1120,13 @@ class SendViewModel(
 
     /**
      * Whether the check has answered for [to] and found nothing that stops it. It fails closed: no
-     * answer yet, or one about another address, is not clearance. A planted sender the user
-     * acknowledged is cleared; a look-alike never is.
+     * answer yet, or one about another address, is not clearance. A block the user may override is
+     * cleared once they did; a look-alike never is.
      */
     private fun cleared(to: Address, checked: Checked? = checks.value): Boolean {
         if (checked == null || checked.to != to) return false
-        return checked.check !is RecipientCheck.Blocked ||
-            checked.check is RecipientCheck.PlantedSender && checked.acknowledged
+        val blocked = checked.check as? RecipientCheck.Blocked ?: return true
+        return blocked.overridable && checked.acknowledged
     }
 
     /** The compose step's transfer, when it is complete and the recipient is known: what a quote is asked for. */

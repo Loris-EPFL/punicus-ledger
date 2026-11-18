@@ -317,7 +317,8 @@ class ActivityDetailViewModelTest {
         assertEquals("Received 1 ETH", shown.headline)
         assertEquals(
             listOf(
-                DetailField("From", Eip55.format(bob), DetailKind.ADDRESS),
+                // Bob was never sent to: the ETH the Safe received from him is cautioned, his address with no Copy.
+                DetailField("From", Eip55.format(bob), DetailKind.ADDRESS, copyable = false),
                 DetailField("Amount", "1 ETH"),
                 DetailField("Safe", Eip55.format(treasury.address), DetailKind.ADDRESS, "Treasury"),
                 DetailField("Transaction hash", tx, DetailKind.HASH),

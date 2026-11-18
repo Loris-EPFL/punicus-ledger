@@ -276,6 +276,7 @@ private fun SendPreview(
             onSign = {},
             onSignWithBiometrics = {},
             onRetry = {},
+            onAcknowledgeRecipient = {},
             onOpenTransfer = {},
             onBack = {},
         )
@@ -489,7 +490,69 @@ private fun SendReviewNewRecipientPreview() = SendPreview(
             warning = RecipientWarning(
                 blocking = false,
                 headline = "New recipient",
-                detail = "You have not sent to this address before. Check every character against where you got it.",
+                detail = "This device has not sent to this address before. Check every character against where you got it.",
+            ),
+        ),
+        unlock = UnlockStep(WalletPassword("made-up preview password")),
+    ),
+)
+
+/** What a planted sender's warning says, before the user confirms they checked it. */
+private val plantedWarning = RecipientWarning(
+    blocking = true,
+    headline = "A transfer of nothing between you and this address is in your history",
+    detail = "Attackers do that to get a look-alike address into your history, so that you copy it. Compare " +
+        "every character with where you got it. Nothing is signed until you change the recipient or confirm " +
+        "that you checked it.",
+    overridable = true,
+)
+
+/** The compose step meets a look-alike first: the warning, both addresses, Review greyed out. */
+@Preview
+@Composable
+private fun SendComposeLookalikePreview() = SendPreview(
+    empty.with {
+        it.copy(
+            to = LOOKALIKE,
+            recipient = RecipientItem(
+                LOOKALIKE,
+                warning = RecipientWarning(
+                    blocking = true,
+                    headline = "Looks like an address you know, but it is not",
+                    detail = "It starts and ends like an address you sent to or own, yet the middle differs. This " +
+                        "is how address poisoning works: nothing is signed until you change the recipient.",
+                    known = FRIEND,
+                    knownLabel = "An address you sent to",
+                ),
+            ),
+            amount = "0.1",
+            canReview = false,
+        )
+    },
+)
+
+/** A recipient that planted itself in the history: blocked until the user confirms they checked it. */
+@Preview
+@Composable
+private fun SendReviewPlantedSenderPreview() = SendPreview(
+    review.copy(
+        recipient = RecipientItem(FRIEND, warning = plantedWarning),
+        unlock = UnlockStep(WalletPassword("made-up preview password")),
+    ),
+)
+
+/** The same, once the user confirmed they checked it: a notice, and Sign enabled. */
+@Preview
+@Composable
+private fun SendReviewPlantedAcknowledgedPreview() = SendPreview(
+    review.copy(
+        recipient = RecipientItem(
+            FRIEND,
+            warning = plantedWarning.copy(
+                blocking = false,
+                detail = "Attackers do that to get a look-alike address into your history, so that you copy it. " +
+                    "You checked it and chose to send anyway.",
+                overridable = false,
             ),
         ),
         unlock = UnlockStep(WalletPassword("made-up preview password")),
@@ -549,6 +612,9 @@ internal val sendScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("review-rejected") { SendReviewRejectedPreview() },
     ScreenPreview("review-lookalike-blocked") { SendReviewLookalikePreview() },
     ScreenPreview("review-new-recipient") { SendReviewNewRecipientPreview() },
+    ScreenPreview("compose-lookalike-blocked") { SendComposeLookalikePreview() },
+    ScreenPreview("review-planted-sender") { SendReviewPlantedSenderPreview() },
+    ScreenPreview("review-planted-acknowledged") { SendReviewPlantedAcknowledgedPreview() },
     ScreenPreview("loading") { SendLoadingPreview() },
     ScreenPreview("watch-only") { SendWatchOnlyPreview() },
     ScreenPreview("sent") { SendSentPreview() },

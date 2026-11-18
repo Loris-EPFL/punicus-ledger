@@ -5,7 +5,8 @@ import eth.serotine.ui.activity.ActivityState
 /**
  * Everything the detail of one row of an account's Activity renders (docs/wallet-ux.md, screen 26):
  * a transaction this device sent, a token's transfer or a Safe's event, with every address and
- * hash it concerns in full, to copy. Display-ready.
+ * hash it concerns in full, to copy, but for the sender a cautioned row names, which has no Copy.
+ * Display-ready.
  */
 sealed interface ActivityDetailUiState {
 
@@ -64,7 +65,7 @@ enum class DetailKind {
     /** Words or a number, not copied. */
     TEXT,
 
-    /** An EIP-55 address, with its blockie and Copy. */
+    /** An EIP-55 address, with its blockie, and Copy unless the field is not [DetailField.copyable]. */
     ADDRESS,
 
     /** A transaction's or a message's hash, with Copy. */

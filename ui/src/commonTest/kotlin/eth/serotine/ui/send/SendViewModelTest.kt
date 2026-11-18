@@ -390,6 +390,11 @@ class SendViewModelTest {
         assertFalse(viewModel.compose.canReview)
         viewModel.review()
         assertIs<SendUiState.Compose>(viewModel.uiState.value, "the review is refused, not just greyed out")
+        // A look-alike is never overridden: the confirmation is not offered, and asking for it changes nothing.
+        assertFalse(warning.overridable)
+        viewModel.onAcknowledgeRecipient()
+        assertTrue(assertNotNull(viewModel.compose.recipient?.warning).blocking)
+        assertFalse(viewModel.compose.canReview)
 
         viewModel.onToChange(bob.hex)
         assertNull(viewModel.compose.recipient?.warning, "the address really sent to is familiar")
@@ -397,7 +402,7 @@ class SendViewModelTest {
     }
 
     @Test
-    fun aPlantedSenderBlocksUntilTheUserAcknowledgesItAndALookalikeNever() = runTest {
+    fun aPlantedSenderBlocksUntilTheUserAcknowledgesIt() = runTest {
         holding()
         val planter = Address.of("0x1234567890123456789012345678901234567890")
         historyStarts.starts.value += daily.address to HistoryStart.Fixed(1)

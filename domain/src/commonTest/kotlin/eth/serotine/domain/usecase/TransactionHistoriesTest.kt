@@ -241,7 +241,8 @@ class TransactionHistoriesTest {
             assertEquals(setOf(bob, carol), sent.addresses, "a swap's router is no recipient")
             assertEquals(mapOf(swapped.hash to Bought(null, UInt256.ONE)), sent.bought, "only what a swap bought")
             history.readable.value = false
-            assertEquals(SentTo(emptySet(), emptyMap()), ObserveSentTo(history)().first())
+            // Unreadable: nothing is known, and it says so, so that no check takes it for "never sent to".
+            assertEquals(SentTo(emptySet(), emptyMap(), readable = false), ObserveSentTo(history)().first())
         }
 
     @Test

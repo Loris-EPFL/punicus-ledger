@@ -53,6 +53,7 @@ class SimpleSendScreenTest {
                 onSign = {},
                 onSignWithBiometrics = {},
                 onRetry = {},
+                onAcknowledgeRecipient = {},
                 onOpenTransfer = {},
                 onBack = {},
             )

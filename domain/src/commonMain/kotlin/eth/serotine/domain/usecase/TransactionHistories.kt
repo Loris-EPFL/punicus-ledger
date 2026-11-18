@@ -204,8 +204,10 @@ class ObserveAccountHistory(private val history: TransactionHistory) {
  * its signed minimum, arriving in that transaction, is what the user asked for, whoever the pool
  * is. Nothing else in a transaction sent from here vouches for its sender: a dApp's call, a
  * contract paid or an added token's code can run anyone's code, and move dust from anyone.
+ * [readable] is false while the history cannot be read: [addresses] is then empty because nothing
+ * is known, not because nothing was sent.
  */
-data class SentTo(val addresses: Set<Address>, val bought: Map<String, Bought>)
+data class SentTo(val addresses: Set<Address>, val bought: Map<String, Bought>, val readable: Boolean = true)
 
 /** What a swap bought: the [token] (null for the network's own currency) and the [minimum] it was signed for. */
 data class Bought(val token: Address?, val minimum: UInt256)
@@ -224,6 +226,7 @@ class ObserveSentTo(private val history: TransactionHistory) {
             SentTo(
                 addresses = entries.mapNotNullTo(HashSet()) { it.recipient() },
                 bought = entries.mapNotNull { entry -> entry.bought()?.let { entry.transfer.hash to it } }.toMap(),
+                readable = list is HistoryList.Loaded,
             )
         }
         .distinctUntilChanged()

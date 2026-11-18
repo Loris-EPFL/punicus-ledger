@@ -5,6 +5,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -63,5 +66,49 @@ class GnosisPayScreenTest {
 
         rule.onNodeWithText(reason).assertIsDisplayed()
         assertEquals(emptyList(), events)
+    }
+
+    @Test
+    fun theAddFormSaysWhatAMemberCanDoAndReviewsTheAddressTyped() {
+        val explains = "A member can move all of this account's funds, without this device."
+        rule.setContent {
+            SerotineTheme {
+                GnosisPayScreen(
+                    ready.copy(step = GnosisPayStep.AddMember(member = "", explains = explains, sender = "Card owner")),
+                    onBack = {},
+                    actions = GnosisPayActions(
+                        onMemberChange = { events += "member $it" },
+                        onReviewMember = { events += "review" },
+                    ),
+                )
+            }
+        }
+
+        rule.onNodeWithText(explains).assertIsDisplayed()
+        rule.onNodeWithTag(GNOSIS_PAY_MEMBER_TAG).performTextInput("0x30953638C67022f6d0F72a5aD86E1241C611Cf45")
+        rule.onNodeWithTag(GNOSIS_PAY_MEMBER_REVIEW_TAG).performClick()
+
+        // The field is the state's: typed, then drawn again from the unchanged state, it reports each edit.
+        assertEquals("member 0x30953638C67022f6d0F72a5aD86E1241C611Cf45", events.first())
+        assertEquals("review", events.last())
+    }
+
+    @Test
+    fun aMemberChangesReviewShowsItsWarning() {
+        val warning = "This member is how this device controls the account."
+        show(
+            ready.copy(
+                step = GnosisPayStep.Review(
+                    title = "Queue: remove member 0xdbF03B…C6FB",
+                    lines = listOf("Remove member" to "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"),
+                    fee = FeeLevel.NORMAL,
+                    unlock = UnlockStep(),
+                    warning = warning,
+                ),
+            ),
+        )
+
+        rule.onNodeWithTag(GNOSIS_PAY_WARNING_TAG).assertIsDisplayed()
+        rule.onNodeWithText(warning).assertIsDisplayed()
     }
 }

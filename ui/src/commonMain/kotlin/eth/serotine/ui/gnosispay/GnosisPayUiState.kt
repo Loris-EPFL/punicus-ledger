@@ -47,9 +47,17 @@ sealed interface GnosisPayUiState {
 /**
  * One member of the Delay: its EIP-55 [address], its name in the wallet ([label]), whether a key on
  * this device controls the account through it ([heldHere]), and [what] it is when it is not proven a
- * key ("A Safe: 1 of its 9 owners signs", "Not verified yet"); null for a key.
+ * key ("A Safe: 1 of its 9 owners signs", "Not verified yet"); null for a key; and Remove ([remove]:
+ * greyed out with its reason when it cannot be done here, the last member's above all), where the
+ * screen offers it (the Safe's settings; owner ruling, 2026-11-18), null where it does not.
  */
-data class MemberRow(val address: String, val label: String?, val heldHere: Boolean, val what: String? = null)
+data class MemberRow(
+    val address: String,
+    val label: String?,
+    val heldHere: Boolean,
+    val what: String? = null,
+    val remove: ActionItem? = null,
+)
 
 /**
  * A key at the end of a way down from a member (owner's request, 2026-11-17): its EIP-55 [address],
@@ -72,8 +80,9 @@ data class KeyRow(
 data class ActionItem(val enabled: Boolean, val reason: String?)
 
 /**
- * A transfer queued from here: its [id] (the queueing's transaction hash), what it sends ([title]:
- * "50 EURe to 0x1234…abcd"), where it stands ([status]), and Execute ([execute]; null where it does
+ * A call queued from here: its [id] (the queueing's transaction hash), what it does ([title]:
+ * "50 EURe to 0x1234…abcd", "Add member 0x1234…abcd"), where it stands ([status]), and Execute
+ * ([execute]; null where it does
  * not apply, greyed out with its reason where it cannot be done now).
  */
 data class QueuedRow(val id: String, val title: String, val status: String, val execute: ActionItem?)
@@ -101,11 +110,25 @@ sealed interface GnosisPayStep {
     ) : GnosisPayStep
 
     /**
+     * The form that adds a member to the Delay (owner ruling, 2026-11-18): the [member]'s address as
+     * typed, what a member can do ([explains], in the account's own figures), the [sender] (the key
+     * that signs, by name), [error] what is wrong, and [quoting] while Review checks it on chain.
+     */
+    data class AddMember(
+        val member: String,
+        val explains: String,
+        val sender: String,
+        val error: String? = null,
+        val quoting: Boolean = false,
+    ) : GnosisPayStep
+
+    /**
      * The review of the member's transaction: its [title] ("Queue 50 EURe to 0x1234…abcd", "Execute
      * …"), its [lines] (label to value), the [fee] level it was quoted at, the [unlock] that signs it,
      * [signing] while it does (or while the quote is made again), [error] why the last try sent
-     * nothing, [checking] while the quote is made again, and [note] why it was (a stale one), null
-     * when it was not.
+     * nothing, [checking] while the quote is made again, [note] why it was (a stale one), null
+     * when it was not, and [warning] what a change of the Delay's members puts at stake (a new member can
+     * move all the funds; a removal can end this device's control), null for a transfer.
      */
     data class Review(
         val title: String,
@@ -116,6 +139,7 @@ sealed interface GnosisPayStep {
         val error: String? = null,
         val note: String? = null,
         val checking: Boolean = false,
+        val warning: String? = null,
     ) : GnosisPayStep
 }
 

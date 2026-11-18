@@ -395,6 +395,36 @@ class VerifiedDelayModulesTest {
     }
 
     @Test
+    fun theMembersAreReadWithTheQueueAtItsBlockOnlyWhenAskedFor() = runTest {
+        // A change of the Delay's members is checked against them at the queue's block (owner ruling, 2026-11-18).
+        fake.snapshot = running(head = 7, headTimestamp = 5_000)
+        val other = Address.of("0x" + "0c".repeat(20))
+        gnosisPayDelay(members = listOf(member, other))
+        queued("ab".repeat(32))
+
+        val withMembers = delays().queue(Network.GNOSIS, safe, delay, Digest.of("ab".repeat(32)), withMembers = true)
+        assertEquals(listOf(member, other), (withMembers as DelayQueueReading.Read).queue.members)
+        // In the Delay's own order, all at the one block the first call answered at.
+        assertEquals(7, withMembers.blockNumber)
+
+        val without = delays().queue(Network.GNOSIS, safe, delay, Digest.of("ab".repeat(32)))
+        assertEquals(null, (without as DelayQueueReading.Read).queue.members)
+
+        // A list no pinned Delay answers is no answer: nothing is checked against it.
+        answer(
+            VerifiedDelayModules.getModulesPaginated(
+                VerifiedDelayModules.SENTINEL,
+                VerifiedDelayModules.MAX_MEMBERS + 1,
+            ),
+            word("40") + word("1") + word("2") + word(member.hex) + word(member.hex),
+        )
+        assertEquals(
+            DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN),
+            delays().queue(Network.GNOSIS, safe, delay, Digest.of("ab".repeat(32)), withMembers = true),
+        )
+    }
+
+    @Test
     fun aQueueIsReadOnlyOfTheCurrentMastercopysProxy() = runTest {
         fake.snapshot = running(head = 7, headTimestamp = 5_000)
         gnosisPayDelay()

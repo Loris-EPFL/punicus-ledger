@@ -10,6 +10,8 @@ import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.verifiedStripSample
+import eth.serotine.ui.gnosispay.ActionItem
+import eth.serotine.ui.gnosispay.MemberRow
 import eth.serotine.ui.ScreenPreview
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -113,6 +115,61 @@ private fun SafeSettingsWatchOnlyPreview() = SafeSettingsPreview(
         owners = overview.owners.map { it.copy(heldHere = false) },
         changeReason = "No owner of this Safe has its key on this device: it is watch-only here, so no change of " +
             "its settings can be proposed from it. An owner's recovery phrase, imported, makes it possible.",
+    ),
+)
+
+/**
+ * A Gnosis Pay account's settings (owner ruling, 2026-11-18): its one owner the placeholder no key
+ * holds, its Delay module among the modules, and the Delay's members, who control it.
+ */
+private val gnosisPay = overview.copy(
+    network = "Gnosis Chain",
+    safe = SendFrom("Card", TREASURY),
+    title = "Safe 1.3.0 · nonce 3",
+    signers = "1 of 1 owners must sign",
+    owners = listOf(SettingsOwner("0x0000000000000000000000000000000000000002", label = null, heldHere = false)),
+    modules = listOf(SAVINGS, MODULE),
+    checkedAt = "Verified at block 43,000,512",
+    changeReason = "No owner of this Safe has its key on this device: it is watch-only here, so no change of its " +
+        "settings can be proposed from it. An owner's recovery phrase, imported, makes it possible.",
+    removeReason = "The Safe's only owner cannot be removed: replace it instead.",
+    thresholdReason = "A Safe of one owner needs that owner's signature: add an owner first, then the threshold " +
+        "can change.",
+    delayMembers = DelayMembers(
+        members = listOf(
+            MemberRow(DAILY, "Daily", heldHere = true, remove = ActionItem(true, null)),
+            MemberRow(
+                FRIEND,
+                label = null,
+                heldHere = false,
+                what = "A Safe: 1 of its 9 owners signs",
+                remove = ActionItem(true, null),
+            ),
+        ),
+        add = ActionItem(true, null),
+        checkedAt = "Verified by the light client at block 43,000,512",
+        note = "This is a Gnosis Pay account. Its one owner is a placeholder no key holds: the members of its " +
+            "Delay module $SAVINGS control it. A member added or removed is queued through the Delay and takes " +
+            "effect once executed after its wait, like a transfer.",
+    ),
+)
+
+@Preview
+@Composable
+private fun SafeSettingsGnosisPayPreview() = SafeSettingsPreview(gnosisPay)
+
+@Preview
+@Composable
+private fun SafeSettingsGnosisPayWatchedPreview() = SafeSettingsPreview(
+    gnosisPay.copy(
+        delayMembers = gnosisPay.delayMembers?.let { members ->
+            val reason = "No key that controls this Gnosis Pay account is on this device. Import the recovery " +
+                "phrase of one of the keys listed here to send from here; until then the account is watched."
+            members.copy(
+                members = members.members.map { it.copy(heldHere = false, remove = ActionItem(false, reason)) },
+                add = ActionItem(false, reason),
+            )
+        },
     ),
 )
 
@@ -255,6 +312,8 @@ internal val safeSettingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("review-not-saved") { SafeSettingsReviewNotSavedPreview() },
     ScreenPreview("review-asking-to-drop") { SafeSettingsReviewAskingToDropPreview() },
     ScreenPreview("review-checking") { SafeSettingsReviewCheckingPreview() },
+    ScreenPreview("gnosis-pay") { SafeSettingsGnosisPayPreview() },
+    ScreenPreview("gnosis-pay-watched") { SafeSettingsGnosisPayWatchedPreview() },
     ScreenPreview("loading") { SafeSettingsLoadingPreview() },
     ScreenPreview("unavailable") { SafeSettingsUnavailablePreview() },
 )

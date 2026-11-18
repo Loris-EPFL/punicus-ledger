@@ -70,6 +70,7 @@ import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.gnosispay.GnosisPayStart
 import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.mode.LocalInterfaceMode
 import eth.serotine.ui.platform.KeepScreenOn
@@ -99,6 +100,15 @@ const val SETTINGS_PASSWORD_TAG = "safe-settings-password"
 /** Test tag of the Sign and queue button, for UI tests. */
 const val SETTINGS_SIGN_TAG = "safe-settings-sign"
 
+/** Test tag of each Delay member row of a Gnosis Pay account, for UI tests. */
+const val SETTINGS_DELAY_MEMBER_TAG = "safe-settings-delay-member"
+
+/** Test tag of a Delay member's Remove, suffixed with its address, for UI tests. */
+const val SETTINGS_REMOVE_DELAY_MEMBER_TAG = "safe-settings-remove-delay-member"
+
+/** Test tag of Add a member of the Delay, for UI tests. */
+const val SETTINGS_ADD_DELAY_MEMBER_TAG = "safe-settings-add-delay-member"
+
 /** Test tag of the *Details* that keep the blocks in simple mode, for UI tests. */
 const val SETTINGS_DETAILS_TAG = "safe-settings-details"
 
@@ -116,6 +126,7 @@ fun SafeSettingsRoute(
     onBack: () -> Unit,
     onProposed: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
+    onDelayMember: (GnosisPayStart) -> Unit = {},
 ) {
     // Main.immediate: as on Send, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
@@ -126,8 +137,11 @@ fun SafeSettingsRoute(
     LaunchedEffect(proposed) {
         if (proposed != null) currentOnProposed(proposed)
     }
+    val delayMember by rememberUpdatedState(onDelayMember)
     val actions = remember(viewModel) {
         SafeSettingsActions(
+            onAddDelayMember = { delayMember(GnosisPayStart.AddMember) },
+            onRemoveDelayMember = { member -> delayMember(GnosisPayStart.RemoveMember(member)) },
             onAddOwner = viewModel::onAddOwner,
             onReplaceOwner = viewModel::onReplaceOwner,
             onRemoveOwner = viewModel::onRemoveOwner,
@@ -181,7 +195,8 @@ fun SafeSettingsRoute(
  * the settings ([onCancel]), the new owner typed or picked, the threshold, Review; in the review,
  * back to the form ([onEdit]), Refresh, the owner who signs, the password, and Sign ([onSign], or
  * [onSignWithBiometrics]); with a signature the queue could not save, leaving it behind
- * ([onDropUnsaved]) or staying to share it ([onKeepUnsaved]).
+ * ([onDropUnsaved]) or staying to share it ([onKeepUnsaved]); for a Gnosis Pay account, a member of
+ * its Delay added ([onAddDelayMember]) or removed ([onRemoveDelayMember]), on the Gnosis Pay screen.
  */
 class SafeSettingsActions(
     val onAddOwner: () -> Unit = {},
@@ -203,6 +218,8 @@ class SafeSettingsActions(
     val onSignWithBiometrics: () -> Unit = {},
     val onDropUnsaved: () -> Unit = {},
     val onKeepUnsaved: () -> Unit = {},
+    val onAddDelayMember: () -> Unit = {},
+    val onRemoveDelayMember: (address: String) -> Unit = {},
 )
 
 /**
@@ -321,6 +338,7 @@ private fun OverviewContent(state: SafeSettingsUiState.Overview, actions: SafeSe
     ) {
         FromLine(state.safe)
         Text(state.title, style = MaterialTheme.typography.titleSmall)
+        state.delayMembers?.let { DelayMembersSection(it, actions) { notice -> unavailable = notice } }
         state.changeReason?.let { Note(it) }
         Heading("Owners")
         Column {
@@ -427,6 +445,72 @@ private fun OverviewContent(state: SafeSettingsUiState.Overview, actions: SafeSe
         )
         if (details.isNotEmpty()) HiddenDetails(SETTINGS_DETAILS_TAG) { details.forEach { Note(it) } }
     }
+}
+
+/**
+ * A Gnosis Pay account's Delay members (owner ruling, 2026-11-18): who controls it, each with Remove,
+ * then Add member; greyed out, a tap says why ([onUnavailable]).
+ */
+@Composable
+private fun DelayMembersSection(
+    members: DelayMembers,
+    actions: SafeSettingsActions,
+    onUnavailable: (UnavailableNotice) -> Unit,
+) {
+    Heading("Delay module members")
+    Note(members.note)
+    Column {
+        members.members.forEach { member ->
+            ListItem(
+                modifier = Modifier.testTag(SETTINGS_DELAY_MEMBER_TAG),
+                leadingContent = { AccountAvatar(member.address, size = 32.dp) },
+                headlineContent = { Text(member.label ?: shortAddress(member.address)) },
+                supportingContent = {
+                    Column {
+                        Text(member.address, fontFamily = FontFamily.Monospace)
+                        Text(member.what ?: "A key", style = MaterialTheme.typography.bodySmall)
+                        if (member.heldHere) {
+                            Text(
+                                "A key on this device controls the account through it",
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                        member.remove?.let { remove ->
+                            SettingsAction(
+                                "Remove",
+                                remove.enabled,
+                                {
+                                    if (remove.enabled) {
+                                        actions.onRemoveDelayMember(member.address)
+                                    } else {
+                                        remove.reason?.let { onUnavailable(UnavailableNotice("Remove a member", it)) }
+                                    }
+                                },
+                                Modifier.testTag("$SETTINGS_REMOVE_DELAY_MEMBER_TAG-${member.address}"),
+                            )
+                        }
+                    }
+                },
+            )
+        }
+    }
+    SettingsAction(
+        "Add a member",
+        members.add.enabled,
+        {
+            if (members.add.enabled) {
+                actions.onAddDelayMember()
+            } else {
+                members.add.reason?.let { onUnavailable(UnavailableNotice("Add a member", it)) }
+            }
+        },
+        Modifier.testTag(SETTINGS_ADD_DELAY_MEMBER_TAG),
+    )
+    Text(
+        members.checkedAt,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

@@ -18,6 +18,8 @@ import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.EncodeSigningRequest
+import eth.serotine.domain.usecase.GnosisPayReading
+import eth.serotine.domain.usecase.ObserveGnosisPay
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ProposeSafeSettingsChange
@@ -52,6 +54,7 @@ import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.promptDeadline
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
+import eth.serotine.ui.gnosispay.GnosisPayTexts
 import eth.serotine.ui.components.shareItem
 import eth.serotine.ui.components.simpleSafeTxRefusalText
 import kotlin.time.TimeMark
@@ -88,6 +91,10 @@ import kotlinx.coroutines.withContext
  * the review's state while the field is shown, hands it to the signer in an [Unlock], and never
  * logs, saves or caches it; it is dropped once used, when the screen is not shown ([onHidden]) and
  * when the screen is gone.
+ *
+ * A Gnosis Pay account's settings also list its Delay's members ([observeGnosisPay]), who control
+ * it, with Add member and Remove (owner ruling, 2026-11-18): those go through the Delay, on the
+ * Gnosis Pay screen, which the screen opens for them.
  */
 class SafeSettingsViewModel(
     private val account: AccountId,
@@ -97,6 +104,7 @@ class SafeSettingsViewModel(
     private val proposeChange: ProposeSafeSettingsChange,
     private val signSafeTx: SignSafeTx,
     private val encodeSigningRequest: EncodeSigningRequest,
+    observeGnosisPay: ObserveGnosisPay,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
@@ -206,7 +214,10 @@ class SafeSettingsViewModel(
         null,
     )
 
-    val uiState: StateFlow<SafeSettingsUiState> = combine(model, step, ::render).stateIn(
+    /** The Safe as a Gnosis Pay account: its Delay's members, shown on the overview. */
+    private val gnosisPay = observeGnosisPay(account)
+
+    val uiState: StateFlow<SafeSettingsUiState> = combine(model, gnosisPay, step, ::render).stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
         SafeSettingsUiState.Loading(network.displayName),
@@ -649,7 +660,7 @@ class SafeSettingsViewModel(
         }
     }
 
-    private fun render(model: Model?, step: Step): SafeSettingsUiState {
+    private fun render(model: Model?, gnosisPay: GnosisPayReading, step: Step): SafeSettingsUiState {
         val network = network.displayName
         if (step is Step.Proposed) return SafeSettingsUiState.Proposed(network, step.hash)
         // A review stands on its proposal, whatever the Safe's reading says meanwhile: a refresh or
@@ -662,7 +673,7 @@ class SafeSettingsViewModel(
         }
         val from = SendFrom(shown.safeAccount.label, display)
         return when (step) {
-            Step.Viewing -> overview(shown, from)
+            Step.Viewing -> overview(shown, from).copy(delayMembers = delayMembers(gnosisPay))
             is Step.Editing -> SafeSettingsUiState.Edit(network, from, form(shown, step))
             is Step.Reviewing, is Step.Proposed -> error("handled above")
         }
@@ -689,6 +700,19 @@ class SafeSettingsViewModel(
                 .takeIf { state.owners.size == 1 },
             thresholdReason = "A Safe of one owner needs that owner's signature: add an owner first, then the " +
                 "threshold can change.".takeIf { state.owners.size == 1 },
+        )
+    }
+
+    /** A Gnosis Pay account's Delay members, display-ready; null for any other Safe, or before it is read. */
+    private fun delayMembers(reading: GnosisPayReading): DelayMembers? {
+        val found = reading as? GnosisPayReading.Found ?: return null
+        return DelayMembers(
+            members = GnosisPayTexts.memberRows(found, withRemove = true),
+            add = GnosisPayTexts.addMember(found),
+            checkedAt = GnosisPayTexts.checkedAt(found.blockNumber, found.held),
+            note = "This is a Gnosis Pay account. Its one owner is a placeholder no key holds: the members of its " +
+                "Delay module ${Eip55.format(found.delay.address)} control it. A member added or removed is queued " +
+                "through the Delay and takes effect once executed after its wait, like a transfer.",
         )
     }
 

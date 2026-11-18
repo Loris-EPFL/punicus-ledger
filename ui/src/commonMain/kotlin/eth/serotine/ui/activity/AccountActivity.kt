@@ -301,7 +301,7 @@ class AccountActivity(
     private fun SafeEvent.saidBySentRow(entry: HistoryEntry): Boolean = when (this) {
         is SafeEvent.Executed -> succeeded
         is SafeEvent.ModuleExecuted ->
-            succeeded && (entry.transfer.action as? SentAction.DelayExecution)?.transfer?.delay == module
+            succeeded && (entry.transfer.action as? SentAction.DelayExecution)?.call?.delay == module
         is SafeEvent.Approved, is SafeEvent.SetUp -> true
         else -> false
     }
@@ -343,12 +343,14 @@ class AccountActivity(
                 return false
             }
             // A Gnosis Pay transfer executed from here: the Safe's own transfer to its recipient.
-            is SentAction.DelayExecution ->
-                if (from == action.transfer.safe && to == action.transfer.recipient) {
-                    action.transfer.asset to action.transfer.amount
+            is SentAction.DelayExecution -> {
+                val executed = action.transfer ?: return false
+                if (from == executed.safe && to == executed.recipient) {
+                    executed.asset to executed.amount
                 } else {
                     return false
                 }
+            }
             else -> return false
         }
         val same = when (asset) {

@@ -5,6 +5,8 @@ import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.ShareItem
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.gnosispay.ActionItem
+import eth.serotine.ui.gnosispay.MemberRow
 
 /**
  * Everything the Safe settings screen renders (docs/wallet-ux.md, screen 28): the Safe's settings
@@ -38,6 +40,7 @@ sealed interface SafeSettingsUiState {
      * Change the threshold while [thresholdReason] is (a Safe of one owner). [enableModuleReason]
      * and [updateReason] say why enabling a module and updating the Safe's version are never
      * offered here. [simpleCheckedAt] is [checkedAt] with no block, for simple mode, or null.
+     * [delayMembers] is a Gnosis Pay account's Delay members, null for any other Safe.
      */
     data class Overview(
         override val network: String,
@@ -55,6 +58,7 @@ sealed interface SafeSettingsUiState {
         val removeReason: String? = null,
         val thresholdReason: String? = null,
         val simpleCheckedAt: String? = null,
+        val delayMembers: DelayMembers? = null,
     ) : SafeSettingsUiState {
 
         /** Whether a change can be proposed: an owner held here signs it. */
@@ -188,3 +192,16 @@ data class ThresholdField(val value: Int, val owners: Int, val shape: String) {
     val canIncrease: Boolean
         get() = value < owners
 }
+
+/**
+ * A Gnosis Pay account's Delay members, who control it (owner ruling, 2026-11-18; docs/gnosis-pay.md):
+ * each [members] row with what it is and its Remove, then Add member ([add]); both greyed out with
+ * their reasons where they cannot be done here, as Send through the Delay is; [checkedAt] where the
+ * Delay was verified, and [note] what the section is about.
+ */
+data class DelayMembers(
+    val members: List<MemberRow>,
+    val add: ActionItem,
+    val checkedAt: String,
+    val note: String,
+)

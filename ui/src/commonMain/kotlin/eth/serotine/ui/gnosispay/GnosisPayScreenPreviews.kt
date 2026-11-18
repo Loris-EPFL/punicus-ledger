@@ -358,6 +358,79 @@ private fun GnosisPayReviewMemberSafePreview() = GnosisPayPreview(
     ),
 )
 
+/** The form that adds a member (owner ruling, 2026-11-18). */
+private val addMember = GnosisPayStep.AddMember(
+    member = "0x30953638C67022f6d0F72a5aD86E1241C611Cf45",
+    explains = "A member of the Delay module can queue any transaction of this account: once its wait of 3 min has " +
+        "passed, anyone can execute it, within 30 min. A member can move all of this account's funds, without " +
+        "this device. Add only an address whose key you hold, or whose holder you trust with all of it.",
+    sender = "Card owner",
+)
+
+@Preview
+@Composable
+private fun GnosisPayAddMemberPreview() = GnosisPayPreview(overview.copy(step = addMember))
+
+@Preview
+@Composable
+private fun GnosisPayAddMemberErrorPreview() = GnosisPayPreview(
+    overview.copy(
+        step = addMember.copy(
+            member = "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+            error = "That address is a member already.",
+        ),
+    ),
+)
+
+/** The lines GnosisPayTexts.reviewLines gives a member's removal, in its order. */
+private val removeLines = listOf(
+    "Account" to "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+    "Remove member" to "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+    "Member before it" to "None: it is the first in the module's list",
+    "Through" to "Delay module 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359, as the account's own call of it",
+    "Signed by" to "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+    "Fee" to "0.0002 XDAI at most, normal (fees at block 43,000,511)",
+    "Signer's XDAI" to "0.42 XDAI now, at least 0.4198 XDAI after (block 43,000,512)",
+    "What happens" to "Queued now. It waits 3 min, then needs a second transaction to execute it, within 30 min.",
+    "Simulated" to "Run as a verified call at block 43,000,512",
+)
+
+@Preview
+@Composable
+private fun GnosisPayReviewAddMemberPreview() = GnosisPayPreview(
+    overview.copy(
+        step = review.copy(
+            title = "Queue: add member 0x309536…1Cf45",
+            lines = listOf(
+                "Account" to "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+                "Add member" to "0x30953638C67022f6d0F72a5aD86E1241C611Cf45",
+            ) + removeLines.drop(3),
+            warning = "Once this is executed, 0x30953638C67022f6d0F72a5aD86E1241C611Cf45 can move all of this " +
+                "account's funds after the Delay's wait of 3 min, without this device. Add it only if you hold its " +
+                "key, or trust its holder with all of it.",
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun GnosisPayReviewRemoveMemberPreview() = GnosisPayPreview(
+    overview.copy(
+        step = review.copy(
+            title = "Queue: remove member 0xdbF03B…C6FB",
+            lines = removeLines,
+            warning = "This member is how this device controls the account. Once this is executed, this device " +
+                "can no longer send from this account, nor change its members.",
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun GnosisPayQueuedMemberChangePreview() = GnosisPayPreview(
+    overview.copy(queued = listOf(waiting.copy(title = "Add member 0x309536…1Cf45"))),
+)
+
 @Preview
 @Composable
 private fun GnosisPayLoadingPreview() = GnosisPayPreview(GnosisPayUiState.Loading)
@@ -393,6 +466,11 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("review-member-safe") { GnosisPayReviewMemberSafePreview() },
     ScreenPreview("control-unread") { GnosisPayControlUnreadPreview() },
     ScreenPreview("overview-held") { GnosisPayHeldPreview() },
+    ScreenPreview("add-member") { GnosisPayAddMemberPreview() },
+    ScreenPreview("add-member-error") { GnosisPayAddMemberErrorPreview() },
+    ScreenPreview("review-add-member") { GnosisPayReviewAddMemberPreview() },
+    ScreenPreview("review-remove-member") { GnosisPayReviewRemoveMemberPreview() },
+    ScreenPreview("queued-member-change") { GnosisPayQueuedMemberChangePreview() },
     ScreenPreview("loading") { GnosisPayLoadingPreview() },
     ScreenPreview("unavailable") { GnosisPayUnavailablePreview() },
 )

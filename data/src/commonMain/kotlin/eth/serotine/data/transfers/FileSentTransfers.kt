@@ -26,7 +26,8 @@ import kotlinx.serialization.json.JsonElement
  * a wrap's or an unwrap's WETH9 and amount, a CoW order's cancellation on chain (its settlement
  * contract and UID), a dApp's transaction (its recipient, value and the dApp's stated name), or a
  * Gnosis Pay account's transfer queued or executed through its Delay (the Safe, the Delay, the
- * recipient, the token and the amount), and whether it is only maybe sent.
+ * recipient, the token and the amount; or the member added or removed, and the member before it), and
+ * whether it is only maybe sent.
  * An entry that does not decode (a damaged one, or one of a kind this build does not know) is
  * passed over, as [eth.serotine.data.safe.FileSafeTxQueue] passes one over, and the rest are read;
  * the file it was in is then set aside once, whole, and what was read written in its place, so
@@ -38,9 +39,11 @@ import kotlinx.serialization.json.JsonElement
  * maybe sent, format 5 the token approvals and the swaps, format 6 either each one's network (its
  * chain id; one without was sent on Sepolia, the only network there was) or the CoW orders'
  * cancellations on chain (two builds took 6 apart; a record reads alike either way), format 7
- * both, format 8 the dApps' transactions, format 9 the wraps and unwraps, and format 10 the Gnosis
- * Pay accounts' Delay calls. A file of an earlier format reads as it is and is written as 10 at its
- * next change, which a build that reads only an earlier one then leaves alone.
+ * both, format 8 the dApps' transactions, format 9 the wraps and unwraps, format 10 the Gnosis
+ * Pay accounts' Delay calls, format 11 the skips of a Delay's expired entries, and format 12 the
+ * changes of a Delay's members (owner ruling, 2026-11-18). A file of an earlier format reads as it
+ * is and is written as 12 at its next change, which a build that reads only an earlier one then
+ * leaves alone.
  */
 class FileSentTransfers(
     path: String,
@@ -91,7 +94,7 @@ class FileSentTransfers(
     private class StoredFile(val version: Int, val transfers: List<JsonElement>)
 
     private companion object {
-        const val FORMAT_VERSION = 10
+        const val FORMAT_VERSION = 12
         val JSON = Json
     }
 }

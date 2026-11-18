@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayMemberChange
 import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.DelayTransferPlan
 import eth.serotine.domain.model.Digest
@@ -36,6 +37,7 @@ import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.usecase.DelayQuoting
 import eth.serotine.domain.usecase.DescribeKeyStore
+import eth.serotine.domain.usecase.GnosisPayReading
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveGnosisPay
 import eth.serotine.domain.usecase.ObserveKnownTokens
@@ -111,16 +113,28 @@ class GnosisPayViewModelTest {
 
     private var queueAnswer: DelayQueueReading =
         DelayQueueReading.Read(DelayQueue(0, 0, 180, 1_800, null, 0), 41, 0)
+    /** The Delay's members, in its own order: the screen's reading and the queue's alike. */
+    private var delayMembers = listOf(member)
     private val delays = object : DelayModules {
         override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> = flowOf(
             DelayReading.Verified(
-                DelayFinding.Wired(DelayModule(delay, DelayGeneration.CURRENT, 180, 1_800, 0, 0, listOf(member))),
+                DelayFinding.Wired(DelayModule(delay, DelayGeneration.CURRENT, 180, 1_800, 0, 0, delayMembers)),
                 41,
             ),
         )
 
-        override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading =
-            queueAnswer
+        override suspend fun queue(
+            network: Network,
+            safe: Address,
+            delay: Address,
+            hash: Digest,
+            withMembers: Boolean,
+        ): DelayQueueReading = when (val answer = queueAnswer) {
+            // The members only when asked for, as the port says.
+            is DelayQueueReading.Read ->
+                answer.copy(queue = answer.queue.copy(members = delayMembers.takeIf { withMembers }))
+            else -> answer
+        }
     }
 
     private val balances = FakeBalances()
@@ -535,5 +549,100 @@ class GnosisPayViewModelTest {
         assertEquals("3 min", GnosisPayTexts.period(180))
         assertEquals("1 h", GnosisPayTexts.period(3_599))
         assertEquals("1 h 30 min", GnosisPayTexts.period(5_400))
+    }
+
+    // A member of the Delay added or removed (owner ruling, 2026-11-18).
+
+    private val newcomer = Address.of("0x30953638c67022f6d0f72a5ad86e1241c611cf45")
+    private val other = Address.of("0x" + "0c".repeat(20))
+
+    @Test
+    fun aMemberIsAddedFromItsFormThroughAReviewThatSaysWhatItCanDo() = runTest {
+        val viewModel = viewModel()
+        viewModel.ready()
+        viewModel.start(GnosisPayStart.AddMember)
+        val form = viewModel.ready().step as GnosisPayStep.AddMember
+        assertEquals("Card owner", form.sender)
+        assertTrue(form.explains.contains("move all of this account's funds"), form.explains)
+
+        // A typo in a mixed-case address, then a member already: said on the form.
+        viewModel.onMemberChange(Eip55.format(newcomer).replace("C", "c"))
+        viewModel.reviewAddMember()
+        assertNotNull((viewModel.ready().step as GnosisPayStep.AddMember).error)
+        viewModel.onMemberChange(member.hex)
+        viewModel.reviewAddMember()
+        assertEquals("That address is a member already.", (viewModel.ready().step as GnosisPayStep.AddMember).error)
+
+        viewModel.onMemberChange(Eip55.format(newcomer))
+        viewModel.reviewAddMember()
+        val review = viewModel.ready().step as GnosisPayStep.Review
+        assertEquals("Queue: add member ${shortAddress(Eip55.format(newcomer))}", review.title)
+        assertEquals(Eip55.format(newcomer), review.lines.toMap()["Add member"])
+        assertTrue(review.warning.orEmpty().contains("can move all of this account's funds"), review.warning)
+
+        viewModel.onPasswordChange("correct horse")
+        viewModel.sign()
+        viewModel.sent.first { it != null }
+        val recorded = (sent.observe().first() as SentTransferList.Loaded).transfers.single()
+        val queued = (recorded.action as SentAction.DelayQueue).call as DelayMemberChange
+        assertEquals(DelayMemberChange.Kind.ADD, queued.kind)
+        assertEquals(newcomer, queued.member)
+    }
+
+    @Test
+    fun removingTheWayThisDeviceControlsTheAccountIsWarnedNotRefused() = runTest {
+        delayMembers = listOf(member, other)
+        val viewModel = viewModel()
+        viewModel.ready()
+        viewModel.start(GnosisPayStart.RemoveMember(Eip55.format(member)))
+
+        val review = viewModel.ready().step as GnosisPayStep.Review
+        assertEquals("Queue: remove member ${shortAddress(Eip55.format(member))}", review.title)
+        assertEquals("None: it is the first in the module's list", review.lines.toMap()["Member before it"])
+        assertTrue(review.warning.orEmpty().contains("can no longer send"), review.warning)
+
+        // Opened from the settings: Back from the review leaves the screen, back to them.
+        assertEquals(false, viewModel.back())
+    }
+
+    @Test
+    fun removingAnotherMemberIsReviewedWithoutAWarning() = runTest {
+        delayMembers = listOf(member, other)
+        val viewModel = viewModel()
+        viewModel.ready()
+        viewModel.removeMember(Eip55.format(other))
+
+        val review = viewModel.ready().step as GnosisPayStep.Review
+        assertEquals(Eip55.format(member), review.lines.toMap()["Member before it"])
+        assertNull(review.warning)
+        // Opened as itself: Back steps to the overview.
+        assertTrue(viewModel.back())
+        assertEquals(GnosisPayStep.Overview(), viewModel.ready().step)
+    }
+
+    @Test
+    fun theLastMemberIsNeverRemovedAndAWatchedKeyAddsNone() = runTest {
+        val viewModel = viewModel()
+        viewModel.ready()
+        assertEquals(false, GnosisPayTexts.removeMember(latestFound(viewModel)).enabled)
+        viewModel.removeMember(Eip55.format(member))
+        assertEquals(GnosisPayTexts.LAST_MEMBER, (viewModel.ready().step as GnosisPayStep.Overview).error)
+        assertTrue(sent.observe().first().let { (it as SentTransferList.Loaded).transfers.isEmpty() })
+    }
+
+    @Test
+    fun withoutAControllingKeyAddMemberIsGreyedOutAndOpensNothing() = runTest {
+        accounts.accounts.value = listOf(card, owner.copy(custody = AccountCustody.Watched))
+        val viewModel = viewModel()
+        viewModel.ready()
+        viewModel.startAddMember()
+        assertEquals(GnosisPayStep.Overview(), viewModel.ready().step)
+    }
+
+    /** The account as the screen read it, for the greyed-out rule's texts. */
+    private suspend fun latestFound(viewModel: GnosisPayViewModel): GnosisPayReading.Found {
+        viewModel.ready()
+        return ObserveGnosisPay(kinds, delays, accounts)(id)
+            .first { it is GnosisPayReading.Found } as GnosisPayReading.Found
     }
 }

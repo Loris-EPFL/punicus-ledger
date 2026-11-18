@@ -2,8 +2,12 @@ package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayCall
+import eth.serotine.domain.model.DelayMemberChange
+import eth.serotine.domain.model.DelayMemberChangePlan
 import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.sameCall
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
@@ -108,27 +112,31 @@ enum class DelayStep {
 }
 
 /**
- * A Gnosis Pay account's [transfer] quoted for review: the [step], its transaction quoted from the
- * key that sends it ([call]), the Safes a queueing goes through ([via], the Delay's member first;
- * empty when the sender is a member, and for an execution, which anyone may send), and the Safe's
- * balance of the asset it was checked against ([safeBalance], at [safeBalanceBlock]). Only this
- * file makes one: what is signed is its [call]'s transaction.
+ * A Gnosis Pay account's [delayCall] (a transfer, or a change of its Delay's members) quoted for
+ * review: the [step], its transaction quoted from the key that sends it ([call]), the Safes a
+ * queueing goes through ([via], the Delay's member first; empty when the sender is a member, and
+ * for an execution, which anyone may send), and, for a transfer, the Safe's balance of the asset it
+ * was checked against ([safeBalance], at [safeBalanceBlock]; null for a change of members, which
+ * moves nothing). Only this file makes one: what is signed is its [call]'s transaction.
  */
 @ConsistentCopyVisibility
 data class DelayQuote internal constructor(
     val network: Network,
-    val transfer: DelayTransfer,
+    val delayCall: DelayCall,
     val step: DelayStep,
     val call: CallQuote,
-    val safeBalance: UInt256,
+    val safeBalance: UInt256?,
     val safeBalanceBlock: Long?,
     val via: List<Address> = emptyList(),
 ) {
+    /** The [delayCall] when it is a transfer; null for a change of the Delay's members. */
+    val transfer: DelayTransfer? get() = delayCall as? DelayTransfer
+
     /** What the sender's transaction is recorded as. */
     val action: SentAction
         get() = when (step) {
-            DelayStep.QUEUE -> SentAction.DelayQueue(transfer)
-            DelayStep.EXECUTE -> SentAction.DelayExecution(transfer)
+            DelayStep.QUEUE -> SentAction.DelayQueue(delayCall)
+            DelayStep.EXECUTE -> SentAction.DelayExecution(delayCall)
         }
 }
 
@@ -208,11 +216,33 @@ sealed interface DelayQuoting {
 
     /** The transfer cannot be executed now, standing as [state] in its queue. */
     data class NotReady(val state: DelayTransferState) : DelayQuoting
-}
 
-/** Whether this transfer and [other] are the same call of one Delay for one Safe: what its queue tells apart. */
-fun DelayTransfer.sameCall(other: DelayTransfer): Boolean =
-    safe == other.safe && delay == other.delay && hash == other.hash
+    /**
+     * The change of the Delay's members is refused against its members as read now ([refusal]):
+     * one added since, the last member left, or (at an execution) a removal that would leave none.
+     */
+    data class MemberChangeRefused(val refusal: DelayMemberChangePlan) : DelayQuoting
+
+    /**
+     * The Delay's members changed since the change was planned: a removal names another member
+     * before it now. Planned again from the members as they are, it is a new call.
+     */
+    data object MembersChanged : DelayQuoting
+
+    /**
+     * The Safe's own change of its Delay's members reverts, run as a verified call from the Safe at
+     * [blockNumber]: the members changed since it was queued (a removal's member before it is
+     * another now, or the member was added or removed already).
+     */
+    data class MemberChangeReverts(val blockNumber: Long?) : DelayQuoting
+
+    /**
+     * Another change of the Delay's members queued from here ([queuedBy], its queueing's hash)
+     * still waits: each change is planned against the members as they are, so one waits for the
+     * other's execution or end.
+     */
+    data class MemberChangeWaiting(val queuedBy: String) : DelayQuoting
+}
 
 /**
  * The reads both quotes share: the Delay's queue read fresh at one block ([DelayModules.queue]),
@@ -236,9 +266,15 @@ private class DelayCallQuoter(
 ) {
     private val quoter = CallQuoter(inputs, sentTransfers, network, clock, outbox)
 
-    /** [transfer]'s queue as it is now, or why nothing is quoted through its Delay. */
-    suspend fun freshQueue(transfer: DelayTransfer): Fresh =
-        when (val reading = delays.queue(network, transfer.safe, transfer.delay, transfer.hash)) {
+    /**
+     * [call]'s queue as it is now, or why nothing is quoted through its Delay; with the Delay's
+     * members at the same block for a change of them.
+     */
+    suspend fun freshQueue(call: DelayCall): Fresh =
+        when (
+            val reading =
+                delays.queue(network, call.safe, call.delay, call.hash, withMembers = call is DelayMemberChange)
+        ) {
             is DelayQueueReading.Read -> Fresh.Read(reading)
             is DelayQueueReading.NotTheSafes -> Fresh.Refused(DelayQuoting.NotTheSafesDelay(reading.generation))
             is DelayQueueReading.Unavailable -> Fresh.Refused(
@@ -260,7 +296,7 @@ private class DelayCallQuoter(
 
     suspend fun quote(
         sender: Address,
-        transfer: DelayTransfer,
+        delayCall: DelayCall,
         step: DelayStep,
         level: FeeLevel,
         alreadyQueued: UInt256 = UInt256.ZERO,
@@ -268,24 +304,36 @@ private class DelayCallQuoter(
     ): DelayQuoting = cancellingReads {
         quoter.heldBack(sender)?.let { return@cancellingReads DelayQuoting.NotQuoted(it) }
         val memberNative = async { nativeBalances.observeBalance(network, sender).first() }
-        val safeHolds = when (val read = safeBalance(transfer)) {
-            is SafeHolds.Read -> read
-            is SafeHolds.NotRead -> return@cancellingReads DelayQuoting.NotQuoted(read.refusal)
+        val transfer = delayCall as? DelayTransfer
+        // A change of the Delay's members moves nothing: no balance of the Safe's is checked for it.
+        val safeHolds = if (transfer == null) {
+            null
+        } else {
+            when (val read = safeBalance(transfer)) {
+                is SafeHolds.Read -> read
+                is SafeHolds.NotRead -> return@cancellingReads DelayQuoting.NotQuoted(read.refusal)
+            }
         }
-        val needed = transfer.amount.plusOrNull(alreadyQueued)
-        if (needed == null || safeHolds.amount < needed) {
-            return@cancellingReads DelayQuoting.SafeInsufficient(alreadyQueued)
+        if (transfer != null && safeHolds != null) {
+            val needed = transfer.amount.plusOrNull(alreadyQueued)
+            if (needed == null || safeHolds.amount < needed) {
+                return@cancellingReads DelayQuoting.SafeInsufficient(alreadyQueued)
+            }
         }
         // The Safe's own call, run as it would be executed: xDAI to a contract that does not take it
         // reverts, and a token that answers false instead of reverting would let the Delay spend its
-        // entry and move nothing. Either would be queued, waited for and fail.
-        when (val run = inputs.simulate(network, transfer.safe, transfer.to, transfer.value, transfer.data)) {
+        // entry and move nothing. Either would be queued, waited for and fail. A change of members is
+        // the Safe's call of its own Delay, which reverts when the members changed since it was planned.
+        when (val run = inputs.simulate(network, delayCall.safe, delayCall.to, delayCall.value, delayCall.data)) {
             is Simulation.Succeeded -> {
-                val refuses = transfer.asset is TransferAsset.Erc20Token && Erc20.returnedFalse(run.returnHex)
+                val refuses = transfer?.asset is TransferAsset.Erc20Token && Erc20.returnedFalse(run.returnHex)
                 if (refuses) return@cancellingReads DelayQuoting.TokenRefuses
             }
-            is Simulation.Reverted ->
-                return@cancellingReads DelayQuoting.SafeCallReverts(run.blockNumber)
+            is Simulation.Reverted -> return@cancellingReads if (transfer == null) {
+                DelayQuoting.MemberChangeReverts(run.blockNumber)
+            } else {
+                DelayQuoting.SafeCallReverts(run.blockNumber)
+            }
             Simulation.Refused -> return@cancellingReads DelayQuoting.NotQuoted(CallRefusal.Refused)
             is Simulation.Unavailable ->
                 return@cancellingReads DelayQuoting.NotQuoted(CallRefusal.Unavailable(run.reason, QuoteFigure.RUN))
@@ -295,8 +343,8 @@ private class DelayCallQuoter(
             is NativeRead.NotRead -> return@cancellingReads DelayQuoting.NotQuoted(read.refusal)
         }
         val (to, data) = when (step) {
-            DelayStep.QUEUE -> transfer.queueCall(sender, via)
-            DelayStep.EXECUTE -> transfer.delay to transfer.executeData()
+            DelayStep.QUEUE -> delayCall.queueCall(sender, via)
+            DelayStep.EXECUTE -> delayCall.delay to delayCall.executeData()
         }
         val accepts = when (step) {
             // `execTransactionFromModule` returns a bool, and so does a Safe's `execTransaction` around
@@ -308,7 +356,7 @@ private class DelayCallQuoter(
         val route = if (step == DelayStep.QUEUE) via else emptyList()
         when (val quoted = quoter.quote(sender, to, UInt256.ZERO, data, level, native, accepts = accepts)) {
             is CallQuoting.Quoted -> DelayQuoting.Quoted(
-                DelayQuote(network, transfer, step, quoted.quote, safeHolds.amount, safeHolds.blockNumber, route),
+                DelayQuote(network, delayCall, step, quoted.quote, safeHolds?.amount, safeHolds?.blockNumber, route),
             )
             is CallQuoting.Refused -> DelayQuoting.NotQuoted(quoted.refusal)
         }
@@ -347,7 +395,7 @@ private class DelayCallQuoter(
 }
 
 /**
- * Quotes the queueing of a Gnosis Pay account's [DelayTransfer] by `sender`, a key held here that
+ * Quotes the queueing of a Gnosis Pay account's [DelayCall] by `sender`, a key held here that
  * controls its Delay by itself: `execTransactionFromModule` sent to the Delay by `sender` as a
  * member, or, with `via`, through the member Safes on the way down to `sender`, each executing the
  * call of the one before as its one owner's transaction ([DelayTransfer.queueCall]; owner's request,
@@ -357,7 +405,14 @@ private class DelayCallQuoter(
  * decisions, 2026-11-15); an entry of the same call still in it, or a queueing of it from here not
  * mined yet, is refused ([DelayQuoting.AlreadyQueued]), so no two entries share a hash. The Safe must
  * hold the amount now, verified, beside what transfers of the same asset queued from here and not
- * executed will move: a transfer it cannot pay would be queued, waited for and fail. On [network]
+ * executed will move: a transfer it cannot pay would be queued, waited for and fail.
+ *
+ * A [DelayMemberChange] is queued the same way (owner ruling, 2026-11-18), with no balance of the
+ * Safe's to check: the queue is read with the Delay's members at the same block, against which
+ * the change must still be planned as it was ([DelayQuoting.MemberChangeRefused],
+ * [DelayQuoting.MembersChanged]); another change of the members queued from here and still waiting
+ * holds it back ([DelayQuoting.MemberChangeWaiting]); and the Safe's own call of its Delay must not
+ * revert, run as a verified call from the Safe ([DelayQuoting.MemberChangeReverts]). On [network]
  * only. [clock] is in unix seconds.
  */
 class QuoteDelayQueue(
@@ -376,19 +431,19 @@ class QuoteDelayQueue(
 
     suspend operator fun invoke(
         sender: Address,
-        transfer: DelayTransfer,
+        call: DelayCall,
         level: FeeLevel,
         via: List<Address> = emptyList(),
     ): DelayQuoting {
-        val read = when (val fresh = quoter.freshQueue(transfer)) {
+        val read = when (val fresh = quoter.freshQueue(call)) {
             is DelayCallQuoter.Fresh.Read -> fresh.reading
             is DelayCallQuoter.Fresh.Refused -> return fresh.quoting
         }
         val entries = (history.observe().first() as? HistoryList.Loaded)?.entries
             ?: return DelayQuoting.HistoryUnreadable
-        val waiting = entries.waitingQueueings(network, transfer.safe, transfer.delay, clock(), read.queue)
+        val waiting = entries.waitingQueueings(network, call.safe, call.delay, clock(), read.queue)
         // A mined one is in the queue just read, or gone: only one on its way is the history's to tell.
-        val sameCall = waiting.firstOrNull { it.queued.sameCall(transfer) && it.entry.onItsWay(clock()) }
+        val sameCall = waiting.firstOrNull { it.queued.sameCall(call) && it.entry.onItsWay(clock()) }
         val queue = read.queue
         when {
             queue.expirationSeconds in 1..DELAY_EXPIRY_MARGIN_SECONDS ->
@@ -403,10 +458,36 @@ class QuoteDelayQueue(
             queue.waiting >= DelayModules.MAX_QUEUE_READ -> return DelayQuoting.QueueTooLong(queue.searched)
             sameCall != null -> return DelayQuoting.AlreadyQueued(sameCall.entry.transfer.hash)
         }
-        val alreadyQueued = waiting.filter { it.queued.asset.sameAsset(transfer.asset) }
-            .map { it.queued.amount }
-            .sumOrNull() ?: return DelayQuoting.SafeInsufficient()
-        return quoter.quote(sender, transfer, DelayStep.QUEUE, level, alreadyQueued, via)
+        when (call) {
+            is DelayTransfer -> {
+                val alreadyQueued = waiting.mapNotNull { it.queued as? DelayTransfer }
+                    .filter { it.asset.sameAsset(call.asset) }
+                    .map { it.amount }
+                    .sumOrNull() ?: return DelayQuoting.SafeInsufficient()
+                return quoter.quote(sender, call, DelayStep.QUEUE, level, alreadyQueued, via)
+            }
+            is DelayMemberChange -> {
+                // One change of the members at a time from here: each is planned against them as they are.
+                waiting.firstOrNull { it.queued is DelayMemberChange }
+                    ?.let { return DelayQuoting.MemberChangeWaiting(it.entry.transfer.hash) }
+                memberCheck(call, queue)?.let { return it }
+                return quoter.quote(sender, call, DelayStep.QUEUE, level, via = via)
+            }
+        }
+    }
+}
+
+/**
+ * Why [change] is not quoted against the members [queue] was read with (owner ruling, 2026-11-18):
+ * a refusal it now meets, or members changed so that it is another call; null when it stands as
+ * planned. A queue read without members proves nothing of them: it is a read that did not answer.
+ */
+private fun memberCheck(change: DelayMemberChange, queue: DelayQueue): DelayQuoting? {
+    val members = queue.members
+        ?: return DelayQuoting.NotQuoted(CallRefusal.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.RUN))
+    return when (val plan = change.against(members)) {
+        is DelayMemberChangePlan.Planned -> if (plan.change == change) null else DelayQuoting.MembersChanged
+        else -> DelayQuoting.MemberChangeRefused(plan)
     }
 }
 
@@ -433,18 +514,27 @@ class QuoteDelayExecution(
     private val quoter =
         DelayCallQuoter(delays, inputs, nativeBalances, tokenBalances, sentTransfers, network, clock, outbox)
 
-    suspend operator fun invoke(member: Address, transfer: DelayTransfer, level: FeeLevel): DelayQuoting {
-        val read = when (val fresh = quoter.freshQueue(transfer)) {
+    suspend operator fun invoke(member: Address, call: DelayCall, level: FeeLevel): DelayQuoting {
+        val read = when (val fresh = quoter.freshQueue(call)) {
             is DelayCallQuoter.Fresh.Read -> fresh.reading
             is DelayCallQuoter.Fresh.Refused -> return fresh.quoting
         }
         val entries = (history.observe().first() as? HistoryList.Loaded)?.entries
             ?: return DelayQuoting.HistoryUnreadable
         // Until it is mined the queue still shows the entry next: the history tells it is on its way.
-        entries.executionOnItsWay(network, transfer, clock())?.let { return DelayQuoting.ExecutionOnItsWay(it) }
+        entries.executionOnItsWay(network, call, clock())?.let { return DelayQuoting.ExecutionOnItsWay(it) }
         val state = read.queue.state(read.headTime)
         if (state !is DelayTransferState.Ready) return DelayQuoting.NotReady(state)
-        return quoter.quote(member, transfer, DelayStep.EXECUTE, level)
+        // A removal never leaves the Delay without a member, whoever removed the others meanwhile.
+        // Any other change of the members since makes the Safe's own call revert, which the run says.
+        if (call is DelayMemberChange && call.kind == DelayMemberChange.Kind.REMOVE) {
+            val members = read.queue.members
+                ?: return DelayQuoting.NotQuoted(CallRefusal.Unavailable(ReadUnavailable.UNPROVEN, QuoteFigure.RUN))
+            if (members == listOf(call.member)) {
+                return DelayQuoting.MemberChangeRefused(DelayMemberChangePlan.LastMember)
+            }
+        }
+        return quoter.quote(member, call, DelayStep.EXECUTE, level)
     }
 }
 
@@ -464,14 +554,15 @@ class SendDelayCall(
 }
 
 /**
- * A transfer this wallet queued for a Gnosis Pay account: [transfer], queued by [member] (the key
+ * A call this wallet queued for a Gnosis Pay account: [call] (a transfer, or a change of the
+ * Delay's members), queued by [member] (the key
  * that sent the queueing, a member or the owner of a member Safe) in the
  * transaction [queuedBy] at [queuedAt] (unix seconds) and how that ended ([queueOutcome]), and where
  * it stands in the Delay's queue now ([state]; null when the queue could not be read), and
  * [executing], the hash of its execution from here while that is on its way, not mined yet.
  */
 data class QueuedDelayTransfer(
-    val transfer: DelayTransfer,
+    val call: DelayCall,
     val member: Address,
     val queuedBy: String,
     val queuedAt: Long,
@@ -526,12 +617,12 @@ class ReadDelayTransfers(
             .sortedByDescending { it.entry.transfer.sentAt }
             // One row per call: the queue holds one entry of a hash, which the newest queueing of it made.
             .distinctBy { it.queued.hash }
-            .mapNotNull { (entry, transfer) ->
+            .mapNotNull { (entry, call) ->
                 val onItsWay = entry.onItsWay(now)
                 val bound = window
                 if (!onItsWay && bound != null && entry.transfer.sentAt < now - bound) return@mapNotNull null
-                val read = reads.getOrPut(transfer.hash) {
-                    delays.queue(safe.network, safe.address, delay, transfer.hash)
+                val read = reads.getOrPut(call.hash) {
+                    delays.queue(safe.network, safe.address, delay, call.hash)
                 }
                 val state = when (read) {
                     is DelayQueueReading.Read -> {
@@ -546,13 +637,13 @@ class ReadDelayTransfers(
                 val holds = state != null && state != DelayTransferState.NotInQueue
                 if (!onItsWay && state != null && !holds) return@mapNotNull null
                 QueuedDelayTransfer(
-                    transfer,
+                    call,
                     entry.transfer.account,
                     entry.transfer.hash,
                     entry.transfer.sentAt,
                     entry.outcome,
                     state,
-                    entries.executionOnItsWay(safe.network, transfer, now),
+                    entries.executionOnItsWay(safe.network, call, now),
                 )
             }
             .reversed()
@@ -572,8 +663,8 @@ private fun DelayQueue.shownFor(): Long? =
 /** How long an expired transfer stays listed, saying it expired: a day. */
 private const val EXPIRED_SHOWN_SECONDS = 86_400L
 
-/** A queueing in the history: its [entry], and the transfer it [queued]. */
-private data class Queueing(val entry: HistoryEntry, val queued: DelayTransfer)
+/** A queueing in the history: its [entry], and the call it [queued]. */
+private data class Queueing(val entry: HistoryEntry, val queued: DelayCall)
 
 /**
  * The queueings on [network] in this history for the Safe [safe] through [delay] that may still
@@ -582,11 +673,11 @@ private data class Queueing(val entry: HistoryEntry, val queued: DelayTransfer)
  */
 private fun List<HistoryEntry>.candidateQueueings(network: Network, safe: Address, delay: Address): List<Queueing> =
     mapNotNull { entry ->
-        val queued = (entry.transfer.action as? SentAction.DelayQueue)?.transfer ?: return@mapNotNull null
+        val queued = (entry.transfer.action as? SentAction.DelayQueue)?.call ?: return@mapNotNull null
         if (entry.transfer.network != network || queued.safe != safe || queued.delay != delay) return@mapNotNull null
         if (entry.outcome.failed()) return@mapNotNull null
         val executed = any {
-            val execution = (it.transfer.action as? SentAction.DelayExecution)?.transfer ?: return@any false
+            val execution = (it.transfer.action as? SentAction.DelayExecution)?.call ?: return@any false
             execution.sameCall(queued) && it.transfer.network == network &&
                 it.transfer.sentAt >= entry.transfer.sentAt && it.outcome.succeeded()
         }
@@ -615,13 +706,13 @@ private fun List<HistoryEntry>.waitingQueueings(
 }
 
 /**
- * The hash of an execution of [transfer]'s call from here on [network] that is on its way, not
+ * The hash of an execution of [call] from here on [network] that is on its way, not
  * mined yet and taken within [FOLLOW_SECONDS]; null when there is none.
  */
-private fun List<HistoryEntry>.executionOnItsWay(network: Network, transfer: DelayTransfer, now: Long): String? =
+private fun List<HistoryEntry>.executionOnItsWay(network: Network, call: DelayCall, now: Long): String? =
     firstOrNull {
-        val execution = (it.transfer.action as? SentAction.DelayExecution)?.transfer ?: return@firstOrNull false
-        it.transfer.network == network && execution.sameCall(transfer) && it.onItsWay(now)
+        val execution = (it.transfer.action as? SentAction.DelayExecution)?.call ?: return@firstOrNull false
+        it.transfer.network == network && execution.sameCall(call) && it.onItsWay(now)
     }?.transfer?.hash
 
 /** Whether this queueing is not mined yet, and was taken recently enough to still be. */
@@ -638,3 +729,32 @@ private fun SentOutcome.succeeded(): Boolean =
 
 private fun SentOutcome.failed(): Boolean =
     (this as? SentOutcome.Included)?.succeeded == false || (this as? SentOutcome.Finalized)?.succeeded == false
+
+/**
+ * What removing [member] from the Delay does to this device's control of the account (owner
+ * ruling, 2026-11-18: warned, not refused, when it is the way this device controls it).
+ */
+enum class MemberRemovalEffect {
+    /** No key held here reaches the Delay through [member]: this device's control stays as it is. */
+    NOT_A_WAY_HERE,
+
+    /** A key held here reaches the Delay through [member], and another way held here remains. */
+    ANOTHER_WAY_REMAINS,
+
+    /** Every way this device controls the account goes through [member]: once executed, it sends no more. */
+    LAST_WAY_HERE,
+}
+
+/**
+ * What removing [member] does to the ways this device controls the account
+ * ([GnosisPayReading.Found.controllersHeld]): a way goes through [member] when [member] is the held
+ * key itself, a member, or the member Safe the key reaches the Delay through.
+ */
+fun GnosisPayReading.Found.removalOf(member: Address): MemberRemovalEffect {
+    val through = { held: HeldController -> (held.via.firstOrNull() ?: held.account.address) == member }
+    return when {
+        controllersHeld.none(through) -> MemberRemovalEffect.NOT_A_WAY_HERE
+        controllersHeld.all(through) -> MemberRemovalEffect.LAST_WAY_HERE
+        else -> MemberRemovalEffect.ANOTHER_WAY_REMAINS
+    }
+}

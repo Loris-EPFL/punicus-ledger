@@ -6,7 +6,8 @@ owners: it is a member of a Zodiac Delay modifier enabled on the Safe, or a
 key that owns such a member when the member is a Safe. This
 page is the contract for recognising such an account and for sending from it
 through that module. It records the owner's decisions of 2026-11-15 and the
-owner's request of 2026-11-17 (*Control through a member Safe*), which
+owner's request of 2026-11-17 (*Control through a member Safe*) and the
+owner's ruling of 2026-11-18 (*Adding and removing a member*), which
 `.claude/rules/trust.md` (*A Gnosis Pay account sends through its Delay
 module*) carries as rules.
 
@@ -249,9 +250,11 @@ log holds its fields (open, the owner's to decide).
 
 **Only plain transfers** are queued: the Safe's xDAI as the value with no
 data, or an ERC-20 `transfer(to, amount)` with no value; operation CALL;
-never to the Safe itself, to one of its modules or to the Delay. Nothing else
-reaches the queue, so no Safe setting can change through it, and the Safe
-refusals of `.claude/rules/trust.md` cannot be bypassed.
+never to the Safe itself, to one of its modules or to the Delay. The one
+exception is a member of the Delay added or removed (*Adding and removing a
+member*, below). Nothing else reaches the queue, so no Safe setting can
+change through it, and the Safe refusals of `.claude/rules/trust.md` cannot
+be bypassed.
 
 **The relayed path is not used.** The Delay's `moduleOnly` also accepts a
 member's EIP-712 signature appended to the calldata, which Gnosis Pay's
@@ -264,6 +267,83 @@ asked for. It waits until where today's accounts keep it is known: on the
 accounts read on 2026-11-15, the Roles allowance under account-kit's
 `SPENDING_ALLOWANCE` key reads zero.
 
+## Adding and removing a member
+
+(Owner ruling, 2026-11-18. It amends *Only plain transfers* above, and "It
+enables none" of `.claude/rules/trust.md`, for this one case. The owner's
+request of the same day puts the actions in the Safe's settings.)
+
+A member of the Delay is a module enabled on it. Adding or removing one is
+the Safe's own call of its Delay, which only the Delay's owner, the Safe, may
+make. So it goes through the Delay like a transfer: the queued entry is
+`{to: the Delay, value 0, data, CALL}`, where `data` is
+
+- `enableModule(member)` (`0x610b5925`) to add one, or
+- `disableModule(previous, member)` (`0xe009cfde`) to remove one, `previous`
+  the member before it in the Delay's linked list, the sentinel `0x…01` for
+  the first. It is taken from the members as read verified, in the Delay's
+  own order (`getModulesPaginated(0x…01, …)`).
+
+The rules:
+
+1. **Only on the account's own Delay of the current mastercopy**, by a key
+   that controls it here (the same rule as Send: held here on Gnosis Chain
+   and acting alone, as a member or through member Safes of threshold 1),
+   queued, then executed after the cooldown exactly like a transfer, with the
+   same queue checks before the execution (*Sending*).
+2. **Add.** A new member can move all the account's funds after the
+   cooldown, so the form and the review say so in plain words. Refused: the
+   zero address and every address `0x…01` to `0x…ff` (the sentinel and the
+   placeholder owner among them), the Safe itself, the Delay, any of the
+   Safe's enabled modules, and an existing member.
+3. **Remove.** Refused for the last member: the Safe's one owner is the
+   placeholder, so with no member the funds are locked for good. Warned, not
+   refused, when the member removed is the way this device controls the
+   account (the held key itself, or the member Safe it reaches the Delay
+   through): the review says that once it is executed this device can no
+   longer send from the account, or that it then controls it only through the
+   others, when another way remains.
+4. **Nothing else** beyond plain transfers and these two calls is ever
+   queued. *Enabling a Safe module is refused* (a module on the Safe itself)
+   stands unchanged.
+
+How it is checked:
+
+- **The quote of the queueing** reads the queue fresh, as for a transfer,
+  with the Delay's members at the same block: AlreadyQueued, HeadExpired,
+  QueueTooLong and WindowTooShort apply as they do to a transfer. The change
+  is planned again against those members; a refusal it now meets is said, and
+  a removal whose `previous` is another now is said to need planning again.
+  The Safe's own call of its Delay is run as a verified call from the Safe,
+  and must not revert. No balance of the Safe's is checked: it moves nothing.
+  The key's own transaction is quoted as for a transfer.
+- **One change of the members at a time from here.** While another one
+  queued from this device still waits, a new one is refused: each is planned
+  against the members as they are. One queued elsewhere is not seen (the
+  queue holds hashes only), and the checks at its execution stand for it.
+- **The execution** reads the queue again with the members. A removal that
+  would leave the Delay with no member, whoever removed the others
+  meanwhile, is refused. The Safe's own call is run again: a removal whose
+  `previous` went stale (a member added since goes first in the list), or a
+  member added or removed already, reverts, and the screen says so. Such an
+  entry is not executed; it expires.
+- **The record** keeps the change as it was queued: the Safe, the Delay,
+  added or removed, the member and `previous` (`FileSentTransfers` format 12;
+  a record of an earlier build reads as before). Queued from this device, it
+  is listed with the transfers ("Add member 0x…", "Remove member 0x…") and
+  executed from there.
+
+**Where it is offered.** The Safe's settings (its Owners tab's *Safe
+settings*) list the Delay's members for a Gnosis Pay account: each member's
+address, its name in the wallet, what it is, and whether a key on this
+device controls the account through it; then **Add a member**, and
+**Remove** per member. Both are greyed out with the reason where they cannot
+be done here: Send's reasons, and the last member for Remove (owner ruling,
+2026-10-18, #55). A tap opens the Gnosis Pay screen at the add form or at the
+removal's review, where it is signed with the same unlock as Send, and Back
+returns to the settings. The Gnosis Pay screen's own list of members stays as
+it is.
+
 ## Delivery
 
 On `feature/gnosis-pay`, in parts:
@@ -274,3 +354,9 @@ On `feature/gnosis-pay`, in parts:
    send, the record of a queued transfer, and the check of the queue.
 3. The screens and the wiring: the account's Gnosis Pay card, Send through
    the Delay with its wait, previews, and the hosts' composition roots.
+
+Then, on its own branch: a member of the Delay added or removed (*Adding and
+removing a member*): the calls and their refusals (`DelayMemberChange`), the
+queue read with the members at its block, the quotes and the record of a
+change, the Safe settings' list of members, and the add form and the reviews
+on the Gnosis Pay screen.

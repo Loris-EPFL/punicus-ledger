@@ -200,9 +200,14 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
             of(network)?.delayModules?.observeDelay(network, safe, module)
                 ?: flowOf(DelayReading.Unavailable(ReadUnavailable.NO_ENGINE))
 
-        override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading =
-            of(network)?.delayModules?.queue(network, safe, delay, hash)
-                ?: DelayQueueReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        override suspend fun queue(
+            network: Network,
+            safe: Address,
+            delay: Address,
+            hash: Digest,
+            withMembers: Boolean,
+        ): DelayQueueReading = of(network)?.delayModules?.queue(network, safe, delay, hash, withMembers)
+            ?: DelayQueueReading.Unavailable(ReadUnavailable.NO_ENGINE)
     }
 
     val uniswap: UniswapV3Chain = object : UniswapV3Chain {

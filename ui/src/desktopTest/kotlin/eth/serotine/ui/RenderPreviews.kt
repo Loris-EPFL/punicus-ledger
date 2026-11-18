@@ -21,7 +21,8 @@ internal val screenshotDir: File? = System.getProperty("serotine.screenshots")?.
 internal fun screenshotPath(screen: Screen, preview: ScreenPreview): String = "${screen.slug}/${preview.name}.png"
 
 /**
- * Composes and draws each preview of [screen] headless, at a phone's size: a preview that throws
+ * Composes and draws each preview of [screen] headless, in its device's window (a phone's, unless
+ * the preview names another, [PreviewDevice]): a preview that throws
  * fails the test, so a broken one shows up in the build rather than in Android Studio. With a
  * [screenshotDir], each is also saved as `<slug>/<name>.png` there, leaving the folder untouched
  * where nothing changed: a file that draws the same pixels as the fresh render is kept as it is
@@ -42,7 +43,9 @@ internal fun renderEach(screen: Screen) {
             ?.forEach { it.delete() }
     }
     screen.previews.forEach { preview ->
-        val scene = ImageComposeScene(width = 412, height = 892) { preview.content() }
+        val scene = ImageComposeScene(width = preview.device.widthDp, height = preview.device.heightDp) {
+            preview.content()
+        }
         try {
             // Closed here, not left to the cleaner: native memory stays bounded across every preview.
             scene.render().use { image ->

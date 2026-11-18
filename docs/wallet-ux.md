@@ -243,6 +243,9 @@ replaces the bar (Material's expanded window size class):
 - The back stack is the same at every width, so a window that crosses
   840 dp keeps the screen it shows: narrowed, the account alone, back from it
   to the list; widened, the list joins it.
+- Its screenshots are drawn on a tablet held sideways, 1280 × 800 dp
+  (owner's request, 2026-11-18): `docs/screenshots/accounts-tablet/` and
+  `simple-accounts-tablet/`.
 
 ## Screens
 

@@ -4,6 +4,7 @@ Run before the script in the workflow: `python3 -m unittest discover -s scripts 
 """
 
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -53,6 +54,18 @@ class TableTest(unittest.TestCase):
         self.assertIn(f"{HEAD}/docs/screenshots/send/compose-full.png", added)
         removed = next(r for r in rows if "old-state" in r)
         self.assertTrue(removed.split("|")[3].strip() == "—", "a removed state has no after image")
+
+    def test_each_image_is_as_wide_as_its_commit_and_path_ask(self):
+        # compose-empty became a tablet's screenshot: the before image a phone's, the after a tablet's.
+        shot = "docs/screenshots/send/compose-empty.png"
+        widths = {(BASE, shot): 206, (HEAD, shot): 640}
+        block = screenshots.table(
+            screenshots.parse_changes(DIFF), REPO, BASE, HEAD, width_of=lambda sha, path: widths.get((sha, path), 206)
+        )
+        changed = next(line for line in block.splitlines() if "compose-empty" in line and line.startswith("| `"))
+        before, after = changed.split("|")[2], changed.split("|")[3]
+        self.assertIn('width="206"', before)
+        self.assertIn('width="640"', after)
 
     def test_no_change_says_so(self):
         block = screenshots.table([], REPO, BASE, HEAD)
@@ -158,6 +171,42 @@ class BudgetTest(unittest.TestCase):
             self.assertIn("over its", problems[0])
             self.assertIn("big.png", problems[1])
 
+
+def png(width: int, height: int) -> bytes:
+    """A PNG's signature and header chunk, all `png_width` reads."""
+    ihdr = width.to_bytes(4, "big") + height.to_bytes(4, "big") + bytes([8, 6, 0, 0, 0])
+    return screenshots.PNG_SIGNATURE + len(ihdr).to_bytes(4, "big") + b"IHDR" + ihdr + b"\0\0\0\0"
+
+
+class ThumbWidthTest(unittest.TestCase):
+    def test_half_the_screenshots_width_so_a_phone_and_a_tablet_share_a_scale(self):
+        files = {("a", "phone.png"): png(412, 892), ("a", "tablet.png"): png(1280, 800)}
+        read = lambda sha, path: files.get((sha, path), b"")  # noqa: E731
+        self.assertEqual(screenshots.png_width(png(1280, 800)), 1280)
+        self.assertEqual(screenshots.thumb_width("a", "phone.png", read), 206)
+        self.assertEqual(screenshots.thumb_width("a", "tablet.png", read), 640)
+
+    def test_a_file_that_is_missing_or_no_png_gets_a_phones_thumbnail(self):
+        read = lambda sha, path: b"not a png at all, but long enough" if path == "text.png" else b""  # noqa: E731
+        self.assertIsNone(screenshots.png_width(b"not a png at all, but long enough"))
+        self.assertEqual(screenshots.thumb_width("a", "text.png", read), screenshots.THUMB_WIDTH)
+        self.assertEqual(screenshots.thumb_width("a", "removed.png", read), screenshots.THUMB_WIDTH)
+
+    def test_reads_the_file_at_its_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run = lambda *args: subprocess.run(["git", "-C", tmp, *args], check=True, capture_output=True)  # noqa: E731
+            run("init", "-q")
+            Path(tmp, "shot.png").write_bytes(png(1280, 800))
+            run("add", "shot.png")
+            run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "shot")
+            sha = run("rev-parse", "HEAD").stdout.decode().strip()
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                self.assertEqual(screenshots.thumb_width(sha, "shot.png"), 640)
+                self.assertEqual(screenshots.thumb_width(sha, "gone.png"), screenshots.THUMB_WIDTH)
+            finally:
+                os.chdir(cwd)
 
 if __name__ == "__main__":
     unittest.main()

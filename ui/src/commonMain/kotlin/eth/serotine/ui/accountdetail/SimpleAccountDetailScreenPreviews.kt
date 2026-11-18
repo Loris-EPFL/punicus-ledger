@@ -64,26 +64,36 @@ private val main = AccountDetailUiState.Ready(
 
 @Composable
 private fun SimpleAccountDetailPreview(state: AccountDetailUiState, darkTheme: Boolean = false) {
-    SerotineTheme(darkTheme = darkTheme) {
-        SimpleAccountDetailScreen(
-            state = state,
-            onBack = {},
-            onSend = {},
-            onSwap = {},
-            onReceive = {},
-            onCopy = {},
-            onRename = {},
-            onRemove = {},
-            onHideToken = { _, _ -> },
-            onMessageShown = {},
-            onSort = {},
-            onSegment = {},
-            onOpenSafeTx = {},
-            onImportRequest = {},
-            onOpenActivity = {},
-            onRefresh = {},
-        )
-    }
+    SerotineTheme(darkTheme = darkTheme) { SimpleAccountDetailSample(state) }
+}
+
+/**
+ * Main's assets on Ethereum: the detail of the tablet's layout
+ * (eth.serotine.ui.accounts.SimpleAccountsTabletScreenPreviews.kt), in the theme it is drawn in.
+ */
+@Composable
+internal fun SimpleAccountDetailMainSample() = SimpleAccountDetailSample(main)
+
+@Composable
+private fun SimpleAccountDetailSample(state: AccountDetailUiState) {
+    SimpleAccountDetailScreen(
+        state = state,
+        onBack = {},
+        onSend = {},
+        onSwap = {},
+        onReceive = {},
+        onCopy = {},
+        onRename = {},
+        onRemove = {},
+        onHideToken = { _, _ -> },
+        onMessageShown = {},
+        onSort = {},
+        onSegment = {},
+        onOpenSafeTx = {},
+        onImportRequest = {},
+        onOpenActivity = {},
+        onRefresh = {},
+    )
 }
 
 /** H4: the account's assets, how fresh they are, the network on its blockie. */

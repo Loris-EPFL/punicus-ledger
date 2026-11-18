@@ -1,11 +1,6 @@
 package eth.serotine.ui.accounts
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.LightClientStatus
@@ -100,24 +95,39 @@ private val everyday = AccountsUiState.Ready(
 )
 
 @Composable
-private fun SimpleAccountsPreview(
-    state: AccountsUiState,
-    darkTheme: Boolean = false,
-    selected: SelectedAccount? = null,
-) {
-    SerotineTheme(darkTheme = darkTheme) {
-        SimpleAccountsScreen(
-            state = state,
-            onWatchAddress = {},
-            onImportPhrase = {},
-            onCreateAccount = {},
-            onCreateSafe = {},
-            onAccountAction = {},
-            onRefresh = {},
-            selected = selected,
-        )
-    }
+private fun SimpleAccountsPreview(state: AccountsUiState, darkTheme: Boolean = false) {
+    SerotineTheme(darkTheme = darkTheme) { SimpleAccountsSample(state) }
 }
+
+@Composable
+private fun SimpleAccountsSample(state: AccountsUiState, selected: SelectedAccount? = null) {
+    SimpleAccountsScreen(
+        state = state,
+        onWatchAddress = {},
+        onImportPhrase = {},
+        onCreateAccount = {},
+        onCreateSafe = {},
+        onAccountAction = {},
+        onRefresh = {},
+        selected = selected,
+    )
+}
+
+/**
+ * The home of three networks (H1), [selected] beside it: the list of the tablet's layout
+ * (SimpleAccountsTabletScreenPreviews.kt), in the theme it is drawn in. Main's detail is the one
+ * [eth.serotine.ui.accountdetail.SimpleAccountDetailMainSample] draws, and its row says the same total.
+ */
+@Composable
+internal fun SimpleAccountsListSample(selected: SelectedAccount?) = SimpleAccountsSample(besideMain, selected)
+
+/** [everyday] with Main valued as its detail values it: ETH, USDC and LINK, €11,275.55 together. */
+private val besideMain = everyday.copy(
+    sections = everyday.sections.map { section ->
+        section.copy(accounts = section.accounts.map { if (it == main) it.copy(accountTotal = "€11,275.55") else it })
+    },
+    total = "€18,625.85",
+)
 
 /** H1: the accounts of three networks, the total with how fresh it is. */
 @Preview
@@ -127,25 +137,6 @@ private fun SimpleAccountsEverydayPreview() = SimpleAccountsPreview(everyday)
 @Preview
 @Composable
 private fun SimpleAccountsEverydayDarkPreview() = SimpleAccountsPreview(everyday, darkTheme = true)
-
-/** Family Safe, shown beside the list on a wide window. */
-private val familySafeShown = SelectedAccount(gnosis.chainId, "0xdbf03b407c01e7cd3cbea99509d93f8dddc8c6fb")
-
-/**
- * The list as the pane beside an account's detail on a wide window (docs/wallet-ux.md, *Navigation*):
- * at the pane's width, the row of the account shown beside it selected.
- */
-@Preview
-@Composable
-private fun SimpleAccountsBesideDetailPreview() = Box(Modifier.width(360.dp).fillMaxHeight()) {
-    SimpleAccountsPreview(everyday, selected = familySafeShown)
-}
-
-@Preview
-@Composable
-private fun SimpleAccountsBesideDetailDarkPreview() = Box(Modifier.width(360.dp).fillMaxHeight()) {
-    SimpleAccountsPreview(everyday, darkTheme = true, selected = familySafeShown)
-}
 
 /** H2: pulled down, the networks without block access lists being checked again. */
 @Preview
@@ -357,8 +348,6 @@ private fun SimpleAccountsLostQueuedPreview() = SimpleAccountsPreview(
 internal val simpleAccountsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("everyday") { SimpleAccountsEverydayPreview() },
     ScreenPreview("everyday-dark") { SimpleAccountsEverydayDarkPreview() },
-    ScreenPreview("beside-detail") { SimpleAccountsBesideDetailPreview() },
-    ScreenPreview("beside-detail-dark") { SimpleAccountsBesideDetailDarkPreview() },
     ScreenPreview("refreshing") { SimpleAccountsRefreshingPreview() },
     ScreenPreview("syncing") { SimpleAccountsSyncingPreview() },
     ScreenPreview("unreachable") { SimpleAccountsUnreachablePreview() },

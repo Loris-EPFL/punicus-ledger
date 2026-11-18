@@ -352,26 +352,36 @@ private fun AccountDetailPreview(
     darkTheme: Boolean = false,
     lightClient: LightClientItem = verifiedStripSample,
 ) {
-    SerotineTheme(darkTheme = darkTheme) {
-        AccountDetailScreen(
-            state = state,
-            chrome = AccountChrome.Strip(lightClient),
-            onBack = {},
-            onSend = {},
-            onSwap = {},
-            onReceive = {},
-            onCopy = {},
-            onRename = {},
-            onRemove = {},
-            onHideToken = { _, _ -> },
-            onMessageShown = {},
-            onSort = {},
-            onSegment = {},
-            onOpenSafeTx = {},
-            onImportRequest = {},
-            onOpenActivity = {},
-        )
-    }
+    SerotineTheme(darkTheme = darkTheme) { AccountDetailSample(state, lightClient) }
+}
+
+/**
+ * Daily's assets on Sepolia, verified: the detail of the tablet's layout
+ * (eth.serotine.ui.accounts.AccountsTabletScreenPreviews.kt), in the theme it is drawn in.
+ */
+@Composable
+internal fun AccountDetailDailySample() = AccountDetailSample(daily, verifiedStripSample)
+
+@Composable
+private fun AccountDetailSample(state: AccountDetailUiState, lightClient: LightClientItem) {
+    AccountDetailScreen(
+        state = state,
+        chrome = AccountChrome.Strip(lightClient),
+        onBack = {},
+        onSend = {},
+        onSwap = {},
+        onReceive = {},
+        onCopy = {},
+        onRename = {},
+        onRemove = {},
+        onHideToken = { _, _ -> },
+        onMessageShown = {},
+        onSort = {},
+        onSegment = {},
+        onOpenSafeTx = {},
+        onImportRequest = {},
+        onOpenActivity = {},
+    )
 }
 
 @Preview

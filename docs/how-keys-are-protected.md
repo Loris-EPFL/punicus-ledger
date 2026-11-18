@@ -14,8 +14,9 @@ and to the test that holds it.
 > **The contract is [docs/keys-and-signing.md](keys-and-signing.md).** This
 > page explains it; it does not change it. Where the two differ, the
 > contract wins and this page is fixed. The code is quoted as it stands on
-> `main` at `49161702` (2026-11-14). Comments are trimmed, and `// …` marks
-> lines left out.
+> `main` at `49161702` (2026-11-14), with the per-app addresses of #252
+> (`feature/per-app-addresses`, 2026-11-18). Comments are trimmed, and
+> `// …` marks lines left out.
 
 ## Contents
 
@@ -107,7 +108,7 @@ and the seed comes from the recovery words:
 ```mermaid
 flowchart LR
     W["Recovery words<br/>12 to 24, on paper"] -->|"BIP-39<br/>PBKDF2-HMAC-SHA512, 2048 rounds"| S["Seed<br/>64 bytes"]
-    S -->|"BIP-32 / BIP-44<br/>m/44'/60'/0'/0/i"| K["Private key<br/>32 bytes"]
+    S -->|"BIP-32 / BIP-44<br/>m/44'/60'/0'/0/i,<br/>or a per-app address's<br/>m/44'/60'/a'/b'/c'"| K["Private key<br/>32 bytes"]
     K -->|"secp256k1 public key,<br/>Keccak-256"| A["Address<br/>0x5aae…eaed"]
     K -->|"signs a 32-byte digest"| G["Signature<br/>r, s, v"]
     classDef secret fill:#fff1f0,stroke:#cf222e,color:#1f2328
@@ -125,7 +126,10 @@ created, and typed once when one is restored (section 8). It stores the
 seed rather than the key so that further accounts of the same phrase can be
 added without typing the words again (owner ruling, 2026-10-15). Each such
 account gets an envelope of its own, holding the same seed and naming its
-index on the path.
+index on the path. So does each per-app address, the address of its own a
+site a dApp connects from gets (#252): its envelope names its path
+`m/44'/60'/a'/b'/c'`, worked out from the site's name
+(docs/keys-and-signing.md, *Per-app addresses*).
 
 <details>
 <summary><b>Show the code</b>: from words to seed, key and address</summary>
@@ -310,11 +314,19 @@ values are placeholders):
 ```
 
 A further account of the same phrase also carries `"index"`, its place on
-the path; the first account's is 0 and left out. The index is not glued to
-the locks, so that envelopes made before it existed still open. It does not
-need to be: signing derives the key at that index and refuses one that does
-not give the address the file is named after, so an index edited on disk
-signs nothing.
+the path; the first account's is 0 and left out. A per-app address (an
+address of its own for each site a dApp connects from; docs/walletconnect.md,
+*Per-app addresses*) carries `"perApp"` instead: the three numbers `a`, `b`
+and `c` of its path `m/44'/60'/a'/b'/c'`. An envelope with both is damaged
+and does not open. Sealed since per-app addresses, an envelope also carries
+`"phrase"`: the address of its phrase's first account, a public value that
+tells the phrases apart without opening anything.
+
+None of these is glued to the locks, so that envelopes made before them
+still open. They do not need to be: signing derives the key at the path the
+envelope names and refuses one that does not give the address the file is
+named after, and opening refuses a seed whose first account is not the
+phrase named, so a path or a phrase edited on disk signs nothing.
 
 <details>
 <summary><b>Show the code</b>: sealing, the KEK and the AAD</summary>
@@ -347,10 +359,10 @@ fun seal(
     hardware: HardwareSecret?,
     cost: Cost,
     stretch: PasswordStretch = PasswordStretch.Sodium,
-    index: Int = 0,
+    path: AccountPath = AccountPath.Ordinary(0),
+    phrase: String? = null,
     withDek: (ByteArray) -> Unit = {},
 ): SealedSeed {
-    require(index >= 0) { "a non-hardened index" }
     val salt = EnvelopeCrypto.randomBytes(SALT_BYTES)
     val hardwareTag = hardware?.tag ?: NO_HARDWARE
     val kek = kek(password, salt, cost.opsLimit, cost.memLimitBytes, hardware, stretch)
@@ -375,7 +387,9 @@ fun seal(
             ).toHex(),
             seedNonce = seedNonce.toHex(),
             seed = EnvelopeCrypto.aesGcmSeal(dek, seedNonce, seed, seedAad(address)).toHex(),
-            index = index,
+            index = (path as? AccountPath.Ordinary)?.index ?: 0,
+            perApp = (path as? AccountPath.PerApp)?.path?.let { PerAppIndices(it.account, it.change, it.index) },
+            phraseAccount = phrase,
         )
     } finally {
         kek.fill(0)
@@ -427,7 +441,8 @@ fun canOpen(sealed: SealedSeed, hardware: HardwareSecret?, address: String? = nu
     sealed.version == VERSION &&
         sealed.hardware == (hardware?.tag ?: NO_HARDWARE) &&
         withinBounds(sealed.opsLimit, sealed.memLimitBytes) &&
-        sealed.index >= 0 &&
+        sealed.path() != null &&
+        (sealed.phraseAccount == null || Address.parse(sealed.phraseAccount)?.hex == sealed.phraseAccount) &&
         (address == null || sealed.address == address) &&
         hexOfLength(sealed.salt, SALT_BYTES) &&
         hexOfLength(sealed.dekNonce, NONCE_BYTES) &&
@@ -1165,7 +1180,7 @@ private fun signWithPassword(file: Path, account: Address, digest: Digest, passw
         passwordBytes = EnvelopeCrypto.passwordBytes(password.text)
         return when (val opened = Envelope.open(sealed, passwordBytes, hardware, stretch)) {
             Envelope.Opened.WrongPassword -> refusedOrDamaged(account, passwordBytes)
-            is Envelope.Opened.Seed -> signWith(opened.bytes, sealed.index, account, digest)
+            is Envelope.Opened.Seed -> signWith(opened.bytes, sealed, account, digest)
             else -> Signing.Unavailable
         }
     } finally {
@@ -1174,19 +1189,23 @@ private fun signWithPassword(file: Path, account: Address, digest: Digest, passw
 }
 ```
 
-The few lines where the key exists. The key must derive the address the
-envelope is filed under; libsecp256k1 signs (RFC 6979 nonce, low `s`); the
+The few lines where the key exists. The key is derived at the path the
+envelope names (its index, or a per-app address's path); it must give the
+address the envelope is filed under, and the seed's first account must be
+the phrase the envelope names, where it names one; libsecp256k1 signs (RFC 6979 nonce, low `s`); the
 recovery id is the one that recovers this key's public key; the key and the
 seed are zeroed in `finally`:
 
 ```kotlin
-private fun signWith(seed: ByteArray, index: Int, account: Address, digest: Digest): Signing {
+private fun signWith(seed: ByteArray, sealed: SealedSeed, account: Address, digest: Digest): Signing {
     var key = ByteArray(0)
     val message = digest.hex.fromHex()
     try {
-        key = Bip32.derive(seed, ethereumAccount(index))
-        // The envelope's name is the address it was sealed under; the key must be that account's.
-        if (addressOf(key) != account) {
+        val path = sealed.path() ?: return Signing.Unavailable
+        key = Bip32.derive(seed, path.bip32)
+        // The envelope's name is the address it was sealed under; the key must be that account's, and its
+        // phrase the one the envelope names.
+        if (addressOf(key) != account || phraseIfItsKey(seed, sealed, account) == null) {
             report("the envelope of ${account.hex} does not hold its key")
             return Signing.Unavailable
         }
@@ -1575,7 +1594,7 @@ return when (val unwrapped = key.unwrap(wrapped, reason)) {
     is BiometricUnwrap.Dek -> {
         val opened = Envelope.openWithDek(sealed, unwrapped.bytes, hardware, account.hex)
         if (opened is Envelope.Opened.Seed) {
-            signWith(opened.bytes, sealed.index, account, digest)
+            signWith(opened.bytes, sealed, account, digest)
         } else {
             report("the biometric wrap of ${account.hex} does not open its envelope")
             Signing.Unavailable
@@ -2178,6 +2197,7 @@ fixed, and its acceptance test now runs.
 | A crashed write leaves no half file, and its leftover is swept | `writeDurably`, `sweepTemporaries` | `EnvelopeKeyStoreTest.aCrashedWritesTemporaryIsSweptAway`, `aCreateOnlyWriteNeverReplacesAFile` |
 | The digest is signed as given; the signature recovers to the account | `signWith` | `EnvelopeKeyStoreTest.aStoredAccountsKeySignsTheDigestAsGivenAndNothingElse`, `everyRecoveryIdRecoversTheSigner` |
 | An envelope that does not hold its account's key signs nothing | `signWith`, `canOpen` | `EnvelopeKeyStoreTest.anEnvelopeWhoseSeedIsAnotherAccountsSignsNothing`, `anEnvelopeUnderAnotherAccountsNameIsNotTrusted`, `anIndexEditedOnDiskSignsNothing` |
+| A per-app address signs only at its path, from the phrase its envelope names | `signWith`, `phraseIfItsKey`, `canOpen` | `EnvelopeKeyStoreTest.aPerAppAddressIsSealedInAnEnvelopeOfItsOwnThatNamesItsPathAndPhraseAndSigns`, `aPerAppPathEditedOnDiskSignsNothing`, `aPhraseEditedOnDiskSignsNothingAndOneLeftOutStillSigns` |
 | A new phrase is 12 valid words, and nothing is stored | `newMnemonic`, `Bip39.wordsOf` | `EnvelopeKeyStoreTest.aNewMnemonicIsTwelveValidWordsAndStoresNothing` |
 | BIP-39 and BIP-32 match their published vectors | `Bip39`, `Bip32` | `Bip39Test.everyReferenceVectorIsValidAndStretchesToItsSeed`, `Bip32Test.everyPublishedVectorDerivesItsKeysAndChainCodes` |
 | A key pair never prints itself | `Bip32.ExtendedKey.toString` | `Bip32Test.anExtendedKeyNeverPrintsItself` |

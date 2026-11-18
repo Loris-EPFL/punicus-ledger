@@ -1,6 +1,8 @@
 package eth.serotine.data.keys
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.WalletPassword
@@ -9,6 +11,7 @@ import eth.serotine.domain.repository.KeyDerivation
 import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.PerAppDerivation
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -29,7 +32,8 @@ import kotlin.test.assertIs
  * `key()`) generates the Keystore HMAC key when it is missing, so a lost key was remade beside the
  * envelopes sealed with the old one and the loss read as "wrong password" from then on. It now asks
  * [HardwareSecret.isProvisioned] first, as describe and import do. The second test holds every other
- * path that could reach the hardware secret with its key lost to the same order.
+ * path that could reach the hardware secret with its key lost to the same order: adding an account,
+ * deriving a further one, signing with the password, and making a per-app address (#252).
  */
 class EnvelopeKeyStoreLostHardwareKeyTest {
 
@@ -114,6 +118,11 @@ class EnvelopeKeyStoreLostHardwareKeyTest {
             Signing.Unavailable,
             store.sign(hardhatAddress, digest, Unlock.WithPassword(password)),
             "signing with the password",
+        )
+        assertEquals(
+            PerAppDerivation.Unavailable,
+            store.derivePerApp(hardhatAddress, (AppHost.parse("app.uniswap.org") as AppHostResult.Host).host, password),
+            "making a per-app address",
         )
 
         assertFalse(hardware.remade, "no new key is made beside envelopes sealed with the lost one")

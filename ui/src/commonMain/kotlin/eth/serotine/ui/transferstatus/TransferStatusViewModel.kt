@@ -3,6 +3,7 @@ package eth.serotine.ui.transferstatus
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.Token
@@ -542,6 +543,7 @@ class TransferStatusViewModel(
             approval = transfer?.let(::approvalSummary),
             swap = transfer?.let { swapSummary(it, status.received) ?: wrapSummary(it) },
             cancellation = transfer?.let(::cancellationSummary),
+            delay = transfer?.let(::delaySummary),
             // A retry turned away keeps the record: what it came to stays on screen with Try again.
             notSent = if (maybeSent) {
                 retry.outcome ?: NotSentItem(maybeSentText(transfer?.let(::whatOf) ?: "transaction"), true)
@@ -678,6 +680,47 @@ class TransferStatusViewModel(
             spender = Eip55.format(approval.spender),
             from = Eip55.format(transfer.account),
         )
+    }
+
+    /** What [transfer] did through a Gnosis Pay account's Delay module, when it is a call of one. */
+    private fun delaySummary(transfer: SentTransfer): DelaySummary? {
+        val from = Eip55.format(transfer.account)
+        fun moved(delayed: DelayTransfer): String {
+            val (symbol, decimals, _) = shown(delayed.asset)
+            return "${delayed.amount.formatUnits(decimals)} $symbol"
+        }
+        fun transferLines(delayed: DelayTransfer, what: String) = listOf(
+            "Account" to Eip55.format(delayed.safe),
+            "To" to Eip55.format(delayed.recipient),
+            "Amount" to moved(delayed),
+            "Delay module" to Eip55.format(delayed.delay),
+            "What it does" to what,
+        )
+        return when (val action = transfer.action) {
+            is SentAction.DelayQueue -> DelaySummary(
+                "Queued ${moved(action.transfer)} through the Delay",
+                transferLines(
+                    action.transfer,
+                    "Queues the transfer: nothing moves yet. It can be executed once the Delay's cooldown has passed.",
+                ),
+                from,
+            )
+            is SentAction.DelayExecution -> DelaySummary(
+                "Executed ${moved(action.transfer)} through the Delay",
+                transferLines(action.transfer, "Executes the queued transfer: the account's funds move with it."),
+                from,
+            )
+            is SentAction.DelaySkip -> DelaySummary(
+                "Skipped expired entries of the Delay",
+                listOf(
+                    "Account" to Eip55.format(action.safe),
+                    "Delay module" to Eip55.format(action.delay),
+                    "What it does" to "Moves the Delay's queue past its expired entries. It moves no funds.",
+                ),
+                from,
+            )
+            else -> null
+        }
     }
 
     /** Which CoW order [transfer] invalidates, when it is that order's cancellation on chain. */

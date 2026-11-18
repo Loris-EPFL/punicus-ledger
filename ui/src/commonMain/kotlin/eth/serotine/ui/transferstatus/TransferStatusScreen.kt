@@ -256,6 +256,19 @@ private fun SwapBlock(swap: SwapSummary) {
     FromRow(swap.from, "From and paid to")
 }
 
+/** A Gnosis Pay account's call of its Delay module: what it does, line by line, and the key that sent it. */
+@Composable
+private fun DelayBlock(delay: DelaySummary) {
+    Text(delay.title, style = MaterialTheme.typography.titleMedium)
+    delay.lines.forEach { (label, value) ->
+        Column {
+            Text(label, style = MaterialTheme.typography.labelMedium)
+            SelectionContainer { Text(value, style = MaterialTheme.typography.bodySmall) }
+        }
+    }
+    FromRow(delay.from, "Signed by")
+}
+
 /** A CoW order's cancellation on chain: the order, the settlement contract and the account that sent it. */
 @Composable
 private fun CancellationBlock(cancellation: CancellationSummary) {
@@ -334,8 +347,9 @@ private fun Shown(state: TransferStatusUiState.Shown, onDone: () -> Unit, onRetr
         state.approval?.let { ApprovalBlock(it) }
         state.swap?.let { SwapBlock(it) }
         state.cancellation?.let { CancellationBlock(it) }
+        state.delay?.let { DelayBlock(it) }
         if (sent == null && safeTx == null && deployment == null && state.approval == null && state.swap == null &&
-            state.cancellation == null
+            state.cancellation == null && state.delay == null
         ) {
             Text(
                 "This device has no record of what was sent: only where the transaction stands is shown.",

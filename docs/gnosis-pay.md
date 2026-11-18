@@ -289,10 +289,9 @@ first that has not expired. Anyone may call it, and it moves nothing.
   yet is refused for as long as a sender's record holds its nonce, three
   hours. Its gas limit has room to skip every entry still waiting, since
   more may expire by the block that mines it. The call is then quoted, run
-  as a verified call, and
-  reviewed and signed like a queueing. The review says that it moves
-  nothing, and that every expired entry from the next on can never be
-  executed afterwards.
+  as a verified call, and reviewed and signed like a queueing. The review
+  says that it moves nothing, and that every expired entry from the next on
+  can never be executed afterwards.
 - It is recorded as a skip (`SentAction.DelaySkip`) and listed in the
   account's activity.
 

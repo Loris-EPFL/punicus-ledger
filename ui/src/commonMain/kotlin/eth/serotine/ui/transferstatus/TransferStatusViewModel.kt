@@ -3,6 +3,8 @@ package eth.serotine.ui.transferstatus
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.DelayMemberChange
+import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.Token
@@ -30,6 +32,7 @@ import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.SentTransferStatus
 import eth.serotine.domain.usecase.TransferSending
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.displaySymbol
@@ -542,6 +545,7 @@ class TransferStatusViewModel(
             approval = transfer?.let(::approvalSummary),
             swap = transfer?.let { swapSummary(it, status.received) ?: wrapSummary(it) },
             cancellation = transfer?.let(::cancellationSummary),
+            delay = transfer?.let(::delaySummary),
             // A retry turned away keeps the record: what it came to stays on screen with Try again.
             notSent = if (maybeSent) {
                 retry.outcome ?: NotSentItem(maybeSentText(transfer?.let(::whatOf) ?: "transaction"), true)
@@ -678,6 +682,82 @@ class TransferStatusViewModel(
             spender = Eip55.format(approval.spender),
             from = Eip55.format(transfer.account),
         )
+    }
+
+    /** What [transfer] did through a Gnosis Pay account's Delay module, when it is a call of one. */
+    private fun delaySummary(transfer: SentTransfer): DelaySummary? {
+        val from = Eip55.format(transfer.account)
+        fun moved(delayed: DelayTransfer): String {
+            val (symbol, decimals, _) = shown(delayed.asset)
+            return "${delayed.amount.formatUnits(decimals)} $symbol"
+        }
+        fun transferLines(delayed: DelayTransfer, what: String) = listOf(
+            "Account" to Eip55.format(delayed.safe),
+            "To" to Eip55.format(delayed.recipient),
+            "Amount" to moved(delayed),
+            "Delay module" to Eip55.format(delayed.delay),
+            "What it does" to what,
+        )
+        fun memberLines(change: DelayMemberChange, what: String) = listOf(
+            "Account" to Eip55.format(change.safe),
+            when (change.kind) {
+                DelayMemberChange.Kind.ADD -> "Member added"
+                DelayMemberChange.Kind.REMOVE -> "Member removed"
+            } to Eip55.format(change.member),
+            "Delay module" to Eip55.format(change.delay),
+            "What it does" to what,
+        )
+        // "add member 0x1234…abcd", "remove member 0x1234…abcd".
+        fun memberChange(change: DelayMemberChange): String = when (change.kind) {
+            DelayMemberChange.Kind.ADD -> "add member"
+            DelayMemberChange.Kind.REMOVE -> "remove member"
+        } + " " + shortAddress(Eip55.format(change.member))
+        fun memberQueued(change: DelayMemberChange): String = when (change.kind) {
+            DelayMemberChange.Kind.ADD -> "Queues the account's own call that adds this member to its Delay: nothing " +
+                "changes yet. Once executed after the cooldown, the member can move all of the account's funds."
+            DelayMemberChange.Kind.REMOVE -> "Queues the account's own call that removes this member from its Delay: " +
+                "nothing changes yet. It takes effect once executed after the cooldown."
+        }
+        fun memberExecuted(change: DelayMemberChange): String = when (change.kind) {
+            DelayMemberChange.Kind.ADD ->
+                "Executes the queued addition: the member can now queue any transaction of the account."
+            DelayMemberChange.Kind.REMOVE ->
+                "Executes the queued removal: the member can no longer queue anything for the account."
+        }
+        return when (val action = transfer.action) {
+            is SentAction.DelayQueue -> when (val call = action.call) {
+                is DelayTransfer -> DelaySummary(
+                    "Queued ${moved(call)} through the Delay",
+                    transferLines(
+                        call,
+                        "Queues the transfer: nothing moves yet. It can be executed once the Delay's cooldown has " +
+                            "passed.",
+                    ),
+                    from,
+                )
+                is DelayMemberChange ->
+                    DelaySummary("Queued: ${memberChange(call)}", memberLines(call, memberQueued(call)), from)
+            }
+            is SentAction.DelayExecution -> when (val call = action.call) {
+                is DelayTransfer -> DelaySummary(
+                    "Executed ${moved(call)} through the Delay",
+                    transferLines(call, "Executes the queued transfer: the account's funds move with it."),
+                    from,
+                )
+                is DelayMemberChange ->
+                    DelaySummary("Executed: ${memberChange(call)}", memberLines(call, memberExecuted(call)), from)
+            }
+            is SentAction.DelaySkip -> DelaySummary(
+                "Skipped expired entries of the Delay",
+                listOf(
+                    "Account" to Eip55.format(action.safe),
+                    "Delay module" to Eip55.format(action.delay),
+                    "What it does" to "Moves the Delay's queue past its expired entries. It moves no funds.",
+                ),
+                from,
+            )
+            else -> null
+        }
     }
 
     /** Which CoW order [transfer] invalidates, when it is that order's cancellation on chain. */

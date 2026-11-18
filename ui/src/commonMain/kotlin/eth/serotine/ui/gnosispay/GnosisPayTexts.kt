@@ -292,18 +292,22 @@ internal object GnosisPayTexts {
     }
 
     /**
-     * Where a queued transfer stands, in a line: [state] in its queue, [outcome] its queueing's; [now]
-     * (unix seconds) gives a cooldown within the hour as the minutes and seconds left.
+     * Where a queued transfer stands, in a line: [state] in its queue, [outcome] its queueing's; [now],
+     * the chain's time (unix seconds), gives a cooldown within the hour as the minutes and seconds left.
      */
     fun status(state: DelayTransferState?, outcome: SentOutcome, now: Long? = null): String = when {
         outcome == SentOutcome.NotSeen && state is DelayTransferState.NotInQueue -> "Queueing: waiting for a block"
         state == null -> "Where it stands cannot be verified right now"
         else -> when (state) {
             is DelayTransferState.Waiting -> {
-                // Within the hour: the minutes and seconds left, which the bar under it drains with.
-                val left = now?.let { state.readyAt - it }?.takeIf { it in 0 until 3_600 }
-                val waits = left?.let { "Executable in ${it / 60}:${(it % 60).toString().padStart(2, '0')}" }
-                    ?: "Waits until ${formatDateTime(state.readyAt)}"
+                // Within the hour, on the chain's time: the minutes and seconds left, which the bar under
+                // it drains with; past its end, until a verified head says so, that it comes shortly.
+                val left = now?.let { state.readyAt - it }
+                val waits = when {
+                    left == null || left >= 3_600 -> "Waits until ${formatDateTime(state.readyAt)}"
+                    left <= 0 -> EXECUTABLE_SHORTLY
+                    else -> "Executable in ${left / 60}:${(left % 60).toString().padStart(2, '0')}"
+                }
                 if (state.ahead > 0) "$waits, behind ${entries(state.ahead)}" else waits
             }
             is DelayTransferState.Ready ->
@@ -496,6 +500,8 @@ internal object GnosisPayTexts {
 
     const val SKIP_NEEDS_KEY = "Skipping expired entries is a transaction of an account whose key is on this " +
         "device, on Gnosis Chain, which pays its fee. Add or import one."
+
+    const val EXECUTABLE_SHORTLY = "Executable shortly: waiting for a block past its cooldown"
 
     const val SKIP_SENT = "The skip of the expired entries was sent. Once it is in a block, Review again."
 

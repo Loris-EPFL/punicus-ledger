@@ -451,9 +451,9 @@ class QuoteDelayQueue(
             queue.expirationSeconds in 1..DELAY_EXPIRY_MARGIN_SECONDS ->
                 return DelayQuoting.WindowTooShort(queue.expirationSeconds)
             queue.entry != null -> return if (queue.state(read.headTime) is DelayTransferState.Expired) {
-                // A skip removes it now only once it is the next entry and expired as the Delay counts.
-                val head = queue.entry.nonce == queue.txNonce
-                DelayQuoting.SameCallExpired(skippable = head && queue.headExpired(read.headTime))
+                // Expiry follows queueing order: once this one expired, the next entry did too, and a skip
+                // removes both. Within the margin of its end only, there is nothing to skip yet.
+                DelayQuoting.SameCallExpired(skippable = queue.headExpired(read.headTime))
             } else {
                 DelayQuoting.AlreadyQueued(sameCall?.entry?.transfer?.hash)
             }
@@ -566,7 +566,9 @@ class SendDelayCall(
  * [executing], the hash of its execution from here while that is on its way, not mined yet, and
  * [expiredHead] when it is in the queue and the Delay's next entry, this one or one ahead of it, has
  * expired as the Delay counts: nothing from there on can be executed until that one is skipped
- * ([QuoteDelaySkip]).
+ * ([QuoteDelaySkip]); and [headTime], the time (unix seconds) of the verified head [state] was
+ * judged at, null when the queue could not be read: a cooldown is counted down from it, never from
+ * the device's clock.
  */
 data class QueuedDelayTransfer(
     val call: DelayCall,
@@ -577,6 +579,7 @@ data class QueuedDelayTransfer(
     val state: DelayTransferState?,
     val executing: String? = null,
     val expiredHead: Boolean = false,
+    val headTime: Long? = null,
 )
 
 /** What [ReadDelayTransfers] gives. */
@@ -633,10 +636,12 @@ class ReadDelayTransfers(
                     delays.queue(safe.network, safe.address, delay, call.hash)
                 }
                 var blocked = false
+                var judgedAt: Long? = null
                 val state = when (read) {
                     is DelayQueueReading.Read -> {
                         // Only one found in the queue: a queueing not mined yet waits for its block first.
                         blocked = read.queue.entry != null && read.queue.headExpired(read.headTime)
+                        judgedAt = read.headTime
                         val shown = window ?: read.queue.shownFor()?.also { window = it }
                         if (!onItsWay && shown != null && entry.transfer.sentAt < now - shown) return@mapNotNull null
                         read.queue.state(read.headTime)
@@ -656,6 +661,7 @@ class ReadDelayTransfers(
                     state,
                     entries.executionOnItsWay(safe.network, call, now),
                     expiredHead = blocked,
+                    headTime = judgedAt,
                 )
             }
             .reversed()

@@ -52,7 +52,6 @@ import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.promptDeadline
-import eth.serotine.ui.components.epochSecondsNow
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
@@ -109,7 +108,6 @@ class GnosisPayViewModel(
     private val describeKeyStore: DescribeKeyStore,
     private val pollInterval: Duration = 15.seconds,
     private val timeSource: TimeSource = TimeSource.Monotonic,
-    private val clock: () -> Long = ::epochSecondsNow,
 ) : ViewModel() {
 
     /** Where the user is in a transfer, beside what the chain says. */
@@ -222,7 +220,10 @@ class GnosisPayViewModel(
                     while (true) {
                         val seen = sends.value
                         // A read that throws is no answer this time; the next poll asks again.
-                        safely { readDelayTransfers(safe, module) }?.let { emit(it) }
+                        safely { readDelayTransfers(safe, module) }?.let {
+                            readAt = timeSource.markNow()
+                            emit(it)
+                        }
                         // The next poll, or a send since this read, whichever comes first; the list
                         // stays as read meanwhile.
                         withTimeoutOrNull(pollInterval) { sends.first { it != seen } }
@@ -231,12 +232,17 @@ class GnosisPayViewModel(
             }
         }
 
+    /** When the queued transfers were last read, on [timeSource]: a cooldown counts down from that read's head. */
+    private var readAt: TimeMark = timeSource.markNow()
+
+    // Shared: the screen and the countdown read the same answers, and the queue is read once per poll.
     private val chain = combine(
         reading,
         observeNativeBalance(safe.network, safe.address),
         observeTokenHoldings(safe.network, safe.address),
         queued,
     ) { reading, native, holdings, transfers -> Chain(reading, native, holdings, transfers) }
+        .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1)
 
     private data class Chain(
         val reading: GnosisPayReading,
@@ -246,29 +252,41 @@ class GnosisPayViewModel(
     )
 
     /**
-     * The time in unix seconds, once a second while a transfer queued from here waits out its
-     * cooldown, so that its bar drains; once otherwise. When a cooldown ends, the queue is read again
-     * at once rather than at the next poll, so that Execute is offered without waiting for it.
+     * The seconds since the queued transfers were last read, once a second while one of them waits
+     * out a cooldown that ends within the hour, so that its countdown runs and its bar drains; held
+     * otherwise. A cooldown is counted on the chain's time: the head the queue was read at, plus the
+     * time since ([QueuedDelayTransfer.headTime]), never the device's clock. Once it ends, the queue
+     * is read again every few seconds for a while, until a verified head past its end says Ready.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val now = chain
+    private val sinceRead = chain
         .map { chain ->
             ((chain.transfers as? DelayTransfersReading.Read)?.transfers.orEmpty())
-                .mapNotNull { (it.state as? DelayTransferState.Waiting)?.readyAt }
+                .mapNotNull { queued ->
+                    val readyAt = (queued.state as? DelayTransferState.Waiting)?.readyAt ?: return@mapNotNull null
+                    queued.headTime?.let { readyAt - it }
+                }
                 .minOrNull()
         }
         .distinctUntilChanged()
-        .flatMapLatest { readyAt ->
-            if (readyAt == null) {
-                flowOf(clock())
+        .flatMapLatest { leftAtRead ->
+            if (leftAtRead == null) {
+                flowOf(0L)
             } else {
                 flow {
+                    // A cooldown over an hour away shows its time, not a countdown: nothing ticks until then.
+                    val quiet = leftAtRead - COUNTDOWN_SECONDS
+                    if (quiet > 0) {
+                        emit(0L)
+                        delay(quiet.seconds)
+                    }
+                    var rereads = 0
                     while (true) {
-                        val time = clock()
-                        emit(time)
-                        if (time >= readyAt) {
-                            sends.value++
-                            break
+                        val elapsed = readAt.elapsedNow().inWholeSeconds
+                        emit(elapsed)
+                        if (elapsed >= leftAtRead && rereads < REREADS_AFTER_COOLDOWN) {
+                            if (rereads % REREAD_EVERY == 0) sends.value++
+                            rereads++
                         }
                         delay(1.seconds)
                     }
@@ -280,8 +298,8 @@ class GnosisPayViewModel(
         observeAccount(safe),
         chain,
         flowState,
-        now,
-    ) { lookup, chain, step, now ->
+        sinceRead,
+    ) { lookup, chain, step, sinceRead ->
         // What the intents act on is this reading's, or nothing: never one an earlier reading left.
         latest = null
         latestHoldings = null
@@ -324,7 +342,7 @@ class GnosisPayViewModel(
             },
             controlNote = GnosisPayTexts.controlNote(found.control),
             send = ActionItem(found.sending == GnosisPaySending.AVAILABLE, GnosisPayTexts.sendReason(found.sending)),
-            queued = latestQueued.map { queuedRow(it, found, (step as? Flow.Overview)?.busy, now) },
+            queued = latestQueued.map { queuedRow(it, found, (step as? Flow.Overview)?.busy, sinceRead) },
             queuedNote = GnosisPayTexts.queuedNote(chain.transfers),
             step = stepOf(step, found, chain),
         )
@@ -334,7 +352,7 @@ class GnosisPayViewModel(
         queued: QueuedDelayTransfer,
         found: GnosisPayReading.Found,
         busy: String?,
-        now: Long,
+        sinceRead: Long,
     ): QueuedRow {
         // Anyone may execute an entry: the key that queued it, held here, needs no control now.
         val held = found.keysHere.any { it.address == queued.member }
@@ -352,11 +370,14 @@ class GnosisPayViewModel(
             else -> ActionItem(true, null)
         }.let { action ->
             // While its execution is being quoted: greyed out, saying so.
-            val checking = action.enabled && busy == queued.queuedBy
+            // Anything quoted from the overview, this Execute or a skip, holds every action back meanwhile.
+            val checking = action.enabled && busy != null
             if (checking) ActionItem(false, GnosisPayTexts.CHECKING) else action
         }
         // The Delay's next entry expired, this one or one ahead: its skip is offered here, by any key
         // held on the network. One ahead blocks this one, which says so; this one expired says that.
+        // The chain's time now, as the head the queue was read at plus the time since; null when unread.
+        val chainNow = queued.headTime?.plus(sinceRead)
         val skippable = queued.expiredHead && queued.executing == null
         val blocked = skippable && queued.state !is DelayTransferState.Expired
         val skip = when {
@@ -372,11 +393,13 @@ class GnosisPayViewModel(
             status = when {
                 queued.executing != null -> GnosisPayTexts.EXECUTING_STATUS
                 blocked -> GnosisPayTexts.BLOCKED_BY_EXPIRED
-                else -> GnosisPayTexts.status(queued.state, queued.queueOutcome, now)
+                else -> GnosisPayTexts.status(queued.state, queued.queueOutcome, chainNow)
             },
-            cooldownLeft = (queued.state as? DelayTransferState.Waiting)?.takeIf { queued.executing == null }?.let {
-                cooldownLeft(it.readyAt, found.delay.cooldownSeconds, now)
-            },
+            // Under an hour from its end, and not blocked: the bar that drains to zero.
+            cooldownLeft = (queued.state as? DelayTransferState.Waiting)
+                ?.takeIf { queued.executing == null && !blocked && chainNow != null }
+                ?.takeIf { it.readyAt - chainNow!! < COUNTDOWN_SECONDS }
+                ?.let { cooldownLeft(it.readyAt, found.delay.cooldownSeconds, chainNow!!) },
             execute = if (blocked) ActionItem(false, GnosisPayTexts.BLOCKED_BY_EXPIRED) else execute,
             skip = skip,
         )
@@ -777,6 +800,9 @@ class GnosisPayViewModel(
             // The same call quoted again: a transfer's or a member change's step, or the skip; null when it was not.
             val quoted: Reviewed?
             val why: String?
+            // Whether the form, when the requote is refused, offers the skip: an expired entry ahead, or a
+            // skip refused for anything but nothing left to skip.
+            val offersSkip: Boolean
             when (val reviewed = review.quote) {
                 is Reviewed.Call -> {
                     val quote = reviewed.quote
@@ -792,6 +818,8 @@ class GnosisPayViewModel(
                         null -> GnosisPayTexts.QUOTE_FAILED
                         else -> GnosisPayTexts.quoteRefused(quoting)
                     }
+                    offersSkip = quoting == DelayQuoting.HeadExpired ||
+                        (quoting as? DelayQuoting.SameCallExpired)?.skippable == true
                 }
                 is Reviewed.Skip -> {
                     val quote = reviewed.quote
@@ -802,6 +830,7 @@ class GnosisPayViewModel(
                         null -> GnosisPayTexts.QUOTE_FAILED
                         else -> GnosisPayTexts.skipRefused(quoting)
                     }
+                    offersSkip = quoting != DelaySkipQuoting.NothingExpired
                 }
             }
             val current = flowState.value as? Flow.Review ?: return@launch
@@ -818,8 +847,7 @@ class GnosisPayViewModel(
                 )
             }
             // A skip refused other than for nothing left to skip keeps its button on the form.
-            val nothingLeft = GnosisPayTexts.skipRefused(DelaySkipQuoting.NothingExpired)
-            val keepSkip = current.quote is Reviewed.Skip && why != nothingLeft
+            val keepSkip = offersSkip
             flowState.value = when (val form = current.form) {
                 is Flow.Compose -> form.copy(quoting = false, error = why, skip = keepSkip)
                 is Flow.AddMember -> form.copy(quoting = false, error = why, skip = keepSkip)
@@ -957,7 +985,10 @@ class GnosisPayViewModel(
 
     private fun unavailable(reason: ReadUnavailable): String = GnosisPayTexts.unavailable(reason)
 
-    /** What is left of a cooldown of [cooldown] seconds ending at [readyAt], at [now]: 1 when it began, 0 when over. */
+    /**
+     * What is left of a cooldown of [cooldown] seconds ending at [readyAt], at [now] (the chain's time):
+     * 1 when it began, 0 when over.
+     */
     private fun cooldownLeft(readyAt: Long, cooldown: Long, now: Long): Float =
         if (cooldown <= 0) 0f else ((readyAt - now).toFloat() / cooldown).coerceIn(0f, 1f)
 
@@ -966,6 +997,15 @@ class GnosisPayViewModel(
 
         /** The overview's busy marker while a removal is quoted, before the member's address. */
         const val REMOVING = "remove:"
+
+        /** How long before its end a cooldown counts down, in seconds: an hour. */
+        const val COUNTDOWN_SECONDS = 3_600L
+
+        /** How many seconds after a cooldown ends the queue is still read again, until a head says Ready. */
+        const val REREADS_AFTER_COOLDOWN = 30
+
+        /** Every how many of those seconds it is read again. */
+        const val REREAD_EVERY = 3
 
         /** The overview's busy mark while a skip of expired entries is quoted from a queued transfer's row. */
         const val SKIP_BUSY = "skip-expired"

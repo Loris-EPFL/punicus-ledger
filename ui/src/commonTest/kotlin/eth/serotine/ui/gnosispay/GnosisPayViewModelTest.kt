@@ -113,7 +113,13 @@ class GnosisPayViewModelTest {
 
     private var queueAnswer: DelayQueueReading =
         DelayQueueReading.Read(DelayQueue(0, 0, 180, 1_800, null, 0), 41, 0)
+    /** The queue's answer as the chain moves on, where a test makes it so; [queueAnswer] otherwise. */
+    private var queueAnswerNow: (() -> DelayQueueReading)? = null
+
     private val delays = object : DelayModules {
+        /** How many times the queue was read. */
+        var queueReads = 0
+
         override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> = flowOf(
             DelayReading.Verified(
                 DelayFinding.Wired(DelayModule(delay, DelayGeneration.CURRENT, 180, 1_800, 0, 0, listOf(member))),
@@ -121,8 +127,10 @@ class GnosisPayViewModelTest {
             ),
         )
 
-        override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading =
-            queueAnswer
+        override suspend fun queue(network: Network, safe: Address, delay: Address, hash: Digest): DelayQueueReading {
+            queueReads++
+            return queueAnswerNow?.invoke() ?: queueAnswer
+        }
     }
 
     private val balances = FakeBalances()
@@ -134,8 +142,6 @@ class GnosisPayViewModelTest {
     private val signer = FakeSigner()
     private val time = TestTimeSource()
 
-    /** The wall clock the ViewModel counts a cooldown down by, in unix seconds. */
-    private var clockNow = 1_200L
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -158,7 +164,6 @@ class GnosisPayViewModelTest {
             SendDelaySkip(signer, FakeBroadcaster(), sent),
             DescribeKeyStore(FakeKeys()),
             timeSource = time,
-            clock = { clockNow },
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
         return viewModel
@@ -414,13 +419,18 @@ class GnosisPayViewModelTest {
             100,
         )
         history.entries.value = listOf(HistoryEntry(queueing, SentOutcome.NonceUsed))
-        // Queued at 1000 with a cooldown of 180 s: ready at 1180. A minute in, a third of it is gone.
-        queueAnswer = DelayQueueReading.Read(
-            DelayQueue(0, 1, 180, 1_800, DelayEntry(0, transfer.hash, 1_000), 1),
-            41,
-            1_060,
-        )
-        clockNow = 1_060
+        // Queued at 1000 with a cooldown of 180 s: ready at 1180. Read at a head of 1060: a third is gone.
+        // The device's clock plays no part: the countdown runs on the head's time plus the time since.
+        // The chain's head moves on with the test's time; its block past the cooldown is slow to come
+        // (held at 1179 here), as on a light client a few seconds behind.
+        val start = time.markNow()
+        queueAnswerNow = {
+            DelayQueueReading.Read(
+                DelayQueue(0, 1, 180, 1_800, DelayEntry(0, transfer.hash, 1_000), 1),
+                41,
+                minOf(1_060 + start.elapsedNow().inWholeSeconds, 1_179),
+            )
+        }
         val viewModel = viewModel()
         val row = viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.queued?.isNotEmpty() == true }
             .let { (it as GnosisPayUiState.Ready).queued.single() }
@@ -429,11 +439,25 @@ class GnosisPayViewModelTest {
         assertEquals(120f / 180f, row.cooldownLeft)
 
         // A second later the bar has drained a little more.
-        clockNow = 1_061
+        time += 1.seconds
         testScheduler.advanceTimeBy(1_001)
         val later = (viewModel.uiState.value as GnosisPayUiState.Ready).queued.single()
         assertEquals("Executable in 1:59", later.status)
         assertEquals(119f / 180f, later.cooldownLeft)
+
+        // Past its end, while the head read still says Waiting: never 0:00 for good, and the queue is
+        // read again every few seconds, a bounded number of times, until a head past its end answers.
+        val readsBefore = delays.queueReads
+        time += 120.seconds
+        testScheduler.advanceTimeBy(120_000)
+        val due = (viewModel.uiState.value as GnosisPayUiState.Ready).queued.single()
+        // The last head read is a second short of the end: at most that second, then "shortly".
+        assertTrue(due.status in setOf(GnosisPayTexts.EXECUTABLE_SHORTLY, "Executable in 0:01"), due.status)
+        assertTrue((due.cooldownLeft ?: 1f) <= 1f / 180f, due.cooldownLeft.toString())
+        time += 60.seconds
+        testScheduler.advanceTimeBy(60_000)
+        val reads = delays.queueReads - readsBefore
+        assertTrue(reads in 10..20, "$reads reads again")
     }
 
     private suspend fun GnosisPayViewModel.reviewTransfer(to: String = recipient.hex): GnosisPayStep.Review {

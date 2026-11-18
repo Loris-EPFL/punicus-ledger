@@ -95,6 +95,30 @@ private fun GnosisPayQueuedPreview() = GnosisPayPreview(overview.copy(queued = l
 
 @Preview
 @Composable
+private fun GnosisPayWaitingLongPreview() = GnosisPayPreview(
+    overview.copy(queued = listOf(waiting.copy(status = "Waits until Nov 19, 2026, 3:00 PM", cooldownLeft = null))),
+)
+
+@Preview
+@Composable
+private fun GnosisPayExpiredSkipPreview() = GnosisPayPreview(
+    overview.copy(
+        queued = listOf(
+            ready.copy(
+                status = "Expired, or about to, at Nov 17, 2026, 10:00 PM: nothing moved",
+                execute = ActionItem(
+                    enabled = false,
+                    reason = "Its window to execute closes at Nov 17, 2026, 10:00 PM, too soon for a transaction " +
+                        "sent now to be mined in time.",
+                ),
+                skip = ActionItem(enabled = true, reason = null),
+            ),
+        ),
+    ),
+)
+
+@Preview
+@Composable
 private fun GnosisPayBlockedByExpiredPreview() = GnosisPayPreview(
     overview.copy(
         queued = listOf(
@@ -435,6 +459,8 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("compose-error") { GnosisPayComposeErrorPreview() },
     ScreenPreview("compose-skip") { GnosisPayComposeSkipPreview() },
     ScreenPreview("blocked-by-expired") { GnosisPayBlockedByExpiredPreview() },
+    ScreenPreview("waiting-long") { GnosisPayWaitingLongPreview() },
+    ScreenPreview("expired-skip") { GnosisPayExpiredSkipPreview() },
     ScreenPreview("skip-review") { GnosisPaySkipReviewPreview() },
     ScreenPreview("review") { GnosisPayReviewPreview() },
     ScreenPreview("review-requoted") { GnosisPayReviewRequotedPreview() },

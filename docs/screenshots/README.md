@@ -28,7 +28,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 23 |
 | [Send from another wallet](#handoff) | `handoff/` | 18 |
 | [Import recovery phrase](#mnemonic-import) | `mnemonic-import/` | 12 |
-| [No account open (wide window)](#no-account-open) | `no-account-open/` | 3 |
+| [No account open (wide window)](#no-account-open) | `no-account-open/` | 4 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
 | [Receive](#receive) | `receive/` | 7 |
 | [Remove account (dialog)](#remove-account-dialog) | `remove-account-dialog/` | 7 |
@@ -478,11 +478,12 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="no-account-open"></a>
 ## No account open (wide window)
 
-`no-account-open/`, 3 states: `choose`, `choose-dark`, `empty`
+`no-account-open/`, 4 states: `choose`, `choose-dark`, `empty`, `no-list`
 
 <a href="no-account-open/choose.png"><img src="no-account-open/choose.png" width="206" alt="choose"></a>
 <a href="no-account-open/choose-dark.png"><img src="no-account-open/choose-dark.png" width="206" alt="choose-dark"></a>
 <a href="no-account-open/empty.png"><img src="no-account-open/empty.png" width="206" alt="empty"></a>
+<a href="no-account-open/no-list.png"><img src="no-account-open/no-list.png" width="206" alt="no-list"></a>
 
 <a name="pair-dapp"></a>
 ## Connect a dApp

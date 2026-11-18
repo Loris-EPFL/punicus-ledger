@@ -10,7 +10,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 
 | Screen | Folder | States |
 |---|---|---|
-| [Account detail](#account-detail) | `account-detail/` | 50 |
+| [Account detail](#account-detail) | `account-detail/` | 51 |
 | [Accounts](#accounts) | `accounts/` | 41 |
 | [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 3 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 11 |
@@ -31,7 +31,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Import recovery phrase](#mnemonic-import) | `mnemonic-import/` | 12 |
 | [No account open (wide window)](#no-account-open) | `no-account-open/` | 4 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
-| [Per-app addresses](#per-app) | `per-app/` | 9 |
+| [Per-app addresses](#per-app) | `per-app/` | 12 |
 | [Receive](#receive) | `receive/` | 7 |
 | [Remove account (dialog)](#remove-account-dialog) | `remove-account-dialog/` | 7 |
 | [Rename account (dialog)](#rename-account-dialog) | `rename-account-dialog/` | 6 |
@@ -72,7 +72,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="account-detail"></a>
 ## Account detail
 
-`account-detail/`, 50 states: `assets`, `assets-dark`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`
+`account-detail/`, 51 states: `assets`, `assets-dark`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `per-app-tab-no-network`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`
 
 <a href="account-detail/assets.png"><img src="account-detail/assets.png" width="206" alt="assets"></a>
 <a href="account-detail/assets-dark.png"><img src="account-detail/assets-dark.png" width="206" alt="assets-dark"></a>
@@ -95,6 +95,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="account-detail/per-app-address.png"><img src="account-detail/per-app-address.png" width="206" alt="per-app-address"></a>
 <a href="account-detail/per-app-tab.png"><img src="account-detail/per-app-tab.png" width="206" alt="per-app-tab"></a>
 <a href="account-detail/per-app-tab-empty-dark.png"><img src="account-detail/per-app-tab-empty-dark.png" width="206" alt="per-app-tab-empty-dark"></a>
+<a href="account-detail/per-app-tab-no-network.png"><img src="account-detail/per-app-tab-no-network.png" width="206" alt="per-app-tab-no-network"></a>
 <a href="account-detail/activity.png"><img src="account-detail/activity.png" width="206" alt="activity"></a>
 <a href="account-detail/activity-dark.png"><img src="account-detail/activity-dark.png" width="206" alt="activity-dark"></a>
 <a href="account-detail/waiting-swap.png"><img src="account-detail/waiting-swap.png" width="206" alt="waiting-swap"></a>
@@ -537,16 +538,19 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="per-app"></a>
 ## Per-app addresses
 
-`per-app/`, 9 states: `listed`, `listed-dark`, `none-yet`, `of-a-phrase`, `restoring`, `restored`, `no-phrase`, `explaining`, `loading`
+`per-app/`, 12 states: `listed`, `listed-dark`, `none-yet`, `of-a-phrase`, `restore-form`, `restoring`, `restore-failed`, `restored`, `no-phrase`, `explaining`, `unreadable`, `loading`
 
 <a href="per-app/listed.png"><img src="per-app/listed.png" width="206" alt="listed"></a>
 <a href="per-app/listed-dark.png"><img src="per-app/listed-dark.png" width="206" alt="listed-dark"></a>
 <a href="per-app/none-yet.png"><img src="per-app/none-yet.png" width="206" alt="none-yet"></a>
 <a href="per-app/of-a-phrase.png"><img src="per-app/of-a-phrase.png" width="206" alt="of-a-phrase"></a>
+<a href="per-app/restore-form.png"><img src="per-app/restore-form.png" width="206" alt="restore-form"></a>
 <a href="per-app/restoring.png"><img src="per-app/restoring.png" width="206" alt="restoring"></a>
+<a href="per-app/restore-failed.png"><img src="per-app/restore-failed.png" width="206" alt="restore-failed"></a>
 <a href="per-app/restored.png"><img src="per-app/restored.png" width="206" alt="restored"></a>
 <a href="per-app/no-phrase.png"><img src="per-app/no-phrase.png" width="206" alt="no-phrase"></a>
 <a href="per-app/explaining.png"><img src="per-app/explaining.png" width="206" alt="explaining"></a>
+<a href="per-app/unreadable.png"><img src="per-app/unreadable.png" width="206" alt="unreadable"></a>
 <a href="per-app/loading.png"><img src="per-app/loading.png" width="206" alt="loading"></a>
 
 <a name="receive"></a>

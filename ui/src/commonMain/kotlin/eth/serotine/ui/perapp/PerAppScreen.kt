@@ -46,6 +46,7 @@ import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.platform.protectFromScreenCapture
 import eth.serotine.ui.platform.rememberCopyText
+import kotlinx.coroutines.Dispatchers
 
 /** Test tag of a per-app address's row, followed by its address, for UI tests. */
 const val PER_APP_ROW_TAG = "per-app-row-"
@@ -70,7 +71,8 @@ fun PerAppRoute(
     onOpen: (Long, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Main.immediate: as on the other screens that take typing, an edit reaches its field in the same frame.
+    val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
     // Leaving the screen, the app put in the background included, drops a typed password.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onLeave() }
     PerAppScreen(

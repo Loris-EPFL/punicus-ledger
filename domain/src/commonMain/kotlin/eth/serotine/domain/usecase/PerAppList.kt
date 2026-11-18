@@ -38,14 +38,21 @@ data class PerAppEntry(
  * What screen D9 and the Per-app tab show: every per-app address held here ([entries], in the order of their first
  * account in the list), the phrases one can be restored from ([sources], [phraseSources]), the networks that are on
  * ([enabled]), which a restored address goes on, and [knownBy]: for each phrase whose name is known, the address of
- * the account it is known by (docs/wallet-ux.md, 4), the one that has its Per-app tab.
+ * the account it is known by (docs/wallet-ux.md, 4), the one that has its Per-app tab. [names] is what each phrase is
+ * called on screen: the name of the account it is known by, else of the account it is restored from. [unreadable]
+ * while the account list cannot be read: nothing is listed then, which is not "none".
  */
 data class PerAppOverview(
     val entries: List<PerAppEntry>,
     val sources: List<PhraseSource>,
     val enabled: Set<Network>,
     val knownBy: Map<Address, Address> = emptyMap(),
-)
+    val names: Map<Address, String> = emptyMap(),
+    val unreadable: Boolean = false,
+) {
+    /** What [source]'s phrase is called on screen: by [names] where its name is known, else by its own account. */
+    fun nameOf(source: PhraseSource): String = source.phrase?.let(names::get) ?: source.from.label
+}
 
 /** The per-app addresses held here and the phrases to restore one from (screen D9), re-emitted as either changes. */
 class ObservePerAppAddresses(
@@ -55,12 +62,17 @@ class ObservePerAppAddresses(
 ) {
     operator fun invoke(): Flow<PerAppOverview> {
         val listedWithPhrases = accounts.observeAccounts()
-            .map { list -> (list as? AccountList.Loaded)?.accounts.orEmpty() }
+            .map { list -> (list as? AccountList.Loaded)?.accounts }
             .distinctUntilChanged()
-            .map { listed -> listed to keys.phrases() }
+            .map { listed -> listed to listed?.let { keys.phrases() }.orEmpty() }
         return combine(listedWithPhrases, networks.observe()) { (listed, phrases), enabled ->
+            if (listed == null) return@combine PerAppOverview(emptyList(), emptyList(), enabled, unreadable = true)
             val sources = phraseSources(listed, phrases)
-            PerAppOverview(perAppEntries(listed), sources, enabled, phraseAccounts(listed, sources))
+            val knownBy = phraseAccounts(listed, sources)
+            val names = knownBy.mapNotNull { (phrase, address) ->
+                listed.firstOrNull { it.address == address && it.perApp == null }?.let { phrase to it.label }
+            }.toMap()
+            PerAppOverview(perAppEntries(listed), sources, enabled, knownBy, names)
         }.distinctUntilChanged()
     }
 }

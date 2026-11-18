@@ -552,6 +552,7 @@ private fun Destinations(
                     onSecurity = { navController.navigate(Destination.SECURITY) { launchSingleTop = true } },
                     onConnections = { navController.navigate(Destination.CONNECTIONS) { launchSingleTop = true } },
                     connectionsOff = graph.dappConnectionsOff,
+                    onPerApp = { navController.perApp(phrase = null) },
                 )
             }
             composable(Destination.CONNECTIONS) {

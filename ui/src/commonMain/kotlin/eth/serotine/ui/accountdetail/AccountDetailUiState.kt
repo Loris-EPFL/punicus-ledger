@@ -268,9 +268,15 @@ enum class DetailSegment {
 /**
  * An account's Per-app tab (issue #252; docs/wallet-ux.md, 4): the per-app addresses of the recovery phrase it is
  * known by, as screen D9 lists them ([rows]), [empty] while there are none, and the [phrase] (the address that names
- * it, in lower case) that "Restore a per-app address" opens D9 with.
+ * it, in lower case) that "Restore a per-app address" opens D9 with; [restoreBlocked] is why that Restore is greyed
+ * out (no network on), said on a tap, or null.
  */
-data class PerAppTab(val phrase: String, val rows: List<PerAppRow>, val empty: String?)
+data class PerAppTab(
+    val phrase: String,
+    val rows: List<PerAppRow>,
+    val empty: String?,
+    val restoreBlocked: String? = null,
+)
 
 /**
  * A Safe's transactions waiting for its owners on this device (docs/wallet-ux.md, screen 16,

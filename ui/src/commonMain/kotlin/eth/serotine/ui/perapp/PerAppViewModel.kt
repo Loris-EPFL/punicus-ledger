@@ -62,22 +62,27 @@ class PerAppViewModel(
         val entries = overview.entries.filter { phrase == null || it.phrase == phrase }
         val title = when {
             phrase == null -> TITLE
-            else -> sources.firstOrNull()?.from?.label?.let { "Per-app addresses of $it's phrase" } ?: OF_A_PHRASE
+            else -> sources.firstOrNull()?.let { "Per-app addresses of ${overview.nameOf(it)}'s phrase" } ?: OF_A_PHRASE
         }
         val blocked = blocked(overview, sources)
         return PerAppUiState(
             loading = false,
             title = title,
-            rows = perAppRows(entries, overview.sources),
-            empty = if (entries.isEmpty()) EMPTY else null,
+            rows = perAppRows(entries, overview),
+            empty = when {
+                overview.unreadable -> UNREADABLE
+                entries.isEmpty() -> EMPTY
+                else -> null
+            },
             // The phrases are offered only where there is a choice: opened from one, or with one, there is none.
             restore = local.form.takeIf { blocked == null }?.copy(
-                phrases = if (sources.size > 1) labels(sources) else emptyList(),
+                phrases = if (sources.size > 1) sources.map { "Phrase of ${overview.nameOf(it)}" } else emptyList(),
                 phrase = sources.indexOfFirst { it.from.address == local.from }.coerceAtLeast(0),
             ),
             restoreBlocked = blocked,
             notice = local.notice,
-            explaining = local.explaining,
+            // The form asked for (from a Per-app tab) where Restore cannot be done: why, at once.
+            explaining = local.explaining ?: blocked?.takeIf { local.form != null },
         )
     }
 
@@ -86,6 +91,7 @@ class PerAppViewModel(
         overview.sources.filter { phrase == null || it.phrase == phrase }
 
     private fun blocked(overview: PerAppOverview, sources: List<PhraseSource>): String? = when {
+        overview.unreadable -> UNREADABLE
         sources.isEmpty() && phrase != null -> PHRASE_GONE
         sources.isEmpty() -> NO_PHRASE
         restoreNetworks(overview.enabled).isEmpty() -> NO_NETWORK
@@ -108,8 +114,11 @@ class PerAppViewModel(
         if (local.value.form?.busy != true) local.update { it.copy(form = null) }
     }
 
-    /** The explanation of a greyed-out Restore was dismissed. */
-    fun dismissExplanation() = local.update { it.copy(explaining = null) }
+    /** The explanation of a greyed-out Restore was dismissed: a form asked for while it could not be done goes too. */
+    fun dismissExplanation() = local.update { now ->
+        val asked = now.form?.takeIf { now.explaining == null && !it.busy }
+        now.copy(explaining = null, form = if (asked != null) null else now.form)
+    }
 
     /** The host field changed. */
     fun onHostChange(text: String) = editForm { it.copy(host = text) }
@@ -123,8 +132,11 @@ class PerAppViewModel(
     /** The password field changed. */
     fun onPasswordChange(text: String) = editForm { it.copy(password = WalletPassword(text)) }
 
-    /** The screen is no longer shown: the password typed goes. */
-    fun onLeave() = editForm { it.copy(password = WalletPassword.EMPTY) }
+    /** The screen is no longer shown: the password typed goes, and nothing else; what the screen said stays. */
+    fun onLeave() = local.update { now ->
+        val form = now.form
+        if (form == null || form.busy) now else now.copy(form = form.copy(password = WalletPassword.EMPTY))
+    }
 
     private fun editForm(change: (RestoreForm) -> RestoreForm) = local.update { now ->
         val form = now.form
@@ -177,8 +189,8 @@ class PerAppViewModel(
         const val OF_A_PHRASE = "Per-app addresses of a phrase"
 
         /** Why Restore is greyed out, or refused, when the phrase it was opened for has no account here any more. */
-        const val PHRASE_GONE = "That recovery phrase has no account on this device any more. Its addresses are " +
-            "listed under Settings → Connected dApps → Per-app addresses."
+        const val PHRASE_GONE = "That recovery phrase has no account on this device any more. Its addresses stay " +
+            "listed under Per-app addresses, in Connected dApps."
 
         /** What a restore says when the phrase chosen left the device meanwhile: nothing is made from another. */
         const val CHOSEN_GONE = "The recovery phrase you chose has no account on this device any more. Nothing " +
@@ -188,12 +200,16 @@ class PerAppViewModel(
         const val NO_NETWORK = "A restored address is added on the networks that are on, and none is. Turn one " +
             "on in Settings → Networks."
 
-        /** The phrases as the form names them: each by an account of it. */
-        internal fun labels(sources: List<PhraseSource>): List<String> = sources.map { "Phrase of ${it.from.label}" }
+        /** Why nothing is listed and Restore is greyed out while the account list cannot be read. */
+        const val UNREADABLE = "Your account list cannot be read right now, so the per-app addresses cannot be " +
+            "listed or restored. Nothing was changed."
 
-        /** The phrase [phrase] as a row names it: by an account of it in the wallet, else by its address. */
-        internal fun phraseName(sources: List<PhraseSource>, phrase: Address): String =
-            sources.firstOrNull { it.phrase == phrase }?.from?.label?.let { "Phrase of $it" }
+        /**
+         * The phrase [phrase] as a row names it: as the account it is known by is named, else an account of it, else
+         * by its address ([PerAppOverview.nameOf]).
+         */
+        internal fun phraseName(overview: PerAppOverview, phrase: Address): String =
+            overview.sources.firstOrNull { it.phrase == phrase }?.let { "Phrase of ${overview.nameOf(it)}" }
                 ?: "Phrase of ${Eip55.format(phrase).take(6)}…${Eip55.format(phrase).takeLast(4)}"
 
         /** How a restore went, as the screen says it. */
@@ -234,15 +250,15 @@ class PerAppViewModel(
     }
 }
 
-/** [entries] as their rows show them (screen D9 and an account's Per-app tab), each phrase named among [sources]. */
-internal fun perAppRows(entries: List<PerAppEntry>, sources: List<PhraseSource>): List<PerAppRow> =
+/** [entries] as their rows show them (screen D9 and an account's Per-app tab), each phrase named by [overview]. */
+internal fun perAppRows(entries: List<PerAppEntry>, overview: PerAppOverview): List<PerAppRow> =
     entries.map { entry ->
         val first = entry.accounts.first()
         PerAppRow(
             site = entry.site.name,
             address = Eip55.format(entry.address),
             networks = entry.accounts.joinToString(", ") { it.network.displayName },
-            phrase = PerAppViewModel.phraseName(sources, entry.phrase),
+            phrase = PerAppViewModel.phraseName(overview, entry.phrase),
             path = entry.path.toString(),
             chainId = first.network.chainId,
             hex = entry.address.hex,

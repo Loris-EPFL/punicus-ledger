@@ -49,6 +49,7 @@ import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.ObserveOutbox
 import eth.serotine.domain.usecase.ObservePerAppAddresses
 import eth.serotine.domain.usecase.PerAppOverview
+import eth.serotine.domain.usecase.restoreNetworks
 import eth.serotine.domain.repository.HeldConflict
 import eth.serotine.domain.repository.HeldSafeSignature
 import eth.serotine.domain.repository.OutboxList
@@ -1126,6 +1127,7 @@ internal fun ensNamesLine(names: AccountNames, followed: String?): String? {
  */
 internal fun perAppTabOf(overview: PerAppOverview, address: Address): PerAppTab? {
     val phrase = overview.knownBy.entries.firstOrNull { it.value == address }?.key ?: return null
-    val rows = perAppRows(overview.entries.filter { it.phrase == phrase }, overview.sources)
-    return PerAppTab(phrase.hex, rows, if (rows.isEmpty()) PerAppViewModel.EMPTY else null)
+    val rows = perAppRows(overview.entries.filter { it.phrase == phrase }, overview)
+    val blocked = PerAppViewModel.NO_NETWORK.takeIf { restoreNetworks(overview.enabled).isEmpty() }
+    return PerAppTab(phrase.hex, rows, if (rows.isEmpty()) PerAppViewModel.EMPTY else null, blocked)
 }

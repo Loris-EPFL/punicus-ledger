@@ -114,8 +114,6 @@ fun ConnectionsScreen(
                         "project ID.",
                     Modifier.padding(16.dp),
                 )
-                // The addresses made before stay listed, and can be restored.
-                PerAppEntry(onPerApp)
                 return@Column
             }
             Text(

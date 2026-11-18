@@ -69,15 +69,30 @@ private fun PerAppOfAPhrasePreview() = PerAppPreview(
     PerAppUiState(loading = false, title = "Per-app addresses of Main's phrase", rows = listOf(uniswap)),
 )
 
+private val filledForm = RestoreForm(
+    host = "app.cow.fi",
+    phrases = listOf("Phrase of Main", "Phrase of Savings"),
+    password = WalletPassword("preview only"),
+)
+
+@Preview
+@Composable
+private fun PerAppRestoreFormPreview() = PerAppPreview(listed.copy(restore = filledForm))
+
+/** While the address is made: the fields and Cancel disabled, the button saying so. */
 @Preview
 @Composable
 private fun PerAppRestoringPreview() = PerAppPreview(
+    listed.copy(restore = filledForm.copy(password = WalletPassword.EMPTY, busy = true)),
+)
+
+/** A restore that failed: what it says above the form, which stays open without the password. */
+@Preview
+@Composable
+private fun PerAppRestoreFailedPreview() = PerAppPreview(
     listed.copy(
-        restore = RestoreForm(
-            host = "app.cow.fi",
-            phrases = listOf("Phrase of Main", "Phrase of Savings"),
-            password = WalletPassword("preview only"),
-        ),
+        restore = filledForm.copy(password = WalletPassword.EMPTY),
+        notice = "That is not the wallet password. Nothing changed.",
     ),
 )
 
@@ -106,6 +121,16 @@ private fun PerAppExplainingPreview() = PerAppPreview(
 
 @Preview
 @Composable
+private fun PerAppUnreadablePreview() = PerAppPreview(
+    PerAppUiState(
+        loading = false,
+        empty = PerAppViewModel.UNREADABLE,
+        restoreBlocked = PerAppViewModel.UNREADABLE,
+    ),
+)
+
+@Preview
+@Composable
 private fun PerAppLoadingPreview() = PerAppPreview(PerAppUiState())
 
 /** Every preview above, which PerAppScreenPreviewsTest renders: a new preview goes in here too. */
@@ -114,9 +139,12 @@ internal val perAppScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("listed-dark") { PerAppListedDarkPreview() },
     ScreenPreview("none-yet") { PerAppNoneYetPreview() },
     ScreenPreview("of-a-phrase") { PerAppOfAPhrasePreview() },
+    ScreenPreview("restore-form") { PerAppRestoreFormPreview() },
     ScreenPreview("restoring") { PerAppRestoringPreview() },
+    ScreenPreview("restore-failed") { PerAppRestoreFailedPreview() },
     ScreenPreview("restored") { PerAppRestoredPreview() },
     ScreenPreview("no-phrase") { PerAppNoPhrasePreview() },
     ScreenPreview("explaining") { PerAppExplainingPreview() },
+    ScreenPreview("unreadable") { PerAppUnreadablePreview() },
     ScreenPreview("loading") { PerAppLoadingPreview() },
 )

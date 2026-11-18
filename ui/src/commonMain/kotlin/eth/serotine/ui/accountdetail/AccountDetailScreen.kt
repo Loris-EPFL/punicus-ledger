@@ -1033,16 +1033,31 @@ class PerAppActions(
     val onRestore: (phrase: String) -> Unit = {},
 )
 
-/** The Per-app tab: the phrase's per-app addresses as D9 lists them, and "Restore a per-app address". */
+/**
+ * The Per-app tab: the phrase's per-app addresses as D9 lists them, and "Restore a per-app address", greyed out with
+ * its reason, said on a tap, where it cannot be done (owner ruling, 2026-10-18, #55).
+ */
 @Composable
 private fun PerAppTabBody(tab: PerAppTab, actions: PerAppActions, onCopy: (String) -> Unit) {
+    var explaining by remember { mutableStateOf(false) }
     Column {
         tab.empty?.let { Text(it, Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodyMedium) }
         tab.rows.forEach { row -> PerAppAddressRow(row, actions.onOpen, onCopy) }
+        val greyed = tab.restoreBlocked != null
         OutlinedButton(
-            onClick = { actions.onRestore(tab.phrase) },
-            modifier = Modifier.padding(top = 8.dp).fillMaxWidth().testTag(ACCOUNT_PER_APP_RESTORE_TAG),
+            onClick = { if (greyed) explaining = true else actions.onRestore(tab.phrase) },
+            modifier = Modifier.padding(top = 8.dp).fillMaxWidth().unavailable(greyed)
+                .testTag(ACCOUNT_PER_APP_RESTORE_TAG),
+            colors = if (greyed) {
+                ButtonDefaults.outlinedButtonColors(contentColor = Unavailable.contentColor())
+            } else {
+                ButtonDefaults.outlinedButtonColors()
+            },
         ) { Text("Restore a per-app address") }
+    }
+    val reason = tab.restoreBlocked
+    if (explaining && reason != null) {
+        UnavailableDialog("Restore a per-app address", reason, onDismiss = { explaining = false })
     }
 }
 

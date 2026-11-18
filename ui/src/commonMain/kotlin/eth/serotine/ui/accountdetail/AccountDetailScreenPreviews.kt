@@ -800,6 +800,21 @@ private fun AccountDetailPerAppTabEmptyPreview() = AccountDetailPreview(
     darkTheme = true,
 )
 
+/** The Per-app tab with no network on: Restore greyed out, a tap saying why (owner ruling, 2026-10-18, #55). */
+@Preview
+@Composable
+private fun AccountDetailPerAppTabNoNetworkPreview() = AccountDetailPreview(
+    daily.copy(
+        segment = DetailSegment.PER_APP,
+        perApp = PerAppTab(
+            "0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2",
+            emptyList(),
+            PerAppViewModel.EMPTY,
+            restoreBlocked = PerAppViewModel.NO_NETWORK,
+        ),
+    ),
+)
+
 /**
  * Docs/networks.md's N3: an account on Ethereum, real prices, no testnet note; COW, which no feed
  * prices, at its pool's average, labelled, and counted in the total, which says so (#205).
@@ -968,6 +983,7 @@ internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("per-app-address") { AccountDetailPerAppAddressPreview() },
     ScreenPreview("per-app-tab") { AccountDetailPerAppTabPreview() },
     ScreenPreview("per-app-tab-empty-dark") { AccountDetailPerAppTabEmptyPreview() },
+    ScreenPreview("per-app-tab-no-network") { AccountDetailPerAppTabNoNetworkPreview() },
     ScreenPreview("activity") { AccountDetailActivityPreview() },
     ScreenPreview("activity-dark") { AccountDetailActivityDarkPreview() },
     ScreenPreview("waiting-swap") { AccountDetailWaitingSwapPreview() },

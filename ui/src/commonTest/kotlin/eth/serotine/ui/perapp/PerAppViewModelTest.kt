@@ -192,13 +192,58 @@ class PerAppViewModelTest {
     }
 
     @Test
-    fun leavingTheScreenDropsThePasswordTyped() = runTest {
+    fun leavingTheScreenDropsThePasswordTypedAndNothingElse() = runTest {
         main()
         val viewModel = viewModel(FakeAccounts(main), FakePerAppKeys(phrases = mapOf(main.address to main.address)))
         viewModel.openRestore()
+        viewModel.onHostChange("uniswap.org")
+        viewModel.onPasswordChange("wrong")
+        viewModel.restore()
+        viewModel.onLeave()
+        val state = viewModel.uiState.value
+        assertEquals("uniswap.org", assertNotNull(state.restore).host)
+        assertEquals("That is not the wallet password. Nothing changed.", state.notice, "what was said stays")
         viewModel.onPasswordChange("correct horse")
         viewModel.onLeave()
         assertEquals("", assertNotNull(viewModel.uiState.value.restore).password.text)
+    }
+
+    @Test
+    fun anUnreadableListIsSaidNeverShownAsNone() = runTest {
+        main()
+        val accounts = FakeAccounts(main)
+        accounts.unreadable.value = true
+        val state = viewModel(accounts, FakePerAppKeys(phrases = mapOf(main.address to main.address))).uiState.value
+        assertEquals(PerAppViewModel.UNREADABLE, state.empty)
+        assertEquals(PerAppViewModel.UNREADABLE, state.restoreBlocked)
+    }
+
+    @Test
+    fun aPhraseIsNamedByTheAccountItIsKnownBy() = runTest {
+        main()
+        // A further account listed before the phrase's first: the first, which carries the tab, names it.
+        val further = account(Network.ETHEREUM, '2', "Savings")
+        val keys = FakePerAppKeys(phrases = mapOf(further.address to main.address, main.address to main.address))
+        val state = viewModel(FakeAccounts(further, main, perApp), keys, phrase = main.address).uiState.value
+        assertEquals("Per-app addresses of Main's phrase", state.title)
+        assertEquals("Phrase of Main", state.rows.single().phrase)
+    }
+
+    @Test
+    fun theFormAskedForWhereRestoreCannotBeDoneSaysWhyAtOnce() = runTest {
+        main()
+        val keys = FakePerAppKeys(phrases = mapOf(main.address to main.address))
+        val viewModel = viewModel(
+            FakeAccounts(main),
+            keys,
+            phrase = main.address,
+            settings = MemoryNetworkSettings(emptySet()),
+            restoring = true,
+        )
+        assertNull(viewModel.uiState.value.restore)
+        assertEquals(PerAppViewModel.NO_NETWORK, viewModel.uiState.value.explaining)
+        viewModel.dismissExplanation()
+        assertNull(viewModel.uiState.value.explaining)
     }
 
     @Test

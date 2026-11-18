@@ -37,6 +37,7 @@ import eth.serotine.ui.components.StaleAnchorQuestion
 import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
+import eth.serotine.ui.components.UnavailableFix
 import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.mode.LocalInterfaceMode
@@ -86,6 +87,7 @@ fun SettingsRoute(
     modifier: Modifier = Modifier,
     onConnections: () -> Unit = {},
     connectionsOff: Boolean = false,
+    onPerApp: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     // The same state in the view the user chose (docs/simple-ui.md).
@@ -105,6 +107,7 @@ fun SettingsRoute(
             onDetailedViewChange = viewModel::showDetailedView,
             onConnections = onConnections,
             connectionsOff = connectionsOff,
+            onPerApp = onPerApp,
             onSignWhileSyncingChange = viewModel::signWhileSyncing,
             onMeteredDownloadsChange = viewModel::allowHeavyDownloadsOnMetered,
             onFetchFreshCheckpoint = viewModel::fetchFreshCheckpoint,
@@ -124,6 +127,7 @@ fun SettingsRoute(
             onDetailedViewChange = viewModel::showDetailedView,
             onConnections = onConnections,
             connectionsOff = connectionsOff,
+            onPerApp = onPerApp,
             onSignWhileSyncingChange = viewModel::signWhileSyncing,
             onMeteredDownloadsChange = viewModel::allowHeavyDownloadsOnMetered,
             onFetchFreshCheckpoint = viewModel::fetchFreshCheckpoint,
@@ -165,6 +169,7 @@ fun SettingsScreen(
     onSignWhileSyncingChange: (Boolean) -> Unit = {},
     onMeteredDownloadsChange: (Boolean) -> Unit = {},
     onFetchFreshCheckpoint: (chainId: Long, useUnconfirmed: Boolean) -> Unit = { _, _ -> },
+    onPerApp: () -> Unit = {},
 ) {
     var asking by remember { mutableStateOf<StaleAnchorWarning?>(null) }
     var explainingConnections by remember { mutableStateOf(false) }
@@ -173,8 +178,9 @@ fun SettingsScreen(
         UnavailableDialog(UnavailableNotice(METERED_DOWNLOADS_TITLE, reason), onDismiss = { explainingMetered = null })
     }
     if (explainingConnections) {
+        // The per-app addresses made before (#252) stay listed and restorable without connections.
         UnavailableDialog(
-            UnavailableNotice("Connected dApps", CONNECTIONS_OFF),
+            UnavailableNotice("Connected dApps", CONNECTIONS_OFF, listOf(UnavailableFix("Per-app addresses", onPerApp))),
             onDismiss = { explainingConnections = false },
         )
     }

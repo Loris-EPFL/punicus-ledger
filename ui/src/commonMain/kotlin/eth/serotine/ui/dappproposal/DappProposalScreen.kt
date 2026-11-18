@@ -53,6 +53,7 @@ import eth.serotine.ui.components.UnavailableDialog
 import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.platform.protectFromScreenCapture
+import kotlinx.coroutines.Dispatchers
 
 /** Test tag of an account's row, followed by its address, for UI tests. */
 const val DAPP_PROPOSAL_ACCOUNT_TAG = "dapp-proposal-account-"
@@ -74,7 +75,8 @@ fun DappProposalRoute(
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Main.immediate: as on the other screens that take typing, an edit reaches its field in the same frame.
+    val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
     val done by rememberUpdatedState(onDone)
     LaunchedEffect(state.done, state.gone) {
         if (state.done || state.gone) done()

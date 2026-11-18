@@ -29,8 +29,9 @@ private val overview = GnosisPayUiState.Ready(
 private val waiting = QueuedRow(
     id = "0x" + "ab".repeat(32),
     title = "50 EURe to 0xD1220A…cC0e",
-    status = "Waits until Nov 16, 2026, 3:00 PM",
+    status = "Executable in 1:48",
     execute = ActionItem(enabled = false, reason = "The Delay module holds it until Nov 16, 2026, 3:00 PM."),
+    cooldownLeft = 0.6f,
 )
 
 private const val BLOCKED = "An entry ahead of it in the Delay module's queue has expired and blocks it. Skip " +

@@ -75,7 +75,9 @@ data class ActionItem(val enabled: Boolean, val reason: String?)
  * A transfer queued from here: its [id] (the queueing's transaction hash), what it sends ([title]:
  * "50 EURe to 0x1234…abcd"), where it stands ([status]), Execute ([execute]; null where it does
  * not apply, greyed out with its reason where it cannot be done now), and Skip expired entries
- * ([skip]) while an expired entry ahead of it blocks it; null otherwise.
+ * ([skip]) while an expired entry ahead of it blocks it; null otherwise; and [cooldownLeft], what is
+ * left of its cooldown while it waits it out, from 1 when queued to 0 when it may be executed (null
+ * otherwise), drawn as a bar that drains.
  */
 data class QueuedRow(
     val id: String,
@@ -83,6 +85,7 @@ data class QueuedRow(
     val status: String,
     val execute: ActionItem?,
     val skip: ActionItem? = null,
+    val cooldownLeft: Float? = null,
 )
 
 /** Where the screen is in a transfer through the Delay. */

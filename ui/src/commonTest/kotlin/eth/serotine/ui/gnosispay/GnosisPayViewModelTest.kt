@@ -134,6 +134,9 @@ class GnosisPayViewModelTest {
     private val signer = FakeSigner()
     private val time = TestTimeSource()
 
+    /** The wall clock the ViewModel counts a cooldown down by, in unix seconds. */
+    private var clockNow = 1_200L
+
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
@@ -155,6 +158,7 @@ class GnosisPayViewModelTest {
             SendDelaySkip(signer, FakeBroadcaster(), sent),
             DescribeKeyStore(FakeKeys()),
             timeSource = time,
+            clock = { clockNow },
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
         return viewModel
@@ -392,6 +396,44 @@ class GnosisPayViewModelTest {
         val step = (review as GnosisPayUiState.Ready).step as GnosisPayStep.Review
         assertEquals(GnosisPayTexts.SKIP_TITLE, step.title)
         assertTrue(step.lines.any { (_, value) -> value.contains("It moves nothing") }, step.lines.toString())
+    }
+
+    @Test
+    fun aTransferWaitingOutItsCooldownDrainsABarAndCountsDown() = runTest {
+        val transfer = (
+            DelayTransfer.of(safe, delay, listOf(delay), TransferAsset.Native, recipient, UInt256.of(7))
+                as DelayTransferPlan.Planned
+            ).transfer
+        val queueing = SentTransfer(
+            Network.GNOSIS,
+            member,
+            3,
+            SignedTransfer(byteArrayOf(1, 2, 3)),
+            SentAction.DelayQueue(transfer),
+            UInt256.ZERO,
+            100,
+        )
+        history.entries.value = listOf(HistoryEntry(queueing, SentOutcome.NonceUsed))
+        // Queued at 1000 with a cooldown of 180 s: ready at 1180. A minute in, a third of it is gone.
+        queueAnswer = DelayQueueReading.Read(
+            DelayQueue(0, 1, 180, 1_800, DelayEntry(0, transfer.hash, 1_000), 1),
+            41,
+            1_060,
+        )
+        clockNow = 1_060
+        val viewModel = viewModel()
+        val row = viewModel.uiState.first { (it as? GnosisPayUiState.Ready)?.queued?.isNotEmpty() == true }
+            .let { (it as GnosisPayUiState.Ready).queued.single() }
+
+        assertEquals("Executable in 2:00", row.status)
+        assertEquals(120f / 180f, row.cooldownLeft)
+
+        // A second later the bar has drained a little more.
+        clockNow = 1_061
+        testScheduler.advanceTimeBy(1_001)
+        val later = (viewModel.uiState.value as GnosisPayUiState.Ready).queued.single()
+        assertEquals("Executable in 1:59", later.status)
+        assertEquals(119f / 180f, later.cooldownLeft)
     }
 
     private suspend fun GnosisPayViewModel.reviewTransfer(to: String = recipient.hex): GnosisPayStep.Review {

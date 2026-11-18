@@ -1686,7 +1686,9 @@ opens **Gnosis Pay**, a screen of its own:
   co-owners, or the retired module.
 - **Queued from this device**: each transfer queued here and not executed,
   with where it stands ("Waits until …", "Ready to execute until …",
-  "Expired …: nothing moved"). Execute is offered once it is the next entry
+  "Expired …: nothing moved"). While it waits out a cooldown of under an
+  hour it counts down ("Executable in 2:41"), over a bar that drains to zero
+  (owner's request, 2026-11-18); the queue is read again when it ends. Execute is offered once it is the next entry
   and its cooldown has passed, to the key that queued it while that key is
   held here on Gnosis Chain, whoever controls the Delay by then: anyone may
   execute an entry. Until then it is greyed out, and a tap says why: the

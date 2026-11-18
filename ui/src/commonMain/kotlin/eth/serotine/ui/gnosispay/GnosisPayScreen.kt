@@ -23,6 +23,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -85,6 +86,9 @@ const val GNOSIS_PAY_AMOUNT_TAG = "gnosis-pay-amount"
 const val GNOSIS_PAY_REVIEW_TAG = "gnosis-pay-review"
 /** Skip expired entries: on the form, and (suffixed with the queueing's hash) on a queued transfer's row. */
 const val GNOSIS_PAY_SKIP_TAG = "gnosis-pay-skip"
+
+/** A queued transfer's cooldown bar (suffixed with the queueing's hash), for UI tests. */
+const val GNOSIS_PAY_COOLDOWN_TAG = "gnosis-pay-cooldown"
 
 /** Test tag of the password field, for UI tests. */
 const val GNOSIS_PAY_PASSWORD_TAG = "gnosis-pay-password"
@@ -314,6 +318,13 @@ private fun Overview(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(row.title, style = MaterialTheme.typography.titleSmall)
                 Text(row.status)
+                // The cooldown draining to zero: Execute comes when it is empty.
+                row.cooldownLeft?.let { left ->
+                    LinearProgressIndicator(
+                        progress = { left },
+                        modifier = Modifier.fillMaxWidth().testTag("$GNOSIS_PAY_COOLDOWN_TAG-${row.id}"),
+                    )
+                }
                 row.execute?.let { execute ->
                     OutlinedButton(
                         onClick = {

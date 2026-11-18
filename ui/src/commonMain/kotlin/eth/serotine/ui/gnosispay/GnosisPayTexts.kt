@@ -182,15 +182,20 @@ internal object GnosisPayTexts {
             "${amount.formatUnits(asset.token.decimals)} ${displaySymbol(asset.token.symbol)}"
     }
 
-    /** Where a queued transfer stands, after how its queueing ended. */
-    fun status(state: DelayTransferState?, outcome: SentOutcome): String = when {
+    /**
+     * Where a queued transfer stands, in a line: [state] in its queue, [outcome] its queueing's; [now]
+     * (unix seconds) gives a cooldown within the hour as the minutes and seconds left.
+     */
+    fun status(state: DelayTransferState?, outcome: SentOutcome, now: Long? = null): String = when {
         outcome == SentOutcome.NotSeen && state is DelayTransferState.NotInQueue -> "Queueing: waiting for a block"
         state == null -> "Where it stands cannot be verified right now"
         else -> when (state) {
-            is DelayTransferState.Waiting -> if (state.ahead > 0) {
-                "Waits until ${formatDateTime(state.readyAt)}, behind ${entries(state.ahead)}"
-            } else {
-                "Waits until ${formatDateTime(state.readyAt)}"
+            is DelayTransferState.Waiting -> {
+                // Within the hour: the minutes and seconds left, which the bar under it drains with.
+                val left = now?.let { state.readyAt - it }?.takeIf { it in 0 until 3_600 }
+                val waits = left?.let { "Executable in ${it / 60}:${(it % 60).toString().padStart(2, '0')}" }
+                    ?: "Waits until ${formatDateTime(state.readyAt)}"
+                if (state.ahead > 0) "$waits, behind ${entries(state.ahead)}" else waits
             }
             is DelayTransferState.Ready ->
                 "Ready to execute" + (state.expiresAt?.let { " until ${formatDateTime(it)}" } ?: "")

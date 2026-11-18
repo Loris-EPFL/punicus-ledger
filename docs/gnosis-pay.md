@@ -210,8 +210,8 @@ Delay.
    cooldown passed and at least five minutes left before its expiration, so
    that the transaction is mined while the window is open. An entry ahead of
    it is shown, and Punicus waits: it never executes a transaction it did not
-   queue. An expired entry ahead is skipped by the Delay's `skipExpired`,
-   which Punicus does not offer yet.
+   queue. An expired entry ahead is skipped by the Delay's `skipExpired`
+   (*Skipping expired entries*).
 
 Every quote rests on one read of the Delay, fresh and at one block: its
 code a proxy of the current mastercopy; its avatar, target and owner the
@@ -221,7 +221,8 @@ said to be further back, never gone. A call is told by what the Delay tells
 apart: the Safe, the Delay and the call's hash. A transfer whose call still
 has an entry in the queue, whoever queued it, or whose queueing from here is
 not mined yet, is refused, so no two entries share a hash. So is one whose
-entry expired and was never skipped (it waits for `skipExpired`). Nothing is
+entry expired and was never skipped (it waits for `skipExpired`, which the
+form then offers). Nothing is
 queued while the Delay's next entry has expired, whoever queued it: until it
 is skipped, nothing behind it can be executed. Nothing is queued while the
 queue already holds 8 entries, as deep as it is read: one more could not be
@@ -266,6 +267,33 @@ to the Roles allowance, so neither does Punicus. Showing the allowance was
 asked for. It waits until where today's accounts keep it is known: on the
 accounts read on 2026-11-15, the Roles allowance under account-kit's
 `SPENDING_ALLOWANCE` key reads zero.
+
+### Skipping expired entries
+
+(Owner's request, 2026-11-18: "Handle expired request with skipExpired".)
+
+The queue is first in, first out, and `executeNextTx` reverts on an expired
+entry: one entry nobody executed in time, from Gnosis Pay's own app as from
+here, blocks every entry behind it for good. The Delay's own
+`skipExpired()` moves its next entry past every expired one, stopping at the
+first that has not expired. Anyone may call it, and it moves nothing.
+
+- It is offered where an expired entry blocks the user: on the Send form
+  when Review was refused for it, and on a transfer queued from here that
+  waits behind it ("Skip expired entries"; that transfer's Execute is
+  greyed out meanwhile, saying why).
+- It is the transaction of a key held here on Gnosis Chain, which pays its
+  fee: a controlling key first, else any. No control of the account is
+  needed, since the call moves nothing.
+- Before it is quoted, the Delay's queue is read fresh, which proves the
+  Delay the Safe's own of the current mastercopy, and its next entry must
+  have expired by that head; a skip of the same Delay from here not mined
+  yet is refused. The call is then quoted, run as a verified call, and
+  reviewed and signed like a queueing. The review says that it moves
+  nothing, and that every expired entry from the next on can never be
+  executed afterwards.
+- It is recorded as a skip (`SentAction.DelaySkip`) and listed in the
+  account's activity.
 
 ## Adding and removing a member
 

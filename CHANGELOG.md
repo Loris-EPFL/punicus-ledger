@@ -21,6 +21,10 @@ and issues of this repository.
   the Delay and executed after its wait like a transfer. Adding one says
   that the new member can move all the account's funds; removing the way
   this device controls the account says it ends that control.
+- Gnosis Pay: "Skip expired entries" clears an expired entry that blocks the
+  Delay module's queue, with the module's own `skipExpired()`, which moves
+  nothing. It is offered on the Send form and on a transfer queued here that
+  waits behind such an entry.
 
 ### Fixed
 

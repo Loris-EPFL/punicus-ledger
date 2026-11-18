@@ -81,11 +81,20 @@ data class ActionItem(val enabled: Boolean, val reason: String?)
 
 /**
  * A call queued from here: its [id] (the queueing's transaction hash), what it does ([title]:
- * "50 EURe to 0x1234…abcd", "Add member 0x1234…abcd"), where it stands ([status]), and Execute
- * ([execute]; null where it does
- * not apply, greyed out with its reason where it cannot be done now).
+ * "50 EURe to 0x1234…abcd", "Add member 0x1234…abcd"), where it stands ([status]), Execute
+ * ([execute]; null where it does not apply, greyed out with its reason where it cannot be done
+ * now), and Skip expired entries ([skip]) while an expired entry ahead of it blocks it; null
+ * otherwise; and [cooldownLeft], what is left of its cooldown while it waits it out, from 1 when
+ * queued to 0 when it may be executed (null otherwise), drawn as a bar that drains.
  */
-data class QueuedRow(val id: String, val title: String, val status: String, val execute: ActionItem?)
+data class QueuedRow(
+    val id: String,
+    val title: String,
+    val status: String,
+    val execute: ActionItem?,
+    val skip: ActionItem? = null,
+    val cooldownLeft: Float? = null,
+)
 
 /** Where the screen is in a transfer through the Delay. */
 sealed interface GnosisPayStep {
@@ -99,8 +108,9 @@ sealed interface GnosisPayStep {
     /**
      * The transfer form: the Safe's [assets] to choose from, the [asset] chosen (its contract, or
      * null for the network's currency), the recipient [to] and the [amount] as typed, the [sender]
-     * (the member whose key signs, by name), [error] what is wrong with them, and [quoting] while
-     * Review checks them on chain.
+     * (the member whose key signs, by name), [error] what is wrong with them, [quoting] while
+     * Review checks them on chain, and [skip] when the Delay's queue holds an expired entry ahead:
+     * then "Skip expired entries" is offered beside the error.
      */
     data class Compose(
         val assets: List<AssetItem>,
@@ -110,12 +120,15 @@ sealed interface GnosisPayStep {
         val sender: String,
         val error: String? = null,
         val quoting: Boolean = false,
+        val skip: Boolean = false,
     ) : GnosisPayStep
 
     /**
      * The form that adds a member to the Delay (owner ruling, 2026-11-18): the [member]'s address as
      * typed, what a member can do ([explains], in the account's own figures), the [sender] (the key
-     * that signs, by name), [error] what is wrong, and [quoting] while Review checks it on chain.
+     * that signs, by name), [error] what is wrong, [quoting] while Review checks it on chain, and
+     * [skip] when an expired entry blocking the Delay's queue is what refused it: Skip expired entries
+     * is then offered, as on the transfer form.
      */
     data class AddMember(
         val member: String,
@@ -123,6 +136,7 @@ sealed interface GnosisPayStep {
         val sender: String,
         val error: String? = null,
         val quoting: Boolean = false,
+        val skip: Boolean = false,
     ) : GnosisPayStep
 
     /**

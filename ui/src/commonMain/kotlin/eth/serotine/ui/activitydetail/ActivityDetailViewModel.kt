@@ -276,6 +276,10 @@ class ActivityDetailViewModel(
             }
             is SentAction.DelayQueue -> fields += delayFields(action.call, names, rows)
             is SentAction.DelayExecution -> fields += delayFields(action.call, names, rows)
+            is SentAction.DelaySkip -> {
+                fields += addressOf("Gnosis Pay account", action.safe, names)
+                fields += addressOf("Delay module", action.delay, names)
+            }
         }
         fields += DetailField("Transaction hash", transfer.hash, DetailKind.HASH)
         fields += DetailField("Nonce", transfer.nonce.toString())

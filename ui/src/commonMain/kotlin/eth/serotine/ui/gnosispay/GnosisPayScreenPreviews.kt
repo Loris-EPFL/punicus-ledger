@@ -29,9 +29,13 @@ private val overview = GnosisPayUiState.Ready(
 private val waiting = QueuedRow(
     id = "0x" + "ab".repeat(32),
     title = "50 EURe to 0xD1220A…cC0e",
-    status = "Waits until Nov 16, 2026, 3:00 PM",
+    status = "Executable in 1:48",
     execute = ActionItem(enabled = false, reason = "The Delay module holds it until Nov 16, 2026, 3:00 PM."),
+    cooldownLeft = 0.6f,
 )
+
+private const val BLOCKED = "An entry ahead of it in the Delay module's queue has expired and blocks it. Skip " +
+    "expired entries, then execute it before it expires too."
 
 private val ready = QueuedRow(
     id = "0x" + "cd".repeat(32),
@@ -88,6 +92,56 @@ private fun GnosisPayOverviewDarkPreview() = GnosisPayPreview(overview.copy(queu
 @Preview
 @Composable
 private fun GnosisPayQueuedPreview() = GnosisPayPreview(overview.copy(queued = listOf(waiting, ready)))
+
+@Preview
+@Composable
+private fun GnosisPayBlockedByExpiredPreview() = GnosisPayPreview(
+    overview.copy(
+        queued = listOf(
+            ready.copy(
+                status = BLOCKED,
+                execute = ActionItem(enabled = false, reason = BLOCKED),
+                skip = ActionItem(enabled = true, reason = null),
+            ),
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun GnosisPaySkipReviewPreview() = GnosisPayPreview(
+    overview.copy(
+        step = GnosisPayStep.Review(
+            title = "Skip expired entries of the Delay module",
+            lines = listOf(
+                "Account" to "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+                "Delay module" to "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+                "Queue" to "2 entries wait; the next one expired. Every expired entry from the next on is skipped: " +
+                    "it can never be executed afterwards.",
+                "What happens" to "The Delay module's skipExpired. It moves nothing: no funds leave the account.",
+                "Signed by" to "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+                "Fee" to "0.000001 XDAI at most, normal (fees at block 43,000,511)",
+                "Signer's XDAI" to "0.42 XDAI now, at least 0.419999 XDAI after (block 43,000,512)",
+                "Simulated" to "Run as a verified call at block 43,000,512",
+            ),
+            fee = FeeLevel.NORMAL,
+            unlock = UnlockStep(),
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun GnosisPayComposeSkipPreview() = GnosisPayPreview(
+    overview.copy(
+        step = compose.copy(
+            error = "The next entry in the Delay module's queue has expired. Until it is skipped, nothing behind " +
+                "it can be executed: a transfer queued now would wait, expire and move nothing, its fees paid. " +
+                "Skip expired entries, then review again.",
+            skip = true,
+        ),
+    ),
+)
 
 @Preview
 @Composable
@@ -382,6 +436,19 @@ private fun GnosisPayAddMemberErrorPreview() = GnosisPayPreview(
     ),
 )
 
+@Preview
+@Composable
+private fun GnosisPayAddMemberSkipPreview() = GnosisPayPreview(
+    overview.copy(
+        step = addMember.copy(
+            error = "The next entry in the Delay module's queue has expired. Until it is skipped, nothing behind it " +
+                "can be executed: a transfer queued now would wait, expire and move nothing, its fees paid. Skip " +
+                "expired entries, then review again.",
+            skip = true,
+        ),
+    ),
+)
+
 /** The lines GnosisPayTexts.reviewLines gives a member's removal, in its order. */
 private val removeLines = listOf(
     "Account" to "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
@@ -458,6 +525,9 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("watched") { GnosisPayWatchedPreview() },
     ScreenPreview("compose") { GnosisPayComposePreview() },
     ScreenPreview("compose-error") { GnosisPayComposeErrorPreview() },
+    ScreenPreview("compose-skip") { GnosisPayComposeSkipPreview() },
+    ScreenPreview("blocked-by-expired") { GnosisPayBlockedByExpiredPreview() },
+    ScreenPreview("skip-review") { GnosisPaySkipReviewPreview() },
     ScreenPreview("review") { GnosisPayReviewPreview() },
     ScreenPreview("review-requoted") { GnosisPayReviewRequotedPreview() },
     ScreenPreview("compose-quoting") { GnosisPayComposeQuotingPreview() },
@@ -474,6 +544,7 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("overview-held") { GnosisPayHeldPreview() },
     ScreenPreview("add-member") { GnosisPayAddMemberPreview() },
     ScreenPreview("add-member-error") { GnosisPayAddMemberErrorPreview() },
+    ScreenPreview("add-member-skip") { GnosisPayAddMemberSkipPreview() },
     ScreenPreview("review-add-member") { GnosisPayReviewAddMemberPreview() },
     ScreenPreview("review-remove-member") { GnosisPayReviewRemoveMemberPreview() },
     ScreenPreview("queued-member-change") { GnosisPayQueuedMemberChangePreview() },

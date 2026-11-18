@@ -23,6 +23,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -66,7 +67,7 @@ import eth.serotine.ui.mode.LocalInterfaceMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 
-/** Test tag of Send through the Delay, for UI tests. */
+/** Test tag of New transfer (a transfer queued through the Delay), for UI tests. */
 const val GNOSIS_PAY_SEND_TAG = "gnosis-pay-send"
 
 /** Test tag of a queued transfer's Execute, for UI tests: one per row, suffixed with its id. */
@@ -83,6 +84,12 @@ const val GNOSIS_PAY_AMOUNT_TAG = "gnosis-pay-amount"
 
 /** Test tag of Review, for UI tests. */
 const val GNOSIS_PAY_REVIEW_TAG = "gnosis-pay-review"
+
+/** Skip expired entries: on the form, and (suffixed with the queueing's hash) on a queued transfer's row. */
+const val GNOSIS_PAY_SKIP_TAG = "gnosis-pay-skip"
+
+/** A queued transfer's cooldown bar (suffixed with the queueing's hash), for UI tests. */
+const val GNOSIS_PAY_COOLDOWN_TAG = "gnosis-pay-cooldown"
 
 /** Test tag of the new member's address field, for UI tests. */
 const val GNOSIS_PAY_MEMBER_TAG = "gnosis-pay-member"
@@ -161,6 +168,7 @@ fun GnosisPayRoute(
             onSignWithBiometrics = viewModel::signWithBiometrics,
             onMemberChange = viewModel::onMemberChange,
             onReviewMember = { viewModel.reviewAddMember() },
+            onSkipExpired = { viewModel.skipExpired() },
         ),
         modifier = modifier,
         // The strip in Detailed view; in simple mode the same item, drawn as the sync line while it says something.
@@ -182,6 +190,7 @@ data class GnosisPayActions(
     val onSignWithBiometrics: () -> Unit = {},
     val onMemberChange: (String) -> Unit = {},
     val onReviewMember: () -> Unit = {},
+    val onSkipExpired: () -> Unit = {},
 )
 
 /**
@@ -312,7 +321,7 @@ private fun Overview(
         }
     }
     state.controlNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-    val sendLabel = "Send through the Delay"
+    val sendLabel = "New transfer"
     Button(
         onClick = {
             if (state.send.enabled) {
@@ -338,6 +347,13 @@ private fun Overview(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(row.title, style = MaterialTheme.typography.titleSmall)
                 Text(row.status)
+                // The cooldown draining to zero: Execute comes when it is empty.
+                row.cooldownLeft?.let { left ->
+                    LinearProgressIndicator(
+                        progress = { left },
+                        modifier = Modifier.fillMaxWidth().testTag("$GNOSIS_PAY_COOLDOWN_TAG-${row.id}"),
+                    )
+                }
                 row.execute?.let { execute ->
                     OutlinedButton(
                         onClick = {
@@ -354,6 +370,23 @@ private fun Overview(
                             ButtonDefaults.outlinedButtonColors(contentColor = Unavailable.contentColor())
                         },
                     ) { Text("Execute") }
+                }
+                row.skip?.let { skip ->
+                    OutlinedButton(
+                        onClick = {
+                            if (skip.enabled) {
+                                actions.onSkipExpired()
+                            } else {
+                                skip.reason?.let { onUnavailable(UnavailableNotice("Skip expired entries", it)) }
+                            }
+                        },
+                        modifier = Modifier.testTag("$GNOSIS_PAY_SKIP_TAG-${row.id}").unavailable(!skip.enabled),
+                        colors = if (skip.enabled) {
+                            ButtonDefaults.outlinedButtonColors()
+                        } else {
+                            ButtonDefaults.outlinedButtonColors(contentColor = Unavailable.contentColor())
+                        },
+                    ) { Text("Skip expired entries") }
                 }
             }
         }
@@ -403,6 +436,14 @@ private fun Compose(state: GnosisPayUiState.Ready, step: GnosisPayStep.Compose, 
         modifier = Modifier.fillMaxWidth().focusRequester(amountField).testTag(GNOSIS_PAY_AMOUNT_TAG),
     )
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    // An expired entry blocks the Delay's queue: its skip moves nothing, and lets the transfer through.
+    if (step.skip) {
+        OutlinedButton(
+            onClick = actions.onSkipExpired,
+            enabled = !step.quoting,
+            modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_SKIP_TAG),
+        ) { Text("Skip expired entries") }
+    }
     Button(
         onClick = actions.onReview,
         enabled = !step.quoting,
@@ -427,6 +468,14 @@ private fun AddMember(state: GnosisPayUiState.Ready, step: GnosisPayStep.AddMemb
         modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_MEMBER_TAG),
     )
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    // As on the transfer form: an expired entry blocks the queue, and its skip moves nothing.
+    if (step.skip) {
+        OutlinedButton(
+            onClick = actions.onSkipExpired,
+            enabled = !step.quoting,
+            modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_SKIP_TAG),
+        ) { Text("Skip expired entries") }
+    }
     Button(
         onClick = actions.onReviewMember,
         enabled = !step.quoting,

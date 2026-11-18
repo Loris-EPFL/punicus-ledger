@@ -32,6 +32,7 @@ private const val UNWRAP = "unwrap"
 private const val QUEUE = "queue"
 private const val ADD_MEMBER = "add"
 private const val REMOVE_MEMBER = "remove"
+private const val SKIP = "skip"
 
 /**
  * One transaction, sent on the network of [chain] (absent in a record written before networks:
@@ -103,7 +104,8 @@ internal class StoredTransfer(
  * members ([change] `add` or `remove`) of [member], with [previous], the member before it, for a
  * removal. Exactly one of the two, else the entry is damaged; so is a stored transfer that is no
  * plain transfer the Delay may queue, or a change [DelayMemberChange.of] would not restore. A build
- * before format 12 passes a change over: it has no [recipient].
+ * before format 12 passes a change over: it has no [recipient]. Or the Delay's skip of expired
+ * entries (`skip`, format 11): [recipient] is then the Delay and [amount] zero, neither read.
  */
 @Serializable
 internal class StoredDelayCall(
@@ -118,6 +120,10 @@ internal class StoredDelayCall(
     val previous: String? = null,
 ) {
     fun toAction(): SentAction {
+        if (kind == SKIP) {
+            require(change == null && member == null && previous == null) { "a skip with a member's fields" }
+            return SentAction.DelaySkip(Address.of(safe), Address.of(delay))
+        }
         val call: DelayCall = if (change == null) {
             require(member == null && previous == null) { "a transfer with a member's fields" }
             val plan = DelayTransfer.of(
@@ -308,11 +314,15 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
             is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
             is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap, is SentAction.CowCancellation,
             is SentAction.DappCall, is SentAction.DelayQueue, is SentAction.DelayExecution,
+            is SentAction.DelaySkip,
             -> null
         },
         delay = when (action) {
             is SentAction.DelayQueue -> delayCall(QUEUE, action.call)
             is SentAction.DelayExecution -> delayCall(EXECUTION, action.call)
+            // No transfer: the Delay alone, as recipient, and nothing moved.
+            is SentAction.DelaySkip ->
+                StoredDelayCall(SKIP, action.safe.hex, action.delay.hex, action.delay.hex, amount = "0")
             else -> null
         },
         dappCall = (action as? SentAction.DappCall)?.let {

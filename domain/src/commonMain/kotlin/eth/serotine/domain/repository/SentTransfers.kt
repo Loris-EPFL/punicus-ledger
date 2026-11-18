@@ -232,4 +232,11 @@ sealed interface SentAction {
         /** The [call] when it is a transfer; null for a change of the Delay's members. */
         val transfer: DelayTransfer? get() = call as? DelayTransfer
     }
+
+    /**
+     * `skipExpired()` sent to a Gnosis Pay account's [delay], the Safe at [safe]'s own: it moves the
+     * Delay's next entry past every expired one, and nothing of the Safe's or the sender's but the
+     * fee (docs/gnosis-pay.md, *Skipping expired entries*).
+     */
+    data class DelaySkip(val safe: Address, val delay: Address) : SentAction
 }

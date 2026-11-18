@@ -68,7 +68,7 @@ sealed interface DelayTransferState {
 
     /**
      * Its cooldown has passed, but [ahead] entries queued before it come first: executed by whoever
-     * queued them, or skipped once expired (the Delay's `skipExpired`, not offered here yet). It may
+     * queued them, or skipped once expired (the Delay's `skipExpired`, [QuoteDelaySkip]). It may
      * be executed until [expiresAt] (null: for ever). Punicus never executes an entry it did not queue.
      */
     data class Behind(val ahead: Int, val expiresAt: Long?) : DelayTransferState
@@ -167,15 +167,17 @@ sealed interface DelayQuoting {
     data class AlreadyQueued(val queuedBy: String?) : DelayQuoting
 
     /**
-     * An entry of the same call is still in the Delay's queue, expired: it stays there until the
-     * Delay's `skipExpired` removes it, which Punicus does not offer yet, and a new entry of the
-     * same hash could not be told from it.
+     * An entry of the same call is still in the Delay's queue, expired or within
+     * [DELAY_EXPIRY_MARGIN_SECONDS] of its expiration, too late to be executed in time: it stays
+     * there until the Delay's `skipExpired` removes it once expired ([QuoteDelaySkip]), and a new
+     * entry of the same hash could not be told from it. [skippable] when it has expired by the head
+     * the queue was read at, so a skip removes it now; false while it is only too close to its end.
      */
-    data object SameCallExpired : DelayQuoting
+    data class SameCallExpired(val skippable: Boolean = true) : DelayQuoting
 
     /**
      * The Delay's next entry expired: `executeNextTx` reverts on it, so a transfer queued now would
-     * wait behind it until the Delay's `skipExpired` removes it, which Punicus does not offer yet.
+     * wait behind it until the Delay's `skipExpired` removes it ([QuoteDelaySkip]).
      */
     data object HeadExpired : DelayQuoting
 
@@ -449,7 +451,9 @@ class QuoteDelayQueue(
             queue.expirationSeconds in 1..DELAY_EXPIRY_MARGIN_SECONDS ->
                 return DelayQuoting.WindowTooShort(queue.expirationSeconds)
             queue.entry != null -> return if (queue.state(read.headTime) is DelayTransferState.Expired) {
-                DelayQuoting.SameCallExpired
+                // A skip removes it now only once it is the next entry and expired as the Delay counts.
+                val head = queue.entry.nonce == queue.txNonce
+                DelayQuoting.SameCallExpired(skippable = head && queue.headExpired(read.headTime))
             } else {
                 DelayQuoting.AlreadyQueued(sameCall?.entry?.transfer?.hash)
             }
@@ -558,8 +562,11 @@ class SendDelayCall(
  * Delay's members), queued by [member] (the key
  * that sent the queueing, a member or the owner of a member Safe) in the
  * transaction [queuedBy] at [queuedAt] (unix seconds) and how that ended ([queueOutcome]), and where
- * it stands in the Delay's queue now ([state]; null when the queue could not be read), and
- * [executing], the hash of its execution from here while that is on its way, not mined yet.
+ * it stands in the Delay's queue now ([state]; null when the queue could not be read),
+ * [executing], the hash of its execution from here while that is on its way, not mined yet, and
+ * [expiredHead] when it is in the queue and the Delay's next entry, this one or one ahead of it, has
+ * expired as the Delay counts: nothing from there on can be executed until that one is skipped
+ * ([QuoteDelaySkip]).
  */
 data class QueuedDelayTransfer(
     val call: DelayCall,
@@ -569,6 +576,7 @@ data class QueuedDelayTransfer(
     val queueOutcome: SentOutcome,
     val state: DelayTransferState?,
     val executing: String? = null,
+    val expiredHead: Boolean = false,
 )
 
 /** What [ReadDelayTransfers] gives. */
@@ -624,8 +632,11 @@ class ReadDelayTransfers(
                 val read = reads.getOrPut(call.hash) {
                     delays.queue(safe.network, safe.address, delay, call.hash)
                 }
+                var blocked = false
                 val state = when (read) {
                     is DelayQueueReading.Read -> {
+                        // Only one found in the queue: a queueing not mined yet waits for its block first.
+                        blocked = read.queue.entry != null && read.queue.headExpired(read.headTime)
                         val shown = window ?: read.queue.shownFor()?.also { window = it }
                         if (!onItsWay && shown != null && entry.transfer.sentAt < now - shown) return@mapNotNull null
                         read.queue.state(read.headTime)
@@ -644,6 +655,7 @@ class ReadDelayTransfers(
                     entry.outcome,
                     state,
                     entries.executionOnItsWay(safe.network, call, now),
+                    expiredHead = blocked,
                 )
             }
             .reversed()

@@ -338,12 +338,20 @@ class AccountDetailViewModel(
         .distinctUntilChanged()
         .flatMapLatest { shown -> if (shown) sharedActivity else flowOf(ActivityUiState.Loading) }
 
-    /** Whether the unlisted collections' NFTs are shown: collapsed until the user opens them (owner ruling, #246). */
-    /** This account's Per-app tab, when a phrase is known by it; null otherwise. */
-    private val perAppTab: Flow<PerAppTab?> = (observePerAppAddresses?.invoke() ?: flowOf(null))
-        .map { overview -> overview?.let { perAppTabOf(it, address) } }
-        .distinctUntilChanged()
+    /**
+     * This account's Per-app tab, when a phrase is known by it and it is an account held here (never a watched entry
+     * of the same address, nor a Safe); null otherwise, and until the envelopes are read, so the screen never waits.
+     */
+    private val perAppTab: Flow<PerAppTab?> = combine(
+        lookup,
+        (observePerAppAddresses?.invoke() ?: flowOf(null)).onStart { emit(null) },
+    ) { lookup, overview ->
+        val held = (lookup as? AccountLookup.Found)?.account
+            ?.takeIf { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore && it.perApp == null }
+        if (held == null || overview == null) null else perAppTabOf(overview, address)
+    }.distinctUntilChanged()
 
+    /** Whether the unlisted collections' NFTs are shown: collapsed until the user opens them (owner ruling, #246). */
     private val unlistedNftsOpen = MutableStateFlow(false)
 
     /** The *Add an NFT* dialog while open. */
@@ -478,11 +486,7 @@ class AccountDetailViewModel(
                 }
             }
             .combine(perAppTab) { state, tab ->
-                if (state is AccountDetailUiState.Ready && state.kind != AccountKind.SAFE) {
-                    state.copy(perApp = tab)
-                } else {
-                    state
-                }
+                if (state is AccountDetailUiState.Ready) state.copy(perApp = tab) else state
             }
             // Masked last, on the finished state (the Activity masks its own, as it is built).
             .combine(amountsHidden) { state, hidden -> state.withAmountsHidden(hidden) }

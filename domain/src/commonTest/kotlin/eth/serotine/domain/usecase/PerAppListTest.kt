@@ -81,6 +81,20 @@ class PerAppListTest {
     }
 
     @Test
+    fun aPerAppAddressIsNeverTheAccountItsPhraseIsKnownBy() {
+        // Listed before the phrase's further account: the further account names the phrase all the same.
+        val phrases = mapOf(further.address to first.address)
+        val listed = listOf(perAppOnEthereum, further)
+        val sources = phraseSources(listed, phrases)
+        assertEquals(listOf(further), sources.map { it.from })
+        assertEquals(mapOf(first.address to further.address), phraseAccounts(listed, sources))
+        // Held by per-app addresses alone, the phrase can still be restored from, but no account has its tab.
+        val alone = listOf(perAppOnEthereum)
+        assertEquals(listOf(perAppOnEthereum), phraseSources(alone, emptyMap()).map { it.from })
+        assertEquals(emptyMap(), phraseAccounts(alone, phraseSources(alone, emptyMap())))
+    }
+
+    @Test
     fun theOverviewFollowsTheListThePhrasesAndTheNetworks() = runTest {
         val accounts = ListAccountRepository(first, perAppOnEthereum)
         val keys = FakePerAppKeys(phrases = mapOf(first.address to first.address))
@@ -124,8 +138,10 @@ class PerAppListTest {
         val restored = assertIs<PerAppRestoring.Done>(restore(first.id, "uniswap.org", WalletPassword("correct horse")))
         assertEquals(uniswap, restored.site)
         assertIs<PerAppMaking.Made>(restored.making)
-        val withPath = restore(first.id, "App.Uniswap.org/swap", WalletPassword("correct horse"))
-        assertEquals(uniswap, assertIs<PerAppRestoring.Done>(withPath).site)
+        for (typed in listOf("App.Uniswap.org/swap", "uniswap.org:443", "app.uniswap.org?utm=x", "uniswap.org#a")) {
+            val restoredAgain = restore(first.id, typed, WalletPassword("correct horse"))
+            assertEquals(uniswap, assertIs<PerAppRestoring.Done>(restoredAgain).site, typed)
+        }
     }
 
     @Test
@@ -136,6 +152,7 @@ class PerAppListTest {
         val ftp = restore(first.id, "ftp://x.example", password)
         assertEquals(PerAppRestoring.NoHost(AppHostResult.NotAWebAddress), ftp)
         assertIs<PerAppRestoring.NoHost>(restore(first.id, "", password))
+        assertIs<PerAppRestoring.NoHost>(restore(first.id, "not a host", password))
         assertIs<PerAppRestoring.NoHost>(restore(first.id, "bücher.example", password))
         assertEquals(emptyList(), keys.derived)
     }

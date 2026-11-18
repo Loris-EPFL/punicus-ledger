@@ -1095,12 +1095,13 @@ class AppGraph(
 
     /**
      * Screen D9, the per-app addresses held here (issue #252): of every phrase, or of the one [phrase] names (the
-     * address of its first account) when opened from that phrase's account.
+     * address of its first account) when opened from that phrase's account, then with Restore open ([restoring]).
      */
-    fun perAppViewModel(phrase: Address?): PerAppViewModel = PerAppViewModel(
+    fun perAppViewModel(phrase: Address?, restoring: Boolean = false): PerAppViewModel = PerAppViewModel(
         phrase,
         ObservePerAppAddresses(accounts, perAppKeys, networkSettings),
         RestorePerAppAddress(MakePerAppAddress(perAppKeys, accounts, walletChanges), networkSettings),
+        restoring,
     )
 
     fun currencyViewModel(): CurrencyViewModel =

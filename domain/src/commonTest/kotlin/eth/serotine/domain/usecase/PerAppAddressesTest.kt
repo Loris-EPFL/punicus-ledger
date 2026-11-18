@@ -72,7 +72,9 @@ class PerAppAddressesTest {
     fun aPerAppAccountNamesItsPhraseItself() {
         val mark = PerAppAccount(testHost("uniswap.org"), AppIsolation.pathOf(testHost("uniswap.org")), first.address)
         val perApp = account(Network.ETHEREUM, '6', perApp = mark)
-        assertEquals(listOf(PhraseSource(first.address, perApp)), phraseSources(listOf(perApp, first), emptyMap()))
+        // The phrase is known from the per-app account's mark; its first account, listed too, names it (part 4a).
+        assertEquals(listOf(PhraseSource(first.address, first)), phraseSources(listOf(perApp, first), emptyMap()))
+        assertEquals(listOf(PhraseSource(first.address, perApp)), phraseSources(listOf(perApp), emptyMap()))
     }
 
     @Test

@@ -1026,7 +1026,7 @@ class NftActions(
 
 /**
  * What the Per-app tab's rows and its Restore do (issue #252): [onOpen] opens a per-app address's account by its chain
- * id and address, and [onRestore] opens screen D9 for the phrase named by its address, ready to restore one.
+ * id and address, and [onRestore] opens screen D9 for the phrase named by its address, its restore form open.
  */
 class PerAppActions(
     val onOpen: (chainId: Long, address: String) -> Unit = { _, _ -> },

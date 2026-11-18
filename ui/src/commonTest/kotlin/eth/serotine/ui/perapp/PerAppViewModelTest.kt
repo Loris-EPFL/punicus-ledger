@@ -59,11 +59,13 @@ class PerAppViewModelTest {
         keys: FakePerAppKeys,
         phrase: Address? = null,
         settings: MemoryNetworkSettings = networks,
+        restoring: Boolean = false,
     ): PerAppViewModel {
         val viewModel = PerAppViewModel(
             phrase,
             ObservePerAppAddresses(accounts, keys, settings),
             RestorePerAppAddress(MakePerAppAddress(keys, accounts, WalletChanges()), settings),
+            restoring,
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
         return viewModel
@@ -197,5 +199,39 @@ class PerAppViewModelTest {
         viewModel.onPasswordChange("correct horse")
         viewModel.onLeave()
         assertEquals("", assertNotNull(viewModel.uiState.value.restore).password.text)
+    }
+
+    @Test
+    fun openedFromAPerAppTabTheFormIsOpenAtOnce() = runTest {
+        main()
+        val keys = FakePerAppKeys(phrases = mapOf(main.address to main.address))
+        val viewModel = viewModel(FakeAccounts(main), keys, phrase = main.address, restoring = true)
+        assertNotNull(viewModel.uiState.value.restore)
+    }
+
+    @Test
+    fun aPhraseThatLeftIsSaidNeverSwappedForAnother() = runTest {
+        main()
+        val keys = FakePerAppKeys(phrases = mapOf(main.address to main.address, second.address to second.address))
+        val accounts = FakeAccounts(main, second)
+        val viewModel = viewModel(accounts, keys)
+        viewModel.openRestore()
+        viewModel.onPhraseChange(1)
+        assertEquals(1, assertNotNull(viewModel.uiState.value.restore).phrase)
+        viewModel.onHostChange("uniswap.org")
+        viewModel.onPasswordChange("correct horse")
+        accounts.accounts.value = listOf(main)
+        viewModel.restore()
+        assertEquals(PerAppViewModel.CHOSEN_GONE, viewModel.uiState.value.notice)
+        assertTrue(keys.derived.isEmpty())
+    }
+
+    @Test
+    fun aScreenForAPhraseThatLeftSaysSo() = runTest {
+        main()
+        val keys = FakePerAppKeys(phrases = mapOf(main.address to main.address))
+        val state = viewModel(FakeAccounts(main), keys, phrase = second.address).uiState.value
+        assertEquals(PerAppViewModel.OF_A_PHRASE, state.title)
+        assertEquals(PerAppViewModel.PHRASE_GONE, state.restoreBlocked)
     }
 }

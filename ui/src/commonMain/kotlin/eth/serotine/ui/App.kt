@@ -658,19 +658,20 @@ private fun Destinations(
         // Screen D9 (#252), outside the tabs: an account's Per-app tab and Connected dApps both open it.
         composable(
             PER_APP_ROUTE,
-            arguments = listOf(
-                navArgument(PHRASE) {
+            arguments = listOf(PHRASE, RESTORE).map { name ->
+                navArgument(name) {
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null
-                },
-            ),
+                }
+            },
         ) { entry ->
             val asked = entry.savedStateHandle.get<String>(PHRASE)
             val phrase = asked?.let(Address::parse)
+            val restoring = entry.savedStateHandle.get<String>(RESTORE) == "true"
             if (asked == null || phrase != null) {
                 PerAppRoute(
-                    viewModel { graph.perAppViewModel(phrase) },
+                    viewModel { graph.perAppViewModel(phrase, restoring) },
                     onBack = { navController.popBackStack(PER_APP_ROUTE, inclusive = true) },
                     onOpen = { chain, address -> navController.open(AccountAction.Open(chain, address)) },
                 )
@@ -1042,11 +1043,15 @@ private fun NavController.openFromPane(action: AccountAction, shown: AccountId?)
     }
 }
 
-/** Opens screen D9 (#252): the per-app addresses of the phrase [phrase] names (its address, in lower case), or all. */
+/**
+ * Opens screen D9 (#252): the per-app addresses of the phrase [phrase] names (its address, in lower case), with
+ * "Restore a per-app address" open, or every phrase's. Not launchSingleTop: that would reuse the entry, and its
+ * ViewModel, for another phrase; the same one already in front is left as it is.
+ */
 private fun NavController.perApp(phrase: String?) {
-    navigate(if (phrase == null) Destination.PER_APP else "${Destination.PER_APP}?$PHRASE=$phrase") {
-        launchSingleTop = true
-    }
+    val top = currentBackStackEntry
+    if (top?.destination?.route == PER_APP_ROUTE && top.savedStateHandle.get<String>(PHRASE) == phrase) return
+    navigate(if (phrase == null) Destination.PER_APP else "${Destination.PER_APP}?$PHRASE=$phrase&$RESTORE=true")
 }
 
 /** Opens what [action] asks for; Copy is the screen's own, done on the clipboard. */
@@ -1482,8 +1487,11 @@ private const val SEND_ROUTE =
 /** The phrase screen D9 lists the per-app addresses of, by the address of its first account; none for every phrase. */
 private const val PHRASE = "phrase"
 
+/** Whether screen D9 opens with "Restore a per-app address" open: "true" from an account's Per-app tab. */
+private const val RESTORE = "restore"
+
 /** Screen D9, the per-app addresses (#252): of every phrase, or of the one [PHRASE] names. */
-private const val PER_APP_ROUTE = "${Destination.PER_APP}?$PHRASE={$PHRASE}"
+private const val PER_APP_ROUTE = "${Destination.PER_APP}?$PHRASE={$PHRASE}&$RESTORE={$RESTORE}"
 
 /** Send from another wallet (#255), with a token chosen or not. */
 private const val HANDOFF_ROUTE = "${Destination.SEND_ELSEWHERE}/{$CHAIN}/{$ADDRESS}?$ASSET={$ASSET}"

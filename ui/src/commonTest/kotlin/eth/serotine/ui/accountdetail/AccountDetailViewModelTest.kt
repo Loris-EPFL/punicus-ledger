@@ -198,8 +198,9 @@ class AccountDetailViewModelTest {
     private fun viewModel(
         address: Address = daily.address,
         perApp: ObservePerAppAddresses? = null,
+        network: Network = Network.SEPOLIA,
     ) = AccountDetailViewModel(
-        AccountId(Network.SEPOLIA, address),
+        AccountId(network, address),
         ObserveAccount(accounts),
         ObserveAccountValue(
             ObserveNativeBalance(balances),
@@ -208,7 +209,7 @@ class AccountDetailViewModelTest {
             ObserveDisplayCurrencies(feeds, currency, accounts),
         ),
         ObserveSafe(kinds, accounts),
-        ObserveSafeTxQueue(queue, ObserveSafe(kinds, accounts), recovery, Network.SEPOLIA),
+        ObserveSafeTxQueue(queue, ObserveSafe(kinds, accounts), recovery, network),
         ObserveKnownTokens(catalog, userTokens, metadata),
         SetTokenHidden(userTokens),
         ObserveEnsNames(accounts, names),
@@ -308,6 +309,14 @@ class AccountDetailViewModelTest {
         assertEquals("Per-app address for uniswap.org · ${AppIsolation.pathOf(site)}", marked.perAppMark)
         assertNull(marked.perApp, "a per-app address is not the account its phrase is known by")
         assertEquals(listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY), marked.segments)
+
+        // The same address watched on another network is not the phrase's account: no tab there.
+        val watched = daily.copy(network = Network.ETHEREUM, custody = AccountCustody.Watched)
+        accounts.accounts.value = listOf(daily, perApp, watched)
+        val other = viewModel(watched.address, perApp = observe, network = Network.ETHEREUM)
+        backgroundScope.launch { other.uiState.collect {} }
+        runCurrent()
+        assertNull((other.uiState.value as AccountDetailUiState.Ready).perApp)
     }
 
     @Test

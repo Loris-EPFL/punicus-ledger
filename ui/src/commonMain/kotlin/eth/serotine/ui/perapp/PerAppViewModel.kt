@@ -28,22 +28,26 @@ import kotlinx.coroutines.launch
  * Screen D9's ViewModel (issue #252; docs/walletconnect.md, *Every per-app address is listed*): the per-app addresses
  * held here ([ObservePerAppAddresses]), of every phrase, or of the one named by [phrase] when the screen is opened from
  * that phrase's account (its Per-app tab); and "Restore a per-app address" ([RestorePerAppAddress]), which takes a
- * host or a site, a phrase and the wallet password. The password is held while the form is open and dropped when the
- * screen is left or the restore starts.
+ * host or a site, a phrase and the wallet password, its form open from the start when [restoring] (the Per-app tab's
+ * Restore). The phrase chosen is held by its account's address, so a list that changes meanwhile never swaps it for
+ * another. The password is held while the form is open and dropped when the screen is left or the restore starts.
  */
 class PerAppViewModel(
     private val phrase: Address?,
     observePerAppAddresses: ObservePerAppAddresses,
     private val restorePerAppAddress: RestorePerAppAddress,
+    restoring: Boolean = false,
 ) : ViewModel() {
 
     private data class Local(
         val form: RestoreForm? = null,
+        /** The account whose phrase the form restores from, once one was chosen; else the first. */
+        val from: Address? = null,
         val notice: String? = null,
         val explaining: String? = null,
     )
 
-    private val local = MutableStateFlow(Local())
+    private val local = MutableStateFlow(Local(form = if (restoring) RestoreForm() else null))
 
     /** The addresses and phrases as last read; null until first read. Restore reads them when tapped. */
     private val overview: StateFlow<PerAppOverview?> =
@@ -56,16 +60,22 @@ class PerAppViewModel(
     private fun state(overview: PerAppOverview, local: Local): PerAppUiState {
         val sources = sourcesOf(overview)
         val entries = overview.entries.filter { phrase == null || it.phrase == phrase }
-        val title = phrase?.let { p -> sources.firstOrNull { it.phrase == p }?.from?.label }
-            ?.let { "Per-app addresses of $it's phrase" } ?: TITLE
+        val title = when {
+            phrase == null -> TITLE
+            else -> sources.firstOrNull()?.from?.label?.let { "Per-app addresses of $it's phrase" } ?: OF_A_PHRASE
+        }
+        val blocked = blocked(overview, sources)
         return PerAppUiState(
             loading = false,
             title = title,
             rows = perAppRows(entries, overview.sources),
             empty = if (entries.isEmpty()) EMPTY else null,
             // The phrases are offered only where there is a choice: opened from one, or with one, there is none.
-            restore = local.form?.copy(phrases = if (sources.size > 1) labels(sources) else emptyList()),
-            restoreBlocked = blocked(overview, sources),
+            restore = local.form.takeIf { blocked == null }?.copy(
+                phrases = if (sources.size > 1) labels(sources) else emptyList(),
+                phrase = sources.indexOfFirst { it.from.address == local.from }.coerceAtLeast(0),
+            ),
+            restoreBlocked = blocked,
             notice = local.notice,
             explaining = local.explaining,
         )
@@ -76,6 +86,7 @@ class PerAppViewModel(
         overview.sources.filter { phrase == null || it.phrase == phrase }
 
     private fun blocked(overview: PerAppOverview, sources: List<PhraseSource>): String? = when {
+        sources.isEmpty() && phrase != null -> PHRASE_GONE
         sources.isEmpty() -> NO_PHRASE
         restoreNetworks(overview.enabled).isEmpty() -> NO_NETWORK
         else -> null
@@ -103,8 +114,11 @@ class PerAppViewModel(
     /** The host field changed. */
     fun onHostChange(text: String) = editForm { it.copy(host = text) }
 
-    /** Another phrase was chosen, by its index in the form's list. */
-    fun onPhraseChange(index: Int) = editForm { it.copy(phrase = index) }
+    /** Another phrase was chosen, by its index in the form's list: held by its account's address. */
+    fun onPhraseChange(index: Int) {
+        val chosen = overview.value?.let(::sourcesOf)?.getOrNull(index) ?: return
+        if (local.value.form?.busy == false) local.update { it.copy(from = chosen.from.address, notice = null) }
+    }
 
     /** The password field changed. */
     fun onPasswordChange(text: String) = editForm { it.copy(password = WalletPassword(text)) }
@@ -123,7 +137,15 @@ class PerAppViewModel(
         val form = local.value.form ?: return
         if (!form.canRestore) return
         val sources = sourcesOf(overview)
-        val source = sources.getOrNull(form.phrase) ?: sources.firstOrNull() ?: return
+        val chosen = local.value.from
+        // The phrase chosen, or the first while none was; one gone meanwhile is said, never swapped for another.
+        val source = if (chosen == null) sources.firstOrNull() else sources.firstOrNull { it.from.address == chosen }
+        if (source == null) {
+            local.update {
+                it.copy(form = form.copy(password = WalletPassword.EMPTY), from = null, notice = CHOSEN_GONE)
+            }
+            return
+        }
         val password = form.password
         // The password leaves the state as the work starts: it is held by this call alone.
         local.update { it.copy(form = form.copy(busy = true, password = WalletPassword.EMPTY), notice = null) }
@@ -150,6 +172,17 @@ class PerAppViewModel(
         /** Why Restore is greyed out without a phrase held here. */
         const val NO_PHRASE = "A per-app address is made from a recovery phrase held on this device. Create an " +
             "account or import a recovery phrase first."
+
+        /** The title while the screen is for a phrase none of whose accounts is here any more. */
+        const val OF_A_PHRASE = "Per-app addresses of a phrase"
+
+        /** Why Restore is greyed out, or refused, when the phrase it was opened for has no account here any more. */
+        const val PHRASE_GONE = "That recovery phrase has no account on this device any more. Its addresses are " +
+            "listed under Settings → Connected dApps → Per-app addresses."
+
+        /** What a restore says when the phrase chosen left the device meanwhile: nothing is made from another. */
+        const val CHOSEN_GONE = "The recovery phrase you chose has no account on this device any more. Nothing " +
+            "changed: choose another."
 
         /** Why Restore is greyed out with no network on. */
         const val NO_NETWORK = "A restored address is added on the networks that are on, and none is. Turn one " +

@@ -68,14 +68,20 @@ class ObservePerAppAddresses(
 /**
  * The account each phrase of [sources] is known by (docs/wallet-ux.md, 4): its first account (`m/44'/60'/0'/0/0`,
  * whose address names the phrase) while that one is in the wallet with its key held here, else the phrase's account
- * listed first. A phrase whose name is not known (an envelope sealed before part 2 of #252) is known by none.
+ * listed first that is not a per-app address. A phrase whose name is not known (an envelope sealed before part 2 of
+ * #252), or held here by per-app addresses alone, is known by none.
  */
 fun phraseAccounts(listed: List<Account>, sources: List<PhraseSource>): Map<Address, Address> {
     val held = listed.filter { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore }
         .map { it.address }.toSet()
+    // A per-app address is never the account its phrase is known by: its tab would list itself among its siblings.
     return sources.mapNotNull { source ->
         val phrase = source.phrase ?: return@mapNotNull null
-        phrase to if (phrase in held) phrase else source.from.address
+        when {
+            phrase in held -> phrase to phrase
+            source.from.perApp == null -> phrase to source.from.address
+            else -> null
+        }
     }.toMap()
 }
 
@@ -112,8 +118,9 @@ class RestorePerAppAddress(
 ) {
     suspend operator fun invoke(from: AccountId, hostOrSite: String, password: WalletPassword): PerAppRestoring {
         val text = hostOrSite.trim()
-        // A web address as one, else a host alone, a path typed after it dropped ("app.uniswap.org/swap").
-        val host = if ("://" in text) AppHost.ofUrl(text) else AppHost.parse(text.substringBefore('/'))
+        // A web address as one; a host or a site as the web address it names, so that a port, a path, a query or a
+        // fragment typed after it is dropped as a dApp's URL has it ("app.uniswap.org/swap?x=1").
+        val host = AppHost.ofUrl(if ("://" in text) text else "https://$text")
         if (host !is AppHostResult.Host) return PerAppRestoring.NoHost(host)
         val on = restoreNetworks(networks.observe().first())
         return PerAppRestoring.Done(host.host.site, make(from, host.host, on, password))

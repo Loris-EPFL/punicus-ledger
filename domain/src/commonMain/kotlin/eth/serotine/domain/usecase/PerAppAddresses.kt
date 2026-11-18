@@ -55,15 +55,24 @@ data class PerAppChoice(
     val collision: AppHost?,
 )
 
-/** The phrases of the wallet's accounts held here, each named by its first account in [listed] ([PhraseSource]). */
+/**
+ * The phrases of the wallet's accounts held here, each named by its first account in [listed] that is not a per-app
+ * address, or by a per-app address where it has no other ([PhraseSource]).
+ */
 fun phraseSources(listed: List<Account>, phrases: Map<Address, Address>): List<PhraseSource> {
     // An older envelope's further account, whose phrase is learnt only when it is opened, stands for one of its own:
     // it may be one listed already, which then shows twice, and either gives the same addresses.
+    // A per-app address names its phrase only where no other account of it is held: "Phrase of uniswap.org" says
+    // less than the name of an ordinary account of it, though either envelope gives the same addresses.
     val held = listed.filter { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore }
+        .sortedBy { it.perApp != null }
+    // A per-app account records its phrase itself; an older envelope's further account names none. An account whose
+    // address names a phrase known so is that phrase's first account, whatever its envelope says.
+    fun phraseOf(account: Account): Address? = phrases[account.address] ?: account.perApp?.phrase
+    val known = held.mapNotNull(::phraseOf).toSet()
     val seen = HashSet<Address>()
     return held.mapNotNull { account ->
-        // A per-app account records its phrase itself; an older envelope's further account names none.
-        val phrase = phrases[account.address] ?: account.perApp?.phrase
+        val phrase = phraseOf(account) ?: account.address.takeIf { it in known }
         when {
             phrase == null -> if (seen.add(account.address)) PhraseSource(null, account) else null
             seen.add(phrase) -> PhraseSource(phrase, account)

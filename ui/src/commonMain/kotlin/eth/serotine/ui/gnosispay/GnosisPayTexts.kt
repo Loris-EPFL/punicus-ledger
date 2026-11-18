@@ -70,6 +70,13 @@ internal object GnosisPayTexts {
         "Verified by the light client at block ${grouped(block)}"
     }
 
+    /** [checkedAt] in simple mode's words, with no block (docs/simple-ui.md); the block stays under *Details*. */
+    fun simpleCheckedAt(held: Boolean = false): String = if (held) {
+        "Last checked on chain a while ago. It could not be checked again just now: it may have changed since."
+    } else {
+        "Checked on chain"
+    }
+
     /** Why Send cannot be done here, and how to get there; null when it can. */
     fun sendReason(sending: GnosisPaySending): String? = when (sending) {
         GnosisPaySending.AVAILABLE -> null
@@ -154,8 +161,7 @@ internal object GnosisPayTexts {
     }
 
     const val EXECUTE_NEEDS_MEMBER =
-        "This transfer was queued by an account whose key is no longer on this device, so it cannot be " +
-            "executed from here."
+        "It was queued by an account whose key is no longer on this device, so it cannot be executed from here."
 
     const val EXECUTE_UNVERIFIED =
         "Where this transfer stands in the Delay module cannot be verified right now, so it is not executed. " +
@@ -368,13 +374,25 @@ internal object GnosisPayTexts {
 
     const val CHECKING = "Its execution is being checked on chain."
     const val SKIP_CHECKING = "A skip of the expired entries is being checked on chain. Wait for it."
-    const val OTHER_CHECKING = "Another transfer's execution is being checked on chain. Wait for it."
+    const val OTHER_CHECKING = "Another queued entry's execution is being checked on chain. Wait for it."
+
+    /** New transfer, while an execution from the list is being checked. */
+    const val EXECUTION_CHECKING = "The execution of a queued entry is being checked on chain. Wait for it."
+
+    /** Any action, while the removal of a member is being checked. */
+    const val REMOVAL_CHECKING = "The removal of a member is being checked on chain. Wait for it."
     const val NO_ASSET = "Choose the asset to send."
     const val BAD_ADDRESS = "Enter the recipient's address: 0x and 40 hex digits. Gnosis Chain resolves no names."
     const val BAD_CHECKSUM = "That address's capital letters do not match its checksum (EIP-55): a character may " +
         "be mistyped. Copy the address again, or enter it all in lower case only if you are sure of it."
     const val BAD_AMOUNT = "Enter an amount, in the asset's units."
     const val QUOTE_FAILED = "The transfer could not be checked on chain. Try again."
+
+    /** [QUOTE_FAILED] of a change of the Delay's members. */
+    const val MEMBER_QUOTE_FAILED = "The change of members could not be checked on chain. Try again."
+
+    /** [QUOTE_FAILED] or [MEMBER_QUOTE_FAILED], as [call] is. */
+    fun quoteFailed(call: DelayCall): String = if (call is DelayMemberChange) MEMBER_QUOTE_FAILED else QUOTE_FAILED
 
     /** The account's reading is an earlier one standing over a read that did not answer: nothing is planned on it. */
     const val NOT_VERIFIED_NOW = "This account could not be verified at the latest block, so nothing is sent on " +
@@ -391,7 +409,34 @@ internal object GnosisPayTexts {
         DelayTransferPlan.NothingToSend -> "There is nothing to send, and no fee is worth paying for it."
     }
 
-    fun quoteRefused(quoting: DelayQuoting): String = when (quoting) {
+    /** Why [call]'s quote was refused, said of what [call] is: a transfer, or a change of members. */
+    fun quoteRefused(quoting: DelayQuoting, call: DelayCall): String =
+        quoteRefused(quoting, memberChange = call is DelayMemberChange)
+
+    /**
+     * Why a quote was refused; [memberChange] when it was a change of the Delay's members, which the
+     * texts that name what was refused say instead of "transfer".
+     */
+    fun quoteRefused(quoting: DelayQuoting, memberChange: Boolean = false): String {
+        val what = if (memberChange) "change of members" else "transfer"
+        return when (quoting) {
+            is DelayQuoting.AlreadyQueued -> "The same $what is queued already and waits in the Delay module. " +
+                "Execute it, or let it expire, before queuing it again."
+            is DelayQuoting.SameCallExpired -> if (quoting.skippable) {
+                "The same $what is still in the Delay module's queue, expired. It stays there until it is skipped, " +
+                    "and it holds back every entry queued after it. Skip expired entries, then review again."
+            } else {
+                "The same $what is still in the Delay module's queue, too close to its expiration to be executed " +
+                    "in time. Once it has expired it can be skipped; review again then."
+            }
+            DelayQuoting.HeadExpired -> "The next entry in the Delay module's queue has expired. Until it is " +
+                "skipped, nothing behind it can be executed: a $what queued now would wait, expire and do nothing, " +
+                "its fees paid. Skip expired entries, then review again."
+            else -> refusedAsTransfer(quoting)
+        }
+    }
+
+    private fun refusedAsTransfer(quoting: DelayQuoting): String = when (quoting) {
         is DelayQuoting.Quoted -> ""
         is DelayQuoting.NotTheSafesDelay -> when (quoting.generation) {
             DelayGeneration.RETIRED ->
@@ -404,18 +449,8 @@ internal object GnosisPayTexts {
             "The account holds less than that beside what transfers queued from here will move. It would be " +
                 "queued, wait, and then fail, its fees paid."
         }
-        is DelayQuoting.AlreadyQueued -> "The same transfer is queued already and waits in the Delay module. " +
-            "Execute it, or let it expire, before queuing it again."
-        is DelayQuoting.SameCallExpired -> if (quoting.skippable) {
-            "The same transfer is still in the Delay module's queue, expired. It stays there until it is skipped, " +
-                "and it holds back every transfer queued after it. Skip expired entries, then review again."
-        } else {
-            "The same transfer is still in the Delay module's queue, too close to its expiration to be executed " +
-                "in time. Once it has expired it can be skipped; review again then."
-        }
-        DelayQuoting.HeadExpired -> "The next entry in the Delay module's queue has expired. Until it is skipped, " +
-            "nothing behind it can be executed: a transfer queued now would wait, expire and move nothing, its fees " +
-            "paid. Skip expired entries, then review again."
+        is DelayQuoting.AlreadyQueued, is DelayQuoting.SameCallExpired, DelayQuoting.HeadExpired ->
+            quoteRefused(quoting, memberChange = false)
         is DelayQuoting.WindowTooShort -> sendReason(GnosisPaySending.WINDOW_TOO_SHORT).orEmpty()
         is DelayQuoting.SafeCallReverts -> "The account's own transfer reverts, run as a verified call" +
             (quoting.blockNumber?.let { " at block ${grouped(it)}" } ?: "") + ": the recipient does not accept it. " +

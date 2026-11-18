@@ -113,7 +113,7 @@ class GnosisPayViewModel(
     /** Where the user is in a transfer, beside what the chain says. */
     private sealed interface Flow {
         /** The overview; [busy] the queued transfer whose execution is quoted, [error] why the last one was not. */
-        data class Overview(val busy: String? = null, val error: String? = null) : Flow
+        data class Overview(val busy: String? = null, val error: String? = null, val skip: Boolean = false) : Flow
         data class Compose(
             val asset: String?,
             val to: String,
@@ -353,7 +353,9 @@ class GnosisPayViewModel(
                 )
             },
             controlNote = GnosisPayTexts.controlNote(found.control),
-            send = ActionItem(found.sending == GnosisPaySending.AVAILABLE, GnosisPayTexts.sendReason(found.sending)),
+            // While anything is checked from the overview, New transfer waits for it, saying what (#55).
+            send = (step as? Flow.Overview)?.busy?.let { ActionItem(false, sendBusyReason(it)) }
+                ?: ActionItem(found.sending == GnosisPaySending.AVAILABLE, GnosisPayTexts.sendReason(found.sending)),
             queued = latestQueued.map { queuedRow(it, found, (step as? Flow.Overview)?.busy, sinceRead) },
             queuedNote = GnosisPayTexts.queuedNote(chain.transfers),
             step = stepOf(step, found, chain),
@@ -420,6 +422,7 @@ class GnosisPayViewModel(
     private fun stepOf(step: Flow, found: GnosisPayReading.Found, chain: Chain): GnosisPayStep = when (step) {
         is Flow.Overview -> GnosisPayStep.Overview(
             error = step.error,
+            skip = step.skip && step.busy == null,
             checking = step.busy?.takeIf { it.startsWith(REMOVING) }
                 ?.let { GnosisPayTexts.checkingRemoval(it.removePrefix(REMOVING)) },
         )
@@ -597,11 +600,17 @@ class GnosisPayViewModel(
                 val review = Flow.Review(reviewed, member, unlock, quotedAt, form = form, hidden = hidden)
                 return@launch landed(review)
             }
-            val why = if (quoting == null) GnosisPayTexts.QUOTE_FAILED else GnosisPayTexts.quoteRefused(quoting)
-            // An expired entry ahead blocks every call behind it: its skip is offered on the form, as on Send's.
+            val why = if (quoting == null) {
+                GnosisPayTexts.MEMBER_QUOTE_FAILED
+            } else {
+                GnosisPayTexts.quoteRefused(quoting, memberChange = true)
+            }
+            // An expired entry ahead blocks every call behind it: its skip is offered on the form, as on
+            // Send's, or on the overview for a removal, which has no form.
             val skip = quoting == DelayQuoting.HeadExpired ||
                 (quoting as? DelayQuoting.SameCallExpired)?.skippable == true
-            flowState.value = form?.copy(quoting = false, error = why, skip = skip) ?: Flow.Overview(error = why)
+            flowState.value = form?.copy(quoting = false, error = why, skip = skip)
+                ?: Flow.Overview(error = why, skip = skip)
         }
     }
 
@@ -696,7 +705,12 @@ class GnosisPayViewModel(
             is Flow.Compose -> if (from.quoting || !from.skip) return else from
             is Flow.AddMember -> if (from.quoting || !from.skip) return else from
             // From a queued row, while an expired entry blocks it.
-            is Flow.Overview -> if (from.busy != null || latestQueued.none { it.expiredHead }) return else null
+            // From a queued row while an expired entry blocks it, or after a removal refused for one.
+            is Flow.Overview -> if (from.busy != null || (!from.skip && latestQueued.none { it.expiredHead })) {
+                return
+            } else {
+                null
+            }
             is Flow.Review -> return
         }
         // The key that queued a blocked transfer pays for its skip, where it is held; then a controlling
@@ -763,8 +777,8 @@ class GnosisPayViewModel(
                 )
             }
             flowState.value = when (quoting) {
-                null -> Flow.Overview(error = GnosisPayTexts.QUOTE_FAILED)
-                else -> Flow.Overview(error = GnosisPayTexts.quoteRefused(quoting))
+                null -> Flow.Overview(error = GnosisPayTexts.quoteFailed(queued.call))
+                else -> Flow.Overview(error = GnosisPayTexts.quoteRefused(quoting, queued.call))
             }
         }
     }
@@ -835,8 +849,8 @@ class GnosisPayViewModel(
                     quoted = (quoting as? DelayQuoting.Quoted)?.let { Reviewed.Call(it.quote) }
                     why = when (quoting) {
                         is DelayQuoting.Quoted -> null
-                        null -> GnosisPayTexts.QUOTE_FAILED
-                        else -> GnosisPayTexts.quoteRefused(quoting)
+                        null -> GnosisPayTexts.quoteFailed(quote.delayCall)
+                        else -> GnosisPayTexts.quoteRefused(quoting, quote.delayCall)
                     }
                     offersSkip = quoting == DelayQuoting.HeadExpired ||
                         (quoting as? DelayQuoting.SameCallExpired)?.skippable == true
@@ -1006,10 +1020,18 @@ class GnosisPayViewModel(
     private fun unavailable(reason: ReadUnavailable): String = GnosisPayTexts.unavailable(reason)
 
     /** What holds a row's action back while [busy] is quoted from the overview, said for the row [row]. */
-    private fun busyReason(busy: String?, row: String): String = when (busy) {
-        SKIP_BUSY -> GnosisPayTexts.SKIP_CHECKING
-        row -> GnosisPayTexts.CHECKING
+    private fun busyReason(busy: String?, row: String): String = when {
+        busy == SKIP_BUSY -> GnosisPayTexts.SKIP_CHECKING
+        busy?.startsWith(REMOVING) == true -> GnosisPayTexts.REMOVAL_CHECKING
+        busy == row -> GnosisPayTexts.CHECKING
         else -> GnosisPayTexts.OTHER_CHECKING
+    }
+
+    /** What holds New transfer back while [busy] is quoted from the overview. */
+    private fun sendBusyReason(busy: String): String = when {
+        busy == SKIP_BUSY -> GnosisPayTexts.SKIP_CHECKING
+        busy.startsWith(REMOVING) -> GnosisPayTexts.REMOVAL_CHECKING
+        else -> GnosisPayTexts.EXECUTION_CHECKING
     }
 
     /**

@@ -995,7 +995,8 @@ upgrades*).
       name in the wallet, what it is ("A key", "A Safe: 1 of its 9 owners
       signs"), and "A key on this device controls the account through it"
       where one does, with Remove; then Add a member, and the block the Delay
-      was verified at. Both are greyed out where they cannot be done here,
+      was verified at (in simple mode "Checked on chain", the block under
+      *Details*). Both are greyed out where they cannot be done here,
       with Send through the Delay's reason, and Remove of the only member
       with "This is the Delay module's only member … its funds would be
       locked for good. Add another member first." A tap opens the Gnosis Pay
@@ -1736,7 +1737,10 @@ opens **Gnosis Pay**, a screen of its own:
   names the member before it in the Delay's list and, where the member is
   the way this device controls the account, warns that once executed this
   device can no longer send from it (or controls it only through the
-  others). The reviews sign with the same unlock as Send. Queued changes
+  others). While it is checked, the overview says "Checking the removal of
+  0x… on chain…", and New transfer is greyed out saying what is being
+  checked. Refused for an expired entry ahead, the overview offers **Skip
+  expired entries**. The reviews sign with the same unlock as Send. Queued changes
   are listed under **Queued from this device** ("Add member 0x…", "Remove
   member 0x…") with Execute after the cooldown, as transfers are; an
   execution whose change no longer fits the members says so, and is not

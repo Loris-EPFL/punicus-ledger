@@ -519,7 +519,25 @@ private fun GnosisPayReviewRemoveMemberPreview() = GnosisPayPreview(
 @Preview
 @Composable
 private fun GnosisPayCheckingRemovalPreview() = GnosisPayPreview(
-    overview.copy(step = GnosisPayStep.Overview(checking = "Checking the removal of 0xdbF03B…C6FB on chain…")),
+    overview.copy(
+        step = GnosisPayStep.Overview(checking = "Checking the removal of 0xdbF03B…C6FB on chain…"),
+        // New transfer waits for it, saying what is being checked (owner ruling, 2026-10-18, #55).
+        send = ActionItem(false, "The removal of a member is being checked on chain. Wait for it."),
+    ),
+)
+
+/** A removal refused for an expired entry ahead: its skip on the overview, as a removal has no form. */
+@Preview
+@Composable
+private fun GnosisPayRemovalSkipPreview() = GnosisPayPreview(
+    overview.copy(
+        step = GnosisPayStep.Overview(
+            error = "The next entry in the Delay module's queue has expired. Until it is skipped, nothing behind " +
+                "it can be executed: a change of members queued now would wait, expire and do nothing, its fees " +
+                "paid. Skip expired entries, then review again.",
+            skip = true,
+        ),
+    ),
 )
 
 @Preview
@@ -575,6 +593,7 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("review-remove-member") { GnosisPayReviewRemoveMemberPreview() },
     ScreenPreview("queued-member-change") { GnosisPayQueuedMemberChangePreview() },
     ScreenPreview("checking-removal") { GnosisPayCheckingRemovalPreview() },
+    ScreenPreview("removal-skip") { GnosisPayRemovalSkipPreview() },
     ScreenPreview("loading") { GnosisPayLoadingPreview() },
     ScreenPreview("unavailable") { GnosisPayUnavailablePreview() },
 )

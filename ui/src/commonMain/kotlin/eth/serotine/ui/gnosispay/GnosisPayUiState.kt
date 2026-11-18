@@ -101,9 +101,12 @@ sealed interface GnosisPayStep {
 
     /**
      * The account, its queued transfers, and Send; [error] why the last Execute or change of members
-     * was not quoted, and [checking] while a removal of a member is checked on chain.
+     * was not quoted, [checking] while a removal of a member is checked on chain, and [skip] when an
+     * expired entry blocking the Delay's queue is what refused a removal: Skip expired entries is
+     * then offered here, since a removal has no form to offer it on.
      */
-    data class Overview(val error: String? = null, val checking: String? = null) : GnosisPayStep
+    data class Overview(val error: String? = null, val checking: String? = null, val skip: Boolean = false) :
+        GnosisPayStep
 
     /**
      * The transfer form: the Safe's [assets] to choose from, the [asset] chosen (its contract, or

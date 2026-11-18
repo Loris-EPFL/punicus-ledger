@@ -711,6 +711,7 @@ class SafeSettingsViewModel(
             members = GnosisPayTexts.memberRows(found, withRemove = true),
             add = GnosisPayTexts.addMember(found),
             checkedAt = GnosisPayTexts.checkedAt(found.blockNumber, found.held),
+            simpleCheckedAt = GnosisPayTexts.simpleCheckedAt(found.held),
             note = "This is a Gnosis Pay account. Its one owner is a placeholder no key holds: the members of its " +
                 "Delay module ${Eip55.format(found.delay.address)} control it. A member added or removed is queued " +
                 "through the Delay and takes effect once executed after its wait, like a transfer.",

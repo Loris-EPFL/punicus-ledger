@@ -197,11 +197,13 @@ data class ThresholdField(val value: Int, val owners: Int, val shape: String) {
  * A Gnosis Pay account's Delay members, who control it (owner ruling, 2026-11-18; docs/gnosis-pay.md):
  * each [members] row with what it is and its Remove, then Add member ([add]); both greyed out with
  * their reasons where they cannot be done here, as Send through the Delay is; [checkedAt] where the
- * Delay was verified, and [note] what the section is about.
+ * Delay was verified, [note] what the section is about, and [simpleCheckedAt] [checkedAt] with no
+ * block, for simple mode (null: [checkedAt] serves).
  */
 data class DelayMembers(
     val members: List<MemberRow>,
     val add: ActionItem,
     val checkedAt: String,
     val note: String,
+    val simpleCheckedAt: String? = null,
 )

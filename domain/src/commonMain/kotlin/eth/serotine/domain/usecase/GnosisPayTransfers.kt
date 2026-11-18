@@ -418,7 +418,7 @@ private class DelayCallQuoter(
  * only. [clock] is in unix seconds.
  */
 class QuoteDelayQueue(
-    delays: DelayModules,
+    private val delays: DelayModules,
     private val history: TransactionHistory,
     inputs: TransactionInputs,
     nativeBalances: NativeBalances,
@@ -473,14 +473,44 @@ class QuoteDelayQueue(
             }
             is DelayMemberChange -> {
                 // One change of the members at a time from here: each is planned against them as they are.
-                waiting.firstOrNull { it.queued is DelayMemberChange }
-                    ?.let { return DelayQuoting.MemberChangeWaiting(it.entry.transfer.hash) }
+                waitingMemberChange(waiting, network, delays, clock())
+                    ?.let { return DelayQuoting.MemberChangeWaiting(it) }
                 memberCheck(call, queue)?.let { return it }
                 return quoter.quote(sender, call, DelayStep.QUEUE, level, via = via)
             }
         }
     }
 }
+
+/**
+ * The queueing hash of a change of the members queued from here that still waits, of those in
+ * [waiting]; null when none does. One waits while it is on its way, or while a fresh read of its
+ * own hash finds its entry in the queue, not expired, or cannot tell (an entry further back, a
+ * read that did not answer). Its age alone never decides: on a Delay with no expiration a change
+ * executed by anyone, or never mined, would hold every later one back for good.
+ */
+private suspend fun waitingMemberChange(
+    waiting: List<Queueing>,
+    network: Network,
+    delays: DelayModules,
+    now: Long,
+): String? = waiting.filter { it.queued is DelayMemberChange }
+    .distinctBy { it.queued.hash }
+    .firstOrNull { (entry, queued) ->
+        entry.onItsWay(now) || when (val read = delays.queue(network, queued.safe, queued.delay, queued.hash)) {
+            is DelayQueueReading.Read -> {
+                val found = read.queue.entry
+                if (found == null) {
+                    !read.queue.searchedAll
+                } else {
+                    read.queue.state(read.headTime) !is DelayTransferState.Expired
+                }
+            }
+            // Not the Safe's Delay any more: nothing of it waits through it.
+            is DelayQueueReading.NotTheSafes -> false
+            is DelayQueueReading.Unavailable -> true
+        }
+    }?.entry?.transfer?.hash
 
 /**
  * Why [change] is not quoted against the members [queue] was read with (owner ruling, 2026-11-18):
@@ -765,15 +795,20 @@ enum class MemberRemovalEffect {
 }
 
 /**
- * What removing [member] does to the ways this device controls the account
- * ([GnosisPayReading.Found.controllersHeld]): a way goes through [member] when [member] is the held
- * key itself, a member, or the member Safe the key reaches the Delay through.
+ * What removing [member] does to the ways this device controls the account: each way down from a
+ * member to a key held here on the account's network that acts alone ([DelayControl.controllers],
+ * one entry per way; [GnosisPayReading.Found.controllersHeld] until who controls the Delay is read).
+ * A way goes through [member] when [member] is the held key itself, a member, or the member Safe the
+ * key reaches the Delay through.
  */
 fun GnosisPayReading.Found.removalOf(member: Address): MemberRemovalEffect {
-    val through = { held: HeldController -> (held.via.firstOrNull() ?: held.account.address) == member }
+    // Every way, not one per key: a key that is a member and also owns a member Safe has two.
+    val held = keysHere.mapTo(HashSet()) { it.address }
+    val ways = control?.controllers?.filter { it.alone && it.key in held }?.map { it.via.firstOrNull() ?: it.key }
+        ?: controllersHeld.map { it.via.firstOrNull() ?: it.account.address }
     return when {
-        controllersHeld.none(through) -> MemberRemovalEffect.NOT_A_WAY_HERE
-        controllersHeld.all(through) -> MemberRemovalEffect.LAST_WAY_HERE
+        ways.none { it == member } -> MemberRemovalEffect.NOT_A_WAY_HERE
+        ways.all { it == member } -> MemberRemovalEffect.LAST_WAY_HERE
         else -> MemberRemovalEffect.ANOTHER_WAY_REMAINS
     }
 }

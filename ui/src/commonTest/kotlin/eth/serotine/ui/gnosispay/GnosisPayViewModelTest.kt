@@ -804,7 +804,8 @@ class GnosisPayViewModelTest {
 
         val overview = viewModel.ready().step as GnosisPayStep.Overview
         assertEquals("Checking the removal of ${shortAddress(Eip55.format(other))} on chain…", overview.checking)
-        // Nothing else starts meanwhile.
+        // Nothing else starts meanwhile, and New transfer is greyed out saying why, never a dead tap (#55).
+        assertEquals(ActionItem(false, GnosisPayTexts.REMOVAL_CHECKING), viewModel.ready().send)
         viewModel.startSend()
         assertTrue(viewModel.ready().step is GnosisPayStep.Overview)
         gate.complete(Unit)
@@ -859,5 +860,32 @@ class GnosisPayViewModelTest {
         assertEquals("Add member ${shortAddress(Eip55.format(newcomer))}", row.title)
         assertEquals(GnosisPayTexts.BLOCKED_BY_EXPIRED, row.status)
         assertEquals(ActionItem(enabled = true, reason = null), row.skip)
+    }
+
+    @Test
+    fun aRemovalRefusedForAnExpiredEntryOffersTheSkipOnTheOverview() = runTest {
+        delayMembers = listOf(member, other)
+        // Entry 0 was queued elsewhere (Gnosis Pay's own app) at 0 and expired by the head at 5000;
+        // nothing queued from here waits behind it, so no row offers its skip.
+        queueAnswer = DelayQueueReading.Read(DelayQueue(0, 1, 180, 1_800, null, 1, headCreatedAt = 0), 41, 5_000)
+        val viewModel = viewModel()
+        viewModel.ready()
+        viewModel.removeMember(Eip55.format(other))
+
+        val overview = viewModel.ready().step as GnosisPayStep.Overview
+        assertTrue(overview.skip)
+        assertTrue("a change of members queued now" in overview.error.orEmpty(), overview.error)
+
+        viewModel.skipExpired()
+        val review = viewModel.ready().step as GnosisPayStep.Review
+        assertEquals(GnosisPayTexts.SKIP_TITLE, review.title)
+    }
+
+    @Test
+    fun aRefusalOfAMemberChangeSaysChangeOfMembersNotTransfer() {
+        val text = GnosisPayTexts.quoteRefused(DelayQuoting.AlreadyQueued(null), memberChange = true)
+        assertTrue(text.startsWith("The same change of members"), text)
+        assertTrue("transfer" !in GnosisPayTexts.quoteRefused(DelayQuoting.HeadExpired, memberChange = true))
+        assertTrue("transfer" in GnosisPayTexts.quoteRefused(DelayQuoting.HeadExpired))
     }
 }

@@ -845,6 +845,67 @@ class GnosisPayTransfersTest {
     }
 
     @Test
+    fun oneKeyThatReachesTheDelayTwoWaysKeepsTheOtherWhenOneIsRemoved() {
+        // The key is a member itself and also the one owner of the member Safe `other`: two ways,
+        // though the account keeps one controller per key, its shortest way.
+        val keyAccount = Account(Network.GNOSIS, member, AccountKind.EOA, "Key", AccountCustody.InKeyStore)
+        val control = DelayControl(
+            listOf(
+                ControlNode.Key(member),
+                ControlNode.Safe(other, threshold = 1, owners = listOf(ControlNode.Key(member))),
+            ),
+        )
+        val found = GnosisPayReading.Found(
+            delay = DelayModule(delay, DelayGeneration.CURRENT, 180, 1_800, 0, 0, listOf(member, other)),
+            blockNumber = 1,
+            controllersHeld = listOf(HeldController(keyAccount, emptyList())),
+            keysHeldElsewhere = emptyList(),
+            safeModules = listOf(delay),
+            control = control,
+        )
+        assertEquals(2, control.controllers.size)
+        assertEquals(MemberRemovalEffect.ANOTHER_WAY_REMAINS, found.removalOf(member))
+        assertEquals(MemberRemovalEffect.ANOTHER_WAY_REMAINS, found.removalOf(other))
+        // A way through a Safe that needs co-owners is no way this device controls the account by.
+        val coSigned = found.copy(
+            control = DelayControl(
+                listOf(
+                    ControlNode.Key(member),
+                    ControlNode.Safe(other, 2, listOf(ControlNode.Key(member), ControlNode.Key(roles))),
+                ),
+            ),
+        )
+        assertEquals(MemberRemovalEffect.LAST_WAY_HERE, coSigned.removalOf(member))
+        assertEquals(MemberRemovalEffect.NOT_A_WAY_HERE, coSigned.removalOf(other))
+    }
+
+    @Test
+    fun aMemberChangeFromHereHoldsTheNextBackOnlyWhileItsEntryWaits() = runTest {
+        // A Delay whose entries never expire: the age of a queueing tells nothing.
+        memberFunded()
+        val ours = removal()
+        val earlier = addition()
+        val noExpiration = DelayQueue(5, 5, 90_000, 0, null, 0, members = listOf(member, other))
+        queueAnswer = DelayQueueReading.Read(noExpiration, 120, 1_000)
+        val queueing = sentBy(SentAction.DelayQueue(earlier), 10, 1)
+        history.entries.value = listOf(HistoryEntry(queueing, SentOutcome.NonceUsed))
+
+        // Executed elsewhere, or never mined: its hash is no longer in the queue, so nothing waits.
+        answers[earlier.hash] = DelayQueueReading.Read(noExpiration, 120, 1_000)
+        assertTrue(queueing()(member, ours, FeeLevel.NORMAL) is DelayQuoting.Quoted)
+
+        // Still in the queue, or where it stands cannot be told: it waits.
+        answers[earlier.hash] = DelayQueueReading.Read(
+            DelayQueue(5, 6, 90_000, 0, DelayEntry(5, earlier.hash, 900), 1, members = listOf(member, other)),
+            120,
+            1_000,
+        )
+        assertEquals(DelayQuoting.MemberChangeWaiting(queueing.hash), queueing()(member, ours, FeeLevel.NORMAL))
+        answers[earlier.hash] = DelayQueueReading.Unavailable(ReadUnavailable.UNPROVEN)
+        assertEquals(DelayQuoting.MemberChangeWaiting(queueing.hash), queueing()(member, ours, FeeLevel.NORMAL))
+    }
+
+    @Test
     fun aQueuedTransferIsMarkedWhileTheDelaysNextEntryHasExpired() = runTest {
         val ours = transfer()
         history.entries.value =

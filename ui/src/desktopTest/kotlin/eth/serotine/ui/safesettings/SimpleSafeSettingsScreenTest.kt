@@ -45,6 +45,41 @@ class SimpleSafeSettingsScreenTest {
     }
 
     @Test
+    fun aGnosisPayAccountsDelayMembersNameNoBlockEither() {
+        val state = SafeSettingsUiState.Overview(
+            network = "Gnosis Chain",
+            safe = SendFrom("Card", "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"),
+            title = "Safe 1.3.0 · nonce 3",
+            signers = "1 of 1 owners must sign",
+            owners = listOf(SettingsOwner("0x0000000000000000000000000000000000000002", null, heldHere = false)),
+            modules = emptyList(),
+            guard = null,
+            checkedAt = "Verified at block 43,000,512",
+            simpleCheckedAt = "Checked on chain",
+            changeReason = null,
+            enableModuleReason = MODULE_ENABLED_REFUSAL,
+            updateReason = "Not offered here.",
+            delayMembers = DelayMembers(
+                members = listOf(
+                    eth.serotine.ui.gnosispay.MemberRow("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", "Daily", true),
+                ),
+                add = eth.serotine.ui.gnosispay.ActionItem(true, null),
+                checkedAt = "Verified by the light client at block 43,000,511",
+                simpleCheckedAt = "Delay checked on chain",
+                note = "This is a Gnosis Pay account.",
+            ),
+        )
+        rule.setContent { SerotineTheme { SimpleSafeSettingsScreen(state, SafeSettingsActions(), onBack = {}) } }
+
+        rule.onNodeWithText("Delay checked on chain").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("at block", substring = true).assertDoesNotExist()
+
+        rule.onNodeWithTag(SETTINGS_DETAILS_TAG).performScrollTo().performClick()
+        rule.onNodeWithText("Delay module: Verified by the light client at block 43,000,511")
+            .performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun aChangeTheSafeRevertsOnIsRefusedOnTheFormWithNoBlockAndTheBlockIsBehindDetails() {
         val reverts = "The change reverts, run as a verified call from the Safe at block 8,412,307: the Safe refuses " +
             "it as it is now. Nothing was proposed."

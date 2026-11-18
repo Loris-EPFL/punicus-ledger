@@ -350,8 +350,15 @@ How it is checked:
   The key's own transaction is quoted as for a transfer.
 - **One change of the members at a time from here.** While another one
   queued from this device still waits, a new one is refused: each is planned
-  against the members as they are. One queued elsewhere is not seen (the
-  queue holds hashes only), and the checks at its execution stand for it.
+  against the members as they are. It waits while its queueing is on its way,
+  or while a fresh read of its own hash finds its entry, not expired, or
+  cannot tell; never by its age alone, which on a Delay with no expiration
+  would hold every later change back for good once anyone executed it. One
+  queued elsewhere is not seen (the queue holds hashes only), and the checks
+  at its execution stand for it.
+- **A removal refused for an expired entry** ahead in the queue offers Skip
+  expired entries on the Gnosis Pay screen's overview, since a removal has no
+  form (*Skipping expired entries*).
 - **The execution** reads the queue again with the members. A removal that
   would leave the Delay with no member, whoever removed the others
   meanwhile, is refused. The Safe's own call is run again: a removal whose

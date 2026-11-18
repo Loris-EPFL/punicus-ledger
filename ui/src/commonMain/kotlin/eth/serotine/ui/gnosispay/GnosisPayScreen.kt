@@ -341,6 +341,13 @@ private fun Overview(
     }
     Text("Queued from this device", style = MaterialTheme.typography.titleSmall)
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    // A removal refused for an expired entry ahead: its skip, here, since a removal has no form.
+    if (step.skip) {
+        OutlinedButton(
+            onClick = actions.onSkipExpired,
+            modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_SKIP_TAG),
+        ) { Text("Skip expired entries") }
+    }
     if (state.queued.isEmpty()) Text("Nothing is waiting.", style = MaterialTheme.typography.bodyMedium)
     state.queued.forEach { row ->
         Card(Modifier.fillMaxWidth()) {

@@ -164,6 +164,12 @@ class GnosisPayViewModel(
     /** What the screen was opened for, from the Safe's settings; null when opened as itself. */
     private var openedFor: GnosisPayStart? = null
 
+    /**
+     * Whether Back from the step the Safe's settings opened leaves the screen: true from [start]
+     * until Back, or until the user goes on to another action from the overview.
+     */
+    private var leaveOnBack = false
+
     private var latest: GnosisPayReading.Found? = null
     private var latestHoldings: TokenHoldings? = null
     private var latestQueued: List<QueuedDelayTransfer> = emptyList()
@@ -289,7 +295,11 @@ class GnosisPayViewModel(
     }
 
     private fun stepOf(step: Flow, found: GnosisPayReading.Found, chain: Chain): GnosisPayStep = when (step) {
-        is Flow.Overview -> GnosisPayStep.Overview(error = step.error)
+        is Flow.Overview -> GnosisPayStep.Overview(
+            error = step.error,
+            checking = step.busy?.takeIf { it.startsWith(REMOVING) }
+                ?.let { GnosisPayTexts.checkingRemoval(it.removePrefix(REMOVING)) },
+        )
         is Flow.Compose -> GnosisPayStep.Compose(
             assets = GnosisPayTexts.assets(safe.network, chain.native, chain.holdings),
             asset = step.asset,
@@ -335,7 +345,8 @@ class GnosisPayViewModel(
     /** Send: the transfer form, when a member's key is held here. */
     fun startSend() {
         val found = latest ?: return
-        if (found.sending != GnosisPaySending.AVAILABLE) return
+        if (found.sending != GnosisPaySending.AVAILABLE || busy()) return
+        leaveOnBack = false
         request++
         flowState.value = Flow.Compose(asset = null, to = "", amount = "")
     }
@@ -348,15 +359,27 @@ class GnosisPayViewModel(
         if (openedFor != null || latest == null) return
         openedFor = action
         when (action) {
-            GnosisPayStart.AddMember -> startAddMember()
-            is GnosisPayStart.RemoveMember -> removeMember(action.member)
+            GnosisPayStart.AddMember -> startAddMember(fromSettings = true)
+            is GnosisPayStart.RemoveMember -> removeMember(action.member, fromSettings = true)
         }
     }
 
-    /** Add member: its form, when a key held here controls the Delay (owner ruling, 2026-11-18). */
-    fun startAddMember() {
+    /** Whether a removal is being quoted on the overview: nothing else starts meanwhile. */
+    private fun busy(): Boolean = (flowState.value as? Flow.Overview)?.busy != null
+
+    /**
+     * Add member: its form, when a key held here controls the Delay (owner ruling, 2026-11-18).
+     * Asked for by the Safe's settings ([fromSettings]) when it cannot be done, the overview says why.
+     */
+    fun startAddMember(fromSettings: Boolean = false) {
         val found = latest ?: return
-        if (!GnosisPayTexts.addMember(found).enabled) return
+        if (busy()) return
+        val add = GnosisPayTexts.addMember(found)
+        if (!add.enabled) {
+            if (fromSettings) flowState.value = Flow.Overview(error = add.reason)
+            return
+        }
+        leaveOnBack = fromSettings
         request++
         flowState.value = Flow.AddMember(member = "")
     }
@@ -393,16 +416,14 @@ class GnosisPayViewModel(
      * Remove the member [address] (EIP-55, as listed): planned against the Delay's members as read,
      * then its queueing quoted for review; a refusal says why on the overview.
      */
-    fun removeMember(address: String, fee: FeeLevel = FeeLevel.NORMAL) {
+    fun removeMember(address: String, fee: FeeLevel = FeeLevel.NORMAL, fromSettings: Boolean = false) {
         val found = latest ?: return
         val overview = flowState.value as? Flow.Overview ?: return
         if (overview.busy != null) return
-        if (!GnosisPayTexts.removeMember(found).enabled) {
-            flowState.value = Flow.Overview(error = GnosisPayTexts.removeMember(found).reason)
-            return
-        }
-        if (found.held) {
-            flowState.value = Flow.Overview(error = GnosisPayTexts.NOT_VERIFIED_NOW)
+        leaveOnBack = fromSettings
+        val remove = GnosisPayTexts.removeMember(found)
+        if (!remove.enabled) {
+            flowState.value = Flow.Overview(error = remove.reason)
             return
         }
         val sender = found.controllersHeld.firstOrNull() ?: return
@@ -516,6 +537,7 @@ class GnosisPayViewModel(
         val overview = flowState.value as? Flow.Overview ?: return
         if (overview.busy != null) return
         val queued = latestQueued.firstOrNull { it.queuedBy == id } ?: return
+        leaveOnBack = false
         if (found.keysHere.none { it.address == queued.member }) return
         if (found.sending == GnosisPaySending.RETIRED_MODULE || queued.state !is DelayTransferState.Ready) return
         flowState.value = Flow.Overview(busy = id)
@@ -682,7 +704,9 @@ class GnosisPayViewModel(
         if (current is Flow.Overview) return false
         request++
         flowState.value = Flow.Overview()
-        return openedFor == null
+        val stays = !leaveOnBack
+        leaveOnBack = false
+        return stays
     }
 
     /**

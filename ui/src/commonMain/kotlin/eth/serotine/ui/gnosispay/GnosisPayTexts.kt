@@ -211,16 +211,26 @@ internal object GnosisPayTexts {
         }
     }
 
-    /** Add member: as Send, greyed out with Send's reason when no key here controls the Delay. */
-    fun addMember(found: GnosisPayReading.Found): ActionItem =
-        ActionItem(found.sending == GnosisPaySending.AVAILABLE, sendReason(found.sending))
+    /**
+     * Add member: as Send, greyed out with Send's reason when no key here controls the Delay, and
+     * while the account is shown as last verified, on which nothing is planned.
+     */
+    fun addMember(found: GnosisPayReading.Found): ActionItem = when {
+        found.sending != GnosisPaySending.AVAILABLE -> ActionItem(false, sendReason(found.sending))
+        found.held -> ActionItem(false, NOT_VERIFIED_NOW)
+        else -> ActionItem(true, null)
+    }
 
-    /** Remove: as Send, and never the last member. */
+    /** Remove: as Add member, and never the last member. */
     fun removeMember(found: GnosisPayReading.Found): ActionItem = when {
         found.sending != GnosisPaySending.AVAILABLE -> ActionItem(false, sendReason(found.sending))
         found.delay.members.size <= 1 -> ActionItem(false, LAST_MEMBER)
+        found.held -> ActionItem(false, NOT_VERIFIED_NOW)
         else -> ActionItem(true, null)
     }
+
+    /** What the overview says while a removal of [member] (EIP-55) is checked on chain. */
+    fun checkingRemoval(member: String): String = "Checking the removal of ${shortAddress(member)} on chain…"
 
     /** What a member of the Delay can do, in the account's own figures: said on the form that adds one. */
     fun memberExplains(cooldown: Long, expiration: Long): String =

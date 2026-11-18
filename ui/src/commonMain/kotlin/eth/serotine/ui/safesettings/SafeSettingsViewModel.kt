@@ -68,6 +68,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -215,7 +216,7 @@ class SafeSettingsViewModel(
     )
 
     /** The Safe as a Gnosis Pay account: its Delay's members, shown on the overview. */
-    private val gnosisPay = observeGnosisPay(account)
+    private val gnosisPay = observeGnosisPay(account).onStart { emit(GnosisPayReading.Checking) }
 
     val uiState: StateFlow<SafeSettingsUiState> = combine(model, gnosisPay, step, ::render).stateIn(
         viewModelScope,

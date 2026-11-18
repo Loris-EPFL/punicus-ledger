@@ -115,6 +115,9 @@ class GnosisPayViewModelTest {
         DelayQueueReading.Read(DelayQueue(0, 0, 180, 1_800, null, 0), 41, 0)
     /** The Delay's members, in its own order: the screen's reading and the queue's alike. */
     private var delayMembers = listOf(member)
+
+    /** While set, a read of the queue waits for it. */
+    private var readGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     private val delays = object : DelayModules {
         override fun observeDelay(network: Network, safe: Address, module: Address): Flow<DelayReading> = flowOf(
             DelayReading.Verified(
@@ -129,7 +132,12 @@ class GnosisPayViewModelTest {
             delay: Address,
             hash: Digest,
             withMembers: Boolean,
-        ): DelayQueueReading = when (val answer = queueAnswer) {
+        ): DelayQueueReading {
+            readGate?.await()
+            return answerWith(queueAnswer, withMembers)
+        }
+
+        private fun answerWith(answer: DelayQueueReading, withMembers: Boolean): DelayQueueReading = when (answer) {
             // The members only when asked for, as the port says.
             is DelayQueueReading.Read ->
                 answer.copy(queue = answer.queue.copy(members = delayMembers.takeIf { withMembers }))
@@ -644,5 +652,50 @@ class GnosisPayViewModelTest {
         viewModel.ready()
         return ObserveGnosisPay(kinds, delays, accounts)(id)
             .first { it is GnosisPayReading.Found } as GnosisPayReading.Found
+    }
+
+    @Test
+    fun backFromTheAddFormTheSettingsOpenedLeavesTheScreenButOnlyOnce() = runTest {
+        val viewModel = viewModel()
+        viewModel.ready()
+        viewModel.start(GnosisPayStart.AddMember)
+        assertTrue(viewModel.ready().step is GnosisPayStep.AddMember)
+        assertEquals(false, viewModel.back())
+
+        // Gone on to Send from the overview: Back from its form steps back as on the screen itself.
+        viewModel.startSend()
+        assertTrue(viewModel.back())
+        assertEquals(GnosisPayStep.Overview(), viewModel.ready().step)
+    }
+
+    @Test
+    fun aStartTheAccountCannotTakeSaysWhyOnTheOverview() = runTest {
+        accounts.accounts.value = listOf(card, owner.copy(custody = AccountCustody.Watched))
+        val viewModel = viewModel()
+        viewModel.ready()
+        viewModel.start(GnosisPayStart.AddMember)
+
+        val overview = viewModel.ready().step as GnosisPayStep.Overview
+        assertNotNull(overview.error)
+        assertEquals(false, viewModel.back())
+    }
+
+    @Test
+    fun aRemovalBeingCheckedIsSaidOnTheOverview() = runTest {
+        delayMembers = listOf(member, other)
+        // The queue's read never answers here: the removal stays being checked.
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        readGate = gate
+        val viewModel = viewModel()
+        viewModel.ready()
+        viewModel.removeMember(Eip55.format(other))
+
+        val overview = viewModel.ready().step as GnosisPayStep.Overview
+        assertEquals("Checking the removal of ${shortAddress(Eip55.format(other))} on chain…", overview.checking)
+        // Nothing else starts meanwhile.
+        viewModel.startSend()
+        assertTrue(viewModel.ready().step is GnosisPayStep.Overview)
+        gate.complete(Unit)
+        assertTrue(viewModel.ready().step is GnosisPayStep.Review)
     }
 }

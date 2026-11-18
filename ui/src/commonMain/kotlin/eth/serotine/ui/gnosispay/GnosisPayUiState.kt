@@ -90,8 +90,11 @@ data class QueuedRow(val id: String, val title: String, val status: String, val 
 /** Where the screen is in a transfer through the Delay. */
 sealed interface GnosisPayStep {
 
-    /** The account, its queued transfers, and Send; [error] why the last Execute was not quoted. */
-    data class Overview(val error: String? = null) : GnosisPayStep
+    /**
+     * The account, its queued transfers, and Send; [error] why the last Execute or change of members
+     * was not quoted, and [checking] while a removal of a member is checked on chain.
+     */
+    data class Overview(val error: String? = null, val checking: String? = null) : GnosisPayStep
 
     /**
      * The transfer form: the Safe's [assets] to choose from, the [asset] chosen (its contract, or

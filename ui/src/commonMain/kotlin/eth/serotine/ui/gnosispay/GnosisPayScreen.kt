@@ -324,6 +324,12 @@ private fun Overview(
         modifier = Modifier.fillMaxWidth().testTag(GNOSIS_PAY_SEND_TAG).unavailable(!state.send.enabled),
         colors = if (state.send.enabled) ButtonDefaults.buttonColors() else Unavailable.buttonColors(),
     ) { Text(sendLabel) }
+    step.checking?.let { checking ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CircularProgressIndicator(Modifier.padding(4.dp))
+            Text(checking)
+        }
+    }
     Text("Queued from this device", style = MaterialTheme.typography.titleSmall)
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     if (state.queued.isEmpty()) Text("Nothing is waiting.", style = MaterialTheme.typography.bodyMedium)

@@ -427,6 +427,12 @@ private fun GnosisPayReviewRemoveMemberPreview() = GnosisPayPreview(
 
 @Preview
 @Composable
+private fun GnosisPayCheckingRemovalPreview() = GnosisPayPreview(
+    overview.copy(step = GnosisPayStep.Overview(checking = "Checking the removal of 0xdbF03B…C6FB on chain…")),
+)
+
+@Preview
+@Composable
 private fun GnosisPayQueuedMemberChangePreview() = GnosisPayPreview(
     overview.copy(queued = listOf(waiting.copy(title = "Add member 0x309536…1Cf45"))),
 )
@@ -471,6 +477,7 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("review-add-member") { GnosisPayReviewAddMemberPreview() },
     ScreenPreview("review-remove-member") { GnosisPayReviewRemoveMemberPreview() },
     ScreenPreview("queued-member-change") { GnosisPayQueuedMemberChangePreview() },
+    ScreenPreview("checking-removal") { GnosisPayCheckingRemovalPreview() },
     ScreenPreview("loading") { GnosisPayLoadingPreview() },
     ScreenPreview("unavailable") { GnosisPayUnavailablePreview() },
 )

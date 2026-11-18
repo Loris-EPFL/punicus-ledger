@@ -126,8 +126,8 @@ created, and typed once when one is restored (section 8). It stores the
 seed rather than the key so that further accounts of the same phrase can be
 added without typing the words again (owner ruling, 2026-10-15). Each such
 account gets an envelope of its own, holding the same seed and naming its
-index on the path. So does each per-app address, the address of its own a
-site a dApp connects from gets (#252): its envelope names its path
+index on the path. So does each per-app address (#252): every site a dApp
+connects from gets an address of its own, and its envelope names its path
 `m/44'/60'/a'/b'/c'`, worked out from the site's name
 (docs/keys-and-signing.md, *Per-app addresses*).
 
@@ -309,7 +309,8 @@ values are placeholders):
   "dekNonce": "<12 random bytes, hex>",
   "dek": "<the DEK, 32 bytes, encrypted, plus its 16-byte tag, hex>",
   "seedNonce": "<12 random bytes, hex>",
-  "seed": "<the seed, 64 bytes, encrypted, plus its 16-byte tag, hex>"
+  "seed": "<the seed, 64 bytes, encrypted, plus its 16-byte tag, hex>",
+  "phrase": "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"
 }
 ```
 
@@ -325,8 +326,8 @@ tells the phrases apart without opening anything.
 None of these is glued to the locks, so that envelopes made before them
 still open. They do not need to be: signing derives the key at the path the
 envelope names and refuses one that does not give the address the file is
-named after, and opening refuses a seed whose first account is not the
-phrase named, so a path or a phrase edited on disk signs nothing.
+named after, and signing and deriving refuse a seed whose first account is
+not the phrase named, so a path or a phrase edited on disk signs nothing.
 
 <details>
 <summary><b>Show the code</b>: sealing, the KEK and the AAD</summary>
@@ -433,8 +434,10 @@ private fun seedAad(address: String): ByteArray = "serotine-seed-v$VERSION|$addr
 ```
 
 Opening checks the file before any Argon2id run: this version, this device's
-kind of hardware secret, a cost within the floor and the ceiling, the
-address the file is named after, well-formed salt and nonces:
+kind of hardware secret, a cost within the floor and the ceiling, a path in
+range (an index, or a per-app path, never both), a phrase that is an
+address or none, the address the file is named after, well-formed salt and
+nonces:
 
 ```kotlin
 fun canOpen(sealed: SealedSeed, hardware: HardwareSecret?, address: String? = null): Boolean =
@@ -447,6 +450,19 @@ fun canOpen(sealed: SealedSeed, hardware: HardwareSecret?, address: String? = nu
         hexOfLength(sealed.salt, SALT_BYTES) &&
         hexOfLength(sealed.dekNonce, NONCE_BYTES) &&
         hexOfLength(sealed.seedNonce, NONCE_BYTES)
+```
+
+The path an envelope names. A per-app path's first number is at least 2³⁰
+(`ACCOUNT_FLOOR`), above any account index a wallet uses, and an envelope
+that names both an index and a per-app path has none:
+
+```kotlin
+fun path(): AccountPath? {
+    val app = perApp ?: return if (index >= 0) AccountPath.Ordinary(index) else null
+    if (index != 0) return null
+    val inRange = app.a >= AppIsolation.ACCOUNT_FLOOR && app.b >= 0 && app.c >= 0
+    return if (inRange) AccountPath.PerApp(PerAppPath(app.a, app.b, app.c)) else null
+}
 ```
 
 The HKDF itself
@@ -1192,9 +1208,12 @@ private fun signWithPassword(file: Path, account: Address, digest: Digest, passw
 The few lines where the key exists. The key is derived at the path the
 envelope names (its index, or a per-app address's path); it must give the
 address the envelope is filed under, and the seed's first account must be
-the phrase the envelope names, where it names one; libsecp256k1 signs (RFC 6979 nonce, low `s`); the
-recovery id is the one that recovers this key's public key; the key and the
-seed are zeroed in `finally`:
+the phrase the envelope names, where it names one; libsecp256k1 signs
+(RFC 6979 nonce, low `s`); the recovery id is the one that recovers this
+key's public key; the key and the seed are zeroed in `finally`. For any
+account but the phrase's first, the phrase check (`phraseIfItsKey`) derives
+the first account's key as well, to get its address; `addressOf` zeroes
+that one in its own `finally`:
 
 ```kotlin
 private fun signWith(seed: ByteArray, sealed: SealedSeed, account: Address, digest: Digest): Signing {

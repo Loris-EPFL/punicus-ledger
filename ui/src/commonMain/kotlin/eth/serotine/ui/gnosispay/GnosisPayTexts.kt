@@ -209,8 +209,8 @@ internal object GnosisPayTexts {
             "Execute is offered then."
         is DelayTransferState.Behind -> "${entries(state.ahead).replaceFirstChar { it.uppercase() }} queued before " +
             "it come first. One queued from this device is listed above, with its own Execute. Any other is " +
-            "executed by whoever can, or skipped by anyone once expired, which Punicus does not offer yet; " +
-            "Punicus never executes an entry it did not queue here."
+            "executed by whoever can, or skipped by anyone once expired (Skip expired entries, offered here " +
+            "then); Punicus never executes an entry it did not queue here."
         is DelayTransferState.Expired -> "Its window to execute closes at ${formatDateTime(state.expiresAt)}, too " +
             "soon for a transaction sent now to be mined in time."
         is DelayTransferState.FurtherBack -> "It is further back in the queue than Punicus reads."
@@ -286,9 +286,13 @@ internal object GnosisPayTexts {
         }
         is DelayQuoting.AlreadyQueued -> "The same transfer is queued already and waits in the Delay module. " +
             "Execute it, or let it expire, before queuing it again."
-        DelayQuoting.SameCallExpired -> "The same transfer is still in the Delay module's queue, expired. It stays " +
-            "there until it is skipped, and it holds back every transfer queued after it. Skip expired entries, " +
-            "then review again."
+        is DelayQuoting.SameCallExpired -> if (quoting.skippable) {
+            "The same transfer is still in the Delay module's queue, expired. It stays there until it is skipped, " +
+                "and it holds back every transfer queued after it. Skip expired entries, then review again."
+        } else {
+            "The same transfer is still in the Delay module's queue, too close to its expiration to be executed " +
+                "in time. Once it has expired it can be skipped; review again then."
+        }
         DelayQuoting.HeadExpired -> "The next entry in the Delay module's queue has expired. Until it is skipped, " +
             "nothing behind it can be executed: a transfer queued now would wait, expire and move nothing, its fees " +
             "paid. Skip expired entries, then review again."
@@ -342,11 +346,11 @@ internal object GnosisPayTexts {
     /** What a skip refused says, on the form it was offered on. */
     fun skipRefused(quoting: DelaySkipQuoting): String = when (quoting) {
         is DelaySkipQuoting.Quoted -> ""
-        DelaySkipQuoting.NothingExpired -> "No entry of the Delay module's queue has expired any more: nothing to " +
-            "skip. Review again."
+        DelaySkipQuoting.NothingExpired -> "The Delay module's next entry has not expired, or was skipped meanwhile: " +
+            "nothing to skip."
         is DelaySkipQuoting.NotTheSafesDelay -> quoteRefused(DelayQuoting.NotTheSafesDelay(quoting.generation))
         is DelaySkipQuoting.SkipOnItsWay -> "A skip of this Delay module's expired entries is on its way, not in a " +
-            "block yet. Review again once it is."
+            "block yet."
         DelaySkipQuoting.HistoryUnreadable -> quoteRefused(DelayQuoting.HistoryUnreadable)
         is DelaySkipQuoting.NotQuoted -> quoteRefused(DelayQuoting.NotQuoted(quoting.refusal))
     }

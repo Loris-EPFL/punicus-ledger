@@ -83,6 +83,7 @@ const val GNOSIS_PAY_AMOUNT_TAG = "gnosis-pay-amount"
 
 /** Test tag of Review, for UI tests. */
 const val GNOSIS_PAY_REVIEW_TAG = "gnosis-pay-review"
+/** Skip expired entries: on the form, and (suffixed with the queueing's hash) on a queued transfer's row. */
 const val GNOSIS_PAY_SKIP_TAG = "gnosis-pay-skip"
 
 /** Test tag of the password field, for UI tests. */

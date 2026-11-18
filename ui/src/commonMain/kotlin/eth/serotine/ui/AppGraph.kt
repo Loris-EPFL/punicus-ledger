@@ -535,7 +535,15 @@ class AppGraph(
             outbox,
         ),
         SendDelayCall(signer, broadcaster, sentTransfers),
-        QuoteDelaySkip(delayModules, transactionHistory, transactionInputs, nativeBalances, sentTransfers, safe.network, outbox),
+        QuoteDelaySkip(
+            delayModules,
+            transactionHistory,
+            transactionInputs,
+            nativeBalances,
+            sentTransfers,
+            safe.network,
+            outbox,
+        ),
         SendDelaySkip(signer, broadcaster, sentTransfers),
         DescribeKeyStore(keys),
     )

@@ -266,7 +266,17 @@ class GnosisPayTransfersTest {
             120,
             900 + 90_000 + 111_600 + 1,
         )
-        assertEquals(DelayQuoting.SameCallExpired, queueing()(member, ours, FeeLevel.entries.first()))
+        assertEquals(DelayQuoting.SameCallExpired(), queueing()(member, ours, FeeLevel.entries.first()))
+        // Within the margin of its end: too late to execute, too early to skip.
+        answers[ours.hash] = DelayQueueReading.Read(
+            DelayQueue(5, 6, 90_000, 111_600, DelayEntry(5, ours.hash, 900), 1),
+            120,
+            900 + 90_000 + 111_600 - 10,
+        )
+        assertEquals(
+            DelayQuoting.SameCallExpired(skippable = false),
+            queueing()(member, ours, FeeLevel.entries.first()),
+        )
 
         // More entries than are read: whether one is this call cannot be told.
         answers[ours.hash] = DelayQueueReading.Read(DelayQueue(5, 25, 90_000, 111_600, null, 8), 120, 1_000)
@@ -624,5 +634,30 @@ class GnosisPayTransfersTest {
         assertEquals(listOf(recent), reading.transfers.map { it.transfer })
         assertEquals(now - 50, reading.transfers.single().queuedAt)
         assertEquals(listOf(recent.hash), asked)
+    }
+
+    @Test
+    fun aQueuedTransferIsMarkedWhileTheDelaysNextEntryHasExpired() = runTest {
+        val ours = transfer()
+        history.entries.value =
+            listOf(HistoryEntry(sentBy(SentAction.DelayQueue(ours), 10, 1), SentOutcome.NonceUsed))
+        // Entry 5, queued at 1000: 90,000 s of cooldown and 111,600 s of expiration, so expired after 202,600.
+        suspend fun read(entry: DelayEntry?, headTime: Long, expiration: Long = 111_600): QueuedDelayTransfer? {
+            answers[ours.hash] = DelayQueueReading.Read(
+                DelayQueue(5, 7, 90_000, expiration, entry, (entry?.nonce ?: 5).toInt() - 4, headCreatedAt = 1_000),
+                120,
+                headTime,
+            )
+            val reading = ReadDelayTransfers(history, delays) { 10 }(AccountId(Network.GNOSIS, safe), delay)
+            return (reading as DelayTransfersReading.Read).transfers.singleOrNull()
+        }
+        val behind = DelayEntry(6, ours.hash, 2_000)
+
+        // Behind the expired head, and the head itself expired: both marked; one moment before, neither.
+        assertEquals(true, read(behind, headTime = 202_601)?.expiredHead)
+        assertEquals(true, read(DelayEntry(5, ours.hash, 1_000), headTime = 202_601)?.expiredHead)
+        assertEquals(false, read(behind, headTime = 202_600)?.expiredHead)
+        // A Delay whose entries never expire has nothing to skip.
+        assertEquals(false, read(behind, headTime = 10_000_000, expiration = 0)?.expiredHead)
     }
 }

@@ -29,14 +29,21 @@ two repositories in step when one changes.
   PR's files. A PR of docs alone skips the iOS jobs and the APKs. The dmg
   builds only for a change to the desktop packaging or the build. The iOS
   device link runs only for a change to the iOS host or the build. `main`
-  builds everything on every push. The label `full-ci` on a PR builds
-  everything too: add it, then push or use *Re-run all jobs* (not *Re-run
-  failed jobs*, which leaves skipped jobs skipped). Build and Test
-  and the Screenshots workflow run on every PR. The desktop UI tests on macOS
-  moved from the dmg leg to ios.yml's targets job, so they still run on
-  every PR that changes code.
+  builds everything on every push, and so does the final PR of a multi-PR
+  plan (a `feature/` branch into `main`). Build and Test and the Screenshots
+  workflow run on every PR. The desktop UI tests on macOS moved from the dmg
+  leg to ios.yml's targets job, so they still run on every PR that changes
+  code; on a tag they still run in the dmg leg, before the upload.
+- **The label `full-ci` turns this scoping off**: a PR into `main` then
+  builds the iOS jobs, the dmg and the APKs whatever it changes. Add it, then
+  push or use *Re-run all jobs* (*Re-run failed jobs* leaves a skipped job
+  skipped). It does not lift the base-branch skip above, and it does not
+  reach the msi (path-filtered by its trigger) or the deb (no PR trigger).
 - `pr-scope.yml` is fail-open: an API error or a file list it cannot trust
-  builds everything. A caller tests its outputs with `!= 'false'`.
+  builds everything. A caller tests its outputs with `!= 'false'`. Its
+  `dmg` and `ios_device` lists skip a path not on them, so a directory a
+  Gradle task reads from must be added there. `scripts/test_pr_scope.py`
+  tests the rules, and ci.yml runs it.
 - A superseded PR run of Build and Test is cancelled; a run on `main` or a
   tag never is (owner's request, 2026-11-18).
 - Build and Test and the other push triggers fire only on `main` and on `v*`

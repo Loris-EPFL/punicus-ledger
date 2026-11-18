@@ -150,8 +150,9 @@ event, which these workflows do not run on), so push a commit or dispatch the
 workflows before it merges, or the first artifact build of that head is the
 post-merge run on `main`.
 
-A PR into `main`, the final one included, is also scoped by what it changes
-(owner's request, 2026-11-18; `.claude/rules/github-workflows.md`): the dmg
-builds only for a packaging or build change, and the iOS device link only for
-an iOS host or build change. The final PR of a large plan can carry the label
-`full-ci` to build everything before it merges.
+Any other PR into `main` is scoped by what it changes (owner's request,
+2026-11-18; `.claude/rules/github-workflows.md`): the dmg builds only for a
+packaging or build change, and the iOS device link only for an iOS host or
+build change. The final PR keeps building everything, as above: `pr-scope.yml`
+builds everything for a `feature/` branch into `main`. That is why the plan's
+branch is named `feature/<topic>`.

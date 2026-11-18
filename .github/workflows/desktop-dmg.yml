@@ -159,8 +159,16 @@ jobs:
           echo "::error::DMG build failed after 3 attempts"
           exit 1
 
-      # The desktop UI tests on macOS run in ios.yml's targets job, which runs on every PR
-      # that changes code; this leg runs only on packaging PRs (2026-11-18).
+      # The desktop UI tests on macOS (ci.yml runs them on Linux only): skiko's macOS backend
+      # is a different code path. On a PR and on main they run in ios.yml's targets job, which
+      # runs on every PR that changes code, while this leg builds on a PR only for a packaging
+      # or build change (2026-11-18). ios.yml has no tag trigger, so they still run here on a
+      # tag, before the upload: a macOS-only UI failure keeps the dmgs off the release.
+      - name: Run the shared UI tests on macOS
+        if: matrix.arch == 'arm64' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          GRADLE_ARGS="-Porg.gradle.java.installations.auto-detect=false -Porg.gradle.java.installations.auto-download=false -Porg.gradle.java.installations.paths=$JAVA_HOME"
+          ./gradlew :ui:desktopTest --stacktrace $GRADLE_ARGS
 
       # Compose names both arches' output the same (Punicus-<packageVersion>.dmg);
       # rename so the downloaded file itself states the architecture. Assert exactly

@@ -34,7 +34,7 @@ jobs:
       pull-requests: read
 
   ios:
-    name: iOS targets (compile + simulator tests)
+    name: iOS targets + macOS UI tests
     needs: scope
     # `!= 'false'`: a scope job that failed leaves the output empty, and empty runs the job.
     if: ${{ !cancelled() && needs.scope.outputs.code != 'false' }}
@@ -90,18 +90,34 @@ jobs:
       # backend is a different code path. They ran in desktop-dmg.yml's arm64 leg until that
       # leg was scoped to packaging PRs (2026-11-18); this job runs on every PR that changes
       # code. They have caught a failure that Linux did not (#152). They run even when the
-      # step above failed: a macOS-only UI failure is then reported in the same push. Retried
-      # like that step, since they resolve the desktop artifacts the steps above do not.
-      - name: Run the shared UI tests on macOS
+      # steps above failed: a macOS-only UI failure is then reported in the same push. The
+      # compile is retried like the steps above, since it resolves the desktop artifacts they
+      # do not; the tests run once, so a test that fails now and then on macOS shows.
+      - name: Compile the shared UI tests for the desktop
+        id: ui-compile
         if: ${{ !cancelled() }}
         run: |
           for attempt in 1 2 3; do
-            ./gradlew --stacktrace :ui:desktopTest && exit 0
+            ./gradlew --stacktrace :ui:desktopTestClasses && exit 0
             echo "::warning::Gradle attempt $attempt failed; retrying in 25s (transient dependency resolution?)"
             sleep 25
           done
           echo "::error::Gradle failed after 3 attempts"
           exit 1
+
+      - name: Run the shared UI tests on macOS
+        id: ui-tests
+        if: ${{ !cancelled() && steps.ui-compile.outcome == 'success' }}
+        run: ./gradlew --stacktrace :ui:desktopTest
+
+      # A macOS-only failure does not reproduce on Linux, so its report is the evidence.
+      - name: Upload the UI test reports
+        if: ${{ !cancelled() && steps.ui-tests.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-ui-test-reports-${{ github.sha }}
+          path: ui/build/reports/tests/desktopTest
+          if-no-files-found: ignore
 
   app:
     name: iOS app (build + start on a simulator)

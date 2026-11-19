@@ -23,7 +23,8 @@ data class PerAppUiState(
 /**
  * One per-app address: the [site] it was made for, its EIP-55 [address], the [networks] it is an account on, the
  * [phrase] it comes from (named by an account of it), and its full [path] below the seed, so another wallet can find
- * it. [chainId] and [hex] name its first account, which a tap opens.
+ * it; [aliases], the other sites the user linked to it ("Also seen by uniswap.app"), or null. [chainId] and [hex] name
+ * its first account, which a tap opens.
  */
 data class PerAppRow(
     val site: String,
@@ -33,6 +34,7 @@ data class PerAppRow(
     val path: String,
     val chainId: Long,
     val hex: String,
+    val aliases: String? = null,
 )
 
 /**

@@ -153,6 +153,9 @@ const val ACCOUNT_SWAP_TAG = "account-swap"
 /** Test tag of a per-app address's mark under its name, for UI tests. */
 const val ACCOUNT_PER_APP_MARK_TAG = "account-per-app-mark"
 
+/** Test tag of an alias's Remove under a per-app address's mark, followed by its site, for UI tests. */
+const val ACCOUNT_PER_APP_ALIAS_REMOVE_TAG = "account-per-app-alias-remove-"
+
 /** Test tag of the Per-app tab's "Restore a per-app address", for UI tests. */
 const val ACCOUNT_PER_APP_RESTORE_TAG = "account-per-app-restore"
 
@@ -243,7 +246,7 @@ fun AccountDetailRoute(
                 onAdd = viewModel::addNft,
                 onRemove = viewModel::removeNft,
             ),
-            perAppActions = perAppActions,
+            perAppActions = perAppActions.withRemoveAlias(viewModel::removeAlias),
         )
         // The strip is collected only where it is drawn: shared while subscribed, it stays idle otherwise.
         InterfaceMode.DETAILED -> AccountDetailScreen(
@@ -281,7 +284,7 @@ fun AccountDetailRoute(
                 onAdd = viewModel::addNft,
                 onRemove = viewModel::removeNft,
             ),
-            perAppActions = perAppActions,
+            perAppActions = perAppActions.withRemoveAlias(viewModel::removeAlias),
         )
     }
 }
@@ -674,6 +677,21 @@ private fun Details(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    // Its aliases: sites the user linked to it, each removed with no question (it deletes no key).
+                    state.perAppAliases.forEach { site ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Also seen by $site, linked by you",
+                                Modifier.weight(1f, fill = false),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            TextButton(
+                                onClick = { perAppActions.onRemoveAlias(site) },
+                                modifier = Modifier.testTag(ACCOUNT_PER_APP_ALIAS_REMOVE_TAG + site),
+                            ) { Text("Remove") }
+                        }
+                    }
                     // The names that point here (#274): their records, never a claim the account holds them.
                     state.ensNames?.let {
                         Text(
@@ -1027,11 +1045,16 @@ class NftActions(
 /**
  * What the Per-app tab's rows and its Restore do (issue #252): [onOpen] opens a per-app address's account by its chain
  * id and address, and [onRestore] opens screen D9 for the phrase named by its address, its restore form open.
+ * [onRemoveAlias] removes a per-app address's alias, by its site, from that address's details.
  */
 class PerAppActions(
     val onOpen: (chainId: Long, address: String) -> Unit = { _, _ -> },
     val onRestore: (phrase: String) -> Unit = {},
-)
+    val onRemoveAlias: (site: String) -> Unit = {},
+) {
+    /** These actions, with [remove] in place of [onRemoveAlias]. */
+    fun withRemoveAlias(remove: (String) -> Unit) = PerAppActions(onOpen, onRestore, remove)
+}
 
 /**
  * The Per-app tab: the phrase's per-app addresses as D9 lists them, and "Restore a per-app address", greyed out with

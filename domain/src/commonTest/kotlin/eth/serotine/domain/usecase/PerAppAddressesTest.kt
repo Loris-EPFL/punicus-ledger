@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppHost
 import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.AppIsolation
 import eth.serotine.domain.model.Network
@@ -27,6 +28,8 @@ import kotlin.test.assertTrue
 
 /** The per-app choice of screen D3 and making a per-app address (issue #252), with fake ports. */
 class PerAppAddressesTest {
+
+    private val aliases = MemoryAliases()
 
     private fun address(last: Char) = Address.of("0x" + "0".repeat(39) + last)
 
@@ -109,7 +112,8 @@ class PerAppAddressesTest {
         val sites = MemorySites()
         sites.remembered.value = mapOf(site to listOf(made.id))
         val keys = FakePerAppKeys(phrases = mapOf(first.address to first.address))
-        val choice = ObservePerAppChoice(accounts, keys, sites, networks)("https://app.uniswap.org/swap").first()
+        val choice = ObservePerAppChoice(accounts, keys, sites, networks, aliases)("https://app.uniswap.org/swap")
+            .first()
         assertEquals(AppHostResult.Host(testHost("app.uniswap.org")), choice.host)
         assertEquals(site, choice.site)
         assertEquals(listOf(made), choice.made)
@@ -119,10 +123,33 @@ class PerAppAddressesTest {
     }
 
     @Test
+    fun aSiteLinkedToAnotherSitesAddressHasItAsItsOwnAndTheOthersToChooseFrom() = runTest {
+        val uniswap = testHost("uniswap.org")
+        val safe = testHost("safe.global")
+        fun markOf(site: AppHost) = PerAppAccount(site, AppIsolation.pathOf(site), first.address)
+        val ofUniswap = account(Network.ETHEREUM, '6', perApp = markOf(uniswap))
+        val ofSafe = account(Network.ETHEREUM, '7', perApp = markOf(safe))
+        val accounts = ListAccountRepository(first, ofUniswap, ofSafe)
+        val keys = FakePerAppKeys(phrases = mapOf(first.address to first.address))
+        val observe = ObservePerAppChoice(accounts, keys, MemorySites(), networks, aliases)
+        val unlinked = observe("https://app.uniswap.app").first()
+        assertNull(unlinked.alias)
+        assertEquals(listOf(ofUniswap.address, ofSafe.address), unlinked.others.map { it.address })
+        assertEquals(mapOf(first.address to first.label), unlinked.names)
+
+        aliases.linked.value = mapOf(testHost("uniswap.app") to ofUniswap.address)
+        val linked = observe("https://app.uniswap.app").first()
+        assertEquals(ofUniswap.address, linked.alias)
+        assertEquals(listOf(ofUniswap), linked.aliased)
+        assertTrue(linked.made.isEmpty(), "made for uniswap.org, not for this site")
+        assertEquals(listOf(testHost("uniswap.app")), linked.others.first { it.address == ofUniswap.address }.aliases)
+    }
+
+    @Test
     fun aDappWithNoHostHasNoSite() = runTest {
-        val choice = ObservePerAppChoice(ListAccountRepository(first), FakePerAppKeys(), MemorySites(), networks)(
-            "wc://not-a-web-address",
-        ).first()
+        val observe =
+            ObservePerAppChoice(ListAccountRepository(first), FakePerAppKeys(), MemorySites(), networks, aliases)
+        val choice = observe("wc://not-a-web-address").first()
         assertEquals(AppHostResult.NotAWebAddress, choice.host)
         assertNull(choice.site)
         assertTrue(choice.made.isEmpty())

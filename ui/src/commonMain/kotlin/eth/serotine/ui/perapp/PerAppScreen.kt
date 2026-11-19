@@ -187,6 +187,7 @@ fun PerAppAddressRow(row: PerAppRow, onOpen: (Long, String) -> Unit, onCopy: (St
                 Text(row.address, style = MaterialTheme.typography.bodySmall)
                 Text("${row.networks} · ${row.phrase}", style = MaterialTheme.typography.bodySmall)
                 Text(row.path, style = MaterialTheme.typography.bodySmall)
+                row.aliases?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         },
         trailingContent = {

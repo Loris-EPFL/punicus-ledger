@@ -48,7 +48,8 @@ rule in code.
   (`SigningRequestCodec`).
 - `:data` depends on `:domain`. It implements the ports (`AccountRepository`,
   `KeyStore`, `PerAppKeys` and `Signer`, `DappSiteMemory` (`FileDappSites`, each dApp site's accounts last
-  approved), `KnownUpgradeStore`, `TokenCatalog`, `UserTokens`,
+  approved), `PerAppAliases` (`FileDappAliases`, each site the user linked to another site's per-app address),
+  `KnownUpgradeStore`, `TokenCatalog`, `UserTokens`,
   `DisplayCurrencySetting`, `DebugScreenSetting`, `DebugLog` (in memory, written by the
   engine adapter through `LogSink`), `SentTransfers`, and `NativeBalances`, `TokenBalances`,
   `TokenMetadata`, `PriceFeeds`, `AddressKinds`, `LightClient`,

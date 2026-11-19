@@ -31,6 +31,8 @@ import kotlin.test.assertTrue
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DappConnectionsTest {
 
+    private val aliases = MemoryAliases()
+
     private fun account(network: Network, last: Char, kind: AccountKind = AccountKind.EOA, custody: AccountCustody = AccountCustody.InKeyStore) =
         Account(network, Address.of("0x" + "0".repeat(39) + last), kind, "Account $last", custody)
 
@@ -140,7 +142,7 @@ class DappConnectionsTest {
 
     @Test
     fun anApprovalNamesOfferedAccountsOnly() = runTest {
-        val approve = ApproveDappProposal(sessions, accounts, networks, sites)
+        val approve = ApproveDappProposal(sessions, accounts, networks, sites, aliases)
         assertEquals(DappApproval.InvalidAccounts, approve(proposal, emptyList()))
         assertEquals(DappApproval.InvalidAccounts, approve(proposal, listOf(watched.id)))
         assertEquals(DappApproval.InvalidAccounts, approve(proposal, listOf(gnosis.id)), "not asked for")
@@ -165,12 +167,30 @@ class DappConnectionsTest {
         val site = testHost("uniswap.org")
         val perApp = account(Network.ETHEREUM, '6')
             .copy(perApp = PerAppAccount(site, AppIsolation.pathOf(site), mainnet.address))
-        val approve = ApproveDappProposal(sessions, ListAccountRepository(mainnet, perApp), networks, sites)
+        val approve = ApproveDappProposal(sessions, ListAccountRepository(mainnet, perApp), networks, sites, aliases)
         // The proposal states https://dapp.test: uniswap.org's address is not for it, alone or beside another.
         assertEquals(DappApproval.InvalidAccounts, approve(proposal, listOf(perApp.id)))
         assertEquals(DappApproval.InvalidAccounts, approve(proposal, listOf(mainnet.id, perApp.id)))
         assertTrue(sessions.approved.isEmpty())
         assertTrue(sites.remembered.value.isEmpty())
+    }
+
+    @Test
+    fun anotherSitesPerAppAddressIsApprovedOnlyAsTheAliasTheUserLinked() = runTest {
+        val site = testHost("uniswap.org")
+        val perApp = account(Network.ETHEREUM, '6')
+            .copy(perApp = PerAppAccount(site, AppIsolation.pathOf(site), mainnet.address))
+        val safe = testHost("safe.global")
+        val other = account(Network.ETHEREUM, '7')
+            .copy(perApp = PerAppAccount(safe, AppIsolation.pathOf(safe), mainnet.address))
+        val wallet = ListAccountRepository(mainnet, perApp, other)
+        // dapp.test, the proposal's site, linked by the user to uniswap.org's address.
+        aliases.linked.value = mapOf(testHost("dapp.test") to perApp.address)
+        val approve = ApproveDappProposal(sessions, wallet, networks, sites, aliases)
+        assertEquals(DappApproval.InvalidAccounts, approve(proposal, listOf(other.id)), "not the one linked")
+        assertTrue(approve(proposal, listOf(perApp.id)) is DappApproval.Approved)
+        assertEquals(DappOffer.OTHER_SITE, dappOffer(perApp, enabled.value, asking))
+        assertEquals(DappOffer.OFFERED, dappOffer(perApp, enabled.value, asking, alias = perApp.address))
     }
 
     @Test
@@ -185,7 +205,7 @@ class DappConnectionsTest {
     fun aProposalIsApprovedOnlyWithAnAccountOnEachNetworkItRequires() = runTest {
         val both = proposal(required = setOf("eip155:1", "eip155:100"), optional = emptySet())
         sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(both), emptyList())
-        val approve = ApproveDappProposal(sessions, accounts, networks, sites)
+        val approve = ApproveDappProposal(sessions, accounts, networks, sites, aliases)
         assertEquals(setOf(Network.GNOSIS), missingRequired(both, listOf(mainnet.id)))
         assertEquals(DappApproval.InvalidAccounts, approve(proposal, listOf(mainnet.id)), "none on Gnosis Chain")
         assertTrue(sessions.approved.isEmpty())

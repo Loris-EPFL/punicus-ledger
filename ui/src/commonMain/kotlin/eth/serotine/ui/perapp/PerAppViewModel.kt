@@ -262,5 +262,7 @@ internal fun perAppRows(entries: List<PerAppEntry>, overview: PerAppOverview): L
             path = entry.path.toString(),
             chainId = first.network.chainId,
             hex = entry.address.hex,
+            aliases = entry.aliases.takeIf { it.isNotEmpty() }
+                ?.let { sites -> "Also seen by ${sites.joinToString { it.name }}" },
         )
     }

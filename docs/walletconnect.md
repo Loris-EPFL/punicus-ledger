@@ -276,6 +276,21 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     `newsite → address` is kept, remembered and preselected like any site.
   - Aliases are app-private data, not key material, and not restored with
     the phrase. The account's details list them, each removable there.
+  - As built in part 4b, and confirmed by the owner's decisions of
+    2026-11-19:
+    - The list is in the order of the account list: no time of last use
+      is kept, in place of "by last use".
+    - The site is linked when the user answers "Use it", before Approve.
+      Rejecting the connection afterwards keeps the alias, which the
+      address's details remove.
+    - A site with an alias is offered no new address beside it, nor the
+      linked address on more networks: it sees the linked address on the
+      networks that address is on here.
+    - "Use an address from another site…" is greyed out, a tap saying
+      why, while no other site has a per-app address here.
+    - Removing an alias ends no running session; the next connection from
+      that site is offered an address of its own.
+    - "Type the old site's host" follows in part 4c.
 - **Every per-app address is listed (D9)**, in the Per-app tab of the
   account detail of the phrase's first account (docs/wallet-ux.md, 4), and
   for every phrase together under Settings → Connected dApps (owner's
@@ -816,10 +831,11 @@ merge part PRs into the feature branch itself.
    3. D3: the new address offered and preselected, greyed out without a
       phrase, the phrase chosen, the per-site memory and its preselection,
       the account marked as per-app.
-   4. D9, and aliases, in two PRs: the list, the Per-app tab, the per-app
+   4. D9, and aliases, in three PRs: the list, the Per-app tab, the per-app
       mark on an account's details and "Restore a per-app address" (4a);
-      then aliases: "Type the old site's host", the confirmation,
-      preselection through an alias, removal on the account's details (4b).
+      then aliases: the list of other sites' addresses, the confirmation,
+      preselection through an alias, removal on the account's details (4b);
+      then "Type the old site's host" (4c).
    5. D4: the site named, the domain warning, the alias match.
 4. **Later, each its own issue:** QR scanning on iOS (Android's is built); a
    `wc:` URL scheme

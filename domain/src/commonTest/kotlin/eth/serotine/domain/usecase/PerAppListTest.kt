@@ -22,6 +22,8 @@ import kotlin.test.assertIs
 /** Screen D9's list of per-app addresses and their restore (issue #252, part 4), with fake ports. */
 class PerAppListTest {
 
+    private val aliases = MemoryAliases()
+
     private fun address(last: Char) = Address.of("0x" + "0".repeat(39) + last)
 
     private fun account(
@@ -98,7 +100,7 @@ class PerAppListTest {
     fun theOverviewFollowsTheListThePhrasesAndTheNetworks() = runTest {
         val accounts = ListAccountRepository(first, perAppOnEthereum)
         val keys = FakePerAppKeys(phrases = mapOf(first.address to first.address))
-        val overview = ObservePerAppAddresses(accounts, keys, networks)().first()
+        val overview = ObservePerAppAddresses(accounts, keys, networks, aliases)().first()
         assertEquals(listOf(address('6')), overview.entries.map { it.address })
         assertEquals(listOf(first), overview.sources.map { it.from })
         assertEquals(mapOf(first.address to first.address), overview.knownBy)
@@ -165,5 +167,30 @@ class PerAppListTest {
         val restored = assertIs<PerAppRestoring.Done>(restore(first.id, "uniswap.org", WalletPassword("correct horse")))
         assertEquals(PerAppMaking.NoNetwork, restored.making)
         assertEquals(emptyList(), keys.derived)
+    }
+
+    @Test
+    fun anEntryNamesTheSitesLinkedToIt() {
+        val app = testHost("uniswap.app")
+        val linked = mapOf(app to address('6'), uniswap to address('6'))
+        val entries = perAppEntries(listOf(first, perAppOnEthereum), linked)
+        // Its own site is no alias of it.
+        assertEquals(listOf(app), entries.single().aliases)
+    }
+
+    @Test
+    fun aSiteIsLinkedOnlyToAnotherSitesPerAppAddress() = runTest {
+        val accounts = ListAccountRepository(first, perAppOnEthereum)
+        val link = LinkPerAppAlias(accounts, aliases)
+        assertEquals(AliasLinking.NotPerApp, link(testHost("uniswap.app"), first.address), "an ordinary account")
+        assertEquals(AliasLinking.NotPerApp, link(testHost("app.uniswap.org"), address('6')), "its own site")
+        assertEquals(emptyMap(), aliases.linked.value)
+        assertEquals(AliasLinking.Linked, link(testHost("www.uniswap.app"), address('6')))
+        assertEquals(mapOf(testHost("uniswap.app") to address('6')), aliases.linked.value, "kept by its site")
+        aliases.failSaves = true
+        assertEquals(AliasLinking.NotSaved, link(testHost("cow.fi"), address('6')))
+        aliases.failSaves = false
+        assertEquals(true, UnlinkPerAppAlias(aliases)(testHost("app.uniswap.app")))
+        assertEquals(emptyMap(), aliases.linked.value)
     }
 }

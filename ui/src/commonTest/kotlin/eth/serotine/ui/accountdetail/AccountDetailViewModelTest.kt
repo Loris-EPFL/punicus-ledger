@@ -76,6 +76,7 @@ import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.AddNft
 import eth.serotine.domain.usecase.ObserveNfts
 import eth.serotine.domain.usecase.RemoveAddedNft
+import eth.serotine.domain.usecase.UnlinkPerAppAlias
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeFeeds
@@ -85,6 +86,7 @@ import eth.serotine.ui.FakeEnsNfts
 import eth.serotine.ui.FakeNftContracts
 import eth.serotine.ui.FakePerAppKeys
 import eth.serotine.ui.MemoryAddedNfts
+import eth.serotine.ui.MemoryAliases
 import eth.serotine.ui.MemorySeenEnsNames
 import eth.serotine.ui.FakeReceiptsNever
 import eth.serotine.ui.FakeMetadata
@@ -138,6 +140,8 @@ import eth.serotine.domain.usecase.ObservePerAppAddresses
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountDetailViewModelTest {
+
+    private val aliases = MemoryAliases()
 
     private val daily = Account(
         Network.SEPOLIA,
@@ -241,6 +245,7 @@ class AccountDetailViewModelTest {
         formatTime = { "<$it>" },
         clock = { NOW },
         observePerAppAddresses = perApp,
+        unlinkPerAppAlias = UnlinkPerAppAlias(aliases),
     )
 
     private val upgradeReports = FakeUpgradeReports()
@@ -289,7 +294,7 @@ class AccountDetailViewModelTest {
         val observe = ObservePerAppAddresses(
             accounts,
             FakePerAppKeys(phrases = mapOf(daily.address to daily.address)),
-            networks,
+            networks, aliases,
         )
 
         val first = viewModel(perApp = observe)
@@ -307,6 +312,18 @@ class AccountDetailViewModelTest {
         runCurrent()
         val marked = made.uiState.value as AccountDetailUiState.Ready
         assertEquals("Per-app address for uniswap.org · ${AppIsolation.pathOf(site)}", marked.perAppMark)
+        assertEquals(emptyList(), marked.perAppAliases)
+        // A site the user linked to it is listed under its mark, and removed with no question.
+        val moved = (AppHost.parse("uniswap.app") as AppHostResult.Host).host
+        aliases.linked.value = mapOf(moved to perApp.address)
+        runCurrent()
+        assertEquals(listOf("uniswap.app"), (made.uiState.value as AccountDetailUiState.Ready).perAppAliases)
+        made.removeAlias("uniswap.app")
+        runCurrent()
+        assertEquals(emptyMap(), aliases.linked.value)
+        val removed = made.uiState.value as AccountDetailUiState.Ready
+        assertEquals(emptyList(), removed.perAppAliases)
+        assertEquals("uniswap.app will be offered an address of its own.", removed.message)
         assertNull(marked.perApp, "a per-app address is not the account its phrase is known by")
         assertEquals(listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY), marked.segments)
 

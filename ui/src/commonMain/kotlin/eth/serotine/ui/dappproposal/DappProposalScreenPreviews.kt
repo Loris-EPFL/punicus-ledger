@@ -165,6 +165,8 @@ private val firstVisit = realFunds.copy(
         unavailable = null,
     ),
     password = WalletPassword("made-up password"),
+    // No other site has an address here yet: there is none to use instead, said on a tap.
+    aliasOffer = AliasOffer("No address for uniswap.org yet", DappProposalViewModel.NO_OTHER_SITE),
 )
 
 @Preview
@@ -210,6 +212,74 @@ private fun DappProposalNoPhrasePreview() = DappProposalPreview(
     ),
 )
 
+// A dApp that moved to uniswap.app: no address there yet, and uniswap.org's may be used instead, after a question.
+private val moved = firstVisit.copy(
+    url = "https://app.uniswap.app",
+    newAddress = firstVisit.newAddress!!.copy(
+        title = "New address for uniswap.app",
+        where = "app.uniswap.app, site uniswap.app · On Ethereum and Gnosis Chain",
+    ),
+    aliasOffer = AliasOffer("No address for uniswap.app yet", null),
+    accounts = listOf(
+        AccountOption(
+            "1:0x6",
+            "uniswap.org",
+            "0x9fa6…8D52",
+            chosen = false,
+            unavailable = DappProposalViewModel.offerLine(DappOffer.OTHER_SITE, Network.ETHEREUM, "uniswap.org"),
+            network = Network.ETHEREUM.displayName,
+            perAppSite = "uniswap.org",
+        ),
+    ) + realFunds.accounts.map { it.copy(chosen = false) },
+)
+
+@Preview
+@Composable
+private fun DappProposalMovedPreview() = DappProposalPreview(moved)
+
+@Preview
+@Composable
+private fun DappProposalChoosingAliasPreview() = DappProposalPreview(
+    moved.copy(
+        aliasChoices = listOf(
+            AliasChoice("0x6", "uniswap.org", "Also seen by uniswap.exchange", "0x9fa6…8D52"),
+            AliasChoice("0x3", "safe.global", null, "0x3c17…a07b"),
+        ),
+    ),
+)
+
+@Preview
+@Composable
+private fun DappProposalConfirmingAliasPreview() = DappProposalPreview(
+    moved.copy(
+        confirmingAlias = AliasQuestion(
+            "Use uniswap.org's address?",
+            "uniswap.app will see the same address as uniswap.org. The two sites can link your activity.",
+        ),
+    ),
+)
+
+// Linked: uniswap.org's address is uniswap.app's now, preselected, and no new address is offered beside it.
+@Preview
+@Composable
+private fun DappProposalLinkedPreview() = DappProposalPreview(
+    realFunds.copy(
+        url = "https://app.uniswap.app",
+        accounts = listOf(
+            AccountOption(
+                "1:0x6",
+                "uniswap.org",
+                "0x9fa6…8D52",
+                chosen = true,
+                unavailable = null,
+                network = Network.ETHEREUM.displayName,
+                perAppSite = "uniswap.org",
+                linked = true,
+            ),
+        ) + realFunds.accounts.map { it.copy(chosen = false) },
+    ),
+)
+
 // The site connecting again: its per-app address, approved last, preselected among the accounts.
 @Preview
 @Composable
@@ -252,4 +322,8 @@ internal val dappProposalScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("choosing-phrase") { DappProposalChoosingPhrasePreview() },
     ScreenPreview("no-phrase") { DappProposalNoPhrasePreview() },
     ScreenPreview("seen-before") { DappProposalSeenBeforePreview() },
+    ScreenPreview("moved") { DappProposalMovedPreview() },
+    ScreenPreview("choosing-alias") { DappProposalChoosingAliasPreview() },
+    ScreenPreview("confirming-alias") { DappProposalConfirmingAliasPreview() },
+    ScreenPreview("linked") { DappProposalLinkedPreview() },
 )

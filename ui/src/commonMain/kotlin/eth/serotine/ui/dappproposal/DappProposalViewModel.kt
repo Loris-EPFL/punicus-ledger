@@ -585,8 +585,10 @@ class DappProposalViewModel(
         local.update { it.copy(busy = true, notice = null, aliasError = null, password = WalletPassword.EMPTY) }
         viewModelScope.launch {
             if (making == null) {
-                val linked = linkPerAppAlias(picked.site, picked.address ?: return@launch)
-                local.update { linkedState(it, linked, picked.keys, aliasLine(linked)) }
+                val address = picked.address
+                val linked = if (address == null) AliasLinking.NotPerApp else linkPerAppAlias(picked.site, address)
+                val note = aliasLine(linked).takeIf { linked != AliasLinking.Linked }
+                local.update { linkedState(it, linked, picked.keys, note) }
                 return@launch
             }
             val outcome = linkMadePerAppAlias(picked.site, making.from, making.host, making.networks, password)

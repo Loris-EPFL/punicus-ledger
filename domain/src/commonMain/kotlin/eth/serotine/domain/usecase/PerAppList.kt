@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 /**
  * One per-app address held here, as screen D9 lists it (issue #252; docs/walletconnect.md, *Every per-app address is
@@ -210,3 +212,27 @@ enum class AliasLinking {
 class UnlinkPerAppAlias(private val aliases: PerAppAliases) {
     suspend operator fun invoke(site: AppHost): Boolean = aliases.unlink(site.site)
 }
+
+/**
+ * Makes the per-app address of an old site again and links the dApp's [site] to it, as one step a cancelled caller
+ * does not cut in half (docs/walletconnect.md, *Aliases*, "Type the old site's host"): [host]'s site's address, from
+ * the phrase [from]'s envelope holds, on [networks], under [password] ([MakePerAppAddress]), then the link
+ * ([LinkPerAppAlias]). Nothing is linked unless the address was made.
+ */
+class LinkMadePerAppAlias(private val make: MakePerAppAddress, private val link: LinkPerAppAlias) {
+    suspend operator fun invoke(
+        site: AppHost,
+        from: AccountId,
+        host: AppHost,
+        networks: List<Network>,
+        password: WalletPassword,
+    ): MadeLinking = withContext(NonCancellable) {
+        when (val made = make(from, host, networks, password)) {
+            is PerAppMaking.Made -> MadeLinking(made, link(site, made.address))
+            else -> MadeLinking(made, null)
+        }
+    }
+}
+
+/** The outcome of [LinkMadePerAppAlias]: how the [making] went, and the [linking] once it was made, else null. */
+data class MadeLinking(val making: PerAppMaking, val linking: AliasLinking?)

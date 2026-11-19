@@ -104,6 +104,7 @@ import eth.serotine.domain.usecase.HoldSafeSignature
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.KeepWaitingSwap
+import eth.serotine.domain.usecase.LinkMadePerAppAlias
 import eth.serotine.domain.usecase.LinkPerAppAlias
 import eth.serotine.domain.usecase.MakePerAppAddress
 import eth.serotine.domain.usecase.NetworkDemand
@@ -1098,6 +1099,10 @@ class AppGraph(
         ObservePerAppChoice(accounts, perAppKeys, dappSites, networkSettings, perAppAliases),
         MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases),
         LinkPerAppAlias(accounts, perAppAliases),
+        LinkMadePerAppAlias(
+            MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases),
+            LinkPerAppAlias(accounts, perAppAliases),
+        ),
     )
 
     /**

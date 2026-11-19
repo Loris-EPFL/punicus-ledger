@@ -289,6 +289,21 @@ private fun DappProposalMadeAgainPreview() = DappProposalPreview(
     ),
 )
 
+// "Use it" with a wrong password: said in the question, which stays open to try again.
+@Preview
+@Composable
+private fun DappProposalMadeAgainFailedPreview() = DappProposalPreview(
+    moved.copy(
+        confirmingAlias = AliasQuestion(
+            "Use uniswap.org's address?",
+            "uniswap.app will see the same address as uniswap.org. The two sites can link your activity. " +
+                DappProposalViewModel.MADE_AGAIN,
+            needsPassword = true,
+            error = "That is not the wallet password. Nothing was made or linked.",
+        ),
+    ),
+)
+
 // Linked: uniswap.org's address is uniswap.app's now, preselected, and no new address is offered beside it.
 @Preview
 @Composable
@@ -358,4 +373,5 @@ internal val dappProposalScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("linked") { DappProposalLinkedPreview() },
     ScreenPreview("typing-old-host") { DappProposalTypingOldHostPreview() },
     ScreenPreview("made-again") { DappProposalMadeAgainPreview() },
+    ScreenPreview("made-again-failed") { DappProposalMadeAgainFailedPreview() },
 )

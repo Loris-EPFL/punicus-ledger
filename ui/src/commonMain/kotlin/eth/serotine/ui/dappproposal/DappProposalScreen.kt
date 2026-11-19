@@ -76,6 +76,9 @@ const val DAPP_PROPOSAL_ALIAS_TYPE_TAG = "dapp-proposal-alias-type"
 /** Test tag of the alias question's password field, for UI tests. */
 const val DAPP_PROPOSAL_ALIAS_PASSWORD_TAG = "dapp-proposal-alias-password"
 
+/** Test tag of what the alias question says when "Use it" did not go through, for UI tests. */
+const val DAPP_PROPOSAL_ALIAS_ERROR_TAG = "dapp-proposal-alias-error"
+
 /** Test tag of the alias question's "Use it", for UI tests. */
 const val DAPP_PROPOSAL_ALIAS_YES_TAG = "dapp-proposal-alias-yes"
 
@@ -466,6 +469,13 @@ private fun AliasQuestionDialog(
         text = {
             Column {
                 Text(question.text)
+                question.error?.let {
+                    Text(
+                        it,
+                        Modifier.padding(top = 8.dp).testTag(DAPP_PROPOSAL_ALIAS_ERROR_TAG),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 if (question.needsPassword) {
                     val captureBlocked = protectFromScreenCapture()
                     OutlinedTextField(
@@ -476,6 +486,7 @@ private fun AliasQuestionDialog(
                         enabled = !state.busy,
                         label = { Text("Wallet password") },
                         singleLine = true,
+                        isError = question.error != null,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(
                             autoCorrectEnabled = false,
@@ -495,12 +506,15 @@ private fun AliasQuestionDialog(
                 }
             }
         },
+        // While the address is made, neither answer is taken: what "Use it" started goes on.
         confirmButton = {
-            TextButton(onClick = { onAnswer(true) }, Modifier.testTag(DAPP_PROPOSAL_ALIAS_YES_TAG)) {
-                Text("Use it")
-            }
+            TextButton(
+                onClick = { onAnswer(true) },
+                enabled = !state.busy,
+                modifier = Modifier.testTag(DAPP_PROPOSAL_ALIAS_YES_TAG),
+            ) { Text(if (state.busy) "Making…" else "Use it") }
         },
-        dismissButton = { TextButton(onClick = { onAnswer(false) }) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = { onAnswer(false) }, enabled = !state.busy) { Text("Cancel") } },
     )
 }
 

@@ -299,7 +299,7 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     - The last per-app account of an address takes its aliases with it, so
       that restoring the address later never links a site again unasked.
   - "Type the old site's host", as built in part 4c, and confirmed by
-    the owner's decisions of 2026-11-19:
+    the owner's decisions of 2026-11-19, on PR #329:
     - What is typed is read as D9's Restore reads it: a site, a host or a
       web address.
     - A site whose address is held here is picked as from the list, and
@@ -308,6 +308,14 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
       new address from, on the networks a new address would go on. The
       question says so and takes the wallet password. "Use it" makes it,
       named and marked after the old site, then links the dApp's site.
+    - A typed site that was itself linked to another site's address gets
+      that address, the one it saw; the question says so ("`<typed>` uses
+      `<other>`'s address, linked by you").
+    - The networks are those a new address would go on, of the kind the
+      accounts ticked decide, as the new address's row says.
+    - Making and linking are one step that leaving the screen does not cut
+      in half. A failure is said in the question, which stays open to try
+      again; a key sealed at a lighter cost is said once linked.
     - Typing the dApp's own site, or what names no site, is said, and
       nothing is asked.
     - "Use an address from another site…" is now greyed out only with no

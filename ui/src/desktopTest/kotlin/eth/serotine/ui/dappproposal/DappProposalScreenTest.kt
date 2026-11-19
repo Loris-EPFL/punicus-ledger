@@ -1,6 +1,8 @@
 package eth.serotine.ui.dappproposal
 
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -85,6 +87,21 @@ class DappProposalScreenTest {
         show(state.copy(confirmingAlias = question))
         rule.onNodeWithTag(DAPP_PROPOSAL_ALIAS_PASSWORD_TAG).performTextInput("secret")
         assertEquals(listOf("secret"), passwords)
+    }
+
+    @Test
+    fun whyUseItDidNotGoThroughIsSaidInTheQuestion() {
+        val question =
+            AliasQuestion("Use uniswap.org's address?", "Made again.", needsPassword = true, error = "Wrong.")
+        show(state.copy(confirmingAlias = question))
+        rule.onNodeWithTag(DAPP_PROPOSAL_ALIAS_ERROR_TAG).assertTextEquals("Wrong.")
+    }
+
+    @Test
+    fun whileTheAddressIsMadeNeitherAnswerIsTaken() {
+        show(state.copy(busy = true, confirmingAlias = AliasQuestion("Use uniswap.org's address?", "Made again.")))
+        rule.onNodeWithTag(DAPP_PROPOSAL_ALIAS_YES_TAG).assertIsNotEnabled()
+        rule.onNodeWithText("Making…").assertExists()
     }
 
     @Test

@@ -10,11 +10,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
 import java.util.WeakHashMap
 
 /**
- * `FLAG_SECURE` on the activity's window while [blockCapture]: no screenshots, no screen
- * recording or casting, and a blank app-switcher snapshot. And, either way, the Compose view
+ * `FLAG_SECURE` on the window it is drawn in, the activity's or a dialog's own, while
+ * [blockCapture]: no screenshots, no screen recording or casting, and a blank app-switcher
+ * snapshot. And, either way, the Compose view
  * kept out of the structure an autofill service reads, so a password manager can neither
  * fill nor offer to save what the screen's fields hold. Both are undone when the last caller
  * leaves composition.
@@ -22,7 +24,9 @@ import java.util.WeakHashMap
 @Composable
 internal actual fun protectFromScreenCapture(blockCapture: Boolean): Boolean {
     val view = LocalView.current
-    val window = remember(view) { view.context.findActivity()?.window }
+    // Inside a dialog the window to protect is the dialog's own: it does not take a flag set on the activity's
+    // window after it was made (a password field in a dialog, issue #252).
+    val window = remember(view) { (view as? DialogWindowProvider)?.window ?: view.context.findActivity()?.window }
     DisposableEffect(view, window, blockCapture) {
         acquire(view, window, blockCapture)
         onDispose { release(view, window, blockCapture) }

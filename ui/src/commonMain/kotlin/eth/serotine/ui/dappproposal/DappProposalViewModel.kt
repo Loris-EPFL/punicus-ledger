@@ -19,6 +19,7 @@ import eth.serotine.domain.usecase.AliasLinking
 import eth.serotine.domain.usecase.ApproveDappProposal
 import eth.serotine.domain.usecase.DappOffer
 import eth.serotine.domain.usecase.dappOffer
+import eth.serotine.domain.usecase.LinkMadePerAppAlias
 import eth.serotine.domain.usecase.LinkPerAppAlias
 import eth.serotine.domain.usecase.MakePerAppAddress
 import eth.serotine.domain.usecase.ObserveDappConnections
@@ -147,9 +148,15 @@ data class AliasChoice(
 
 /**
  * What is asked before the site is linked: [title] and [text], which says the two sites can link the activity;
- * [needsPassword] when the other site's address is made again from the phrase first, under the wallet password.
+ * [needsPassword] when the other site's address is made again from the phrase first, under the wallet password;
+ * [error], why "Use it" did not go through, said in the question, which stays open to try again.
  */
-data class AliasQuestion(val title: String, val text: String, val needsPassword: Boolean = false)
+data class AliasQuestion(
+    val title: String,
+    val text: String,
+    val needsPassword: Boolean = false,
+    val error: String? = null,
+)
 
 /** A phrase a new address can come from, named by an account of it: [name] and [address]; [chosen] the one used. */
 data class PhraseOption(val key: String, val name: String, val address: String, val chosen: Boolean)
@@ -187,6 +194,7 @@ class DappProposalViewModel(
     observePerAppChoice: ObservePerAppChoice,
     private val makePerAppAddress: MakePerAppAddress,
     private val linkPerAppAlias: LinkPerAppAlias,
+    private val linkMadePerAppAlias: LinkMadePerAppAlias,
 ) : ViewModel() {
 
     private val id: DappProposalId? = proposalKey.split('/').takeIf { it.size == 2 }?.let { (pairing, number) ->
@@ -202,6 +210,8 @@ class DappProposalViewModel(
         val choosingAlias: Boolean = false,
         /** The old site's host typed in the list, "Type the old site's host". */
         val aliasHost: String = "",
+        /** Why the alias question's "Use it" did not go through, said in the question; null otherwise. */
+        val aliasError: String? = null,
         /** Another site's address the user picked to link the dApp's site to, until the question is answered. */
         val pickedAlias: PickedAlias? = null,
         val password: WalletPassword = WalletPassword.EMPTY,
@@ -226,6 +236,8 @@ class DappProposalViewModel(
         val making: NewAddress? = null,
         /** The phrase [making] comes from, named where there are several; null otherwise. */
         val phrase: String? = null,
+        /** The site typed, when it is linked to [other]'s address: the question says why another name appears. */
+        val via: AppHost? = null,
     )
 
     /** A new per-app address to make on Approve: from the account [from]'s phrase, for [host], on [networks]. */
@@ -332,7 +344,7 @@ class DappProposalViewModel(
             aliasOffer = aliasOffer,
             aliasChoices = if (local.choosingAlias) aliasChoices(proposal, perApp) else null,
             aliasHost = local.aliasHost,
-            confirmingAlias = local.pickedAlias?.let(::aliasQuestion),
+            confirmingAlias = local.pickedAlias?.let(::aliasQuestion)?.copy(error = local.aliasError),
         )
         Shown(state, Plan(chosenKeys, making), perApp, proposal)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Shown(DappProposalUiState(), NO_PLAN))
@@ -442,7 +454,8 @@ class DappProposalViewModel(
 
     private fun aliasQuestion(picked: PickedAlias) = AliasQuestion(
         title = "Use ${picked.other.name}'s address?",
-        text = "${picked.site.name} will see the same address as ${picked.other.name}. The two sites can link your " +
+        text = (picked.via?.let { "${it.name} uses ${picked.other.name}'s address, linked by you. " } ?: "") +
+            "${picked.site.name} will see the same address as ${picked.other.name}. The two sites can link your " +
             "activity." + when {
                 picked.making == null -> ""
                 picked.phrase != null -> " " + madeAgainFrom(picked.phrase)
@@ -502,18 +515,23 @@ class DappProposalViewModel(
         val choice = shown.value.choice ?: return
         val proposal = shown.value.proposal ?: return
         val site = choice.site ?: return
-        val host = (typedHost(local.value.aliasHost) as? AppHostResult.Host)?.host ?: return explainTyped(NOT_A_HOST)
+        val typed = typedHost(local.value.aliasHost)
+        val host = (typed as? AppHostResult.Host)?.host
+            ?: return explainTyped(if (typed == AppHostResult.NotAscii) NOT_ASCII else NOT_A_HOST)
         if (host.site == site) return explainTyped(SAME_SITE)
         // The address the old site saw: its own, or the one it was itself linked to.
-        val held = choice.others.firstOrNull { it.site == host.site }
-            ?: choice.others.firstOrNull { host.site in it.aliases }
+        val own = choice.others.firstOrNull { it.site == host.site }
+        val held = own ?: choice.others.firstOrNull { host.site in it.aliases }
         if (held != null) {
             local.update { it.copy(aliasHost = "") }
             pickAlias(held.address.hex)
+            if (own == null) local.update { now -> now.copy(pickedAlias = now.pickedAlias?.copy(via = host.site)) }
             return
         }
         val source = sourceOf(choice, local.value) ?: return explainTyped(NO_PHRASE)
-        val networks = perAppNetworks(proposal, choice.enabled, emptyList(), emptyList())
+        // The networks a new address would go on, of the kind the accounts ticked decide, as its row says.
+        val ticked = shown.value.plan.chosen.mapNotNull(::idOf)
+        val networks = perAppNetworks(proposal, choice.enabled, ticked, emptyList())
         if (networks.isEmpty()) return explainTyped(NO_NETWORK)
         val taken = choice.others.map { it.site } + choice.made.mapNotNull { it.perApp?.site }
         AppIsolation.collision(host.site, taken)?.let { other -> return explainTyped(collisionOf(host.site, other)) }
@@ -544,52 +562,60 @@ class DappProposalViewModel(
      */
     fun answerAlias(yes: Boolean) {
         val picked = local.value.pickedAlias ?: return
+        // While the address is made, the question is not closed: what "Use it" started goes on.
+        if (local.value.busy) return
         if (!yes) {
             // Only a question that asked for the password drops it: the new address's keeps its own.
             local.update {
-                it.copy(pickedAlias = null, password = if (picked.making != null) WalletPassword.EMPTY else it.password)
+                it.copy(
+                    pickedAlias = null,
+                    aliasError = null,
+                    password = if (picked.making != null) WalletPassword.EMPTY else it.password,
+                )
             }
             return
         }
-        if (local.value.busy) return
         val password = local.value.password
-        if (picked.making != null && password.text.isEmpty()) {
-            local.update { it.copy(explaining = Explanation("Wallet password", PASSWORD_FOR_OLD_SITE)) }
+        val making = picked.making
+        if (making != null && password.text.isEmpty()) {
+            local.update { it.copy(aliasError = PASSWORD_FOR_OLD_SITE) }
             return
         }
         // The password leaves the state as the work starts: it is held by this call alone.
-        local.update { it.copy(busy = true, notice = null, password = WalletPassword.EMPTY) }
+        local.update { it.copy(busy = true, notice = null, aliasError = null, password = WalletPassword.EMPTY) }
         viewModelScope.launch {
-            var address = picked.address
-            var keys = picked.keys
-            val making = picked.making
-            if (making != null) {
-                when (val made = makePerAppAddress(making.from, making.host, making.networks, password)) {
-                    is PerAppMaking.Made -> {
-                        address = made.address
-                        keys = made.accounts.map(::keyOf)
-                    }
-                    else -> {
-                        // The question stays open, to try again with another password, say.
-                        local.update { it.copy(busy = false, notice = oldSiteLine(made, picked.other)) }
-                        return@launch
-                    }
-                }
-            }
-            if (address == null) {
-                local.update { it.copy(busy = false, pickedAlias = null) }
+            if (making == null) {
+                val linked = linkPerAppAlias(picked.site, picked.address ?: return@launch)
+                local.update { linkedState(it, linked, picked.keys, aliasLine(linked)) }
                 return@launch
             }
-            val linked = linkPerAppAlias(picked.site, address)
-            local.update {
-                // Linked: the address picked here is chosen, newer than what the site's memory preselects.
-                if (linked == AliasLinking.Linked) {
-                    it.copy(busy = false, pickedAlias = null, chosen = keys.toSet())
-                } else {
-                    it.copy(busy = false, pickedAlias = null, notice = aliasLine(linked))
-                }
+            val outcome = linkMadePerAppAlias(picked.site, making.from, making.host, making.networks, password)
+            val made = outcome.making
+            if (made !is PerAppMaking.Made) {
+                // Said in the question, which stays open to try again (with another password, say).
+                local.update { it.copy(busy = false, aliasError = oldSiteLine(made, picked.other)) }
+                return@launch
             }
+            val linked = outcome.linking ?: AliasLinking.NotSaved
+            val note = when {
+                linked != AliasLinking.Linked -> madeNotLinkedLine(picked.other, linked)
+                made.steppedDown -> oldSiteSteppedDown(picked.other)
+                else -> null
+            }
+            local.update { linkedState(it, linked, made.accounts.map(::keyOf), note) }
         }
+    }
+
+    /**
+     * The state once the link is answered: linked, the address's [keys] chosen (newer than what the site's memory
+     * preselects), and [note] said where there is one; else what [note] says of it.
+     */
+    private fun linkedState(now: Local, linked: AliasLinking, keys: List<String>, note: String?) = if (
+        linked == AliasLinking.Linked
+    ) {
+        now.copy(busy = false, pickedAlias = null, chosen = keys.toSet(), notice = note)
+    } else {
+        now.copy(busy = false, pickedAlias = null, notice = note)
     }
 
     /**
@@ -630,9 +656,9 @@ class DappProposalViewModel(
     /** The new address comes from the phrase the account [key] names; null closes the list unchanged. */
     fun pickPhrase(key: String?) = local.update { it.copy(choosingPhrase = false, phrase = key ?: it.phrase) }
 
-    /** The password field changed. */
+    /** The password field changed: what the alias question said of the last one goes. */
     fun onPasswordChange(text: String) {
-        if (!local.value.busy) local.update { it.copy(password = WalletPassword(text)) }
+        if (!local.value.busy) local.update { it.copy(password = WalletPassword(text), aliasError = null) }
     }
 
     /** The screen is no longer shown: the password typed goes. */
@@ -743,6 +769,20 @@ class DappProposalViewModel(
             is PerAppMaking.NotEnoughMemory -> makingLine(made) ?: NOT_SAVED
             PerAppMaking.ListUnreadable -> ACCOUNTS_UNREADABLE
         }
+
+        /** What a link that failed once the old site's address was made says: the address is here, unlinked. */
+        fun madeNotLinkedLine(other: AppHost, linking: AliasLinking): String =
+            "${other.name}'s address is in your accounts now, but this site could not be linked to it" +
+                (if (linking == AliasLinking.NotSaved) ": that could not be saved." else ".") +
+                " Pick it from \"Use an address from another site…\" to try again."
+
+        /** What a link says once made, when the old site's key was sealed at a lighter cost than this device's own. */
+        fun oldSiteSteppedDown(other: AppHost) = "Linked. ${other.name}'s address's key was protected at a lighter " +
+            "password cost than this device's own, because there was not enough free memory."
+
+        /** What a typed host with characters outside ASCII says. */
+        const val NOT_ASCII = "That name has characters outside ASCII, which Punicus does not map. Type it in its " +
+            "xn-- form."
 
         /** What a typed host that names no site says. */
         const val NOT_A_HOST = "That is not a host or a site. Type the old site's, such as app.uniswap.org."

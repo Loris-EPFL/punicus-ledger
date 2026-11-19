@@ -34,6 +34,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 /** Test tag of a proposal's row, followed by its key, for UI tests. */
 const val CONNECTIONS_PROPOSAL_TAG = "connections-proposal-"
 
+/** Test tag of the entry to the per-app addresses (screen D9), for UI tests. */
+const val CONNECTIONS_PER_APP_TAG = "connections-per-app"
+
 /** Test tag of a request's row, followed by its key, for UI tests. */
 const val CONNECTIONS_REQUEST_TAG = "connections-request-"
 
@@ -47,6 +50,7 @@ fun ConnectionsRoute(
     onRequest: (String) -> Unit,
     onTransaction: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onPerApp: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     ConnectionsScreen(
@@ -59,6 +63,7 @@ fun ConnectionsRoute(
         onExtend = viewModel::extend,
         onDisconnect = viewModel::disconnect,
         modifier = modifier,
+        onPerApp = onPerApp,
     )
 }
 
@@ -81,6 +86,7 @@ fun ConnectionsScreen(
     onExtend: (String) -> Unit,
     onDisconnect: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onPerApp: () -> Unit = {},
 ) {
     Scaffold(
         modifier = modifier,
@@ -171,6 +177,7 @@ fun ConnectionsScreen(
                 )
             }
             Button(onClick = onPair, modifier = Modifier.padding(16.dp).fillMaxWidth()) { Text("Connect a dApp") }
+            PerAppEntry(onPerApp)
             Text(
                 "A dApp's name and address are what it says of itself: Punicus cannot check them. dApps " +
                     "connect through WalletConnect's relay, a service run by Reown and a selected group of " +
@@ -183,6 +190,16 @@ fun ConnectionsScreen(
             )
         }
     }
+}
+
+/** The entry to screen D9, the per-app addresses held here (issue #252). */
+@Composable
+private fun PerAppEntry(onPerApp: () -> Unit) {
+    ListItem(
+        modifier = Modifier.clickable(onClick = onPerApp).testTag(CONNECTIONS_PER_APP_TAG),
+        headlineContent = { Text("Per-app addresses") },
+        supportingContent = { Text("The address each site was given, and Restore") },
+    )
 }
 
 @Composable

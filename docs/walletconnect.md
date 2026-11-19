@@ -225,7 +225,9 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     that first account is still in the wallet. With one phrase, D3 asks
     nothing. With several, D3 shows which phrase the new address comes from
     (named by an account of it in the list) and lets the user change it,
-    defaulting to the phrase of the first account in the list that has one.
+    defaulting to the phrase of the first account in the list that has one,
+    an ordinary account before a per-app address (part 4a: a per-app
+    address names its phrase only where no other account of it is held).
     The phrase chosen is remembered with the address made, so a second
     connection from the same site offers the same address.
   - Without a phrase on this device (only watched accounts, or Safes) the
@@ -284,6 +286,21 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   store, without waiting for the site to connect (after a restore of the
   phrase, say). The private key itself is never shown or exported (CLAUDE.md,
   *Trust*, *Key material*).
+  - As built in part 4a, and confirmed by the owner's decisions of
+    2026-11-19, on PR #326: a restored
+    address goes on every network that is on, of one kind of funds: real
+    funds when one of them is on, else Sepolia, as D3 does when nothing
+    else decides the kind. The host may be typed as a site, a host or a
+    web address (a path after it is dropped). Restore is greyed out, a tap
+    saying why, without a phrase held here or with no network on. A
+    phrase whose name is not known (an older envelope, #314) is offered to
+    restore from, but no account has its Per-app tab. The Per-app tab
+    shows in simple mode too, which draws the same tabs. A phrase is named
+    on D9 and its tab by the account it is known by. In a build with dApp
+    connections off, Settings' explanation of the greyed-out Connected
+    dApps leads to D9, so the addresses stay listed and restorable. D3
+    names a phrase the same way, one name everywhere (the same decisions;
+    built in part 4b).
 - **Signing in with one** (D4): see *Signing in* below.
 - **Not done here, said where it matters:** paying gas for a per-app address
   from another of the user's accounts links them on chain (signing in needs
@@ -799,8 +816,10 @@ merge part PRs into the feature branch itself.
    3. D3: the new address offered and preselected, greyed out without a
       phrase, the phrase chosen, the per-site memory and its preselection,
       the account marked as per-app.
-   4. D9, and aliases: the list, "Type the old site's host", the confirmation,
-      preselection through an alias, removal on the account's details.
+   4. D9, and aliases, in two PRs: the list, the Per-app tab, the per-app
+      mark on an account's details and "Restore a per-app address" (4a);
+      then aliases: "Type the old site's host", the confirmation,
+      preselection through an alias, removal on the account's details (4b).
    5. D4: the site named, the domain warning, the alias match.
 4. **Later, each its own issue:** QR scanning on iOS (Android's is built); a
    `wc:` URL scheme

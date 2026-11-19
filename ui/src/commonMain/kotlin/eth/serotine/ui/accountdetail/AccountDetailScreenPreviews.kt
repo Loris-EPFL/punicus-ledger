@@ -20,6 +20,8 @@ import eth.serotine.ui.components.catchingUpStripSample
 import eth.serotine.ui.components.staleStripSample
 import eth.serotine.ui.components.verifiedStripSample
 import eth.serotine.ui.ScreenPreview
+import eth.serotine.ui.perapp.PerAppRow
+import eth.serotine.ui.perapp.PerAppViewModel
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -753,6 +755,66 @@ private fun AccountDetailEnsNamesPreview() = AccountDetailPreview(
     daily.copy(ensNames = "ENS names pointing here: daily-example.eth (primary name), pay-example.eth"),
 )
 
+/** A per-app address (#252): the site it was made for and its path, under its name. */
+@Preview
+@Composable
+private fun AccountDetailPerAppAddressPreview() = AccountDetailPreview(
+    daily.copy(
+        label = "uniswap.org",
+        perAppMark = "Per-app address for uniswap.org · m/44'/60'/1736218'/915403'/66032'",
+    ),
+)
+
+/** The account a recovery phrase is known by, on its Per-app tab (#252): that phrase's per-app addresses. */
+@Preview
+@Composable
+private fun AccountDetailPerAppTabPreview() = AccountDetailPreview(
+    daily.copy(
+        segment = DetailSegment.PER_APP,
+        perApp = PerAppTab(
+            phrase = "0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2",
+            rows = listOf(
+                PerAppRow(
+                    site = "uniswap.org",
+                    address = "0x9fA6c0b2E14d7A35c8e01B2f6D3a9c47b1e08D52",
+                    networks = "Ethereum, Gnosis Chain",
+                    phrase = "Phrase of Daily",
+                    path = "m/44'/60'/1736218'/915403'/66032'",
+                    chainId = 1,
+                    hex = "0x9fa6c0b2e14d7a35c8e01b2f6d3a9c47b1e08d52",
+                ),
+            ),
+            empty = null,
+        ),
+    ),
+)
+
+/** The Per-app tab while the phrase has no per-app address yet. */
+@Preview
+@Composable
+private fun AccountDetailPerAppTabEmptyPreview() = AccountDetailPreview(
+    daily.copy(
+        segment = DetailSegment.PER_APP,
+        perApp = PerAppTab("0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2", emptyList(), PerAppViewModel.EMPTY),
+    ),
+    darkTheme = true,
+)
+
+/** The Per-app tab with no network on: Restore greyed out, a tap saying why (owner ruling, 2026-10-18, #55). */
+@Preview
+@Composable
+private fun AccountDetailPerAppTabNoNetworkPreview() = AccountDetailPreview(
+    daily.copy(
+        segment = DetailSegment.PER_APP,
+        perApp = PerAppTab(
+            "0x8f3a2c71e5b9d04a6f1e3c2ba7d90e5f4c6b91c2",
+            emptyList(),
+            PerAppViewModel.EMPTY,
+            restoreBlocked = PerAppViewModel.NO_NETWORK,
+        ),
+    ),
+)
+
 /**
  * Docs/networks.md's N3: an account on Ethereum, real prices, no testnet note; COW, which no feed
  * prices, at its pool's average, labelled, and counted in the total, which says so (#205).
@@ -918,6 +980,10 @@ internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("list-unavailable") { AccountDetailListUnavailablePreview() },
     ScreenPreview("ens-name-moved") { AccountDetailEnsNameMovedPreview() },
     ScreenPreview("ens-names") { AccountDetailEnsNamesPreview() },
+    ScreenPreview("per-app-address") { AccountDetailPerAppAddressPreview() },
+    ScreenPreview("per-app-tab") { AccountDetailPerAppTabPreview() },
+    ScreenPreview("per-app-tab-empty-dark") { AccountDetailPerAppTabEmptyPreview() },
+    ScreenPreview("per-app-tab-no-network") { AccountDetailPerAppTabNoNetworkPreview() },
     ScreenPreview("activity") { AccountDetailActivityPreview() },
     ScreenPreview("activity-dark") { AccountDetailActivityDarkPreview() },
     ScreenPreview("waiting-swap") { AccountDetailWaitingSwapPreview() },

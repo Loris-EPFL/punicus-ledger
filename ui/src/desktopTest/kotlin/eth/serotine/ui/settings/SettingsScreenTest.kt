@@ -230,17 +230,22 @@ class SettingsScreenTest {
     @Test
     fun connectedDappsOpensAndInABuildWithoutAProjectIdSaysWhyItIsGreyedOut() {
         var opened = 0
+        var perApp = 0
         rule.setContent {
             SettingsScreen(
                 SettingsUiState(networks = emptyList(), version = "1.0"),
                 onCurrency = {}, onTokens = {}, onSecurity = {}, onScreenCaptureChange = {}, onDebugScreenChange = {},
                 onConnections = { opened++ },
                 connectionsOff = true,
+                onPerApp = { perApp++ },
             )
         }
         rule.onNodeWithText("Connected dApps").performScrollTo().performClick()
         assertEquals(0, opened)
         rule.onNodeWithText(CONNECTIONS_OFF).assertExists()
+        // The per-app addresses made before stay reachable without connections (#252).
+        rule.onNodeWithText("Per-app addresses").performClick()
+        assertEquals(1, perApp)
     }
 
     @Test

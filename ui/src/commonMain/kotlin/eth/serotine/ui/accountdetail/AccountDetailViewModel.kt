@@ -47,6 +47,9 @@ import eth.serotine.domain.usecase.RefreshNetworkData
 import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.ObserveOutbox
+import eth.serotine.domain.usecase.ObservePerAppAddresses
+import eth.serotine.domain.usecase.PerAppOverview
+import eth.serotine.domain.usecase.restoreNetworks
 import eth.serotine.domain.repository.HeldConflict
 import eth.serotine.domain.repository.HeldSafeSignature
 import eth.serotine.domain.repository.OutboxList
@@ -70,6 +73,8 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkLabel
+import eth.serotine.ui.perapp.PerAppViewModel
+import eth.serotine.ui.perapp.perAppRows
 import eth.serotine.ui.components.accountName
 import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.balanceText
@@ -94,6 +99,7 @@ import eth.serotine.ui.platform.formatDateTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -178,6 +184,11 @@ class AccountDetailViewModel(
     private val offerHandoff: OfferHandoff? = null,
     /** Whether a Safe is a Gnosis Pay account (docs/gnosis-pay.md), which its Owners tab opens. Null: never asked. */
     observeGnosisPay: ObserveGnosisPay? = null,
+    /**
+     * The per-app addresses held here (issue #252): the account a recovery phrase is known by lists that phrase's in
+     * its Per-app tab. Null: never asked, and no account has the tab.
+     */
+    observePerAppAddresses: ObservePerAppAddresses? = null,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
     private val address: Address = account.address
@@ -328,6 +339,19 @@ class AccountDetailViewModel(
         .distinctUntilChanged()
         .flatMapLatest { shown -> if (shown) sharedActivity else flowOf(ActivityUiState.Loading) }
 
+    /**
+     * This account's Per-app tab, when a phrase is known by it and it is an account held here (never a watched entry
+     * of the same address, nor a Safe); null otherwise, and until the envelopes are read, so the screen never waits.
+     */
+    private val perAppTab: Flow<PerAppTab?> = combine(
+        lookup,
+        (observePerAppAddresses?.invoke() ?: flowOf(null)).onStart { emit(null) },
+    ) { lookup, overview ->
+        val held = (lookup as? AccountLookup.Found)?.account
+            ?.takeIf { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore && it.perApp == null }
+        if (held == null || overview == null) null else perAppTabOf(overview, address)
+    }.distinctUntilChanged()
+
     /** Whether the unlisted collections' NFTs are shown: collapsed until the user opens them (owner ruling, #246). */
     private val unlistedNftsOpen = MutableStateFlow(false)
 
@@ -436,6 +460,7 @@ class AccountDetailViewModel(
                     networkOn = networkOn,
                     networkBlocked = networkBlocked,
                     swapVenue = swapVenue,
+                    perAppMark = lookup.account.perApp?.let { "Per-app address for ${it.site.name} · ${it.path}" },
                     handoff = offerHandoff?.let { offer ->
                         handoffChoice(offer(lookup.account), network.displayName.takeUnless { networkOn })
                     },
@@ -460,6 +485,9 @@ class AccountDetailViewModel(
                 } else {
                     state
                 }
+            }
+            .combine(perAppTab) { state, tab ->
+                if (state is AccountDetailUiState.Ready) state.copy(perApp = tab) else state
             }
             // Masked last, on the finished state (the Activity masks its own, as it is built).
             .combine(amountsHidden) { state, hidden -> state.withAmountsHidden(hidden) }
@@ -1091,4 +1119,15 @@ internal fun ensNamesLine(names: AccountNames, followed: String?): String? {
     if (shown.isEmpty()) return null
     val what = if (shown.size == 1) "ENS name pointing here" else "ENS names pointing here"
     return "$what: ${shown.joinToString(", ")}"
+}
+
+/**
+ * The Per-app tab of the account at [address] (issue #252; docs/wallet-ux.md, 4): the per-app addresses of the phrase
+ * it is known by ([PerAppOverview.knownBy]); null when no phrase is known by it.
+ */
+internal fun perAppTabOf(overview: PerAppOverview, address: Address): PerAppTab? {
+    val phrase = overview.knownBy.entries.firstOrNull { it.value == address }?.key ?: return null
+    val rows = perAppRows(overview.entries.filter { it.phrase == phrase }, overview)
+    val blocked = PerAppViewModel.NO_NETWORK.takeIf { restoreNetworks(overview.enabled).isEmpty() }
+    return PerAppTab(phrase.hex, rows, if (rows.isEmpty()) PerAppViewModel.EMPTY else null, blocked)
 }

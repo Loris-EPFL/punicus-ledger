@@ -26,7 +26,10 @@ internal actual fun protectFromScreenCapture(blockCapture: Boolean): Boolean {
     val view = LocalView.current
     // Inside a dialog the window to protect is the dialog's own: it does not take a flag set on the activity's
     // window after it was made (a password field in a dialog, issue #252).
-    val window = remember(view) { (view as? DialogWindowProvider)?.window ?: view.context.findActivity()?.window }
+    // The dialog's root layout provides its window, the parent of the view the dialog's content composes into.
+    val window = remember(view) {
+        (view.parent as? DialogWindowProvider)?.window ?: view.context.findActivity()?.window
+    }
     DisposableEffect(view, window, blockCapture) {
         acquire(view, window, blockCapture)
         onDispose { release(view, window, blockCapture) }

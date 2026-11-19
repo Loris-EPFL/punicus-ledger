@@ -411,7 +411,7 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     matched through an alias says "linked by you to `<oldsite>`". The checks above
     are unchanged.
     - As built in part 5, and confirmed by the owner's decision of
-      2026-11-19: D4 and D5
+      2026-11-19, on PR #330: D4 and D5
       name the site of a per-app address for every request it is asked
       to sign, a message or typed data alike; the domain is held against
       the site only for a sign-in. A sign-in whose domain names no site

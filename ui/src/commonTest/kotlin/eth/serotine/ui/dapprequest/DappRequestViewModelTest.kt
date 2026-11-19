@@ -3,6 +3,8 @@ package eth.serotine.ui.dapprequest
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AppHost
 import eth.serotine.domain.model.AppHostResult
+import eth.serotine.domain.model.AppIsolation
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.usecase.DappSignWarning
 import eth.serotine.domain.usecase.PerAppSigner
 import eth.serotine.ui.MemoryAliases
@@ -370,6 +372,38 @@ class DappRequestViewModelTest {
         val unlock = signer.asked.single().second as Unlock.WithBiometrics
         assertEquals("Sign in to a dApp with ${Eip55.format(held.address)}", unlock.reason)
         assertTrue(vm.uiState.value.done)
+    }
+
+    @Test
+    fun aPerAppAddressIsNamedAndHeldAgainstItsSiteAndItsAliasesThroughTheViewModel() = runTest {
+        val site = (AppHost.parse("example.org") as AppHostResult.Host).host
+        val other = (AppHost.parse("other.test") as AppHostResult.Host).host
+        val mark = PerAppAccount(site, AppIsolation.pathOf(site), held.address)
+        accounts.accounts.value = listOf(held.copy(perApp = mark))
+
+        // Signing in to its own site: named, no warning.
+        requests.waiting.value = listOf(request(1))
+        val own = viewModel(1).uiState.value
+        assertEquals("Per-app address for example.org", own.perAppLine)
+        assertTrue(own.warnings.isEmpty())
+
+        // Signing in to other.test, from a dApp at other.test: warned that it links the two, both sites named.
+        val elsewhere = signIn.replace("app.example.org", "app.other.test")
+        requests.waiting.value = listOf(request(2, elsewhere, url = "https://app.other.test"))
+        val vm = viewModel(2)
+        assertEquals(
+            listOf(DappRequestViewModel.warningLine(DappSignWarning.PER_APP_OTHER_SITE, PerAppSigner(site, other))),
+            vm.uiState.value.warnings,
+        )
+
+        // Linked by the user meanwhile: the same screen says so, and the warning goes.
+        aliases.linked.value = mapOf(other to held.address)
+        runCurrent()
+        assertEquals(
+            "Per-app address for example.org. Signing in to other.test, linked by you to example.org.",
+            vm.uiState.value.perAppLine,
+        )
+        assertTrue(vm.uiState.value.warnings.isEmpty())
     }
 
     @Test

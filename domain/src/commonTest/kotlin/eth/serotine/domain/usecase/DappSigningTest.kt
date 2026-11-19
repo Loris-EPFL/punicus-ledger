@@ -41,6 +41,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DappSigningTest {
@@ -207,11 +208,27 @@ class DappSigningTest {
             request(1, signIn(perApp.address, "other.test"), perApp.address, sessionAccounts = listOf(perApp.address)),
         )
         val observe = ObserveDappMessages(requests, wallet, networks, ListCatalog(), aliases, clock = { now })
-        assertTrue(observe().first().single().perApp!!.otherSite)
+        // One collection, as D4 holds it: it follows the aliases as the user links one.
+        val seen = mutableListOf<List<DappMessageReview>>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { observe().collect { seen += it } }
+        runCurrent()
+        assertTrue(seen.last().single().perApp!!.otherSite)
         aliases.linked.value = mapOf(testHost("other.test") to perApp.address)
-        val linked = observe().first().single()
+        runCurrent()
+        val linked = seen.last().single()
         assertTrue(linked.perApp!!.linked)
         assertFalse(DappSignWarning.PER_APP_OTHER_SITE in linked.warnings)
+    }
+
+    @Test
+    fun aSignInDomainThatNamesNoSiteGetsNoPerAppCheckButTheDomainWarning() {
+        // An IPv6 literal, and a label with a hyphen at its edge: no site, so the domain warning alone stands.
+        for (domain in listOf("[::1]", "-a.other.test")) {
+            val review = perAppReview(domain)
+            assertNull(review.perApp!!.signInSite, domain)
+            assertTrue(DappSignWarning.DOMAIN_NOT_DAPP_URL in review.warnings, domain)
+            assertFalse(DappSignWarning.PER_APP_OTHER_SITE in review.warnings, domain)
+        }
     }
 
     @Test

@@ -260,9 +260,14 @@ fun reviewDappMessage(
     }
     val perApp = account?.perApp?.let { mark ->
         val signInSite = (content as? DappSignContent.Message)?.signIn
-            // EIP-4361's domain is a host with an optional port (SignInMessage checks it): the host's site.
+            // EIP-4361's domain is a host with an optional port: the host's site. SignInMessage's grammar is looser
+            // than AppHost's (an IPv6 literal, a label with a hyphen at its edge): such a domain names no site and
+            // gets no per-app check. It is still warned about (DOMAIN_NOT_DAPP_URL): a session holds a per-app address
+            // only for a dApp URL whose site is the address's or an alias of it (proposalOffer, DappConnections.kt),
+            // and a domain that is no AppHost can never be that URL's host.
             ?.let { (AppHost.parse(it.domain.substringBefore(':')) as? AppHostResult.Host)?.host?.site }
-        PerAppSigner(mark.site, signInSite, linked = signInSite != null && aliases[signInSite] == signer)
+        val linked = signInSite != null && signInSite != mark.site && aliases[signInSite] == signer
+        PerAppSigner(mark.site, signInSite, linked)
     }
     val warnings = buildSet {
         when (content) {

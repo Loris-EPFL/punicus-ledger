@@ -54,7 +54,9 @@ class FileDappAliases(
         file.change(notSaved = false) { aliases -> Decision(true, aliases + (site to address)) }
 
     override suspend fun unlink(site: AppHost): Boolean =
-        file.change(notSaved = false) { aliases -> if (site in aliases) Decision(true, aliases - site) else Decision(true) }
+        file.change(notSaved = false) { aliases ->
+            if (site in aliases) Decision(true, aliases - site) else Decision(true)
+        }
 
     /** The file's layout. [version] comes first and is always written. */
     @Serializable

@@ -55,8 +55,15 @@ data class PerAppOverview(
     val unreadable: Boolean = false,
 ) {
     /** What [source]'s phrase is called on screen: by [names] where its name is known, else by its own account. */
-    fun nameOf(source: PhraseSource): String = source.phrase?.let(names::get) ?: source.from.label
+    fun nameOf(source: PhraseSource): String = phraseName(names, source)
 }
+
+/**
+ * What [source]'s phrase is called on screen, one name everywhere (owner's decision, 2026-11-19, on #326): the name
+ * [names] gives it, that of the account it is known by, else that of the account it is restored from.
+ */
+fun phraseName(names: Map<Address, String>, source: PhraseSource): String =
+    source.phrase?.let(names::get) ?: source.from.label
 
 /** The per-app addresses held here and the phrases to restore one from (screen D9), re-emitted as either changes. */
 class ObservePerAppAddresses(
@@ -174,8 +181,16 @@ sealed interface PerAppRestoring {
  * wallet, of another site than [site], and [site] must have no per-app address of its own: anything else is refused,
  * never linked, so that a site never sees two addresses through an alias.
  */
-class LinkPerAppAlias(private val accounts: AccountRepository, private val aliases: PerAppAliases) {
-    suspend operator fun invoke(site: AppHost, address: Address): AliasLinking {
+class LinkPerAppAlias(
+    private val accounts: AccountRepository,
+    private val aliases: PerAppAliases,
+    /** The app's one [WalletChanges]: a link never interleaves with making or removing an address. */
+    private val changes: WalletChanges,
+) {
+    suspend operator fun invoke(site: AppHost, address: Address): AliasLinking =
+        withContext(NonCancellable) { changes.serialized { link(site, address) } }
+
+    private suspend fun link(site: AppHost, address: Address): AliasLinking {
         val listed = (accounts.observeAccounts().first() as? AccountList.Loaded)?.accounts
             ?: return AliasLinking.ListUnreadable
         val mark = listed.firstOrNull { it.address == address && it.perApp != null }?.perApp

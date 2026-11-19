@@ -1099,10 +1099,10 @@ class AppGraph(
         RejectDappProposal(dappSessions),
         ObservePerAppChoice(accounts, perAppKeys, dappSites, networkSettings, perAppAliases),
         MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases),
-        LinkPerAppAlias(accounts, perAppAliases),
+        LinkPerAppAlias(accounts, perAppAliases, walletChanges),
         LinkMadePerAppAlias(
             MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases),
-            LinkPerAppAlias(accounts, perAppAliases),
+            LinkPerAppAlias(accounts, perAppAliases, walletChanges),
         ),
     )
 

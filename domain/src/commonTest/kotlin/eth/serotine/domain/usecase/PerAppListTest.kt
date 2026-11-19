@@ -181,7 +181,7 @@ class PerAppListTest {
     @Test
     fun aSiteIsLinkedOnlyToAnotherSitesPerAppAddress() = runTest {
         val accounts = ListAccountRepository(first, perAppOnEthereum)
-        val link = LinkPerAppAlias(accounts, aliases)
+        val link = LinkPerAppAlias(accounts, aliases, WalletChanges())
         assertEquals(AliasLinking.NotPerApp, link(testHost("uniswap.app"), first.address), "an ordinary account")
         assertEquals(AliasLinking.NotPerApp, link(testHost("app.uniswap.org"), address('6')), "its own site")
         val safe = testHost("safe.global")
@@ -219,7 +219,7 @@ class PerAppListTest {
         val keys = FakePerAppKeys(address = address('9'))
         val makeAndLink = LinkMadePerAppAlias(
             MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
-            LinkPerAppAlias(accounts, aliases),
+            LinkPerAppAlias(accounts, aliases, WalletChanges()),
         )
         val app = testHost("uniswap.app")
         val old = testHost("app.uniswap.org")

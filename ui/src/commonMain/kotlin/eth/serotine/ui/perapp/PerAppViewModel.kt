@@ -226,6 +226,8 @@ class PerAppViewModel(
                     val site = restoring.site.name
                     "The address of $site is back in your accounts." +
                         (if (made.unlinked) " $site sees it now, in place of the one it was linked to." else "") +
+                        (if (made.aliasKept) " $site's link to another address could not be removed: remove it on " +
+                            "that address's details." else "") +
                         if (made.steppedDown) " $STEPPED_DOWN" else ""
                 }
                 PerAppMaking.NoNetwork -> NO_NETWORK

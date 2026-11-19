@@ -111,7 +111,10 @@ class DappViewModelsTest {
     private fun TestScope.main() = Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
 
     private fun makeAndLink(wallet: FakeAccounts) =
-        LinkMadePerAppAlias(MakePerAppAddress(keys, wallet, WalletChanges(), aliases), LinkPerAppAlias(wallet, aliases))
+        LinkMadePerAppAlias(
+            MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
+            LinkPerAppAlias(wallet, aliases, WalletChanges()),
+        )
 
     @Test
     fun connectionsListProposalsAndSessionsWithTheirEnd() = runTest {
@@ -199,7 +202,7 @@ class DappViewModelsTest {
             RejectDappProposal(sessions),
             ObservePerAppChoice(accounts, keys, sites, networks, aliases),
             MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
-            LinkPerAppAlias(accounts, aliases),
+            LinkPerAppAlias(accounts, aliases, WalletChanges()),
             makeAndLink(accounts),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -241,7 +244,7 @@ class DappViewModelsTest {
             RejectDappProposal(sessions),
             ObservePerAppChoice(wallet, keys, sites, on, aliases),
             MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
-            LinkPerAppAlias(wallet, aliases),
+            LinkPerAppAlias(wallet, aliases, WalletChanges()),
             makeAndLink(wallet),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -267,7 +270,7 @@ class DappViewModelsTest {
             RejectDappProposal(sessions),
             ObservePerAppChoice(wallet, keys, sites, on, aliases),
             MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
-            LinkPerAppAlias(wallet, aliases),
+            LinkPerAppAlias(wallet, aliases, WalletChanges()),
             makeAndLink(wallet),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -319,7 +322,7 @@ class DappViewModelsTest {
             RejectDappProposal(sessions),
             ObservePerAppChoice(wallet, keys, sites, on, aliases),
             MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
-            LinkPerAppAlias(wallet, aliases),
+            LinkPerAppAlias(wallet, aliases, WalletChanges()),
             makeAndLink(wallet),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -353,7 +356,7 @@ class DappViewModelsTest {
             RejectDappProposal(sessions),
             ObservePerAppChoice(wallet, keys, sites, on, aliases),
             MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
-            LinkPerAppAlias(wallet, aliases),
+            LinkPerAppAlias(wallet, aliases, WalletChanges()),
             makeAndLink(wallet),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -383,7 +386,7 @@ class DappViewModelsTest {
             RejectDappProposal(sessions),
             ObservePerAppChoice(accounts, keys, sites, networks, aliases),
             MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
-            LinkPerAppAlias(accounts, aliases),
+            LinkPerAppAlias(accounts, aliases, WalletChanges()),
             makeAndLink(accounts),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -410,7 +413,7 @@ class DappViewModelsTest {
             RejectDappProposal(sessions),
             ObservePerAppChoice(accounts, keys, sites, networks, aliases),
             MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
-            LinkPerAppAlias(accounts, aliases),
+            LinkPerAppAlias(accounts, aliases, WalletChanges()),
             makeAndLink(accounts),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -433,7 +436,7 @@ class DappViewModelsTest {
             RejectDappProposal(sessions),
             ObservePerAppChoice(accounts, keys, sites, networks, aliases),
             MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
-            LinkPerAppAlias(accounts, aliases),
+            LinkPerAppAlias(accounts, aliases, WalletChanges()),
             makeAndLink(accounts),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -476,7 +479,7 @@ class DappViewModelsTest {
         RejectDappProposal(sessions),
         ObservePerAppChoice(wallet, keys, sites, realFunds, aliases),
         MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
-        LinkPerAppAlias(wallet, aliases),
+        LinkPerAppAlias(wallet, aliases, WalletChanges()),
         makeAndLink(wallet),
     )
 

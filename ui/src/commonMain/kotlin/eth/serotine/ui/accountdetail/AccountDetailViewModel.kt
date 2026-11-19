@@ -344,8 +344,18 @@ class AccountDetailViewModel(
         .distinctUntilChanged()
         .flatMapLatest { shown -> if (shown) sharedActivity else flowOf(ActivityUiState.Loading) }
 
-    /** The per-app addresses, read once for the tab and the aliases together. */
-    private val perAppOverview = (observePerAppAddresses?.invoke() ?: flowOf(null))
+    /**
+     * The per-app addresses, read once for the tab and the aliases together, and only for an EOA held here: the
+     * envelopes are not read for a Safe or a watched account, which can have neither.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val perAppOverview = lookup
+        .map { found ->
+            val account = (found as? AccountLookup.Found)?.account
+            account?.kind == AccountKind.EOA && account.custody == AccountCustody.InKeyStore
+        }
+        .distinctUntilChanged()
+        .flatMapLatest { held -> if (held) observePerAppAddresses?.invoke() ?: flowOf(null) else flowOf(null) }
         .onStart { emit(null) }
         .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
 

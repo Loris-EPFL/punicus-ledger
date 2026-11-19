@@ -166,7 +166,10 @@ class ApproveDappProposal(
         val list = accounts.observeAccounts().first() as? AccountList.Loaded ?: return DappApproval.InvalidAccounts
         val enabled = networks.observe().first()
         val wallet = list.accounts.associateBy { it.id }
-        val alias = siteOf(asked)?.let { aliases.observe().first()[it] }
+        // A site with an address of its own has no alias here, whatever the file says (owner, 2026-11-19, on #328).
+        val site = siteOf(asked)
+        val ownAddress = site != null && list.accounts.any { it.perApp?.site == site }
+        val alias = site?.takeUnless { ownAddress }?.let { aliases.observe().first()[it] }
         // Each against the others chosen: one of the other kind of funds than any of them is refused.
         val valid = chosen.isNotEmpty() && chosen.toSet().size == chosen.size && chosen.all { id ->
             val account = wallet[id] ?: return@all false

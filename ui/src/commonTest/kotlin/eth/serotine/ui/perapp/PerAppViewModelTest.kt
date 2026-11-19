@@ -292,4 +292,19 @@ class PerAppViewModelTest {
         val state = viewModel(FakeAccounts(main, perApp), keys).uiState.value
         assertEquals("Also seen by uniswap.app", state.rows.single().aliases)
     }
+
+    @Test
+    fun anAliasThatCouldNotBeRemovedAsTheSiteGotItsOwnAddressIsSaid() = runTest {
+        main()
+        val app = (AppHost.parse("uniswap.app") as AppHostResult.Host).host
+        aliases.linked.value = mapOf(app to address('6'))
+        aliases.failSaves = true
+        val keys = FakePerAppKeys(phrases = mapOf(main.address to main.address), address = address('8'))
+        val viewModel = viewModel(FakeAccounts(main, perApp), keys)
+        viewModel.openRestore()
+        viewModel.onHostChange("uniswap.app")
+        viewModel.onPasswordChange("correct horse")
+        viewModel.restore()
+        assertTrue("could not be removed" in viewModel.uiState.value.notice.orEmpty())
+    }
 }

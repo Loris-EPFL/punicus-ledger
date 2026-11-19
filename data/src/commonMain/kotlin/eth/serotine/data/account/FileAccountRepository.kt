@@ -46,7 +46,8 @@ import kotlinx.serialization.json.Json
  * Sepolia alone, so it reads as a Sepolia account (docs/networks.md, *Files*). The next change
  * writes the file as the current format. Format 5 records what makes an account a per-app address
  * ([Account.perApp]: its site, path and phrase; issue #252); an entry without it, as every entry of an older file,
- * is an ordinary account. A list with no per-app address is written as format 4, which the release before reads. An entry whose chain id this version does not know was
+ * is an ordinary account. A list with no per-app address is written as format 4, which the release before reads.
+ * An entry whose chain id this version does not know was
  * written by a later version that works on more networks: the list is then
  * [AccountList.Reason.NEWER_FORMAT], left untouched, and the user is asked to update.
  */

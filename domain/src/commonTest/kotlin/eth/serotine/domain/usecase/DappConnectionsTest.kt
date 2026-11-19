@@ -194,6 +194,22 @@ class DappConnectionsTest {
     }
 
     @Test
+    fun aSiteWithAnAddressOfItsOwnIsNotApprovedWithItsAliasToo() = runTest {
+        // dapp.test has its own address and, beside it, an alias left from before: its own wins (owner, 2026-11-19).
+        val dappTest = testHost("dapp.test")
+        val own = account(Network.ETHEREUM, '6')
+            .copy(perApp = PerAppAccount(dappTest, AppIsolation.pathOf(dappTest), mainnet.address))
+        val uniswap = testHost("uniswap.org")
+        val other = account(Network.ETHEREUM, '7')
+            .copy(perApp = PerAppAccount(uniswap, AppIsolation.pathOf(uniswap), mainnet.address))
+        aliases.linked.value = mapOf(dappTest to other.address)
+        val wallet = ListAccountRepository(mainnet, own, other)
+        val approve = ApproveDappProposal(sessions, wallet, networks, sites, aliases)
+        assertEquals(DappApproval.InvalidAccounts, approve(proposal, listOf(own.id, other.id)))
+        assertTrue(approve(proposal, listOf(own.id)) is DappApproval.Approved)
+    }
+
+    @Test
     fun anAccountAskedForButOfTheOtherKindSaysSoRatherThanNotAsked() {
         // Sepolia required, Ethereum optional: Ethereum was asked for, but it is real funds.
         val sepoliaFirst = proposal(required = setOf("eip155:11155111"), optional = setOf("eip155:1"))

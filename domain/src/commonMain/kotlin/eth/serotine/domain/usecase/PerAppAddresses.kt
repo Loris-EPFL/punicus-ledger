@@ -63,7 +63,7 @@ data class PerAppChoice(
     val names: Map<Address, String> = emptyMap(),
 ) {
     /** What [source]'s phrase is called on screen, as D9 calls it: one name everywhere (owner, 2026-11-19). */
-    fun nameOf(source: PhraseSource): String = source.phrase?.let(names::get) ?: source.from.label
+    fun nameOf(source: PhraseSource): String = phraseName(names, source)
 }
 
 /**
@@ -220,9 +220,10 @@ class MakePerAppAddress(
             account.id
         }
         // Its own address wins over an alias it had: the site never sees two (owner, 2026-11-19, on #328).
-        val linked = aliases.observe().first()[site]
-        val unlinked = linked != null && linked != stored.address && aliases.unlink(site)
-        return PerAppMaking.Made(stored.address, made, stored.steppedDown, unlinked)
+        val linked = aliases.observe().first()[site]?.takeIf { it != stored.address }
+        val unlinked = linked != null && aliases.unlink(site)
+        val aliasKept = linked != null && !unlinked
+        return PerAppMaking.Made(stored.address, made, stored.steppedDown, unlinked, aliasKept)
     }
 }
 
@@ -262,6 +263,8 @@ sealed interface PerAppMaking {
         val accounts: List<AccountId>,
         val steppedDown: Boolean = false,
         val unlinked: Boolean = false,
+        /** The site's alias could not be removed: the user is told to remove it on the address's details. */
+        val aliasKept: Boolean = false,
     ) : PerAppMaking
 
     /** No network to make it on was given; nothing changed. */

@@ -4,7 +4,11 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
+import eth.serotine.domain.model.AppIsolation
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
@@ -272,7 +276,7 @@ class FileAccountRepositoryTest {
 
     @Test
     fun aNewerFormatIsLeftUntouchedAndNothingIsAdded() = runTest {
-        val newer = """{"version":5,"accounts":[],"wallets":[]}"""
+        val newer = """{"version":6,"accounts":[],"wallets":[]}"""
         put(file, newer)
         val repository = repository()
 
@@ -364,5 +368,29 @@ class FileAccountRepositoryTest {
         val newer = text(file)
         assertEquals(AccountList.Unreadable(AccountList.Reason.NEWER_FORMAT), repository().observeAccounts().first())
         assertEquals(newer, text(file), "left untouched")
+    }
+
+    @Test
+    fun aPerAppAddressKeepsItsSitePathAndPhrase() = runTest {
+        val site = (AppHost.parse("uniswap.org") as AppHostResult.Host).host
+        val path = AppIsolation.pathOf(site)
+        val perApp = Account(
+            Network.ETHEREUM,
+            Address.of("0x" + "cc".repeat(20)),
+            AccountKind.EOA,
+            "uniswap.org",
+            AccountCustody.InKeyStore,
+            perApp = PerAppAccount(site, path, eoa.address),
+        )
+        repository().add(perApp)
+
+        assertEquals(
+            """{"version":5,"accounts":[{"address":"0xcccccccccccccccccccccccccccccccccccccccc",""" +
+                """"kind":"EOA","label":"uniswap.org","custody":"key-store","chain":1,""" +
+                """"perApp":{"site":"uniswap.org",""" +
+                """"a":${path.account},"b":${path.change},"c":${path.index},"phrase":"${eoa.address.hex}"}}]}""",
+            text(file),
+        )
+        assertEquals(AccountList.Loaded(listOf(perApp)), repository().observeAccounts().first())
     }
 }

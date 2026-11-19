@@ -33,6 +33,8 @@ import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
 import eth.serotine.data.transfers.FileTransactionHistory
 import eth.serotine.data.upgrade.FileKnownUpgradeStore
+import eth.serotine.data.walletconnect.FileDappAliases
+import eth.serotine.data.walletconnect.FileDappSites
 import eth.serotine.data.walletconnect.WalletConnectDapps
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.AnswerDappRequestsAtOnce
@@ -330,6 +332,10 @@ class SerotineWallet {
             networkSettings = networkSettings,
             dappSessions = dapps,
             dappRequests = dapps.requests,
+            // Per-app addresses (issue #252): the key store's, and each site's accounts last approved.
+            perAppKeys = keyStore,
+            dappSites = FileDappSites("$dataDir/walletconnect/sites.json"),
+            perAppAliases = FileDappAliases("$dataDir/walletconnect/aliases.json"),
             dappConnectionsOff = dappProjectId.isEmpty(),
         )
     }

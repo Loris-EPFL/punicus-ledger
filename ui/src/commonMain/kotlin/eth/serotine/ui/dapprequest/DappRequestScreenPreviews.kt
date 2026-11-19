@@ -1,9 +1,12 @@
 package eth.serotine.ui.dapprequest
 
 import androidx.compose.runtime.Composable
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.usecase.DappSignRefusal
 import eth.serotine.domain.usecase.DappSignWarning
+import eth.serotine.domain.usecase.PerAppSigner
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.ScreenPreview
 import eth.serotine.ui.theme.SerotineTheme
@@ -40,7 +43,7 @@ private val message = signIn.copy(
     signIn = emptyList(),
     messageText = "Welcome to Example dApp!\n\nClick to accept the terms of service.\n\nNonce: 81726354",
     messageSize = "86 bytes",
-    warnings = listOf(DappRequestViewModel.warningLine(DappSignWarning.NOT_A_SIGN_IN)),
+    warnings = listOf(DappRequestViewModel.warningLine(DappSignWarning.NOT_A_SIGN_IN, null)),
 )
 
 private const val SPENDER = "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD"
@@ -91,7 +94,7 @@ private val notDecoded = approval.copy(
         TypedRow(2, "[1]", "0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF"),
         TypedRow(0, "contents", "Hello, Bob!"),
     ),
-    warnings = listOf(DappRequestViewModel.warningLine(DappSignWarning.NOT_DECODED)),
+    warnings = listOf(DappRequestViewModel.warningLine(DappSignWarning.NOT_DECODED, null)),
 )
 
 @Composable
@@ -127,7 +130,7 @@ private fun DappRequestBiometricsPreview() =
 private fun DappRequestOtherSitePreview() = DappRequestPreview(
     signIn.copy(
         signIn = signIn.signIn.map { if (it.label == "Site") it.copy(value = "app.example.org.evil.test") else it },
-        warnings = listOf(DappRequestViewModel.warningLine(DappSignWarning.DOMAIN_NOT_DAPP_URL)),
+        warnings = listOf(DappRequestViewModel.warningLine(DappSignWarning.DOMAIN_NOT_DAPP_URL, null)),
     ),
 )
 
@@ -246,6 +249,45 @@ private fun DappRequestRealFundsPreview() = DappRequestPreview(signInOnEthereum)
 @Composable
 private fun DappRequestRealFundsDarkPreview() = DappRequestPreview(signInOnEthereum, darkTheme = true)
 
+// Per-app addresses (issue #252): the address of example.org signing in, named by its site.
+private val perAppAccount = signIn.copy(accountName = "example.org", perAppLine = "Per-app address for example.org")
+
+@Preview
+@Composable
+private fun DappRequestPerAppPreview() = DappRequestPreview(perAppAccount)
+
+// Signing in to another site with it: warned that the two sites are linked.
+@Preview
+@Composable
+private fun DappRequestPerAppOtherSitePreview() = DappRequestPreview(
+    perAppAccount.copy(
+        signIn = perAppAccount.signIn.map { if (it.label == "Site") it.copy(value = "app.other.test") else it },
+        // The domain is not the dApp's either: both warnings, as the screen stacks them.
+        warnings = listOf(
+            DappRequestViewModel.warningLine(DappSignWarning.DOMAIN_NOT_DAPP_URL, null),
+            DappRequestViewModel.warningLine(
+                DappSignWarning.PER_APP_OTHER_SITE,
+                PerAppSigner(host("example.org"), host("other.test")),
+            ),
+        ),
+    ),
+)
+
+// A dApp at a site the user linked to the address (example.org, linked to example.net's), signing in to its own
+// domain: said, and not warned about.
+@Preview
+@Composable
+private fun DappRequestPerAppLinkedPreview() = DappRequestPreview(
+    signIn.copy(
+        accountName = "example.net",
+        perAppLine = DappRequestViewModel.perAppLine(
+            PerAppSigner(host("example.net"), host("example.org"), linked = true),
+        ),
+    ),
+)
+
+private fun host(name: String) = (AppHost.parse(name) as AppHostResult.Host).host
+
 /** Every preview above, which DappRequestScreenPreviewsTest renders: a new preview goes in here too. */
 internal val dappRequestScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("sign-in") { DappRequestSignInPreview() },
@@ -268,4 +310,7 @@ internal val dappRequestScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("other-network") { DappRequestOtherNetworkPreview() },
     ScreenPreview("real-funds") { DappRequestRealFundsPreview() },
     ScreenPreview("real-funds-dark") { DappRequestRealFundsDarkPreview() },
+    ScreenPreview("per-app") { DappRequestPerAppPreview() },
+    ScreenPreview("per-app-other-site") { DappRequestPerAppOtherSitePreview() },
+    ScreenPreview("per-app-linked") { DappRequestPerAppLinkedPreview() },
 )

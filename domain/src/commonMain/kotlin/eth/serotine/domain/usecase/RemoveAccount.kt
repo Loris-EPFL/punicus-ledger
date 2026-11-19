@@ -7,6 +7,7 @@ import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.PerAppAliases
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -25,12 +26,18 @@ import kotlinx.coroutines.withContext
  * It runs under the app's [WalletChanges], so an import cannot change the entry's custody,
  * or store a key for it, between the read below and the removal: the custody read is the one
  * removed, and a watched account's removal leaves the key store alone.
+ *
+ * The last account of a per-app address takes the address's aliases with it (issue #252; docs/walletconnect.md,
+ * *Aliases*): a site linked to it is no longer linked, so that restoring the address later never links that site
+ * again without asking. An alias that cannot be removed takes nothing from the removal.
  */
 class RemoveAccount(
     private val accounts: AccountRepository,
     private val keys: KeyStore,
     /** The app's one [WalletChanges]: a removal never interleaves with an import. */
     private val changes: WalletChanges,
+    /** The aliases the user linked, which the last account of a per-app address takes with it. */
+    private val aliases: PerAppAliases,
 ) {
     suspend operator fun invoke(id: AccountId): AccountRemoval =
         withContext(NonCancellable) { changes.serialized { remove(id) } }
@@ -48,6 +55,11 @@ class RemoveAccount(
             AccountChange.Changed -> Unit
             AccountChange.NotFound -> return AccountRemoval.NotFound
             AccountChange.NotSaved -> return AccountRemoval.NotSaved
+        }
+        // The last per-app account of it: an unmarked entry of the address (watched elsewhere) holds no alias up.
+        val lastOfItsAddress = listed.none { it.id != id && it.address == id.address && it.perApp != null }
+        if (account.perApp != null && lastOfItsAddress) {
+            aliases.observe().first().filterValues { it == id.address }.keys.forEach { aliases.unlink(it) }
         }
         return when (account.custody) {
             AccountCustody.Watched -> AccountRemoval.Removed

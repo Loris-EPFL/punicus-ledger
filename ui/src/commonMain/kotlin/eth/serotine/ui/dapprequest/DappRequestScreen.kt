@@ -48,6 +48,9 @@ const val DAPP_REQUEST_PASSWORD_TAG = "dapp-request-password"
 const val DAPP_REQUEST_SIGN_TAG = "dapp-request-sign"
 const val DAPP_REQUEST_REFUSE_TAG = "dapp-request-refuse"
 
+/** Test tag of the line naming a per-app address's site, for UI tests. */
+const val DAPP_REQUEST_PER_APP_TAG = "dapp-request-per-app"
+
 /** Test tag of D5's every-field box, for UI tests. */
 const val DAPP_REQUEST_FIELDS_TAG = "dapp-request-fields"
 
@@ -155,6 +158,15 @@ fun DappRequestScreen(
                             state.accountAddress,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    // A per-app address: the site it was made for (issue #252).
+                    state.perAppLine?.let {
+                        Text(
+                            it,
+                            Modifier.testTag(DAPP_REQUEST_PER_APP_TAG),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }

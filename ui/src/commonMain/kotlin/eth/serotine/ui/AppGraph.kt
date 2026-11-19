@@ -17,6 +17,7 @@ import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.CowOrders
 import eth.serotine.domain.repository.DappRequests
 import eth.serotine.domain.repository.DappSessions
+import eth.serotine.domain.repository.DappSiteMemory
 import eth.serotine.domain.repository.DebugLog
 import eth.serotine.domain.repository.DebugScreenSetting
 import eth.serotine.domain.repository.DelayModules
@@ -39,6 +40,8 @@ import eth.serotine.domain.repository.NetworkSettings
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.NftContracts
 import eth.serotine.domain.repository.Outbox
+import eth.serotine.domain.repository.PerAppAliases
+import eth.serotine.domain.repository.PerAppKeys
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
@@ -101,6 +104,9 @@ import eth.serotine.domain.usecase.HoldSafeSignature
 import eth.serotine.domain.usecase.ImportMnemonicAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.KeepWaitingSwap
+import eth.serotine.domain.usecase.LinkMadePerAppAlias
+import eth.serotine.domain.usecase.LinkPerAppAlias
+import eth.serotine.domain.usecase.MakePerAppAddress
 import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
@@ -133,6 +139,8 @@ import eth.serotine.domain.usecase.ObserveNetworkOverview
 import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveNfts
 import eth.serotine.domain.usecase.ObserveOutbox
+import eth.serotine.domain.usecase.ObservePerAppAddresses
+import eth.serotine.domain.usecase.ObservePerAppChoice
 import eth.serotine.domain.usecase.ObservePortfolio
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeHistory
@@ -187,6 +195,7 @@ import eth.serotine.domain.usecase.RemoveQueuedSafeTx
 import eth.serotine.domain.usecase.RemoveToken
 import eth.serotine.domain.usecase.RenameAccount
 import eth.serotine.domain.usecase.ResolveRecipient
+import eth.serotine.domain.usecase.RestorePerAppAddress
 import eth.serotine.domain.usecase.RouteRanking
 import eth.serotine.domain.usecase.SendCowCancellation
 import eth.serotine.domain.usecase.SendDappTransaction
@@ -208,6 +217,7 @@ import eth.serotine.domain.usecase.SignDappSafeTx
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.domain.usecase.ToggleAmountsHidden
+import eth.serotine.domain.usecase.UnlinkPerAppAlias
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.domain.usecase.WatchAddress
@@ -238,6 +248,7 @@ import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 import eth.serotine.ui.mode.InterfaceModeViewModel
 import eth.serotine.ui.pairdapp.IncomingDappLink
 import eth.serotine.ui.pairdapp.PairDappViewModel
+import eth.serotine.ui.perapp.PerAppViewModel
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
@@ -431,6 +442,12 @@ class AppGraph(
     private val dappSessions: DappSessions,
     /** The requests dApps send over those sessions: the same adapter's. */
     private val dappRequests: DappRequests,
+    /** The key store's per-app addresses (issue #252): the host's key store, the instance [keys] is. */
+    private val perAppKeys: PerAppKeys,
+    /** The accounts last approved for each dApp site, preselected when a host of it connects again (issue #252). */
+    private val dappSites: DappSiteMemory,
+    /** The aliases the user linked: a site that sees another site's per-app address (issue #252). */
+    private val perAppAliases: PerAppAliases,
     /**
      * Whether this build carries no WalletConnect project ID, so that dApp connections are switched
      * off and Settings shows Connected dApps greyed out (ruling 2).
@@ -505,6 +522,8 @@ class AppGraph(
             ObserveOutbox(outbox),
             offerHandoff = OfferHandoff(walletHandoff),
             observeGnosisPay = observeGnosisPay(),
+            observePerAppAddresses = ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases),
+            unlinkPerAppAlias = UnlinkPerAppAlias(perAppAliases),
         )
 
     /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it. */
@@ -956,7 +975,7 @@ class AppGraph(
             account,
             ObserveAccount(accounts),
             ObserveAccounts(accounts),
-            RemoveAccount(accounts, keys, walletChanges),
+            RemoveAccount(accounts, keys, walletChanges, perAppAliases),
         )
 
     fun watchViewModel(): WatchViewModel = WatchViewModel(
@@ -1002,7 +1021,8 @@ class AppGraph(
 
     private fun observeDappConnections() = ObserveDappConnections(dappSessions, accounts, networkSettings)
 
-    private fun observeDappMessages() = ObserveDappMessages(dappRequests, accounts, networkSettings, tokenCatalog)
+    private fun observeDappMessages() =
+        ObserveDappMessages(dappRequests, accounts, networkSettings, tokenCatalog, perAppAliases)
 
     fun connectionsViewModel(): ConnectionsViewModel = ConnectionsViewModel(
         observeDappConnections(),
@@ -1075,8 +1095,26 @@ class AppGraph(
     fun dappProposalViewModel(proposalKey: String): DappProposalViewModel = DappProposalViewModel(
         proposalKey,
         observeDappConnections(),
-        ApproveDappProposal(dappSessions, accounts, networkSettings),
+        ApproveDappProposal(dappSessions, accounts, networkSettings, dappSites, perAppAliases),
         RejectDappProposal(dappSessions),
+        ObservePerAppChoice(accounts, perAppKeys, dappSites, networkSettings, perAppAliases),
+        MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases),
+        LinkPerAppAlias(accounts, perAppAliases, walletChanges),
+        LinkMadePerAppAlias(
+            MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases),
+            LinkPerAppAlias(accounts, perAppAliases, walletChanges),
+        ),
+    )
+
+    /**
+     * Screen D9, the per-app addresses held here (issue #252): of every phrase, or of the one [phrase] names (the
+     * address of its first account) when opened from that phrase's account, then with Restore open ([restoring]).
+     */
+    fun perAppViewModel(phrase: Address?, restoring: Boolean = false): PerAppViewModel = PerAppViewModel(
+        phrase,
+        ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases),
+        RestorePerAppAddress(MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases), networkSettings),
+        restoring,
     )
 
     fun currencyViewModel(): CurrencyViewModel =

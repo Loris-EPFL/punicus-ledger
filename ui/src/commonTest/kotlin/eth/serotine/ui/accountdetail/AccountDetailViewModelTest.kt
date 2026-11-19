@@ -7,9 +7,13 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
+import eth.serotine.domain.model.AppIsolation
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.model.NftStandard
 import eth.serotine.domain.model.NftRef
 import eth.serotine.domain.model.NetworkUpgrade
@@ -72,6 +76,7 @@ import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.AddNft
 import eth.serotine.domain.usecase.ObserveNfts
 import eth.serotine.domain.usecase.RemoveAddedNft
+import eth.serotine.domain.usecase.UnlinkPerAppAlias
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeFeeds
@@ -79,7 +84,9 @@ import eth.serotine.ui.FakeFreshness
 import eth.serotine.ui.FakeLogIndex
 import eth.serotine.ui.FakeEnsNfts
 import eth.serotine.ui.FakeNftContracts
+import eth.serotine.ui.FakePerAppKeys
 import eth.serotine.ui.MemoryAddedNfts
+import eth.serotine.ui.MemoryAliases
 import eth.serotine.ui.MemorySeenEnsNames
 import eth.serotine.ui.FakeReceiptsNever
 import eth.serotine.ui.FakeMetadata
@@ -129,9 +136,12 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import eth.serotine.domain.usecase.ObserveOutbox
+import eth.serotine.domain.usecase.ObservePerAppAddresses
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountDetailViewModelTest {
+
+    private val aliases = MemoryAliases()
 
     private val daily = Account(
         Network.SEPOLIA,
@@ -189,8 +199,12 @@ class AccountDetailViewModelTest {
     /** The outbox: the Safe signatures held in lenient mode, which a Safe's queue lists too. */
     private val outbox = MemoryOutbox()
 
-    private fun viewModel(address: Address = daily.address) = AccountDetailViewModel(
-        AccountId(Network.SEPOLIA, address),
+    private fun viewModel(
+        address: Address = daily.address,
+        perApp: ObservePerAppAddresses? = null,
+        network: Network = Network.SEPOLIA,
+    ) = AccountDetailViewModel(
+        AccountId(network, address),
         ObserveAccount(accounts),
         ObserveAccountValue(
             ObserveNativeBalance(balances),
@@ -199,7 +213,7 @@ class AccountDetailViewModelTest {
             ObserveDisplayCurrencies(feeds, currency, accounts),
         ),
         ObserveSafe(kinds, accounts),
-        ObserveSafeTxQueue(queue, ObserveSafe(kinds, accounts), recovery, Network.SEPOLIA),
+        ObserveSafeTxQueue(queue, ObserveSafe(kinds, accounts), recovery, network),
         ObserveKnownTokens(catalog, userTokens, metadata),
         SetTokenHidden(userTokens),
         ObserveEnsNames(accounts, names),
@@ -230,6 +244,8 @@ class AccountDetailViewModelTest {
         ObserveOutbox(outbox),
         formatTime = { "<$it>" },
         clock = { NOW },
+        observePerAppAddresses = perApp,
+        unlinkPerAppAlias = UnlinkPerAppAlias(aliases),
     )
 
     private val upgradeReports = FakeUpgradeReports()
@@ -260,6 +276,65 @@ class AccountDetailViewModelTest {
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
+
+    @Test
+    fun aPhrasesFirstAccountHasAPerAppTabAndAPerAppAddressItsMark() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val site = (AppHost.parse("uniswap.org") as AppHostResult.Host).host
+        val mark = PerAppAccount(site, AppIsolation.pathOf(site), daily.address)
+        val perApp = Account(
+            Network.SEPOLIA,
+            Address.of("0x" + "6".repeat(40)),
+            AccountKind.EOA,
+            "uniswap.org",
+            AccountCustody.InKeyStore,
+            perApp = mark,
+        )
+        accounts.accounts.value = listOf(daily, perApp)
+        val observe = ObservePerAppAddresses(
+            accounts,
+            FakePerAppKeys(phrases = mapOf(daily.address to daily.address)),
+            networks, aliases,
+        )
+
+        val first = viewModel(perApp = observe)
+        backgroundScope.launch { first.uiState.collect {} }
+        runCurrent()
+        val shown = first.uiState.value as AccountDetailUiState.Ready
+        assertEquals(listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY, DetailSegment.PER_APP), shown.segments)
+        val tab = assertNotNull(shown.perApp)
+        assertEquals(daily.address.hex, tab.phrase)
+        assertEquals(listOf("uniswap.org"), tab.rows.map { it.site })
+        assertNull(shown.perAppMark)
+
+        val made = viewModel(perApp.address, perApp = observe)
+        backgroundScope.launch { made.uiState.collect {} }
+        runCurrent()
+        val marked = made.uiState.value as AccountDetailUiState.Ready
+        assertEquals("Per-app address for uniswap.org · ${AppIsolation.pathOf(site)}", marked.perAppMark)
+        assertEquals(emptyList(), marked.perAppAliases)
+        // A site the user linked to it is listed under its mark, and removed with no question.
+        val moved = (AppHost.parse("uniswap.app") as AppHostResult.Host).host
+        aliases.linked.value = mapOf(moved to perApp.address)
+        runCurrent()
+        assertEquals(listOf("uniswap.app"), (made.uiState.value as AccountDetailUiState.Ready).perAppAliases)
+        made.removeAlias("uniswap.app")
+        runCurrent()
+        assertEquals(emptyMap(), aliases.linked.value)
+        val removed = made.uiState.value as AccountDetailUiState.Ready
+        assertEquals(emptyList(), removed.perAppAliases)
+        assertEquals("uniswap.app will be offered an address of its own.", removed.message)
+        assertNull(marked.perApp, "a per-app address is not the account its phrase is known by")
+        assertEquals(listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY), marked.segments)
+
+        // The same address watched on another network is not the phrase's account: no tab there.
+        val watched = daily.copy(network = Network.ETHEREUM, custody = AccountCustody.Watched)
+        accounts.accounts.value = listOf(daily, perApp, watched)
+        val other = viewModel(watched.address, perApp = observe, network = Network.ETHEREUM)
+        backgroundScope.launch { other.uiState.collect {} }
+        runCurrent()
+        assertNull((other.uiState.value as AccountDetailUiState.Ready).perApp)
+    }
 
     @Test
     fun theNftsAreBelowTheAssetsAndTheUnlistedOnesOpenOnlyWhenAsked() = runTest {

@@ -171,6 +171,191 @@ everything on the chain side: the verified `call`, `estimateGasDetailed`,
   designed below. Whether the dApps on the test list still fall back to that
   is part 1.1's spike.
 
+### Per-app addresses (issue #252)
+
+Owner's decisions, 2026-11-05; the path widened to 92 bits of the hash, and
+the readings here confirmed (the host in ASCII alone; an alias removed
+without a question), by the owner's decisions of 2026-11-14, on PR #297; one
+address per site, the host's registrable domain, by the owner's decision of
+2026-11-15, on PR #297 (it replaces "`www.` a host of its own" of
+2026-11-14). A dApp that connects is offered an address
+of its own, derived from the recovery phrase for the site of the host it
+states, so that it cannot read the user's activity on other dApps (WalletBeat's *Privacy →
+App isolation*, which this earns a PASS on). How the address is derived and
+held: docs/keys-and-signing.md, *Per-app addresses*.
+
+- **The host.** The host of the `url` in the dApp's metadata (`AppHost`):
+  the scheme `https` or `http`, the user part, the port, the path and one
+  trailing dot dropped, lower case. It is the dApp's own claim (ruling 7),
+  and D3 says so. A site posing as another learns that one address, and
+  still signs nothing without the user's review.
+  - A host must be a DNS name in ASCII. An internationalised name counts in
+    its `xn--` form, as a URL carries it; one with characters outside ASCII
+    is not mapped (no IDNA mapping table is in the app), and an IPv6
+    address, or a URL that is not `https` or `http`, has no host. Then
+    "New address" is greyed out, a tap saying why.
+- **The site.** The address is made for the host's site, its registrable
+  domain by the pinned Public Suffix List (docs/keys-and-signing.md, *Per-app
+  addresses*): `app.uniswap.org` and `swap.uniswap.org` are both
+  `uniswap.org` and see one address, which saves an alias when a dApp
+  renames a host or spreads over several. Sites the list keeps apart stay
+  apart: `a.github.io` and `b.github.io`, `a.vercel.app` and `b.vercel.app`,
+  and every ENS name behind `eth.limo` or `eth.link`.
+  - What it costs: every host of the site sees the address, a subdomain
+    serving strangers' content or taken over by an attacker among them. It
+    still signs nothing without the user's review.
+  - The screens name the host the dApp stated, and the site beside it where
+    the two differ ("`app.uniswap.org`, site `uniswap.org`").
+- **D3 offers it and preselects it.** "New address for `<site>`" heads the
+  account choice, ticked, when the site has no address yet; the existing
+  accounts follow, and the user may tick them instead or as well. Approve
+  approves what is ticked. Making the address takes the wallet unlock, as
+  New account from the same phrase does.
+  - It is made from a recovery phrase held here. **Which phrase:** each
+    phrase is known by the address of its first account
+    (`m/44'/60'/0'/0/0`), which every envelope of that phrase sealed since
+    part 2 records (an older envelope's is learnt when a per-app address is
+    derived from it, and kept with the per-app account made; D3 still lists
+    that older account as a phrase of its own, which gives the same
+    addresses: accepted by the owner's decision, 2026-11-16, on PR #313,
+    with a follow-up, #314, that records the phrase in the envelope when it
+    is next opened and merges the two entries), a public value checked against
+    the seed when the envelope opens; so the
+    phrases can be told apart and listed before the unlock, whether or not
+    that first account is still in the wallet. With one phrase, D3 asks
+    nothing. With several, D3 shows which phrase the new address comes from
+    (named by an account of it in the list) and lets the user change it,
+    defaulting to the phrase of the first account in the list that has one,
+    an ordinary account before a per-app address (part 4a: a per-app
+    address names its phrase only where no other account of it is held).
+    The phrase chosen is remembered with the address made, so a second
+    connection from the same site offers the same address.
+  - Without a phrase on this device (only watched accounts, or Safes) the
+    option is greyed out, never hidden (owner ruling, 2026-10-18, #55), and
+    a tap says that a per-app address needs a recovery phrase held here.
+  - A host whose path is that of another site's host on this device (over
+    92 bits, not expected) is refused with "already used for another app",
+    and the choice falls back to the existing accounts.
+  - The account made is an ordinary EOA on the session's network, named
+    after its site and marked as a per-app address, its site on its
+    details. The same address serves the session's other network (Ethereum
+    and Gnosis Chain, ruling 9) as one more account there. An entry of that
+    address already listed on the network (watched, say) is marked in place
+    instead: held here and marked as a per-app address, keeping its name,
+    its position and its history's start (owner's decision, 2026-11-16, on
+    PR #313).
+  - **Which networks** (owner's decision, 2026-11-16, on PR #313, confirming
+    part 3's reading): every
+    network the dApp asks for that is on, of one kind of funds, where the
+    site has no address yet. The kind is that of the other accounts ticked;
+    with none, that of the networks the dApp requires; with neither, real
+    funds when one of them is on, else Sepolia. A site whose address is on
+    every such network already shows it among the accounts, and no new
+    address is offered; added on more networks, it comes from the phrase it
+    was made from.
+  - **Another site's per-app address** is greyed out among the accounts, a
+    tap saying it is offered to its own site alone; ApproveDappProposal
+    refuses it too. Using it for another site is an alias (part 4), which
+    asks first.
+- **Remembered per site.** The addresses last approved for a site are kept,
+  app-private like a session's state (ruling 8), and preselected when a host
+  of that site connects again (WalletBeat's *per-app account persistence*). After a
+  restore, connecting again re-derives the address, so nothing needs a
+  backup.
+- **Aliases, for a dApp that moved to another site.** A host whose site has
+  no address yet and no alias: D3 says "No address for `<site>` yet", preselects the new address,
+  and offers **"Use an address from another site…"**:
+  - the per-app addresses held here, each with its site and aliases, by
+    last use. It suggests nothing: no "looks like `<oldhost>`", the cue a
+    look-alike phishing domain wants;
+  - **"Type the old site's host"** re-derives that site's address without
+    needing it in the list (after a restore, or for a domain the user only
+    remembers);
+  - choosing one asks first: "`<newsite>` will see the same address as
+    `<oldsite>`. The two sites can link your activity." Then the alias
+    `newsite → address` is kept, remembered and preselected like any site.
+  - Aliases are app-private data, not key material, and not restored with
+    the phrase. The account's details list them, each removable there.
+  - As built in part 4b, and confirmed by the owner's decisions of
+    2026-11-19, on PR #328:
+    - The list is in the order of the account list: no time of last use
+      is kept, in place of "by last use".
+    - The site is linked when the user answers "Use it", before Approve.
+      Rejecting the connection afterwards keeps the alias, which the
+      address's details remove.
+    - A site with an alias is offered no new address beside it, nor the
+      linked address on more networks: it sees the linked address on the
+      networks that address is on here.
+    - "Use an address from another site…" is greyed out, a tap saying
+      why, while no other site has a per-app address here.
+    - Removing an alias ends no running session; the next connection from
+      that site is offered an address of its own.
+    - **A site's own address wins over an alias** (the same decisions): a
+      site that gets an address of its own (made by D3, or restored on
+      D9) loses its alias, and the restore says so; linking refuses a site
+      that has one. Should both stand, D3 offers the site its own.
+    - **The list names each address's networks**, and one this dApp could
+      be offered on none of them is greyed out, a tap saying why.
+    - The last per-app account of an address takes its aliases with it, so
+      that restoring the address later never links a site again unasked.
+  - "Type the old site's host", as built in part 4c, and confirmed by
+    the owner's decisions of 2026-11-19, on PR #329:
+    - What is typed is read as D9's Restore reads it: a site, a host or a
+      web address.
+    - A site whose address is held here is picked as from the list, and
+      the usual question follows.
+    - Otherwise its address is made again from the phrase D3 would make a
+      new address from, on the networks a new address would go on. The
+      question says so and takes the wallet password. "Use it" makes it,
+      named and marked after the old site, then links the dApp's site.
+    - A typed site that was itself linked to another site's address gets
+      that address, the one it saw; the question says so ("`<typed>` uses
+      `<other>`'s address, linked by you").
+    - The networks are those a new address would go on, of the kind the
+      accounts ticked decide, as the new address's row says.
+    - Making and linking are one step that leaving the screen does not cut
+      in half. A failure is said in the question, which stays open to try
+      again; a key sealed at a lighter cost is said once linked.
+    - Typing the dApp's own site, or what names no site, is said, and
+      nothing is asked.
+    - "Use an address from another site…" is now greyed out only with no
+      other site's address here and no phrase to make one again from. It
+      replaces the greying of part 4b, since an old site can be typed
+      (the same decisions).
+- **Every per-app address is listed (D9)**, in the Per-app tab of the
+  account detail of the phrase's first account (docs/wallet-ux.md, 4), and
+  for every phrase together under Settings → Connected dApps (owner's
+  requests, 2026-11-14): each with its site, its aliases, its
+  phrase, its full path and Copy address. **"Restore a per-app address"**
+  there takes a host or a site and a phrase, opens the envelope with the
+  wallet password and derives that site's address again, key and all, into the key
+  store, without waiting for the site to connect (after a restore of the
+  phrase, say). The private key itself is never shown or exported (CLAUDE.md,
+  *Trust*, *Key material*).
+  - As built in part 4a, and confirmed by the owner's decisions of
+    2026-11-19, on PR #326: a restored
+    address goes on every network that is on, of one kind of funds: real
+    funds when one of them is on, else Sepolia, as D3 does when nothing
+    else decides the kind. The host may be typed as a site, a host or a
+    web address (a path after it is dropped). Restore is greyed out, a tap
+    saying why, without a phrase held here or with no network on. A
+    phrase whose name is not known (an older envelope, #314) is offered to
+    restore from, but no account has its Per-app tab. The Per-app tab
+    shows in simple mode too, which draws the same tabs. A phrase is named
+    on D9 and its tab by the account it is known by. In a build with dApp
+    connections off, Settings' explanation of the greyed-out Connected
+    dApps leads to D9, so the addresses stay listed and restorable. D3
+    names a phrase the same way, one name everywhere (the same decisions;
+    built in part 4b).
+- **Signing in with one** (D4): see *Signing in* below.
+- **Not done here, said where it matters:** paying gas for a per-app address
+  from another of the user's accounts links them on chain (signing in needs
+  no gas); the relay sees one IP address behind all the device's sessions,
+  though not the addresses; the peers serving the light client could link
+  the addresses it reads together (a follow-up issue).
+- **One-click auth** (`wc_sessionAuthenticate`), once answered, takes its
+  account through this same choice.
+
 ### The methods
 
 (Ruling 6.)
@@ -241,6 +426,22 @@ everything on the chain side: the verified `call`, `estimateGasDetailed`,
     is warned about in plain words. Both are the dApp's own claim, so the
     warning says it may be a site posing as another, and cannot say which
     site it is.
+  - **A per-app address** (*Per-app addresses* above): D4 names the site it
+    was made for. A domain whose site is neither that site nor one of its
+    aliases gets a plain warning, "this address was made for `<site>`;
+    signing in to `<domain>` with it links the two". A domain of the same
+    site matches without a warning, as one site has one address. A domain
+    matched through an alias says "linked by you to `<oldsite>`". The checks above
+    are unchanged.
+    - As built in part 5, and confirmed by the owner's decision of
+      2026-11-19, on PR #330: D4 and D5
+      name the site of a per-app address for every request it is asked
+      to sign, a message or typed data alike; the domain is held against
+      the site only for a sign-in. A sign-in whose domain names no site
+      (an IPv6 address, say) gets no per-app check; the warning above
+      still applies to it. Both warnings may show together: the domain is
+      not the dApp's, and it is not the address's site. D6, a dApp's
+      transaction, does not name the site yet: a follow-up.
 - **A message that does not parse as EIP-4361** is signed only after a
   warning that it is not a sign-in and that the app cannot say what it
   commits to.
@@ -585,7 +786,7 @@ then a user connects with a `wc:` link.
 
 ## The screens
 
-Numbered D1 to D8. Each gets a preview per state and one in the dark theme;
+Numbered D1 to D9. Each gets a preview per state and one in the dark theme;
 their mockups come with the PR that builds each.
 
 - **D1 Connections** (Settings): the dApp sessions, and in direction 2 the
@@ -594,10 +795,14 @@ their mockups come with the PR that builds each.
   `serotine://wc` deep link, or scan the dApp's QR code (Android).
 - **D3 Session proposal**: the dApp's stated name and URL, marked as not
   verified; the chain; the methods it asks for, those outside the closed list
-  marked as refused; the accounts to choose from; Approve and Reject.
+  marked as refused; "New address for `<site>`", preselected, or the
+  addresses remembered for the site (*Per-app addresses*), then the accounts
+  to choose from; "Use an address from another site…"; Approve and Reject.
 - **D4 Sign-in request**: the dApp's stated name and URL, marked as not
   verified; the account asked to sign, in full; the EIP-4361 fields, or the
   message as text or hex; the domain warning or the not-a-sign-in warning;
+  for a per-app address, its site, and the warning of a domain it was not
+  made for, or the alias it matched through;
   how long the dApp waits; the unlock, and Refuse. D1 lists the requests
   waiting, each opening D4.
 - **D5 Typed-data request**: the decoded struct or its fields; the domain;
@@ -618,6 +823,10 @@ their mockups come with the PR that builds each.
   the wallet's accounts matched against the Safe's owners.
 - **D8 Waiting for a signature** (direction 2): what was asked, of which
   wallet, until when; and the way back to it.
+- **D9 Per-app addresses** (issue #252), a tab of the phrase's first
+  account's detail and a list in Settings: every per-app address held, with
+  its site, aliases, phrase, path and Copy; "Restore a per-app address" by
+  host or site and phrase, under the wallet unlock.
 
 ## The plan
 
@@ -653,7 +862,22 @@ merge part PRs into the feature branch itself.
       request and the local check of its signature, the executor of ruling
       4, inclusion from a verified receipt and log. Screen D8. A dApp's Safe
       request (1.5) then takes the external wallet's signature too.
-3. **Later, each its own issue:** QR scanning on iOS (Android's is built); a
+3. **`feature/per-app-addresses`, issue #252** (*Per-app addresses*):
+   1. The rulings in these pages, and in `:domain` the host, its site by the
+      pinned Public Suffix List, and the path with fixed vectors and the
+      collision refusal.
+   2. The key store: an envelope that names its per-app path, deriving and
+      signing at the per-app path, a restore giving the same address.
+   3. D3: the new address offered and preselected, greyed out without a
+      phrase, the phrase chosen, the per-site memory and its preselection,
+      the account marked as per-app.
+   4. D9, and aliases, in three PRs: the list, the Per-app tab, the per-app
+      mark on an account's details and "Restore a per-app address" (4a);
+      then aliases: the list of other sites' addresses, the confirmation,
+      preselection through an alias, removal on the account's details (4b);
+      then "Type the old site's host" (4c).
+   5. D4: the site named, the domain warning, the alias match.
+4. **Later, each its own issue:** QR scanning on iOS (Android's is built); a
    `wc:` URL scheme
    registered by the desktop installers; requests delivered while Punicus is
    in the background; `wallet_sendCalls` (EIP-5792) through MultiSend for a

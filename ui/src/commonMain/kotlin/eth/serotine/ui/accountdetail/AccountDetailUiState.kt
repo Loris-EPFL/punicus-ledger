@@ -11,6 +11,7 @@ import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.HandoffChoice
 import eth.serotine.ui.components.NetworkLabel
+import eth.serotine.ui.perapp.PerAppRow
 
 /** Everything the account detail screen renders (docs/wallet-ux.md, screen 4). */
 sealed interface AccountDetailUiState {
@@ -107,6 +108,23 @@ sealed interface AccountDetailUiState {
          * goes through the Delay; Swap stays greyed out, since only plain transfers go through it.
          */
         val gnosisPayControlled: Boolean = false,
+        /**
+         * For a per-app address (issue #252), what marks it as one under its name: the site it was made for, as
+         * the dApp stated it, and its full path, so another wallet can find it ("Per-app address for uniswap.org ·
+         * m/44'/60'/…"); null for any other account.
+         */
+        val perAppMark: String? = null,
+        /**
+         * For a per-app address, the other sites the user linked to it (its aliases, docs/walletconnect.md), each
+         * with Remove, which asks nothing as it deletes no key (owner's decision, 2026-11-14, on PR #297); empty
+         * otherwise.
+         */
+        val perAppAliases: List<String> = emptyList(),
+        /**
+         * For the account a recovery phrase is known by (docs/wallet-ux.md, 4), its Per-app tab: that phrase's
+         * per-app addresses as screen D9 lists them; null for any other account, which has no such tab.
+         */
+        val perApp: PerAppTab? = null,
     ) : AccountDetailUiState {
 
         /**
@@ -116,9 +134,21 @@ sealed interface AccountDetailUiState {
         val shownControl: Control
             get() = if (gnosisPayControlled) Control.FULL_CONTROL else control
 
-        /** The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them. */
+        /**
+         * The tabs this account has: Assets | Activity, and a Safe's Owners | Queue after them, or the Per-app tab
+         * of the account a recovery phrase is known by.
+         */
         val segments: List<DetailSegment>
-            get() = if (safe != null) DetailSegment.entries else listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY)
+            get() = when {
+                safe != null -> listOf(
+                    DetailSegment.ASSETS,
+                    DetailSegment.ACTIVITY,
+                    DetailSegment.OWNERS,
+                    DetailSegment.QUEUE,
+                )
+                perApp != null -> listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY, DetailSegment.PER_APP)
+                else -> listOf(DetailSegment.ASSETS, DetailSegment.ACTIVITY)
+            }
 
         /**
          * Whether Send can be done: for an account whose key is held here, and for a Safe with
@@ -209,6 +239,7 @@ sealed interface AccountDetailUiState {
                 DetailSegment.ACTIVITY -> false
                 DetailSegment.OWNERS -> safe == null
                 DetailSegment.QUEUE -> queue == null
+                DetailSegment.PER_APP -> perApp == null
             }
     }
 
@@ -221,7 +252,7 @@ sealed interface AccountDetailUiState {
 
 /**
  * What an account's detail shows, in the order of its tabs (docs/wallet-ux.md, screens 4 and 16:
- * Assets | Activity, and a Safe's Owners | Queue).
+ * Assets | Activity, and a Safe's Owners | Queue, or the Per-app tab of a phrase's account).
  */
 enum class DetailSegment {
     /** Its assets. */
@@ -235,7 +266,23 @@ enum class DetailSegment {
 
     /** Its transactions waiting for its owners on this device. */
     QUEUE,
+
+    /** The per-app addresses of the recovery phrase it is known by (issue #252; docs/wallet-ux.md, 4). */
+    PER_APP,
 }
+
+/**
+ * An account's Per-app tab (issue #252; docs/wallet-ux.md, 4): the per-app addresses of the recovery phrase it is
+ * known by, as screen D9 lists them ([rows]), [empty] while there are none, and the [phrase] (the address that names
+ * it, in lower case) that "Restore a per-app address" opens D9 with; [restoreBlocked] is why that Restore is greyed
+ * out (no network on), said on a tap, or null.
+ */
+data class PerAppTab(
+    val phrase: String,
+    val rows: List<PerAppRow>,
+    val empty: String?,
+    val restoreBlocked: String? = null,
+)
 
 /**
  * A Safe's transactions waiting for its owners on this device (docs/wallet-ux.md, screen 16,

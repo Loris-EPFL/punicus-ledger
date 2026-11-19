@@ -4,6 +4,9 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
@@ -13,8 +16,10 @@ import eth.serotine.domain.repository.DappPairing
 import eth.serotine.domain.repository.DappProposal
 import eth.serotine.domain.repository.DappProposalId
 import eth.serotine.domain.repository.DappSessionId
+import eth.serotine.domain.repository.DappSiteMemory
 import eth.serotine.domain.repository.DappSessions
 import eth.serotine.domain.repository.NetworkSettings
+import eth.serotine.domain.repository.PerAppAliases
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -43,28 +48,52 @@ enum class DappOffer {
 
     /** An EOA watched with no key on this device: it can sign nothing here. */
     NO_KEY,
+
+    /**
+     * The per-app address of another site than the dApp's (issue #252): offered only to its own site, so that the two
+     * cannot link the user's activity, and to a site the user linked to it, an alias, after being asked
+     * ([PerAppAliases]).
+     */
+    OTHER_SITE,
 }
 
 /** One of the wallet's accounts, and whether a dApp may be offered it, whatever the proposal asks. */
 data class DappAccountChoice(val account: Account, val offer: DappOffer) {
     /**
      * Whether [account] may be offered to [proposal]'s dApp, with the accounts [chosen] so far besides it
-     * (screen D3): as [dappOffer] answers, from the [offer] judged already.
+     * (screen D3), and the per-app address [alias] the dApp's site was linked to, if any: as [dappOffer] answers,
+     * from the [offer] judged already.
      */
-    fun offerTo(proposal: DappProposal, chosen: Collection<AccountId> = emptyList()): DappOffer =
-        proposalOffer(account, proposal, chosen) ?: offer
+    fun offerTo(
+        proposal: DappProposal,
+        chosen: Collection<AccountId> = emptyList(),
+        alias: Address? = null,
+    ): DappOffer = proposalOffer(account, proposal, chosen, alias) ?: offer
 }
 
-/** Why [account] may not be offered to [proposal]'s dApp beside [chosen], for what it asks; null otherwise. */
-private fun proposalOffer(account: Account, proposal: DappProposal, chosen: Collection<AccountId>): DappOffer? {
+/**
+ * Why [account] may not be offered to [proposal]'s dApp beside [chosen], for what it asks; null otherwise. Another
+ * site's per-app address is offered only as the site's [alias].
+ */
+private fun proposalOffer(
+    account: Account,
+    proposal: DappProposal,
+    chosen: Collection<AccountId>,
+    alias: Address?,
+): DappOffer? {
     val kinds = (proposal.requiredNetworks + chosen.map { it.network }).map { it.testnet }.toSet()
     // Asked for at all first, of either kind: one asked for but of the other kind is said as that.
     return when {
         account.network !in proposal.askedNetworks -> DappOffer.NOT_ASKED
         kinds.any { it != account.network.testnet } -> DappOffer.OTHER_FUNDS
+        account.perApp != null && account.perApp.site != siteOf(proposal) && account.address != alias ->
+            DappOffer.OTHER_SITE
         else -> null
     }
 }
+
+/** The site of the host [proposal]'s dApp states ([AppHost.site]), or null when it states none. */
+fun siteOf(proposal: DappProposal): AppHost? = (AppHost.ofUrl(proposal.dapp.url) as? AppHostResult.Host)?.host?.site
 
 /** The connections, and every account of the wallet with whether a dApp may be offered it. */
 data class DappOverview(
@@ -85,14 +114,15 @@ fun dappOffer(account: Account, enabled: Set<Network>): DappOffer = when {
 /**
  * Whether [account] may be offered to [proposal]'s dApp, with the networks [enabled] and the accounts
  * [chosen] so far (screen D3): on a network it asks for, of the kind of funds it requires and the
- * [chosen] ones are, and offered at all ([dappOffer]).
+ * [chosen] ones are, another site's per-app address only as the site's [alias], and offered at all ([dappOffer]).
  */
 fun dappOffer(
     account: Account,
     enabled: Set<Network>,
     proposal: DappProposal,
     chosen: Collection<AccountId> = emptyList(),
-): DappOffer = proposalOffer(account, proposal, chosen) ?: dappOffer(account, enabled)
+    alias: Address? = null,
+): DappOffer = proposalOffer(account, proposal, chosen, alias) ?: dappOffer(account, enabled)
 
 /** The dApp connections with the accounts a proposal may be approved with (screens D1 and D3). */
 class ObserveDappConnections(
@@ -118,12 +148,17 @@ class PairDapp(private val sessions: DappSessions) {
 /**
  * Approves a proposal with [accounts]: each must be one of the wallet's accounts the proposal's dApp may be
  * offered ([dappOffer]), on a network it asked for, all of one kind of funds with what it requires, so
- * that nothing a screen got wrong reaches the dApp ([DappApproval.InvalidAccounts]).
+ * that nothing a screen got wrong reaches the dApp ([DappApproval.InvalidAccounts]). Another site's per-app address
+ * passes only as the alias the user linked the dApp's site to ([PerAppAliases]). Once approved, the accounts are
+ * remembered for the site of the host the dApp states ([DappSiteMemory]; issue #252), to be preselected when a host
+ * of that site connects again; a memory that cannot be saved takes nothing from the approval.
  */
 class ApproveDappProposal(
     private val sessions: DappSessions,
     private val accounts: AccountRepository,
     private val networks: NetworkSettings,
+    private val sites: DappSiteMemory,
+    private val aliases: PerAppAliases,
 ) {
     suspend operator fun invoke(proposal: DappProposalId, chosen: List<AccountId>): DappApproval {
         val asked = (sessions.observe().first() as? DappConnections.On)?.proposals?.find { it.id == proposal }
@@ -131,13 +166,19 @@ class ApproveDappProposal(
         val list = accounts.observeAccounts().first() as? AccountList.Loaded ?: return DappApproval.InvalidAccounts
         val enabled = networks.observe().first()
         val wallet = list.accounts.associateBy { it.id }
+        // A site with an address of its own has no alias here, whatever the file says (owner, 2026-11-19, on #328).
+        val site = siteOf(asked)
+        val ownAddress = site != null && list.accounts.any { it.perApp?.site == site }
+        val alias = site?.takeUnless { ownAddress }?.let { aliases.observe().first()[it] }
         // Each against the others chosen: one of the other kind of funds than any of them is refused.
         val valid = chosen.isNotEmpty() && chosen.toSet().size == chosen.size && chosen.all { id ->
             val account = wallet[id] ?: return@all false
-            dappOffer(account, enabled, asked, chosen - id) == DappOffer.OFFERED
+            dappOffer(account, enabled, asked, chosen - id, alias) == DappOffer.OFFERED
         } && missingRequired(asked, chosen).isEmpty()
         if (!valid) return DappApproval.InvalidAccounts
-        return sessions.approve(proposal, chosen)
+        val approval = sessions.approve(proposal, chosen)
+        if (approval is DappApproval.Approved) siteOf(asked)?.let { sites.remember(it, chosen) }
+        return approval
     }
 }
 

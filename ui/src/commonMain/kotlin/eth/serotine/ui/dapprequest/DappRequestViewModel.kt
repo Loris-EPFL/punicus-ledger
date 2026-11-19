@@ -17,6 +17,7 @@ import eth.serotine.domain.usecase.DappSignRefusal
 import eth.serotine.domain.usecase.DappSignWarning
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveDappMessages
+import eth.serotine.domain.usecase.PerAppSigner
 import eth.serotine.domain.usecase.RefuseDappRequest
 import eth.serotine.domain.usecase.SignDappMessage
 import eth.serotine.ui.components.Eip55
@@ -67,6 +68,11 @@ data class DappRequestUiState(
     val accountName: String? = null,
     /** The account asked to sign, EIP-55 checksummed, in full. */
     val accountAddress: String = "",
+    /**
+     * For a per-app address, the site it was made for, and a sign-in to a site the user linked to it said as such
+     * ("Per-app address for uniswap.org"; issue #252, docs/walletconnect.md, *Signing in*); null otherwise.
+     */
+    val perAppLine: String? = null,
     /** The network the request is on, with its kind of funds ("On Sepolia, a test network"). */
     val network: String = "On Sepolia, a test network",
     /** The sign-in's fields, in the order EIP-4361 gives them; empty when the message is not a sign-in. */
@@ -183,7 +189,8 @@ class DappRequestViewModel(
             accountName = review.account?.label,
             accountAddress = Eip55.format(review.address),
             network = onLine(review.request.network),
-            warnings = review.warnings.sorted().map(::warningLine),
+            perAppLine = review.perApp?.let(::perAppLine),
+            warnings = review.warnings.sorted().map { warningLine(it, review.perApp) },
             refusal = review.refusal?.let(::refusalLine),
         )
         return when (val content = review.content) {
@@ -354,7 +361,31 @@ class DappRequestViewModel(
             else -> "The dApp waits for an answer for ${seconds / 86_400} more days."
         }
 
-        fun warningLine(warning: DappSignWarning): String = when (warning) {
+        /**
+         * A per-app address as D4 names it: the site it was made for; signing in to a site the user linked to it,
+         * that site "linked by you" to it. A sign-in to a site of its own adds nothing: one site has one address.
+         */
+        fun perAppLine(signer: PerAppSigner): String {
+            val made = "Per-app address for ${signer.site.name}"
+            val linked = signer.signInSite?.takeIf { signer.linked }
+            return if (linked == null) {
+                made
+            } else {
+                "$made. Signing in to ${linked.name}, linked by you to ${signer.site.name}."
+            }
+        }
+
+        /**
+         * What [warning] says; [perApp], the review's per-app signer, names the two sites of [DappSignWarning
+         * .PER_APP_OTHER_SITE]. Required, so that no caller drops them.
+         */
+        fun warningLine(warning: DappSignWarning, perApp: PerAppSigner?): String = when (warning) {
+            DappSignWarning.PER_APP_OTHER_SITE -> {
+                val made = perApp?.site?.name ?: "another site"
+                val domain = perApp?.signInSite?.name ?: "this site"
+                "This address was made for $made. Signing in to $domain with it links the two sites: each can " +
+                    "tell your activity on the other is yours."
+            }
             DappSignWarning.DOMAIN_NOT_DAPP_URL ->
                 "This sign-in is for another site than the one the dApp named when it connected. It may be a " +
                     "site posing as another. Both names are the dApp's own claim, so Punicus cannot tell which " +

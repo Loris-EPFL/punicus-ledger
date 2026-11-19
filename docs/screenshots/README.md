@@ -10,7 +10,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 
 | Screen | Folder | States |
 |---|---|---|
-| [Account detail](#account-detail) | `account-detail/` | 47 |
+| [Account detail](#account-detail) | `account-detail/` | 51 |
 | [Accounts](#accounts) | `accounts/` | 41 |
 | [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 3 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 11 |
@@ -21,8 +21,8 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Create account](#create-account) | `create-account/` | 16 |
 | [Create Safe](#create-safe) | `create-safe/` | 19 |
 | [Display currency](#currency) | `currency/` | 4 |
-| [dApp connection request](#dapp-proposal) | `dapp-proposal/` | 14 |
-| [dApp signing request](#dapp-request) | `dapp-request/` | 20 |
+| [dApp connection request](#dapp-proposal) | `dapp-proposal/` | 27 |
+| [dApp signing request](#dapp-request) | `dapp-request/` | 23 |
 | [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 20 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
@@ -31,6 +31,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Import recovery phrase](#mnemonic-import) | `mnemonic-import/` | 12 |
 | [No account open (wide window)](#no-account-open) | `no-account-open/` | 4 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
+| [Per-app addresses](#per-app) | `per-app/` | 12 |
 | [Receive](#receive) | `receive/` | 7 |
 | [Remove account (dialog)](#remove-account-dialog) | `remove-account-dialog/` | 7 |
 | [Rename account (dialog)](#rename-account-dialog) | `rename-account-dialog/` | 6 |
@@ -71,7 +72,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="account-detail"></a>
 ## Account detail
 
-`account-detail/`, 47 states: `assets`, `assets-dark`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`
+`account-detail/`, 51 states: `assets`, `assets-dark`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `per-app-tab-no-network`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`
 
 <a href="account-detail/assets.png"><img src="account-detail/assets.png" width="206" alt="assets"></a>
 <a href="account-detail/assets-dark.png"><img src="account-detail/assets-dark.png" width="206" alt="assets-dark"></a>
@@ -91,6 +92,10 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="account-detail/list-unavailable.png"><img src="account-detail/list-unavailable.png" width="206" alt="list-unavailable"></a>
 <a href="account-detail/ens-name-moved.png"><img src="account-detail/ens-name-moved.png" width="206" alt="ens-name-moved"></a>
 <a href="account-detail/ens-names.png"><img src="account-detail/ens-names.png" width="206" alt="ens-names"></a>
+<a href="account-detail/per-app-address.png"><img src="account-detail/per-app-address.png" width="206" alt="per-app-address"></a>
+<a href="account-detail/per-app-tab.png"><img src="account-detail/per-app-tab.png" width="206" alt="per-app-tab"></a>
+<a href="account-detail/per-app-tab-empty-dark.png"><img src="account-detail/per-app-tab-empty-dark.png" width="206" alt="per-app-tab-empty-dark"></a>
+<a href="account-detail/per-app-tab-no-network.png"><img src="account-detail/per-app-tab-no-network.png" width="206" alt="per-app-tab-no-network"></a>
 <a href="account-detail/activity.png"><img src="account-detail/activity.png" width="206" alt="activity"></a>
 <a href="account-detail/activity-dark.png"><img src="account-detail/activity-dark.png" width="206" alt="activity-dark"></a>
 <a href="account-detail/waiting-swap.png"><img src="account-detail/waiting-swap.png" width="206" alt="waiting-swap"></a>
@@ -316,7 +321,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="dapp-proposal"></a>
 ## dApp connection request
 
-`dapp-proposal/`, 14 states: `request`, `request-dark`, `none-chosen`, `either-kind`, `real-funds`, `real-funds-dark`, `missing-required`, `missing-required-dark`, `mixed-funds-refused`, `refused`, `explaining`, `not-saved`, `ended`, `loading`
+`dapp-proposal/`, 27 states: `request`, `request-dark`, `none-chosen`, `either-kind`, `real-funds`, `real-funds-dark`, `missing-required`, `missing-required-dark`, `mixed-funds-refused`, `refused`, `explaining`, `not-saved`, `ended`, `loading`, `new-address`, `new-address-dark`, `two-phrases`, `choosing-phrase`, `no-phrase`, `seen-before`, `moved`, `choosing-alias`, `confirming-alias`, `linked`, `typing-old-host`, `made-again`, `made-again-failed`
 
 <a href="dapp-proposal/request.png"><img src="dapp-proposal/request.png" width="206" alt="request"></a>
 <a href="dapp-proposal/request-dark.png"><img src="dapp-proposal/request-dark.png" width="206" alt="request-dark"></a>
@@ -332,11 +337,24 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="dapp-proposal/not-saved.png"><img src="dapp-proposal/not-saved.png" width="206" alt="not-saved"></a>
 <a href="dapp-proposal/ended.png"><img src="dapp-proposal/ended.png" width="206" alt="ended"></a>
 <a href="dapp-proposal/loading.png"><img src="dapp-proposal/loading.png" width="206" alt="loading"></a>
+<a href="dapp-proposal/new-address.png"><img src="dapp-proposal/new-address.png" width="206" alt="new-address"></a>
+<a href="dapp-proposal/new-address-dark.png"><img src="dapp-proposal/new-address-dark.png" width="206" alt="new-address-dark"></a>
+<a href="dapp-proposal/two-phrases.png"><img src="dapp-proposal/two-phrases.png" width="206" alt="two-phrases"></a>
+<a href="dapp-proposal/choosing-phrase.png"><img src="dapp-proposal/choosing-phrase.png" width="206" alt="choosing-phrase"></a>
+<a href="dapp-proposal/no-phrase.png"><img src="dapp-proposal/no-phrase.png" width="206" alt="no-phrase"></a>
+<a href="dapp-proposal/seen-before.png"><img src="dapp-proposal/seen-before.png" width="206" alt="seen-before"></a>
+<a href="dapp-proposal/moved.png"><img src="dapp-proposal/moved.png" width="206" alt="moved"></a>
+<a href="dapp-proposal/choosing-alias.png"><img src="dapp-proposal/choosing-alias.png" width="206" alt="choosing-alias"></a>
+<a href="dapp-proposal/confirming-alias.png"><img src="dapp-proposal/confirming-alias.png" width="206" alt="confirming-alias"></a>
+<a href="dapp-proposal/linked.png"><img src="dapp-proposal/linked.png" width="206" alt="linked"></a>
+<a href="dapp-proposal/typing-old-host.png"><img src="dapp-proposal/typing-old-host.png" width="206" alt="typing-old-host"></a>
+<a href="dapp-proposal/made-again.png"><img src="dapp-proposal/made-again.png" width="206" alt="made-again"></a>
+<a href="dapp-proposal/made-again-failed.png"><img src="dapp-proposal/made-again-failed.png" width="206" alt="made-again-failed"></a>
 
 <a name="dapp-request"></a>
 ## dApp signing request
 
-`dapp-request/`, 20 states: `sign-in`, `sign-in-dark`, `biometrics`, `other-site`, `message`, `hex`, `refused`, `wrong-password`, `signing`, `explaining`, `ended`, `loading`, `approval`, `approval-dark`, `unlimited`, `swap-order`, `not-decoded`, `other-network`, `real-funds`, `real-funds-dark`
+`dapp-request/`, 23 states: `sign-in`, `sign-in-dark`, `biometrics`, `other-site`, `message`, `hex`, `refused`, `wrong-password`, `signing`, `explaining`, `ended`, `loading`, `approval`, `approval-dark`, `unlimited`, `swap-order`, `not-decoded`, `other-network`, `real-funds`, `real-funds-dark`, `per-app`, `per-app-other-site`, `per-app-linked`
 
 <a href="dapp-request/sign-in.png"><img src="dapp-request/sign-in.png" width="206" alt="sign-in"></a>
 <a href="dapp-request/sign-in-dark.png"><img src="dapp-request/sign-in-dark.png" width="206" alt="sign-in-dark"></a>
@@ -358,6 +376,9 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="dapp-request/other-network.png"><img src="dapp-request/other-network.png" width="206" alt="other-network"></a>
 <a href="dapp-request/real-funds.png"><img src="dapp-request/real-funds.png" width="206" alt="real-funds"></a>
 <a href="dapp-request/real-funds-dark.png"><img src="dapp-request/real-funds-dark.png" width="206" alt="real-funds-dark"></a>
+<a href="dapp-request/per-app.png"><img src="dapp-request/per-app.png" width="206" alt="per-app"></a>
+<a href="dapp-request/per-app-other-site.png"><img src="dapp-request/per-app-other-site.png" width="206" alt="per-app-other-site"></a>
+<a href="dapp-request/per-app-linked.png"><img src="dapp-request/per-app-linked.png" width="206" alt="per-app-linked"></a>
 
 <a name="dapp-transaction"></a>
 ## dApp transaction
@@ -523,6 +544,24 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="pair-dapp/camera-refused.png"><img src="pair-dapp/camera-refused.png" width="206" alt="camera-refused"></a>
 <a href="pair-dapp/scanned-not-a-link.png"><img src="pair-dapp/scanned-not-a-link.png" width="206" alt="scanned-not-a-link"></a>
 <a href="pair-dapp/scanner-frame.png"><img src="pair-dapp/scanner-frame.png" width="206" alt="scanner-frame"></a>
+
+<a name="per-app"></a>
+## Per-app addresses
+
+`per-app/`, 12 states: `listed`, `listed-dark`, `none-yet`, `of-a-phrase`, `restore-form`, `restoring`, `restore-failed`, `restored`, `no-phrase`, `explaining`, `unreadable`, `loading`
+
+<a href="per-app/listed.png"><img src="per-app/listed.png" width="206" alt="listed"></a>
+<a href="per-app/listed-dark.png"><img src="per-app/listed-dark.png" width="206" alt="listed-dark"></a>
+<a href="per-app/none-yet.png"><img src="per-app/none-yet.png" width="206" alt="none-yet"></a>
+<a href="per-app/of-a-phrase.png"><img src="per-app/of-a-phrase.png" width="206" alt="of-a-phrase"></a>
+<a href="per-app/restore-form.png"><img src="per-app/restore-form.png" width="206" alt="restore-form"></a>
+<a href="per-app/restoring.png"><img src="per-app/restoring.png" width="206" alt="restoring"></a>
+<a href="per-app/restore-failed.png"><img src="per-app/restore-failed.png" width="206" alt="restore-failed"></a>
+<a href="per-app/restored.png"><img src="per-app/restored.png" width="206" alt="restored"></a>
+<a href="per-app/no-phrase.png"><img src="per-app/no-phrase.png" width="206" alt="no-phrase"></a>
+<a href="per-app/explaining.png"><img src="per-app/explaining.png" width="206" alt="explaining"></a>
+<a href="per-app/unreadable.png"><img src="per-app/unreadable.png" width="206" alt="unreadable"></a>
+<a href="per-app/loading.png"><img src="per-app/loading.png" width="206" alt="loading"></a>
 
 <a name="receive"></a>
 ## Receive

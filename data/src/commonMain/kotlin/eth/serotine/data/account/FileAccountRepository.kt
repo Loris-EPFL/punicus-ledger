@@ -8,7 +8,11 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PerAppAccount
+import eth.serotine.domain.model.PerAppPath
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
@@ -18,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -39,7 +44,10 @@ import kotlinx.serialization.json.Json
  * entry of an older file, follows none. Format 4 records each account's network by its chain
  * id ([Account.network]); every entry of an older file was written when Punicus worked on
  * Sepolia alone, so it reads as a Sepolia account (docs/networks.md, *Files*). The next change
- * writes the file as the current format. An entry whose chain id this version does not know was
+ * writes the file as the current format. Format 5 records what makes an account a per-app address
+ * ([Account.perApp]: its site, path and phrase; issue #252); an entry without it, as every entry of an older file,
+ * is an ordinary account. A list with no per-app address is written as format 4, which the release before reads.
+ * An entry whose chain id this version does not know was
  * written by a later version that works on more networks: the list is then
  * [AccountList.Reason.NEWER_FORMAT], left untouched, and the user is asked to update.
  */
@@ -59,7 +67,10 @@ class FileAccountRepository(
             stored.accounts.map { it.toAccount(stored.version) }.distinctBy { it.id }
         },
         encode = { accounts ->
-            val stored = StoredAccounts(FORMAT_VERSION, accounts.map(::StoredAccount))
+            // Format 4 while no account is a per-app address, so that an update alone leaves a list the release
+            // before can still read.
+            val version = if (accounts.any { it.perApp != null }) FORMAT_VERSION else FORMAT_BEFORE_PER_APP
+            val stored = StoredAccounts(version, accounts.map(::StoredAccount))
             STRICT.encodeToString(StoredAccounts.serializer(), stored)
         },
     )
@@ -86,6 +97,9 @@ class FileAccountRepository(
 
     override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange =
         updateEntry(id) { it.copy(custody = custody) }
+
+    override suspend fun markPerApp(id: AccountId, mark: PerAppAccount): AccountChange =
+        updateEntry(id) { it.copy(custody = AccountCustody.InKeyStore, perApp = mark) }
 
     /** Replaces the entry [id] with [update] of it, in place; NotFound when there is none. */
     private suspend fun updateEntry(id: AccountId, update: (Account) -> Account): AccountChange =
@@ -121,6 +135,8 @@ class FileAccountRepository(
         val ens: String? = null,
         /** [Account.network]'s chain id; absent before format 4, whose accounts are all Sepolia's. */
         val chain: Long? = null,
+        /** [Account.perApp]; absent for an ordinary account, and before format 5. */
+        val perApp: StoredPerApp? = null,
     ) {
         constructor(account: Account) : this(
             account.address.hex,
@@ -132,6 +148,7 @@ class FileAccountRepository(
             },
             account.ensName,
             account.network.chainId,
+            account.perApp?.let(::StoredPerApp),
         )
 
         /**
@@ -154,15 +171,43 @@ class FileAccountRepository(
                 else -> error("an account without a known custody")
             },
             ens,
+            perApp?.toMark(),
+        )
+    }
+
+    /**
+     * A per-app address's mark: its [site], its path `m/44'/60'/[a]'/[b]'/[c]'` and its phrase, named by the address
+     * of the phrase's first account ([phraseAccount], a public value).
+     */
+    @Serializable
+    private class StoredPerApp(
+        val site: String,
+        val a: Int,
+        val b: Int,
+        val c: Int,
+        @SerialName("phrase") val phraseAccount: String,
+    ) {
+        constructor(mark: PerAppAccount) :
+            this(mark.site.name, mark.path.account, mark.path.change, mark.path.index, mark.phrase.hex)
+
+        /** Throws on anything [PerAppAccount] would not accept: the whole file is then damaged. */
+        fun toMark(): PerAppAccount = PerAppAccount(
+            (AppHost.parse(site) as? AppHostResult.Host)?.host ?: error("a per-app address without a site"),
+            PerAppPath(a, b, c),
+            Address.of(phraseAccount),
         )
     }
 
     private companion object {
         /**
          * 2 since watched accounts: each entry records its custody; 3 since names that follow ENS;
-         * 4 since accounts on more than one network: each entry records its chain id.
+         * 4 since accounts on more than one network: each entry records its chain id; 5 since per-app addresses: an
+         * entry made as one records its site, path and phrase.
          */
-        const val FORMAT_VERSION = 4
+        const val FORMAT_VERSION = 5
+
+        /** The format written while no entry needs format 5's per-app mark. */
+        const val FORMAT_BEFORE_PER_APP = 4
         const val WATCHED = "watched"
         const val IN_KEY_STORE = "key-store"
         val STRICT = Json

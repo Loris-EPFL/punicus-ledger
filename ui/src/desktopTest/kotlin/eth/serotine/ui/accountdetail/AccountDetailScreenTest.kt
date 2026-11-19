@@ -53,6 +53,8 @@ import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
 import eth.serotine.ui.components.catchingUpStripSample
 import eth.serotine.ui.components.verifiedStripSample
+import eth.serotine.ui.perapp.PER_APP_ROW_TAG
+import eth.serotine.ui.perapp.PerAppRow
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -106,8 +108,44 @@ class AccountDetailScreenTest {
                 onSafeSettings = { events += "safe settings" },
                 onGnosisPay = { events += "gnosis pay" },
                 onToggleUnlistedNfts = { events += "toggle unlisted nfts" },
+                perAppActions = PerAppActions(
+                    onOpen = { chain, address -> events += "open per-app $chain $address" },
+                    onRestore = { phrase -> events += "restore per-app $phrase" },
+                    onRemoveAlias = { site -> events += "remove alias $site" },
+                ),
             )
         }
+    }
+
+    @Test
+    fun aPerAppAddressShowsItsMarkAndAPhrasesAccountItsPerAppTab() {
+        val row = PerAppRow(
+            site = "uniswap.org",
+            address = "0x9fA6c0b2E14d7A35c8e01B2f6D3a9c47b1e08D52",
+            networks = "Ethereum",
+            phrase = "Phrase of Daily",
+            path = "m/44'/60'/1'/2'/3'",
+            chainId = 1,
+            hex = "0x9fa6c0b2e14d7a35c8e01b2f6d3a9c47b1e08d52",
+        )
+        show(
+            ready.copy(
+                perAppMark = "Per-app address for uniswap.org · m/44'/60'/1'/2'/3'",
+                perAppAliases = listOf("uniswap.app"),
+                segment = DetailSegment.PER_APP,
+                perApp = PerAppTab("0xphrase", listOf(row), empty = null),
+            ),
+        )
+        rule.onNodeWithTag(ACCOUNT_PER_APP_MARK_TAG).assertTextEquals(
+            "Per-app address for uniswap.org · m/44'/60'/1'/2'/3'",
+        )
+        rule.onNodeWithText("Also seen by uniswap.app, linked by you").assertExists()
+        rule.onNodeWithTag(ACCOUNT_PER_APP_ALIAS_REMOVE_TAG + "uniswap.app").performClick()
+        assertEquals("remove alias uniswap.app", events.last())
+        rule.onNodeWithText("Per-app").assertExists()
+        rule.onNodeWithTag(PER_APP_ROW_TAG + row.hex).performScrollTo().performClick()
+        rule.onNodeWithTag(ACCOUNT_PER_APP_RESTORE_TAG).performScrollTo().performClick()
+        assertEquals(listOf("open per-app 1 ${row.hex}", "restore per-app 0xphrase"), events.takeLast(2))
     }
 
     @Test

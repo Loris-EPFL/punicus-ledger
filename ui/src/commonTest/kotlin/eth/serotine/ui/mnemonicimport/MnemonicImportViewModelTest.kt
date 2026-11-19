@@ -13,6 +13,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
@@ -527,5 +528,8 @@ class MnemonicImportViewModelTest {
             accounts.update { list -> list.map { if (it.id == id) it.copy(custody = custody) else it } }
             return AccountChange.Changed
         }
+
+        override suspend fun markPerApp(id: AccountId, mark: PerAppAccount): AccountChange =
+            error("not used by this test")
     }
 }

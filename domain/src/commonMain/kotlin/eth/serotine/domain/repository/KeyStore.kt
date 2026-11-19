@@ -41,6 +41,8 @@ interface KeyStore {
      * envelope, and the new account's seed is sealed under it as an import seals one, in an
      * envelope of its own, joining the biometric path when that is on. An address whose envelope
      * is stored already (its account was never added to the list) is left as it is and named.
+     * [from] may be any account of the phrase, a per-app address's ([PerAppKeys]) included: the
+     * further account is an ordinary one, made on this device alone, which no dApp learns of.
      * The seed and the keys exist only inside this call. Never throws.
      */
     suspend fun deriveAccount(from: Address, password: WalletPassword, held: Set<Address>): KeyDerivation

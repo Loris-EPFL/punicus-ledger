@@ -30,6 +30,7 @@ fun SimpleSettingsScreen(
     onSignWhileSyncingChange: (Boolean) -> Unit = {},
     onMeteredDownloadsChange: (Boolean) -> Unit = {},
     onFetchFreshCheckpoint: (chainId: Long, useUnconfirmed: Boolean) -> Unit = { _, _ -> },
+    onPerApp: () -> Unit = {},
 ) = SettingsScreen(
     state.copy(
         networks = state.networks.map { it.copy(line = it.simpleLine) },
@@ -53,4 +54,5 @@ fun SimpleSettingsScreen(
     onSignWhileSyncingChange,
     onMeteredDownloadsChange,
     onFetchFreshCheckpoint,
+    onPerApp,
 )

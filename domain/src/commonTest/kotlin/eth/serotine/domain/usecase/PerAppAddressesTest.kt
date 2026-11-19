@@ -1,0 +1,256 @@
+package eth.serotine.domain.usecase
+
+import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
+import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
+import eth.serotine.domain.model.AppIsolation
+import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PerAppAccount
+import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.repository.DappMetadata
+import eth.serotine.domain.repository.DappProposal
+import eth.serotine.domain.repository.DappProposalId
+import eth.serotine.domain.repository.NetworkSettings
+import eth.serotine.domain.repository.PerAppDerivation
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/** The per-app choice of screen D3 and making a per-app address (issue #252), with fake ports. */
+class PerAppAddressesTest {
+
+    private val aliases = MemoryAliases()
+
+    private fun address(last: Char) = Address.of("0x" + "0".repeat(39) + last)
+
+    private fun account(
+        network: Network,
+        last: Char,
+        kind: AccountKind = AccountKind.EOA,
+        custody: AccountCustody = AccountCustody.InKeyStore,
+        perApp: PerAppAccount? = null,
+    ) = Account(network, address(last), kind, "Account $last", custody, perApp = perApp)
+
+    private val first = account(Network.ETHEREUM, '1')
+    private val further = account(Network.ETHEREUM, '2')
+    private val other = account(Network.ETHEREUM, '3')
+    private val watched = account(Network.ETHEREUM, '4', custody = AccountCustody.Watched)
+    private val safe = account(Network.ETHEREUM, '5', kind = AccountKind.SAFE)
+
+    private val enabled = MutableStateFlow(setOf(Network.ETHEREUM, Network.GNOSIS))
+    private val networks = object : NetworkSettings {
+        override fun observe(): Flow<Set<Network>> = enabled
+        override suspend fun setEnabled(network: Network, on: Boolean): Boolean = error("not used")
+    }
+
+    private fun proposal(required: Set<String> = emptySet(), optional: Set<String> = emptySet()) = DappProposal(
+        DappProposalId("pairing", 1),
+        DappMetadata("Uniswap", "https://app.uniswap.org/swap", ""),
+        required,
+        optional,
+        setOf("personal_sign"),
+        null,
+        0,
+    )
+
+    @Test
+    fun phrasesAreToldApartAndNamedByTheirFirstAccountInTheList() {
+        // `further` is of `first`'s phrase; `other` is of a phrase of its own; watched and Safes hold no phrase.
+        val phrases = mapOf(first.address to first.address, further.address to first.address)
+        val sources = phraseSources(listOf(watched, further, safe, first, other), phrases)
+        assertEquals(listOf(PhraseSource(first.address, further), PhraseSource(null, other)), sources)
+    }
+
+    @Test
+    fun aPerAppAccountNamesItsPhraseItself() {
+        val mark = PerAppAccount(testHost("uniswap.org"), AppIsolation.pathOf(testHost("uniswap.org")), first.address)
+        val perApp = account(Network.ETHEREUM, '6', perApp = mark)
+        // The phrase is known from the per-app account's mark; its first account, listed too, names it (part 4a).
+        assertEquals(listOf(PhraseSource(first.address, first)), phraseSources(listOf(perApp, first), emptyMap()))
+        assertEquals(listOf(PhraseSource(first.address, perApp)), phraseSources(listOf(perApp), emptyMap()))
+    }
+
+    @Test
+    fun theNewAddressGoesOnTheAskedNetworksThatAreOnOfOneKind() {
+        val asking = proposal(optional = setOf("eip155:1", "eip155:100", "eip155:11155111"))
+        val on = setOf(Network.ETHEREUM, Network.GNOSIS, Network.SEPOLIA)
+        // Nothing chosen, nothing required: real funds, where the dApp asks for them.
+        assertEquals(listOf(Network.ETHEREUM, Network.GNOSIS), perAppNetworks(asking, on, emptyList(), emptyList()))
+        // A Sepolia account chosen: testnet.
+        assertEquals(
+            listOf(Network.SEPOLIA),
+            perAppNetworks(asking, on, listOf(AccountId(Network.SEPOLIA, first.address)), emptyList()),
+        )
+        // Sepolia required.
+        val sepolia = proposal(required = setOf("eip155:11155111"), optional = setOf("eip155:1"))
+        assertEquals(listOf(Network.SEPOLIA), perAppNetworks(sepolia, on, emptyList(), emptyList()))
+        // A network that is off is left out, and so is one the site has its address on already.
+        val made = account(Network.ETHEREUM, '6')
+        assertEquals(listOf(Network.GNOSIS), perAppNetworks(asking, on, emptyList(), listOf(made)))
+        val ethereum = setOf(Network.ETHEREUM)
+        assertEquals(listOf(Network.ETHEREUM), perAppNetworks(asking, ethereum, emptyList(), emptyList()))
+        // Only Sepolia on: testnet, though the dApp asks for real funds too.
+        assertEquals(listOf(Network.SEPOLIA), perAppNetworks(asking, setOf(Network.SEPOLIA), emptyList(), emptyList()))
+    }
+
+    @Test
+    fun theChoiceNamesTheSiteItsAddressesAndWhatWasApprovedLast() = runTest {
+        val site = testHost("uniswap.org")
+        val mark = PerAppAccount(site, AppIsolation.pathOf(site), first.address)
+        val made = account(Network.ETHEREUM, '6', perApp = mark)
+        val accounts = ListAccountRepository(first, made)
+        val sites = MemorySites()
+        sites.remembered.value = mapOf(site to listOf(made.id))
+        val keys = FakePerAppKeys(phrases = mapOf(first.address to first.address))
+        val choice = ObservePerAppChoice(accounts, keys, sites, networks, aliases)("https://app.uniswap.org/swap")
+            .first()
+        assertEquals(AppHostResult.Host(testHost("app.uniswap.org")), choice.host)
+        assertEquals(site, choice.site)
+        assertEquals(listOf(made), choice.made)
+        assertEquals(listOf(made.id), choice.remembered)
+        assertEquals(listOf(PhraseSource(first.address, first)), choice.sources)
+        assertNull(choice.collision)
+    }
+
+    @Test
+    fun aSiteLinkedToAnotherSitesAddressHasItAsItsOwnAndTheOthersToChooseFrom() = runTest {
+        val uniswap = testHost("uniswap.org")
+        val safe = testHost("safe.global")
+        fun markOf(site: AppHost) = PerAppAccount(site, AppIsolation.pathOf(site), first.address)
+        val ofUniswap = account(Network.ETHEREUM, '6', perApp = markOf(uniswap))
+        val ofSafe = account(Network.ETHEREUM, '7', perApp = markOf(safe))
+        val accounts = ListAccountRepository(first, ofUniswap, ofSafe)
+        val keys = FakePerAppKeys(phrases = mapOf(first.address to first.address))
+        val observe = ObservePerAppChoice(accounts, keys, MemorySites(), networks, aliases)
+        val unlinked = observe("https://app.uniswap.app").first()
+        assertNull(unlinked.alias)
+        assertEquals(listOf(ofUniswap.address, ofSafe.address), unlinked.others.map { it.address })
+        assertEquals(mapOf(first.address to first.label), unlinked.names)
+
+        aliases.linked.value = mapOf(testHost("uniswap.app") to ofUniswap.address)
+        val linked = observe("https://app.uniswap.app").first()
+        assertEquals(ofUniswap.address, linked.alias)
+        assertEquals(listOf(ofUniswap), linked.aliased)
+        assertTrue(linked.made.isEmpty(), "made for uniswap.org, not for this site")
+        assertEquals(listOf(testHost("uniswap.app")), linked.others.first { it.address == ofUniswap.address }.aliases)
+
+        // Should the site get its own address beside the alias, its own wins (owner, 2026-11-19, on #328).
+        val app = testHost("uniswap.app")
+        accounts.accounts.value += account(Network.ETHEREUM, '8', perApp = markOf(app))
+        val both = observe("https://app.uniswap.app").first()
+        assertNull(both.alias)
+        assertTrue(both.aliased.isEmpty())
+        assertEquals(1, both.made.size)
+    }
+
+    @Test
+    fun aDappWithNoHostHasNoSite() = runTest {
+        val observe =
+            ObservePerAppChoice(ListAccountRepository(first), FakePerAppKeys(), MemorySites(), networks, aliases)
+        val choice = observe("wc://not-a-web-address").first()
+        assertEquals(AppHostResult.NotAWebAddress, choice.host)
+        assertNull(choice.site)
+        assertTrue(choice.made.isEmpty())
+    }
+
+    @Test
+    fun aPerAppAddressIsMadeOnEachNetworkNamedAndMarked() = runTest {
+        val accounts = ListAccountRepository(first)
+        val keys = FakePerAppKeys(phrases = mapOf(first.address to first.address))
+        val make = MakePerAppAddress(keys, accounts, WalletChanges(), aliases)
+        val host = testHost("app.uniswap.org")
+        val made = make(first.id, host, listOf(Network.ETHEREUM, Network.GNOSIS), WalletPassword("correct horse"))
+        assertIs<PerAppMaking.Made>(made)
+        assertEquals(listOf(first.address to host), keys.derived)
+        assertEquals(listOf(Network.ETHEREUM, Network.GNOSIS), made.accounts.map { it.network })
+        val added = accounts.accounts.value.drop(1)
+        assertEquals(2, added.size)
+        added.forEach {
+            assertEquals("uniswap.org", it.label)
+            assertEquals(AccountKind.EOA, it.kind)
+            assertEquals(AccountCustody.InKeyStore, it.custody)
+            assertEquals(PerAppAccount(testHost("uniswap.org"), AppIsolation.pathOf(host), first.address), it.perApp)
+        }
+    }
+
+    @Test
+    fun makingOneRefusesWhatCannotBeMadeAndChangesNothing() = runTest {
+        val accounts = ListAccountRepository(first, watched, safe)
+        val keys = FakePerAppKeys()
+        val make = MakePerAppAddress(keys, accounts, WalletChanges(), aliases)
+        val host = testHost("app.uniswap.org")
+        val password = WalletPassword("correct horse")
+        assertEquals(PerAppMaking.NoNetwork, make(first.id, host, emptyList(), password))
+        assertEquals(PerAppMaking.NoKey, make(watched.id, host, listOf(Network.ETHEREUM), password))
+        assertEquals(PerAppMaking.NoKey, make(safe.id, host, listOf(Network.ETHEREUM), password))
+        assertTrue(keys.derived.isEmpty())
+        assertEquals(PerAppMaking.WrongPassword, make(first.id, host, listOf(Network.ETHEREUM), WalletPassword("no")))
+        keys.answer = PerAppDerivation.NotSaved
+        assertEquals(PerAppMaking.KeyNotSaved, make(first.id, host, listOf(Network.ETHEREUM), password))
+        assertEquals(listOf(first, watched, safe), accounts.accounts.value)
+        keys.answer = null
+        accounts.failSaves = true
+        assertEquals(PerAppMaking.ListNotSaved, make(first.id, host, listOf(Network.ETHEREUM), password))
+    }
+
+    @Test
+    fun aSecondHostOfTheSiteIsNoCollision() = runTest {
+        val site = testHost("uniswap.org")
+        val mark = PerAppAccount(site, AppIsolation.pathOf(site), first.address)
+        val made = account(Network.ETHEREUM, '6', perApp = mark)
+        val accounts = ListAccountRepository(first, made)
+        val keys = FakePerAppKeys(address = made.address)
+        val result = MakePerAppAddress(keys, accounts, WalletChanges(), aliases)(
+            first.id,
+            testHost("swap.uniswap.org"),
+            listOf(Network.GNOSIS),
+            WalletPassword("correct horse"),
+        )
+        assertIs<PerAppMaking.Made>(result)
+        assertEquals(listOf(AccountId(Network.GNOSIS, made.address)), result.accounts)
+    }
+
+    @Test
+    fun aWatchedEntryOfTheAddressIsReplacedByTheMarkedOneUnderItsName() = runTest {
+        val keys = FakePerAppKeys(address = address('7'))
+        val watchedOwn = account(Network.ETHEREUM, '7', custody = AccountCustody.Watched)
+            .copy(label = "mine.eth", ensName = "mine.eth")
+        val accounts = ListAccountRepository(first, watchedOwn, other)
+        val made = MakePerAppAddress(keys, accounts, WalletChanges(), aliases)(
+            first.id,
+            testHost("app.uniswap.org"),
+            listOf(Network.ETHEREUM),
+            WalletPassword("correct horse"),
+        )
+        assertIs<PerAppMaking.Made>(made)
+        // Marked in place, in one change: its name, the ENS name it follows and its place in the list are kept.
+        val entry = accounts.accounts.value[1]
+        assertEquals(address('7'), entry.address)
+        assertEquals(watchedOwn.copy(custody = AccountCustody.InKeyStore, perApp = entry.perApp), entry)
+        assertEquals(testHost("uniswap.org"), entry.perApp?.site)
+        assertEquals(3, accounts.accounts.value.size)
+    }
+
+    @Test
+    fun anotherSitesPerAppAddressIsNotOffered() = runTest {
+        val site = testHost("uniswap.org")
+        val mark = PerAppAccount(site, AppIsolation.pathOf(site), first.address)
+        val perApp = account(Network.ETHEREUM, '6', perApp = mark)
+        val asking = proposal(optional = setOf("eip155:1"))
+        val elsewhere = asking.copy(dapp = DappMetadata("Other", "https://app.other.example", ""))
+        assertEquals(DappOffer.OFFERED, dappOffer(perApp, enabled.value, asking))
+        assertEquals(DappOffer.OTHER_SITE, dappOffer(perApp, enabled.value, elsewhere))
+        assertEquals(DappOffer.OFFERED, dappOffer(first, enabled.value, elsewhere), "an ordinary account is")
+    }
+}
+

@@ -6,6 +6,8 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeTxAction
 import eth.serotine.domain.model.TokenUnits
@@ -47,6 +49,9 @@ import eth.serotine.domain.usecase.RefreshNetworkData
 import eth.serotine.domain.usecase.SafeReading
 import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.ObserveOutbox
+import eth.serotine.domain.usecase.ObservePerAppAddresses
+import eth.serotine.domain.usecase.PerAppOverview
+import eth.serotine.domain.usecase.restoreNetworks
 import eth.serotine.domain.repository.HeldConflict
 import eth.serotine.domain.repository.HeldSafeSignature
 import eth.serotine.domain.repository.OutboxList
@@ -54,6 +59,7 @@ import eth.serotine.domain.usecase.SafeTxRefusal
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.ToggleAmountsHidden
+import eth.serotine.domain.usecase.UnlinkPerAppAlias
 import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.domain.usecase.Valuation
 import eth.serotine.domain.usecase.OfferHandoff
@@ -70,6 +76,8 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkLabel
+import eth.serotine.ui.perapp.PerAppViewModel
+import eth.serotine.ui.perapp.perAppRows
 import eth.serotine.ui.components.accountName
 import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.balanceText
@@ -94,6 +102,7 @@ import eth.serotine.ui.platform.formatDateTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -178,6 +187,13 @@ class AccountDetailViewModel(
     private val offerHandoff: OfferHandoff? = null,
     /** Whether a Safe is a Gnosis Pay account (docs/gnosis-pay.md), which its Owners tab opens. Null: never asked. */
     observeGnosisPay: ObserveGnosisPay? = null,
+    /**
+     * The per-app addresses held here (issue #252): the account a recovery phrase is known by lists that phrase's in
+     * its Per-app tab. Null: never asked, and no account has the tab.
+     */
+    observePerAppAddresses: ObservePerAppAddresses? = null,
+    /** Removes a per-app address's alias, from its details. Null: none is offered. */
+    private val unlinkPerAppAlias: UnlinkPerAppAlias? = null,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
     private val address: Address = account.address
@@ -328,6 +344,45 @@ class AccountDetailViewModel(
         .distinctUntilChanged()
         .flatMapLatest { shown -> if (shown) sharedActivity else flowOf(ActivityUiState.Loading) }
 
+    /**
+     * The per-app addresses, read once for the tab and the aliases together, and only for an EOA held here: the
+     * envelopes are not read for a Safe or a watched account, which can have neither.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val perAppOverview = lookup
+        .map { found ->
+            val account = (found as? AccountLookup.Found)?.account
+            account?.kind == AccountKind.EOA && account.custody == AccountCustody.InKeyStore
+        }
+        .distinctUntilChanged()
+        .flatMapLatest { held -> if (held) observePerAppAddresses?.invoke() ?: flowOf(null) else flowOf(null) }
+        .onStart { emit(null) }
+        .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
+
+    /**
+     * This account's Per-app tab, when a phrase is known by it and it is an account held here (never a watched entry
+     * of the same address, nor a Safe); null otherwise, and until the envelopes are read, so the screen never waits.
+     */
+    private val perAppTab: Flow<PerAppTab?> = combine(lookup, perAppOverview) { lookup, overview ->
+        val held = (lookup as? AccountLookup.Found)?.account
+            ?.takeIf { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore && it.perApp == null }
+        if (held == null || overview == null) null else perAppTabOf(overview, address)
+    }.distinctUntilChanged()
+
+    /**
+     * For a per-app address held here, the sites the user linked to it, each removable; empty for any other account
+     * (a watched entry of the same address among them), and where nothing can remove them.
+     */
+    private val perAppAliases: Flow<List<String>> = combine(lookup, perAppOverview) { lookup, overview ->
+        val held = (lookup as? AccountLookup.Found)?.account
+            ?.takeIf { it.perApp != null && it.custody == AccountCustody.InKeyStore && unlinkPerAppAlias != null }
+        if (held == null) {
+            emptyList()
+        } else {
+            overview?.entries?.firstOrNull { it.address == address }?.aliases.orEmpty().map { it.name }
+        }
+    }.distinctUntilChanged()
+
     /** Whether the unlisted collections' NFTs are shown: collapsed until the user opens them (owner ruling, #246). */
     private val unlistedNftsOpen = MutableStateFlow(false)
 
@@ -436,6 +491,7 @@ class AccountDetailViewModel(
                     networkOn = networkOn,
                     networkBlocked = networkBlocked,
                     swapVenue = swapVenue,
+                    perAppMark = lookup.account.perApp?.let { "Per-app address for ${it.site.name} · ${it.path}" },
                     handoff = offerHandoff?.let { offer ->
                         handoffChoice(offer(lookup.account), network.displayName.takeUnless { networkOn })
                     },
@@ -460,6 +516,9 @@ class AccountDetailViewModel(
                 } else {
                     state
                 }
+            }
+            .combine(combine(perAppTab, perAppAliases, ::Pair)) { state, (tab, aliases) ->
+                if (state is AccountDetailUiState.Ready) state.copy(perApp = tab, perAppAliases = aliases) else state
             }
             // Masked last, on the finished state (the Activity masks its own, as it is built).
             .combine(amountsHidden) { state, hidden -> state.withAmountsHidden(hidden) }
@@ -497,6 +556,20 @@ class AccountDetailViewModel(
     /** Runs the Activity's rows the way [order] says: newest first, or the oldest on top. */
     fun orderActivity(order: ActivityOrder) {
         view.update { it.copy(activityOrder = order) }
+    }
+
+    /** Removes the alias [site] of this per-app address, asking nothing: it deletes no key (owner, 2026-11-14). */
+    fun removeAlias(site: String) {
+        val unlink = unlinkPerAppAlias ?: return
+        val host = (AppHost.parse(site) as? AppHostResult.Host)?.host
+        if (host == null) {
+            view.update { it.copy(message = ALIAS_NOT_REMOVED) }
+            return
+        }
+        viewModelScope.launch {
+            val said = if (unlink(host)) "$site will be offered an address of its own." else ALIAS_NOT_REMOVED
+            view.update { it.copy(message = said) }
+        }
     }
 
     /** Shows the account's [segment]: its Assets or Activity, or a Safe's Owners or Queue. */
@@ -998,6 +1071,9 @@ class AccountDetailViewModel(
         const val PRICES_WITH_POOLS =
             "Prices: Chainlink feeds and Uniswap 30-min averages, read through the light client"
         const val LIST_UNAVAILABLE = "Your account list cannot be read right now. Punicus keeps trying."
+
+        /** What removing an alias says when it could not be saved. */
+        const val ALIAS_NOT_REMOVED = "The link could not be removed. Nothing was changed."
         const val QUEUE_UNREADABLE =
             "This device's queue of Safe transactions cannot be read right now. Punicus keeps trying."
         const val QUEUE_UNVERIFIED =
@@ -1091,4 +1167,15 @@ internal fun ensNamesLine(names: AccountNames, followed: String?): String? {
     if (shown.isEmpty()) return null
     val what = if (shown.size == 1) "ENS name pointing here" else "ENS names pointing here"
     return "$what: ${shown.joinToString(", ")}"
+}
+
+/**
+ * The Per-app tab of the account at [address] (issue #252; docs/wallet-ux.md, 4): the per-app addresses of the phrase
+ * it is known by ([PerAppOverview.knownBy]); null when no phrase is known by it.
+ */
+internal fun perAppTabOf(overview: PerAppOverview, address: Address): PerAppTab? {
+    val phrase = overview.knownBy.entries.firstOrNull { it.value == address }?.key ?: return null
+    val rows = perAppRows(overview.entries.filter { it.phrase == phrase }, overview)
+    val blocked = PerAppViewModel.NO_NETWORK.takeIf { restoreNetworks(overview.enabled).isEmpty() }
+    return PerAppTab(phrase.hex, rows, if (rows.isEmpty()) PerAppViewModel.EMPTY else null, blocked)
 }

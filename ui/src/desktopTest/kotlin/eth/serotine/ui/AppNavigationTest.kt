@@ -56,6 +56,7 @@ import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.NetworkUpgrade
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.Signature
@@ -289,6 +290,9 @@ class AppNavigationTest {
             return AccountChange.Changed
         }
 
+        override suspend fun markPerApp(id: AccountId, mark: PerAppAccount): AccountChange =
+            error("not used by this test")
+
         override suspend fun remove(id: AccountId): AccountChange {
             accounts.update { list -> list.filterNot { it.id == id } }
             return AccountChange.Changed
@@ -461,6 +465,9 @@ class AppNavigationTest {
         networkSettings = MemoryNetworkSettings(),
         dappSessions = OffDappSessions,
         dappRequests = dappRequests,
+        perAppKeys = FakePerAppKeys(),
+        dappSites = MemoryDappSites(),
+        perAppAliases = MemoryAliases(),
         dappConnectionsOff = true,
     )
 

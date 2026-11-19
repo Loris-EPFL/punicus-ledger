@@ -31,7 +31,7 @@ internal object ScreenshotIndex {
     /** How to keep the images out of a clone, and the two ways to purge the folder (owner rulings, 2026-11-04). */
     private val weight = listOf(
         """
-            Clone without the images: `git clone --filter=blob:none https://github.com/biafra23/punicus.git`
+            Clone without the images: `git clone --filter=blob:none https://github.com/VesperBats/punicus.git`
             fetches a file only when a command needs it, so the history of this folder costs nothing until it
             is looked at. `git sparse-checkout set --no-cone '/*' '!/docs/screenshots/'` leaves it out of the
             working tree as well.

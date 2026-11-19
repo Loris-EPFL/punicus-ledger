@@ -12,7 +12,7 @@ import eth.serotine.ui.platform.formatDateTime
 // update screen, which needs the light client's own agreement, says the app is not verifying.
 
 /** Where every Punicus release is published (README, *Releases*): what "update" leads to. */
-const val RELEASES_URL = "https://github.com/biafra23/punicus/releases"
+const val RELEASES_URL = "https://github.com/VesperBats/punicus/releases"
 
 /**
  * An upgrade warning as a banner shows it, display-ready: [urgent] when this version can no

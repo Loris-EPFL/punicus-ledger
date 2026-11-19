@@ -55,8 +55,8 @@ LEFT_OUT = {"README.md"}
 
 START = "<!-- downloads:start -->"
 END = "<!-- downloads:end -->"
-RELEASES_URL = "https://github.com/biafra23/punicus/releases"
-DOWNLOAD_PREFIX = "https://github.com/biafra23/punicus/releases/download/"
+RELEASES_URL = "https://github.com/VesperBats/punicus/releases"
+DOWNLOAD_PREFIX = "https://github.com/VesperBats/punicus/releases/download/"
 CERT_PIN = "android-app/release-signing-cert.sha256"
 # What the build leaves in the folder it built, and the only thing that makes a folder with files in
 # it one the next build may replace. A dot-file: actions/upload-pages-artifact leaves hidden files

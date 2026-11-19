@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import screenshots  # noqa: E402
 
-REPO = "biafra23/punicus"
+REPO = "VesperBats/punicus"
 BASE = "a" * 40
 HEAD = "b" * 40
 DIFF = (

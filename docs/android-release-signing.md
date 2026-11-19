@@ -80,11 +80,11 @@ never quietly turned into a debug-only release.
    reviewer**:
 
    ```bash
-   gh api -X PUT repos/biafra23/punicus/environments/android-release \
+   gh api -X PUT repos/VesperBats/punicus/environments/android-release \
      -F 'deployment_branch_policy[protected_branches]=false' \
      -F 'deployment_branch_policy[custom_branch_policies]=true' \
      -F "reviewers[][type]=User" -F "reviewers[][id]=$(gh api user --jq .id)"
-   gh api -X POST repos/biafra23/punicus/environments/android-release/deployment-branch-policies \
+   gh api -X POST repos/VesperBats/punicus/environments/android-release/deployment-branch-policies \
      -f name='v*' -f type=tag
    ```
 
@@ -110,9 +110,9 @@ never quietly turned into a debug-only release.
    prompts for each value, so a password never lands in your shell history:
 
    ```bash
-   base64 -i serotine-release.p12 | gh secret set ANDROID_RELEASE_KEYSTORE_BASE64 --env android-release --repo biafra23/punicus
-   gh secret set ANDROID_RELEASE_KEYSTORE_PASSWORD --env android-release --repo biafra23/punicus
-   gh secret set ANDROID_RELEASE_KEY_ALIAS --env android-release --repo biafra23/punicus --body serotine-release
+   base64 -i serotine-release.p12 | gh secret set ANDROID_RELEASE_KEYSTORE_BASE64 --env android-release --repo VesperBats/punicus
+   gh secret set ANDROID_RELEASE_KEYSTORE_PASSWORD --env android-release --repo VesperBats/punicus
+   gh secret set ANDROID_RELEASE_KEY_ALIAS --env android-release --repo VesperBats/punicus --body serotine-release
    ```
 
    `ANDROID_RELEASE_KEY_PASSWORD` is needed only for a JKS keystore whose key

@@ -253,7 +253,7 @@ class WalletConnectDapps internal constructor(
         internal val SEROTINE = WcMetadata(
             name = "Punicus",
             description = "A wallet that verifies what it shows with an embedded light client.",
-            url = "https://github.com/biafra23/punicus",
+            url = "https://github.com/VesperBats/punicus",
         )
 
         internal fun isProjectId(text: String): Boolean =

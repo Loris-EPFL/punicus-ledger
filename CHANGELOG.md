@@ -3,7 +3,7 @@
 Every release of Punicus (called Serotine before 0.4.0), newest first. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/). Each release's
-installers are on its [GitHub release](https://github.com/biafra23/punicus/releases);
+installers are on its [GitHub release](https://github.com/VesperBats/punicus/releases);
 every release so far is a pre-release. The release PR adds its entry here
 (`.claude/skills/release/SKILL.md`); numbers in parentheses are pull requests
 and issues of this repository.
@@ -231,9 +231,9 @@ accounts on Sepolia, on the embedded Myotis light client, for Android, desktop
 - Control badges: the icon beside the text, the icon alone where the text
   would wrap (#128).
 
-[Unreleased]: https://github.com/biafra23/punicus/compare/v0.5.0...HEAD
-[0.5.0]: https://github.com/biafra23/punicus/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/biafra23/punicus/compare/v0.3.0-rc1...v0.4.0
-[0.3.0-rc1]: https://github.com/biafra23/punicus/compare/v0.2.0...v0.3.0-rc1
-[0.2.0]: https://github.com/biafra23/punicus/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/biafra23/punicus/releases/tag/v0.1.0
+[Unreleased]: https://github.com/VesperBats/punicus/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/VesperBats/punicus/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/VesperBats/punicus/compare/v0.3.0-rc1...v0.4.0
+[0.3.0-rc1]: https://github.com/VesperBats/punicus/compare/v0.2.0...v0.3.0-rc1
+[0.2.0]: https://github.com/VesperBats/punicus/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/VesperBats/punicus/releases/tag/v0.1.0

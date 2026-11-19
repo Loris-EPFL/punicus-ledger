@@ -287,8 +287,10 @@ class DappProposalViewModel(
         val preselected = perApp.remembered.filter { it in offered }
             .ifEmpty { own.map { it.id }.filter { it in offered } }
             .map(::keyOf).toSet()
-        val wanted = local.chosen
-            ?: if (own.isEmpty() && proposal.refusal == null) preselected + NEW_KEY else preselected
+        // The new address is ticked only while nothing is remembered for the site: one declined once is not offered
+        // ticked beside the account approved instead (owner's decision, 2026-11-19, on #331).
+        val fresh = own.isEmpty() && perApp.remembered.isEmpty() && proposal.refusal == null
+        val wanted = local.chosen ?: if (fresh) preselected + NEW_KEY else preselected
         // What is chosen and still offered on its own: each account is judged beside the others chosen. One no
         // longer offered (its network turned off, say) counts for nothing, so it greys out no other.
         val ticked = offered.filter { keyOf(it) in wanted }

@@ -200,7 +200,9 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   `uniswap.org` and see one address, which saves an alias when a dApp
   renames a host or spreads over several. Sites the list keeps apart stay
   apart: `a.github.io` and `b.github.io`, `a.vercel.app` and `b.vercel.app`,
-  and every ENS name behind `eth.limo` or `eth.link`.
+  and every ENS name behind `eth.limo` or `eth.link` (the list's `*.eth.limo`
+  makes `name.eth.limo` and its direct subnames sites of their own; a name
+  one label deeper, `a.b.c.eth.limo`, shares the site `b.c.eth.limo`).
   - What it costs: every host of the site sees the address, a subdomain
     serving strangers' content or taken over by an attacker among them. It
     still signs nothing without the user's review.
@@ -262,6 +264,11 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   of that site connects again (WalletBeat's *per-app account persistence*). After a
   restore, connecting again re-derives the address, so nothing needs a
   backup.
+  - The new address is ticked by default only while nothing is remembered
+    for the site: a site approved with another account, the new address
+    declined, is offered it unticked (owner's decision, 2026-11-19, on PR
+    #331).
+  - Removing an account takes it out of what every site remembers.
 - **Aliases, for a dApp that moved to another site.** A host whose site has
   no address yet and no alias: D3 says "No address for `<site>` yet", preselects the new address,
   and offers **"Use an address from another site…"**:

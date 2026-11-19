@@ -838,6 +838,19 @@ class DappViewModelsTest {
     }
 
     @Test
+    fun aSiteRememberedWithAnOrdinaryAccountGetsTheNewAddressOfferedButNotTicked() = runTest {
+        main()
+        // Approved before with Main, the new address unticked then: declining it once is respected.
+        sites.remembered.value = mapOf(uniswap to listOf(ethereumHeld.id))
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(perAppProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        assertFalse(vm.uiState.value.newAddress!!.chosen)
+        assertTrue(vm.uiState.value.accounts.single().chosen)
+    }
+
+    @Test
     fun aWrongPasswordMakesAndApprovesNothing() = runTest {
         main()
         val wallet = FakeAccounts(ethereumHeld)

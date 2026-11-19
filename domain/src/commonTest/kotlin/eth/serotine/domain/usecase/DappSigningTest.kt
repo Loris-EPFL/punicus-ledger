@@ -4,8 +4,11 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppIsolation
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.model.PersonalMessage
 import eth.serotine.domain.model.Eip712
 import eth.serotine.domain.model.Signature
@@ -27,6 +30,7 @@ import eth.serotine.domain.repository.NetworkSettings
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
+import kotlin.test.assertFalse
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -154,6 +158,50 @@ class DappSigningTest {
         enabled.value = emptySet()
         assertEquals(DappSignRefusal.NETWORK_OFF, review(request(1)).refusal)
         assertEquals(DappSignRefusal.ACCOUNTS_UNREADABLE, reviewDappMessage(request(1), null, enabled.value, now)!!.refusal)
+    }
+
+    // Per-app addresses (issue #252): an address made for example.org, the dApp's own site.
+
+    private val exampleOrg = testHost("example.org")
+    private val perApp = held.copy(
+        address = Address.of("0x" + "6".repeat(40)),
+        perApp = PerAppAccount(exampleOrg, AppIsolation.pathOf(exampleOrg), held.address),
+    )
+
+    private fun perAppReview(domain: String, aliases: Map<AppHost, Address> = emptyMap()) = reviewDappMessage(
+        request(1, signIn(perApp.address, domain), perApp.address, sessionAccounts = listOf(perApp.address)),
+        listOf(held, perApp),
+        enabled.value,
+        now,
+        aliases = aliases,
+    )!!
+
+    @Test
+    fun aPerAppAddressSigningInToItsOwnSiteIsNamedAndNotWarnedAbout() {
+        val review = perAppReview("app.example.org")
+        assertEquals(PerAppSigner(exampleOrg, exampleOrg), review.perApp)
+        assertTrue(review.warnings.isEmpty())
+        // Another host of the same site: one site, one address.
+        assertFalse(perAppReview("login.example.org").perApp!!.otherSite)
+    }
+
+    @Test
+    fun aPerAppAddressSigningInToAnotherSiteIsWarnedThatItLinksTheTwo() {
+        val review = perAppReview("other.test")
+        assertTrue(review.perApp!!.otherSite)
+        assertTrue(DappSignWarning.PER_APP_OTHER_SITE in review.warnings)
+    }
+
+    @Test
+    fun aPerAppAddressSigningInToASiteLinkedToItSaysSoAndIsNotWarned() {
+        val review = perAppReview("other.test", aliases = mapOf(testHost("other.test") to perApp.address))
+        assertEquals(PerAppSigner(exampleOrg, testHost("other.test"), linked = true), review.perApp)
+        assertFalse(DappSignWarning.PER_APP_OTHER_SITE in review.warnings)
+    }
+
+    @Test
+    fun anOrdinaryAccountIsNoPerAppAddress() {
+        assertNull(review(request(1)).perApp)
     }
 
     @Test
@@ -429,7 +477,15 @@ class DappSigningTest {
             request(1, signIn(extra = "\nExpiration Time: 2026-11-03T10:10:00Z")),
             request(2).copy(ask = DappAsk.SwitchChain(1)),
         )
-        val observe = ObserveDappMessages(requests, accounts, networks, ListCatalog(), clock = { clock }, tickSeconds = 15)
+        val observe = ObserveDappMessages(
+            requests,
+            accounts,
+            networks,
+            ListCatalog(),
+            MemoryAliases(),
+            clock = { clock },
+            tickSeconds = 15,
+        )
         var latest: List<DappMessageReview> = emptyList()
         backgroundScope.launch { observe().collect { latest = it } }
         runCurrent()

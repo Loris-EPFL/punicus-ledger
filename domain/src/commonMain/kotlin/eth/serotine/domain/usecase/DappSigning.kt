@@ -1,8 +1,11 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.DappTransactionRequest
 import eth.serotine.domain.model.DappCallMeaning
+import eth.serotine.domain.repository.PerAppAliases
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.model.Eip712
 import eth.serotine.domain.model.UInt256
@@ -128,6 +131,22 @@ enum class DappSignWarning {
 
     /** Typed data of a struct this app does not know: shown field by field, its meaning not decoded. */
     NOT_DECODED,
+
+    /**
+     * A per-app address signing in to a site that is neither the one it was made for nor one the user linked to it
+     * (issue #252; docs/walletconnect.md, *Signing in*): signing in links the two sites ([DappMessageReview.perApp]).
+     */
+    PER_APP_OTHER_SITE,
+}
+
+/**
+ * What a review says of a per-app address asked to sign (issue #252; docs/walletconnect.md, *Signing in*): the [site]
+ * it was made for, and for a sign-in, the site of its domain ([signInSite], null when it names no site or it is no
+ * sign-in) and whether the user linked that site to this address ([linked], an alias).
+ */
+data class PerAppSigner(val site: AppHost, val signInSite: AppHost? = null, val linked: Boolean = false) {
+    /** The sign-in is for another site than this address's, and not one linked to it: signing links the two. */
+    val otherSite: Boolean get() = signInSite != null && signInSite != site && !linked
 }
 
 /** What a request asks to have signed: a message, or typed data. */
@@ -172,6 +191,8 @@ data class DappMessageReview(
     val content: DappSignContent,
     val refusal: DappSignRefusal?,
     val warnings: Set<DappSignWarning>,
+    /** When [account] is a per-app address: its site, and how a sign-in's domain stands to it. */
+    val perApp: PerAppSigner? = null,
 ) {
     /** The message, when [content] is one. */
     val message: PersonalMessage? get() = (content as? DappSignContent.Message)?.message
@@ -205,6 +226,7 @@ fun reviewDappMessage(
     enabled: Set<Network>,
     nowSeconds: Long,
     tokens: List<Token> = emptyList(),
+    aliases: Map<AppHost, Address> = emptyMap(),
 ): DappMessageReview? {
     val (signer, content) = when (val ask = request.ask) {
         is DappAsk.PersonalSign ->
@@ -236,12 +258,19 @@ fun reviewDappMessage(
             else -> null
         }
     }
+    val perApp = account?.perApp?.let { mark ->
+        val signInSite = (content as? DappSignContent.Message)?.signIn
+            // EIP-4361's domain is a host with an optional port: its site, as a dApp's URL would name it.
+            ?.let { (AppHost.ofUrl("https://${it.domain}") as? AppHostResult.Host)?.host?.site }
+        PerAppSigner(mark.site, signInSite, linked = signInSite != null && aliases[signInSite] == signer)
+    }
     val warnings = buildSet {
         when (content) {
             is DappSignContent.Message -> {
                 val signIn = content.signIn
                 if (signIn == null) add(DappSignWarning.NOT_A_SIGN_IN)
                 if (signIn != null && !sameSite(signIn, request.dapp.url)) add(DappSignWarning.DOMAIN_NOT_DAPP_URL)
+                if (perApp?.otherSite == true) add(DappSignWarning.PER_APP_OTHER_SITE)
             }
             is DappSignContent.Typed -> {
                 if ("chainId" !in content.typed.data.domain) add(DappSignWarning.NO_CHAIN_ID)
@@ -252,7 +281,7 @@ fun reviewDappMessage(
             }
         }
     }
-    return DappMessageReview(request, signer, account, content, refusal, warnings)
+    return DappMessageReview(request, signer, account, content, refusal, warnings, perApp)
 }
 
 /** Why [signer] cannot sign [request] here, whatever it asks; null when it can. */
@@ -360,6 +389,8 @@ class ObserveDappMessages(
     private val networks: NetworkSettings,
     /** The built-in tokens, which name the tokens typed data refers to. */
     private val tokens: TokenCatalog,
+    /** The aliases the user linked, which a per-app address's sign-in is held against. */
+    private val aliases: PerAppAliases,
     private val clock: () -> Long = ::epochSecondsNow,
     private val tickSeconds: Long = 15,
 ) {
@@ -376,11 +407,13 @@ class ObserveDappMessages(
             it.toMap()
         }
         val enabled = networks.observe()
-        return combine(requests.observe(), accountLists, enabled, known, ticks) { waiting, list, on, pinned, _ ->
+        val linked = aliases.observe()
+        return combine(requests.observe(), accountLists, enabled, combine(known, linked, ::Pair), ticks) {
+                waiting, list, on, (pinned, links), _ ->
             val loaded = (list as? AccountList.Loaded)?.accounts
             val now = clock()
             waiting.mapNotNull { request ->
-                reviewDappMessage(request, loaded, on, now, request.network?.let(pinned::get).orEmpty())
+                reviewDappMessage(request, loaded, on, now, request.network?.let(pinned::get).orEmpty(), links)
             }
         }.distinctUntilChanged()
     }

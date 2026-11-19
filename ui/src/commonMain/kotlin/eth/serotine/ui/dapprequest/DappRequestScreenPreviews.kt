@@ -246,6 +246,43 @@ private fun DappRequestRealFundsPreview() = DappRequestPreview(signInOnEthereum)
 @Composable
 private fun DappRequestRealFundsDarkPreview() = DappRequestPreview(signInOnEthereum, darkTheme = true)
 
+// Per-app addresses (issue #252): the address of example.org signing in, named by its site.
+private val perAppAccount = signIn.copy(accountName = "example.org", perAppLine = "Per-app address for example.org")
+
+@Preview
+@Composable
+private fun DappRequestPerAppPreview() = DappRequestPreview(perAppAccount)
+
+// Signing in to another site with it: warned that the two sites are linked.
+@Preview
+@Composable
+private fun DappRequestPerAppOtherSitePreview() = DappRequestPreview(
+    perAppAccount.copy(
+        signIn = perAppAccount.signIn.map { if (it.label == "Site") it.copy(value = "app.other.test") else it },
+        warnings = listOf(
+            DappRequestViewModel.warningLine(
+                eth.serotine.domain.usecase.DappSignWarning.PER_APP_OTHER_SITE,
+                eth.serotine.domain.usecase.PerAppSigner(host("example.org"), host("other.test")),
+            ),
+        ),
+    ),
+)
+
+// Signing in to a site the user linked to it: said, and not warned about.
+@Preview
+@Composable
+private fun DappRequestPerAppLinkedPreview() = DappRequestPreview(
+    perAppAccount.copy(
+        signIn = perAppAccount.signIn.map { if (it.label == "Site") it.copy(value = "app.example.net") else it },
+        perAppLine = DappRequestViewModel.perAppLine(
+            eth.serotine.domain.usecase.PerAppSigner(host("example.org"), host("example.net"), linked = true),
+        ),
+    ),
+)
+
+private fun host(name: String) =
+    (eth.serotine.domain.model.AppHost.parse(name) as eth.serotine.domain.model.AppHostResult.Host).host
+
 /** Every preview above, which DappRequestScreenPreviewsTest renders: a new preview goes in here too. */
 internal val dappRequestScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("sign-in") { DappRequestSignInPreview() },
@@ -268,4 +305,7 @@ internal val dappRequestScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("other-network") { DappRequestOtherNetworkPreview() },
     ScreenPreview("real-funds") { DappRequestRealFundsPreview() },
     ScreenPreview("real-funds-dark") { DappRequestRealFundsDarkPreview() },
+    ScreenPreview("per-app") { DappRequestPerAppPreview() },
+    ScreenPreview("per-app-other-site") { DappRequestPerAppOtherSitePreview() },
+    ScreenPreview("per-app-linked") { DappRequestPerAppLinkedPreview() },
 )

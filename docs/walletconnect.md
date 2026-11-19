@@ -410,6 +410,15 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     site matches without a warning, as one site has one address. A domain
     matched through an alias says "linked by you to `<oldsite>`". The checks above
     are unchanged.
+    - As built in part 5, and confirmed by the owner's decision of
+      2026-11-19: D4 and D5
+      name the site of a per-app address for every request it is asked
+      to sign, a message or typed data alike; the domain is held against
+      the site only for a sign-in. A sign-in whose domain names no site
+      (an IPv6 address, say) gets no per-app check; the warning above
+      still applies to it. Both warnings may show together: the domain is
+      not the dApp's, and it is not the address's site. D6, a dApp's
+      transaction, does not name the site yet: a follow-up.
 - **A message that does not parse as EIP-4361** is signed only after a
   warning that it is not a sign-in and that the app cannot say what it
   commits to.

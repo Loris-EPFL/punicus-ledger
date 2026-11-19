@@ -31,6 +31,7 @@ internal class MemorySites : DappSiteMemory {
     }
 
     override suspend fun forget(account: AccountId): Boolean {
+        if (failSaves) return false
         remembered.value = remembered.value.mapValues { (_, kept) -> kept - account }.filterValues { it.isNotEmpty() }
         return true
     }

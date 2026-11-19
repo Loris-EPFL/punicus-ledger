@@ -188,4 +188,22 @@ class AccountChangesTest {
         RemoveAccount(repository, keys, WalletChanges(), MemoryAliases(), sites)(keyed.id)
         assertEquals(mapOf(dapp to listOf(watched.id)), sites.remembered.value, "and a site left with none goes")
     }
+
+    @Test
+    fun aMemoryThatCannotBeSavedTakesNothingFromTheRemovalAndARemovalThatFailedForgetsNothing() = runTest {
+        val dapp = testHost("dapp.test")
+        val sites = MemorySites()
+        sites.remembered.value = mapOf(dapp to listOf(keyed.id))
+        sites.failSaves = true
+        val repository = ListAccountRepository(keyed, watched)
+        val removal = RemoveAccount(repository, keys, WalletChanges(), MemoryAliases(), sites)
+        assertEquals(AccountRemoval.Removed, removal(keyed.id))
+        assertEquals(mapOf(dapp to listOf(keyed.id)), sites.remembered.value, "kept, said by nothing but harmless")
+
+        sites.failSaves = false
+        val unsaved = ListAccountRepository(keyed, watched).also { it.failSaves = true }
+        val failing = RemoveAccount(unsaved, keys, WalletChanges(), MemoryAliases(), sites)
+        assertEquals(AccountRemoval.NotSaved, failing(keyed.id))
+        assertEquals(mapOf(dapp to listOf(keyed.id)), sites.remembered.value, "a removal that failed forgets nothing")
+    }
 }

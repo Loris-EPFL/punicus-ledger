@@ -4,7 +4,7 @@ Punicus is a wallet app for Ethereum accounts and Safe accounts. It runs on
 your device. This page says what it keeps there and what reaches anyone else.
 Its developer runs no server for Punicus and receives nothing from the app.
 
-Last updated: 2026-11-15.
+Last updated: 2026-11-19.
 
 ## What Punicus does not do
 

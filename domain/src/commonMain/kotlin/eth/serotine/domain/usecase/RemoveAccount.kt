@@ -31,7 +31,9 @@ import kotlinx.coroutines.withContext
  * The last account of a per-app address takes the address's aliases with it (issue #252; docs/walletconnect.md,
  * *Aliases*): a site linked to it is no longer linked, so that restoring the address later never links that site
  * again without asking. An alias that cannot be removed takes nothing from the removal. The account is forgotten by
- * every dApp site that remembered it too ([DappSiteMemory]): what is stored for an account goes with it.
+ * every dApp site that remembered it too ([DappSiteMemory]): what is stored for an account goes with it. A memory
+ * that cannot be saved takes nothing from the removal either: the entry stays until the site is approved again, and
+ * D3 preselects nothing it can no longer offer. A removal that did not go through forgets nothing.
  */
 class RemoveAccount(
     private val accounts: AccountRepository,
@@ -60,8 +62,8 @@ class RemoveAccount(
             AccountChange.NotFound -> return AccountRemoval.NotFound
             AccountChange.NotSaved -> return AccountRemoval.NotSaved
         }
-        // The last per-app account of it: an unmarked entry of the address (watched elsewhere) holds no alias up.
         sites.forget(id)
+        // The last per-app account of it: an unmarked entry of the address (watched elsewhere) holds no alias up.
         val lastOfItsAddress = listed.none { it.id != id && it.address == id.address && it.perApp != null }
         if (account.perApp != null && lastOfItsAddress) {
             aliases.observe().first().filterValues { it == id.address }.keys.forEach { aliases.unlink(it) }

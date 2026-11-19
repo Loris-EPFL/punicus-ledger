@@ -200,6 +200,21 @@ class DappSigningTest {
     }
 
     @Test
+    fun theReviewsFollowTheAliasesTheUserLinks() = runTest {
+        val wallet = ListAccountRepository(held, perApp)
+        val aliases = MemoryAliases()
+        requests.waiting.value = listOf(
+            request(1, signIn(perApp.address, "other.test"), perApp.address, sessionAccounts = listOf(perApp.address)),
+        )
+        val observe = ObserveDappMessages(requests, wallet, networks, ListCatalog(), aliases, clock = { now })
+        assertTrue(observe().first().single().perApp!!.otherSite)
+        aliases.linked.value = mapOf(testHost("other.test") to perApp.address)
+        val linked = observe().first().single()
+        assertTrue(linked.perApp!!.linked)
+        assertFalse(DappSignWarning.PER_APP_OTHER_SITE in linked.warnings)
+    }
+
+    @Test
     fun anOrdinaryAccountIsNoPerAppAddress() {
         assertNull(review(request(1)).perApp)
     }

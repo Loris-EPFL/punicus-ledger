@@ -368,10 +368,18 @@ class DappRequestViewModel(
         fun perAppLine(signer: PerAppSigner): String {
             val made = "Per-app address for ${signer.site.name}"
             val linked = signer.signInSite?.takeIf { signer.linked }
-            return if (linked == null) made else "$made. Signing in to ${linked.name}, linked by you to it."
+            return if (linked == null) {
+                made
+            } else {
+                "$made. Signing in to ${linked.name}, linked by you to ${signer.site.name}."
+            }
         }
 
-        fun warningLine(warning: DappSignWarning, perApp: PerAppSigner? = null): String = when (warning) {
+        /**
+         * What [warning] says; [perApp], the review's per-app signer, names the two sites of [DappSignWarning
+         * .PER_APP_OTHER_SITE]. Required, so that no caller drops them.
+         */
+        fun warningLine(warning: DappSignWarning, perApp: PerAppSigner?): String = when (warning) {
             DappSignWarning.PER_APP_OTHER_SITE -> {
                 val made = perApp?.site?.name ?: "another site"
                 val domain = perApp?.signInSite?.name ?: "this site"

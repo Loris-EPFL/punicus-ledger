@@ -306,7 +306,7 @@ class DappRequestViewModelTest {
     fun aSignInForAnotherSiteIsWarnedAbout() = runTest {
         requests.waiting.value = listOf(request(1, url = "https://other.example.net"))
         assertEquals(
-            listOf(DappRequestViewModel.warningLine(eth.serotine.domain.usecase.DappSignWarning.DOMAIN_NOT_DAPP_URL)),
+            listOf(DappRequestViewModel.warningLine(DappSignWarning.DOMAIN_NOT_DAPP_URL, null)),
             viewModel().uiState.value.warnings,
         )
     }
@@ -378,7 +378,7 @@ class DappRequestViewModelTest {
         val other = (AppHost.parse("other.test") as AppHostResult.Host).host
         assertEquals("Per-app address for example.org", DappRequestViewModel.perAppLine(PerAppSigner(site, site)))
         assertEquals(
-            "Per-app address for example.org. Signing in to other.test, linked by you to it.",
+            "Per-app address for example.org. Signing in to other.test, linked by you to example.org.",
             DappRequestViewModel.perAppLine(PerAppSigner(site, other, linked = true)),
         )
         assertEquals(

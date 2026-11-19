@@ -260,8 +260,8 @@ fun reviewDappMessage(
     }
     val perApp = account?.perApp?.let { mark ->
         val signInSite = (content as? DappSignContent.Message)?.signIn
-            // EIP-4361's domain is a host with an optional port: its site, as a dApp's URL would name it.
-            ?.let { (AppHost.ofUrl("https://${it.domain}") as? AppHostResult.Host)?.host?.site }
+            // EIP-4361's domain is a host with an optional port (SignInMessage checks it): the host's site.
+            ?.let { (AppHost.parse(it.domain.substringBefore(':')) as? AppHostResult.Host)?.host?.site }
         PerAppSigner(mark.site, signInSite, linked = signInSite != null && aliases[signInSite] == signer)
     }
     val warnings = buildSet {

@@ -1,9 +1,12 @@
 package eth.serotine.ui.dapprequest
 
 import androidx.compose.runtime.Composable
+import eth.serotine.domain.model.AppHost
+import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.usecase.DappSignRefusal
 import eth.serotine.domain.usecase.DappSignWarning
+import eth.serotine.domain.usecase.PerAppSigner
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.ScreenPreview
 import eth.serotine.ui.theme.SerotineTheme
@@ -40,7 +43,7 @@ private val message = signIn.copy(
     signIn = emptyList(),
     messageText = "Welcome to Example dApp!\n\nClick to accept the terms of service.\n\nNonce: 81726354",
     messageSize = "86 bytes",
-    warnings = listOf(DappRequestViewModel.warningLine(DappSignWarning.NOT_A_SIGN_IN)),
+    warnings = listOf(DappRequestViewModel.warningLine(DappSignWarning.NOT_A_SIGN_IN, null)),
 )
 
 private const val SPENDER = "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD"
@@ -91,7 +94,7 @@ private val notDecoded = approval.copy(
         TypedRow(2, "[1]", "0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF"),
         TypedRow(0, "contents", "Hello, Bob!"),
     ),
-    warnings = listOf(DappRequestViewModel.warningLine(DappSignWarning.NOT_DECODED)),
+    warnings = listOf(DappRequestViewModel.warningLine(DappSignWarning.NOT_DECODED, null)),
 )
 
 @Composable
@@ -127,7 +130,7 @@ private fun DappRequestBiometricsPreview() =
 private fun DappRequestOtherSitePreview() = DappRequestPreview(
     signIn.copy(
         signIn = signIn.signIn.map { if (it.label == "Site") it.copy(value = "app.example.org.evil.test") else it },
-        warnings = listOf(DappRequestViewModel.warningLine(DappSignWarning.DOMAIN_NOT_DAPP_URL)),
+        warnings = listOf(DappRequestViewModel.warningLine(DappSignWarning.DOMAIN_NOT_DAPP_URL, null)),
     ),
 )
 
@@ -259,10 +262,12 @@ private fun DappRequestPerAppPreview() = DappRequestPreview(perAppAccount)
 private fun DappRequestPerAppOtherSitePreview() = DappRequestPreview(
     perAppAccount.copy(
         signIn = perAppAccount.signIn.map { if (it.label == "Site") it.copy(value = "app.other.test") else it },
+        // The domain is not the dApp's either: both warnings, as the screen stacks them.
         warnings = listOf(
+            DappRequestViewModel.warningLine(DappSignWarning.DOMAIN_NOT_DAPP_URL, null),
             DappRequestViewModel.warningLine(
-                eth.serotine.domain.usecase.DappSignWarning.PER_APP_OTHER_SITE,
-                eth.serotine.domain.usecase.PerAppSigner(host("example.org"), host("other.test")),
+                DappSignWarning.PER_APP_OTHER_SITE,
+                PerAppSigner(host("example.org"), host("other.test")),
             ),
         ),
     ),
@@ -275,13 +280,12 @@ private fun DappRequestPerAppLinkedPreview() = DappRequestPreview(
     perAppAccount.copy(
         signIn = perAppAccount.signIn.map { if (it.label == "Site") it.copy(value = "app.example.net") else it },
         perAppLine = DappRequestViewModel.perAppLine(
-            eth.serotine.domain.usecase.PerAppSigner(host("example.org"), host("example.net"), linked = true),
+            PerAppSigner(host("example.org"), host("example.net"), linked = true),
         ),
     ),
 )
 
-private fun host(name: String) =
-    (eth.serotine.domain.model.AppHost.parse(name) as eth.serotine.domain.model.AppHostResult.Host).host
+private fun host(name: String) = (AppHost.parse(name) as AppHostResult.Host).host
 
 /** Every preview above, which DappRequestScreenPreviewsTest renders: a new preview goes in here too. */
 internal val dappRequestScreenPreviews: List<ScreenPreview> = listOf(

@@ -44,12 +44,12 @@ import eth.serotine.ui.components.UnlockFields
 import eth.serotine.ui.components.unavailable
 
 /** Test tags of D4's password field, its Sign button and its Refuse button, for UI tests. */
-/** Test tag of the line naming a per-app address's site, for UI tests. */
-const val DAPP_REQUEST_PER_APP_TAG = "dapp-request-per-app"
-
 const val DAPP_REQUEST_PASSWORD_TAG = "dapp-request-password"
 const val DAPP_REQUEST_SIGN_TAG = "dapp-request-sign"
 const val DAPP_REQUEST_REFUSE_TAG = "dapp-request-refuse"
+
+/** Test tag of the line naming a per-app address's site, for UI tests. */
+const val DAPP_REQUEST_PER_APP_TAG = "dapp-request-per-app"
 
 /** Test tag of D5's every-field box, for UI tests. */
 const val DAPP_REQUEST_FIELDS_TAG = "dapp-request-fields"

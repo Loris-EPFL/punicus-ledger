@@ -348,7 +348,10 @@ class AccountDetailViewModel(
      * This account's Per-app tab, when a phrase is known by it and it is an account held here (never a watched entry
      * of the same address, nor a Safe); null otherwise, and until the envelopes are read, so the screen never waits.
      */
-    private val perAppOverview = (observePerAppAddresses?.invoke() ?: flowOf(null)).onStart { emit(null) }
+    /** The per-app addresses, read once for the tab and the aliases together. */
+    private val perAppOverview = (observePerAppAddresses?.invoke() ?: flowOf(null))
+        .onStart { emit(null) }
+        .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
 
     private val perAppTab: Flow<PerAppTab?> = combine(lookup, perAppOverview) { lookup, overview ->
         val held = (lookup as? AccountLookup.Found)?.account
@@ -356,10 +359,19 @@ class AccountDetailViewModel(
         if (held == null || overview == null) null else perAppTabOf(overview, address)
     }.distinctUntilChanged()
 
-    /** For a per-app address, the sites the user linked to it; empty otherwise. */
-    private val perAppAliases: Flow<List<String>> = perAppOverview
-        .map { overview -> overview?.entries?.firstOrNull { it.address == address }?.aliases.orEmpty().map { it.name } }
-        .distinctUntilChanged()
+    /**
+     * For a per-app address held here, the sites the user linked to it, each removable; empty for any other account
+     * (a watched entry of the same address among them), and where nothing can remove them.
+     */
+    private val perAppAliases: Flow<List<String>> = combine(lookup, perAppOverview) { lookup, overview ->
+        val held = (lookup as? AccountLookup.Found)?.account
+            ?.takeIf { it.perApp != null && it.custody == AccountCustody.InKeyStore && unlinkPerAppAlias != null }
+        if (held == null) {
+            emptyList()
+        } else {
+            overview?.entries?.firstOrNull { it.address == address }?.aliases.orEmpty().map { it.name }
+        }
+    }.distinctUntilChanged()
 
     /** Whether the unlisted collections' NFTs are shown: collapsed until the user opens them (owner ruling, #246). */
     private val unlistedNftsOpen = MutableStateFlow(false)
@@ -536,17 +548,21 @@ class AccountDetailViewModel(
         view.update { it.copy(activityOrder = order) }
     }
 
-    /** Shows the account's [segment]: its Assets or Activity, or a Safe's Owners or Queue. */
     /** Removes the alias [site] of this per-app address, asking nothing: it deletes no key (owner, 2026-11-14). */
     fun removeAlias(site: String) {
         val unlink = unlinkPerAppAlias ?: return
-        val host = (AppHost.parse(site) as? AppHostResult.Host)?.host ?: return
+        val host = (AppHost.parse(site) as? AppHostResult.Host)?.host
+        if (host == null) {
+            view.update { it.copy(message = ALIAS_NOT_REMOVED) }
+            return
+        }
         viewModelScope.launch {
             val said = if (unlink(host)) "$site will be offered an address of its own." else ALIAS_NOT_REMOVED
             view.update { it.copy(message = said) }
         }
     }
 
+    /** Shows the account's [segment]: its Assets or Activity, or a Safe's Owners or Queue. */
     fun show(segment: DetailSegment) {
         view.update { it.copy(segment = segment) }
     }

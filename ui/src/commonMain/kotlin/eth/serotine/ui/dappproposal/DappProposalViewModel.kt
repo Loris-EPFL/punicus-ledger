@@ -14,9 +14,9 @@ import eth.serotine.domain.repository.DappProposal
 import eth.serotine.domain.repository.DappProposalId
 import eth.serotine.domain.repository.DappRefusal
 import eth.serotine.domain.repository.MemoryStep
+import eth.serotine.domain.usecase.AliasLinking
 import eth.serotine.domain.usecase.ApproveDappProposal
 import eth.serotine.domain.usecase.DappOffer
-import eth.serotine.domain.usecase.AliasLinking
 import eth.serotine.domain.usecase.LinkPerAppAlias
 import eth.serotine.domain.usecase.MakePerAppAddress
 import eth.serotine.domain.usecase.ObserveDappConnections
@@ -36,7 +36,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -184,8 +183,8 @@ class DappProposalViewModel(
         val phrase: String? = null,
         val choosingPhrase: Boolean = false,
         val choosingAlias: Boolean = false,
-        /** The address of another site the user picked to link the dApp's site to, until asked. */
-        val pickedAlias: Address? = null,
+        /** Another site's address the user picked to link the dApp's site to, until the question is answered. */
+        val pickedAlias: PickedAlias? = null,
         val password: WalletPassword = WalletPassword.EMPTY,
         val busy: Boolean = false,
         val notice: String? = null,
@@ -193,27 +192,32 @@ class DappProposalViewModel(
         val done: Boolean = false,
     )
 
+    /**
+     * The [address] of [other]'s site the user picked, to link the dApp's [site] to: held with both as they were shown,
+     * so the question and its answer never depend on a list read again meanwhile.
+     */
+    private data class PickedAlias(val address: Address, val site: AppHost, val other: AppHost)
+
     /** A new per-app address to make on Approve: from the account [from]'s phrase, for [host], on [networks]. */
     private data class NewAddress(val from: AccountId, val host: AppHost, val networks: List<Network>)
 
     /** What Approve acts on, as the state last shown has it: the keys chosen, and the new address chosen, if any. */
     private data class Plan(val chosen: Set<String>, val newAddress: NewAddress?)
 
-    /** The state shown and what Approve acts on, computed together so that the two never disagree. */
-    private class Shown(val state: DappProposalUiState, val plan: Plan)
+    /**
+     * The state shown and what Approve acts on, computed together so that the two never disagree, with the per-app
+     * [choice] they were built from.
+     */
+    private class Shown(val state: DappProposalUiState, val plan: Plan, val choice: PerAppChoice? = null)
 
     private val local = MutableStateFlow(Local())
 
     private val overviews = observeDappConnections()
 
-    /** The per-app choice as last read, which the alias question links the dApp's site by. */
-    private val lastChoice = MutableStateFlow<PerAppChoice?>(null)
-
     private val choices = overviews
         .map { overview -> (overview.connections as? DappConnections.On)?.proposals?.find { it.id == id }?.dapp?.url }
         .distinctUntilChanged()
         .flatMapLatest { url -> observePerAppChoice(url.orEmpty()) }
-        .onEach { lastChoice.value = it }
 
     private val shown: StateFlow<Shown> = combine(overviews, choices, local) { overview, perApp, local ->
         val proposal = (overview.connections as? DappConnections.On)?.proposals?.find { it.id == id }
@@ -259,7 +263,7 @@ class DappProposalViewModel(
                 unavailable = offerLine(offer, choice.account.network, choice.account.perApp?.site?.name),
                 network = choice.account.network.displayName,
                 perAppSite = choice.account.perApp?.site?.name,
-                linked = alias != null && choice.account.address == alias && choice.account.perApp != null,
+                linked = choice.account in perApp.aliased,
             )
         }
         val chosenKeys = options.filter { it.chosen }.map { it.key }.toSet()
@@ -289,9 +293,9 @@ class DappProposalViewModel(
             password = local.password,
             aliasOffer = aliasOffer(proposal, perApp),
             aliasChoices = if (local.choosingAlias) aliasChoices(perApp) else null,
-            confirmingAlias = local.pickedAlias?.let { picked -> aliasQuestion(perApp, picked) },
+            confirmingAlias = local.pickedAlias?.let(::aliasQuestion),
         )
-        Shown(state, Plan(chosenKeys, making))
+        Shown(state, Plan(chosenKeys, making), perApp)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Shown(DappProposalUiState(), NO_PLAN))
 
     val uiState: StateFlow<DappProposalUiState> =
@@ -383,15 +387,11 @@ class DappProposalViewModel(
         )
     }
 
-    private fun aliasQuestion(choice: PerAppChoice, picked: Address): AliasQuestion? {
-        val site = choice.site ?: return null
-        val other = choice.others.firstOrNull { it.address == picked } ?: return null
-        return AliasQuestion(
-            title = "Use ${other.site.name}'s address?",
-            text = "${site.name} will see the same address as ${other.site.name}. The two sites can link your " +
-                "activity.",
-        )
-    }
+    private fun aliasQuestion(picked: PickedAlias) = AliasQuestion(
+        title = "Use ${picked.other.name}'s address?",
+        text = "${picked.site.name} will see the same address as ${picked.other.name}. The two sites can link your " +
+            "activity.",
+    )
 
     /** "Use an address from another site…" was tapped: the list opens, or, greyed out, it says why. */
     fun chooseAlias() {
@@ -404,20 +404,33 @@ class DappProposalViewModel(
         }
     }
 
-    /** The address [key] names was picked from the list, or none ([key] null closes it): what it means is asked. */
-    fun pickAlias(key: String?) = local.update {
-        it.copy(choosingAlias = false, pickedAlias = key?.let(Address::parse))
+    /**
+     * The address [key] names was picked from the list as shown, or none ([key] null closes it): what it means is
+     * asked, of the sites as they were shown.
+     */
+    fun pickAlias(key: String?) {
+        val choice = shown.value.choice
+        val other = choice?.others?.firstOrNull { it.address.hex == key }
+        val site = choice?.site
+        local.update {
+            it.copy(
+                choosingAlias = false,
+                pickedAlias = if (other != null && site != null) PickedAlias(other.address, site, other.site) else null,
+            )
+        }
     }
 
-    /** The question was answered: yes links the site to the address picked, which is then preselected. */
+    /**
+     * The question was answered: yes links the site to the address picked, which is then preselected. One that is no
+     * longer another site's address here by then is refused by the link, and said ([aliasLine]).
+     */
     fun answerAlias(yes: Boolean) {
         val picked = local.value.pickedAlias ?: return
         local.update { it.copy(pickedAlias = null) }
-        val site = lastChoice.value?.site
-        if (!yes || site == null || local.value.busy) return
+        if (!yes || local.value.busy) return
         local.update { it.copy(busy = true, notice = null) }
         viewModelScope.launch {
-            val linked = linkPerAppAlias(site, picked)
+            val linked = linkPerAppAlias(picked.site, picked.address)
             local.update {
                 // Linked: the choice starts again from the preselection, which is now the address linked to.
                 if (linked == AliasLinking.Linked) {
@@ -553,6 +566,7 @@ class DappProposalViewModel(
             AliasLinking.Linked -> ""
             AliasLinking.NotPerApp -> "That address is no longer another site's per-app address here. Nothing " +
                 "was linked."
+            AliasLinking.HasOwn -> "This site has an address of its own by now, so it was not linked to another."
             AliasLinking.ListUnreadable -> ACCOUNTS_UNREADABLE
             AliasLinking.NotSaved -> NOT_SAVED
         }

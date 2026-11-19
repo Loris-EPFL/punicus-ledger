@@ -162,7 +162,8 @@ sealed interface PerAppRestoring {
 /**
  * Links the dApp site [site] to the per-app address [address] of another site (docs/walletconnect.md, *Aliases*), once
  * the user was asked and agreed that the two sites can link their activity. [address] must be a per-app address in the
- * wallet, of another site than [site]: anything else is refused, never linked.
+ * wallet, of another site than [site], and [site] must have no per-app address of its own: anything else is refused,
+ * never linked, so that a site never sees two addresses through an alias.
  */
 class LinkPerAppAlias(private val accounts: AccountRepository, private val aliases: PerAppAliases) {
     suspend operator fun invoke(site: AppHost, address: Address): AliasLinking {
@@ -171,6 +172,7 @@ class LinkPerAppAlias(private val accounts: AccountRepository, private val alias
         val mark = listed.firstOrNull { it.address == address && it.perApp != null }?.perApp
             ?: return AliasLinking.NotPerApp
         if (mark.site == site.site) return AliasLinking.NotPerApp
+        if (listed.any { it.perApp?.site == site.site }) return AliasLinking.HasOwn
         return if (aliases.link(site.site, address)) AliasLinking.Linked else AliasLinking.NotSaved
     }
 }
@@ -182,6 +184,9 @@ enum class AliasLinking {
 
     /** The address is not another site's per-app address in the wallet; nothing changed. */
     NotPerApp,
+
+    /** The site has a per-app address of its own; nothing changed. */
+    HasOwn,
 
     /** The account list cannot be read; nothing changed. */
     ListUnreadable,

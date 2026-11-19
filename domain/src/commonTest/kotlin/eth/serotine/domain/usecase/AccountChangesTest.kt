@@ -4,8 +4,10 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AppIsolation
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.model.WalletPassword
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -34,6 +36,9 @@ class AccountChangesTest {
 
     private val repository = ListAccountRepository(keyed, watched)
     private val keys = RecordingKeyStore(listOf(keyed.address))
+
+    private fun removeFrom(repository: ListAccountRepository) =
+        RemoveAccount(repository, keys, WalletChanges(), MemoryAliases())
 
     @Test
     fun observeAccountFollowsOneEntryUntilItIsGone() = runTest {
@@ -87,7 +92,7 @@ class AccountChangesTest {
 
     @Test
     fun removingAnAccountHeldInTheKeyStoreDeletesItsKeyAfterTheEntry() = runTest {
-        assertEquals(AccountRemoval.Removed, RemoveAccount(repository, keys, WalletChanges())(keyed.id))
+        assertEquals(AccountRemoval.Removed, removeFrom(repository)(keyed.id))
 
         assertEquals(listOf(watched), repository.accounts.value)
         assertEquals(listOf(keyed.address), keys.deleted)
@@ -95,7 +100,7 @@ class AccountChangesTest {
 
     @Test
     fun removingAWatchedAccountLeavesTheOtherKeysAlone() = runTest {
-        assertEquals(AccountRemoval.Removed, RemoveAccount(repository, keys, WalletChanges())(watched.id))
+        assertEquals(AccountRemoval.Removed, removeFrom(repository)(watched.id))
 
         assertEquals(listOf(keyed), repository.accounts.value)
         assertEquals(emptyList(), keys.deleted, "a watched account has no key to delete")
@@ -112,7 +117,7 @@ class AccountChangesTest {
             changes,
         )(Mnemonic("words"), WalletPassword("pw"), listOf(Network.SEPOLIA)) }
         runCurrent() // the import holds the wallet while it stores the key
-        val removal = async { RemoveAccount(repository, keys, changes)(watched.id) }
+        val removal = async { RemoveAccount(repository, keys, changes, MemoryAliases())(watched.id) }
         advanceUntilIdle()
 
         assertEquals(MnemonicImport.KeyAdded(watched.copy(custody = AccountCustody.InKeyStore)), import.await())
@@ -126,7 +131,7 @@ class AccountChangesTest {
     fun aKeyThatCannotBeDeletedIsReportedWithTheEntryGone() = runTest {
         keys.failDeletes = true
 
-        assertEquals(AccountRemoval.RemovedKeyKept, RemoveAccount(repository, keys, WalletChanges())(keyed.id))
+        assertEquals(AccountRemoval.RemovedKeyKept, removeFrom(repository)(keyed.id))
         assertEquals(listOf(watched), repository.accounts.value)
     }
 
@@ -134,16 +139,39 @@ class AccountChangesTest {
     fun anEntryThatCannotBeRemovedKeepsItsKey() = runTest {
         repository.failSaves = true
 
-        assertEquals(AccountRemoval.NotSaved, RemoveAccount(repository, keys, WalletChanges())(keyed.id))
+        assertEquals(AccountRemoval.NotSaved, removeFrom(repository)(keyed.id))
         assertEquals(emptyList(), keys.deleted, "the key never goes before the entry")
     }
 
     @Test
     fun removingAnAddressNotInTheWalletChangesNothing() = runTest {
-        assertEquals(AccountRemoval.NotFound, RemoveAccount(repository, keys, WalletChanges())(stranger.onSepolia))
+        assertEquals(AccountRemoval.NotFound, removeFrom(repository)(stranger.onSepolia))
         assertEquals(emptyList(), keys.deleted)
 
         repository.unreadable = true
-        assertEquals(AccountRemoval.NotSaved, RemoveAccount(repository, keys, WalletChanges())(keyed.id))
+        assertEquals(AccountRemoval.NotSaved, removeFrom(repository)(keyed.id))
+    }
+
+    @Test
+    fun theLastAccountOfAPerAppAddressTakesItsAliasesWithIt() = runTest {
+        val site = testHost("uniswap.org")
+        val mark = PerAppAccount(site, AppIsolation.pathOf(site), keyed.address)
+        val onEthereum = Account(
+            Network.ETHEREUM,
+            Address.of("0x" + "6".repeat(40)),
+            AccountKind.EOA,
+            "uniswap.org",
+            AccountCustody.InKeyStore,
+            perApp = mark,
+        )
+        val onGnosis = onEthereum.copy(network = Network.GNOSIS)
+        val repository = ListAccountRepository(onEthereum, onGnosis)
+        val app = testHost("uniswap.app")
+        val aliases = MemoryAliases(mapOf(app to onEthereum.address))
+        val remove = RemoveAccount(repository, RecordingKeyStore(listOf(onEthereum.address)), WalletChanges(), aliases)
+        remove(onEthereum.id)
+        assertEquals(mapOf(app to onEthereum.address), aliases.linked.value, "still held on Gnosis Chain")
+        remove(onGnosis.id)
+        assertEquals(emptyMap(), aliases.linked.value, "restoring it later never links uniswap.app again unasked")
     }
 }

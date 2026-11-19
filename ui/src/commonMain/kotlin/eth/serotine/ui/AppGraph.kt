@@ -37,10 +37,10 @@ import eth.serotine.domain.repository.NameResolver
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkFreshness
 import eth.serotine.domain.repository.NetworkSettings
-import eth.serotine.domain.repository.PerAppAliases
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.NftContracts
 import eth.serotine.domain.repository.Outbox
+import eth.serotine.domain.repository.PerAppAliases
 import eth.serotine.domain.repository.PerAppKeys
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.ReceiptTracker
@@ -974,7 +974,7 @@ class AppGraph(
             account,
             ObserveAccount(accounts),
             ObserveAccounts(accounts),
-            RemoveAccount(accounts, keys, walletChanges),
+            RemoveAccount(accounts, keys, walletChanges, perAppAliases),
         )
 
     fun watchViewModel(): WatchViewModel = WatchViewModel(

@@ -165,8 +165,8 @@ private val firstVisit = realFunds.copy(
         unavailable = null,
     ),
     password = WalletPassword("made-up password"),
-    // No other site has an address here yet: there is none to use instead, said on a tap.
-    aliasOffer = AliasOffer("No address for uniswap.org yet", DappProposalViewModel.NO_OTHER_SITE),
+    // A phrase is held: another site's address can be used instead, or an old site's typed and made again.
+    aliasOffer = AliasOffer("No address for uniswap.org yet", null),
 )
 
 @Preview
@@ -209,6 +209,8 @@ private fun DappProposalNoPhrasePreview() = DappProposalPreview(
             chosen = false,
             unavailable = DappProposalViewModel.NO_PHRASE,
         ),
+        // No other site's address and no phrase: nothing to use instead, said on a tap.
+        aliasOffer = AliasOffer("No address for uniswap.org yet", DappProposalViewModel.NO_OTHER_SITE),
     ),
 )
 

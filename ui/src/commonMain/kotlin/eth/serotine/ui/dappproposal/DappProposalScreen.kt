@@ -438,9 +438,9 @@ private fun AliasDialog(choices: List<AliasChoice>, host: String, actions: Alias
                     ),
                     keyboardActions = KeyboardActions(onGo = { actions.onType() }),
                 )
+                // Always tappable: with nothing typed, the tap says what is missing (owner ruling, 2026-10-18, #55).
                 TextButton(
                     onClick = actions.onType,
-                    enabled = host.isNotBlank(),
                     modifier = Modifier.testTag(DAPP_PROPOSAL_ALIAS_TYPE_TAG),
                 ) { Text("Use that site's address") }
             }

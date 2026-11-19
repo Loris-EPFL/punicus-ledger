@@ -661,6 +661,75 @@ class DappViewModelsTest {
     }
 
     @Test
+    fun aWrongPasswordForAnOldSiteKeepsTheQuestionOpenToTryAgain() = runTest {
+        main()
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.onAliasHostChange("uniswap.org")
+        vm.typeAlias()
+        vm.onPasswordChange("not it")
+        vm.answerAlias(yes = true)
+        runCurrent()
+        assertEquals("That is not the wallet password. Nothing was made or linked.", vm.uiState.value.notice)
+        assertNotNull(vm.uiState.value.confirmingAlias, "still asked")
+        vm.onPasswordChange("correct horse")
+        vm.answerAlias(yes = true)
+        runCurrent()
+        assertNull(vm.uiState.value.confirmingAlias)
+        assertEquals(1, aliases.linked.value.size)
+    }
+
+    @Test
+    fun anOldSiteThatWasItselfLinkedGetsTheAddressItSaw() = runTest {
+        main()
+        // uniswap.exchange saw uniswap.org's address; the dApp now moved on to uniswap.app.
+        val exchange = (AppHost.parse("uniswap.exchange") as AppHostResult.Host).host
+        aliases.linked.value = mapOf(exchange to ofUniswap.address)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld, ofUniswap))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.onAliasHostChange("uniswap.exchange")
+        vm.typeAlias()
+        assertEquals("Use uniswap.org's address?", vm.uiState.value.confirmingAlias?.title)
+        assertEquals(false, vm.uiState.value.confirmingAlias?.needsPassword)
+        assertTrue(keys.derived.isEmpty())
+    }
+
+    @Test
+    fun cancellingAQuestionThatTookNoPasswordKeepsTheNewAddresssOne() = runTest {
+        main()
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld, ofUniswap))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.onPasswordChange("correct horse")
+        vm.chooseAlias()
+        vm.pickAlias(vm.uiState.value.aliasChoices!!.single().key)
+        vm.answerAlias(yes = false)
+        assertEquals("correct horse", vm.uiState.value.password.text)
+    }
+
+    @Test
+    fun withSeveralPhrasesTheQuestionNamesTheOneTheOldAddressIsMadeFrom() = runTest {
+        main()
+        val second = account(Network.ETHEREUM, '2').copy(label = "Savings")
+        keys.phrases = mapOf(ethereumHeld.address to ethereumHeld.address, second.address to second.address)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld, second))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.onAliasHostChange("uniswap.org")
+        vm.typeAlias()
+        assertTrue("recovery phrase of ${ethereumHeld.label}" in vm.uiState.value.confirmingAlias!!.text)
+    }
+
+    @Test
     fun aTypedHostThatIsThisSiteOrNoneIsSaid() = runTest {
         main()
         sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())

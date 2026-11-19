@@ -47,7 +47,7 @@ class PerAppListTest {
     }
 
     private fun restoreWith(keys: FakePerAppKeys) =
-        RestorePerAppAddress(MakePerAppAddress(keys, ListAccountRepository(first), WalletChanges()), networks)
+        RestorePerAppAddress(MakePerAppAddress(keys, ListAccountRepository(first), WalletChanges(), aliases), networks)
 
     @Test
     fun anAddressOnTwoNetworksIsListedOnceWithBoth() {
@@ -120,7 +120,7 @@ class PerAppListTest {
     fun restoringMakesTheSitesAddressFromTheHostTyped() = runTest {
         val accounts = ListAccountRepository(first)
         val keys = FakePerAppKeys(address = address('6'))
-        val restore = RestorePerAppAddress(MakePerAppAddress(keys, accounts, WalletChanges()), networks)
+        val restore = RestorePerAppAddress(MakePerAppAddress(keys, accounts, WalletChanges(), aliases), networks)
         val restored = restore(first.id, "  https://app.uniswap.org/swap ", WalletPassword("correct horse"))
         assertIs<PerAppRestoring.Done>(restored)
         assertEquals(uniswap, restored.site)
@@ -195,6 +195,21 @@ class PerAppListTest {
         assertEquals(AliasLinking.NotSaved, link(testHost("cow.fi"), address('6')))
         aliases.failSaves = false
         assertEquals(true, UnlinkPerAppAlias(aliases)(testHost("app.uniswap.app")))
+        assertEquals(emptyMap(), aliases.linked.value)
+    }
+
+    @Test
+    fun aSitesOwnAddressMadeOrRestoredRemovesItsAlias() = runTest {
+        // uniswap.app linked to another address first, then restored: its own address wins (owner, 2026-11-19).
+        val app = testHost("uniswap.app")
+        aliases.linked.value = mapOf(app to perAppOnEthereum.address)
+        val keys = FakePerAppKeys(address = address('8'))
+        val restore = RestorePerAppAddress(
+            MakePerAppAddress(keys, ListAccountRepository(first, perAppOnEthereum), WalletChanges(), aliases),
+            networks,
+        )
+        val restored = assertIs<PerAppRestoring.Done>(restore(first.id, "uniswap.app", WalletPassword("correct horse")))
+        assertEquals(true, assertIs<PerAppMaking.Made>(restored.making).unlinked)
         assertEquals(emptyMap(), aliases.linked.value)
     }
 }

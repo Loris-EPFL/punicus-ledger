@@ -165,7 +165,9 @@ class AccountChangesTest {
             perApp = mark,
         )
         val onGnosis = onEthereum.copy(network = Network.GNOSIS)
-        val repository = ListAccountRepository(onEthereum, onGnosis)
+        // The same address watched on Sepolia: no per-app account, so it holds no alias up.
+        val watchedThere = onEthereum.copy(network = Network.SEPOLIA, custody = AccountCustody.Watched, perApp = null)
+        val repository = ListAccountRepository(onEthereum, onGnosis, watchedThere)
         val app = testHost("uniswap.app")
         val aliases = MemoryAliases(mapOf(app to onEthereum.address))
         val remove = RemoveAccount(repository, RecordingKeyStore(listOf(onEthereum.address)), WalletChanges(), aliases)

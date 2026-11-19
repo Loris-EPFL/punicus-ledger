@@ -142,10 +142,11 @@ fun DappProposalScreen(
     modifier: Modifier = Modifier,
     aliasActions: AliasActions = AliasActions(),
 ) {
-    state.explaining?.let { UnavailableDialog(UnavailableNotice(it.title, it.reason), onDismissExplanation) }
     state.phrases?.let { PhraseDialog(it, onPickPhrase) }
     state.aliasChoices?.let { AliasDialog(it, aliasActions.onPick) }
     state.confirmingAlias?.let { AliasQuestionDialog(it, aliasActions.onAnswer) }
+    // Last, so that it shows over the list a greyed-out choice of which it explains.
+    state.explaining?.let { UnavailableDialog(UnavailableNotice(it.title, it.reason), onDismissExplanation) }
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -379,19 +380,27 @@ private fun AliasDialog(choices: List<AliasChoice>, onPick: (String?) -> Unit) {
         onDismissRequest = { onPick(null) },
         title = { Text("Use an address from another site") },
         text = {
-            Column {
+            // It grows with every site connected: it scrolls, so that each can be reached.
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(
                     "The site that connects then sees that site's address, so the two can link your activity.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 choices.forEach { choice ->
+                    val greyed = choice.unavailable != null
+                    val color = if (greyed) Unavailable.contentColor() else MaterialTheme.colorScheme.onSurface
                     Column(
-                        Modifier.fillMaxWidth().clickable { onPick(choice.key) }.padding(vertical = 6.dp)
+                        Modifier.fillMaxWidth().clickable { onPick(choice.key) }.unavailable(greyed)
+                            .padding(vertical = 6.dp)
                             .testTag(DAPP_PROPOSAL_ALIAS_CHOICE_TAG + choice.key),
                     ) {
-                        Text(choice.site)
-                        Text(choice.address, style = MaterialTheme.typography.bodySmall)
-                        choice.linked?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        Text(choice.site, color = color)
+                        Text(
+                            "${choice.networks} · ${choice.address}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = color,
+                        )
+                        choice.linked?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = color) }
                     }
                 }
             }

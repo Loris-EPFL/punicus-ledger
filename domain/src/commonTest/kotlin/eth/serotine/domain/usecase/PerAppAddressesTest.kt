@@ -143,6 +143,14 @@ class PerAppAddressesTest {
         assertEquals(listOf(ofUniswap), linked.aliased)
         assertTrue(linked.made.isEmpty(), "made for uniswap.org, not for this site")
         assertEquals(listOf(testHost("uniswap.app")), linked.others.first { it.address == ofUniswap.address }.aliases)
+
+        // Should the site get its own address beside the alias, its own wins (owner, 2026-11-19, on #328).
+        val app = testHost("uniswap.app")
+        accounts.accounts.value += account(Network.ETHEREUM, '8', perApp = markOf(app))
+        val both = observe("https://app.uniswap.app").first()
+        assertNull(both.alias)
+        assertTrue(both.aliased.isEmpty())
+        assertEquals(1, both.made.size)
     }
 
     @Test
@@ -159,7 +167,7 @@ class PerAppAddressesTest {
     fun aPerAppAddressIsMadeOnEachNetworkNamedAndMarked() = runTest {
         val accounts = ListAccountRepository(first)
         val keys = FakePerAppKeys(phrases = mapOf(first.address to first.address))
-        val make = MakePerAppAddress(keys, accounts, WalletChanges())
+        val make = MakePerAppAddress(keys, accounts, WalletChanges(), aliases)
         val host = testHost("app.uniswap.org")
         val made = make(first.id, host, listOf(Network.ETHEREUM, Network.GNOSIS), WalletPassword("correct horse"))
         assertIs<PerAppMaking.Made>(made)
@@ -179,7 +187,7 @@ class PerAppAddressesTest {
     fun makingOneRefusesWhatCannotBeMadeAndChangesNothing() = runTest {
         val accounts = ListAccountRepository(first, watched, safe)
         val keys = FakePerAppKeys()
-        val make = MakePerAppAddress(keys, accounts, WalletChanges())
+        val make = MakePerAppAddress(keys, accounts, WalletChanges(), aliases)
         val host = testHost("app.uniswap.org")
         val password = WalletPassword("correct horse")
         assertEquals(PerAppMaking.NoNetwork, make(first.id, host, emptyList(), password))
@@ -202,7 +210,7 @@ class PerAppAddressesTest {
         val made = account(Network.ETHEREUM, '6', perApp = mark)
         val accounts = ListAccountRepository(first, made)
         val keys = FakePerAppKeys(address = made.address)
-        val result = MakePerAppAddress(keys, accounts, WalletChanges())(
+        val result = MakePerAppAddress(keys, accounts, WalletChanges(), aliases)(
             first.id,
             testHost("swap.uniswap.org"),
             listOf(Network.GNOSIS),
@@ -218,7 +226,7 @@ class PerAppAddressesTest {
         val watchedOwn = account(Network.ETHEREUM, '7', custody = AccountCustody.Watched)
             .copy(label = "mine.eth", ensName = "mine.eth")
         val accounts = ListAccountRepository(first, watchedOwn, other)
-        val made = MakePerAppAddress(keys, accounts, WalletChanges())(
+        val made = MakePerAppAddress(keys, accounts, WalletChanges(), aliases)(
             first.id,
             testHost("app.uniswap.org"),
             listOf(Network.ETHEREUM),

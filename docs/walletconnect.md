@@ -277,7 +277,7 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   - Aliases are app-private data, not key material, and not restored with
     the phrase. The account's details list them, each removable there.
   - As built in part 4b, and confirmed by the owner's decisions of
-    2026-11-19:
+    2026-11-19, on PR #328:
     - The list is in the order of the account list: no time of last use
       is kept, in place of "by last use".
     - The site is linked when the user answers "Use it", before Approve.
@@ -290,6 +290,14 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
       why, while no other site has a per-app address here.
     - Removing an alias ends no running session; the next connection from
       that site is offered an address of its own.
+    - **A site's own address wins over an alias** (the same decisions): a
+      site that gets an address of its own (made by D3, or restored on
+      D9) loses its alias, and the restore says so; linking refuses a site
+      that has one. Should both stand, D3 offers the site its own.
+    - **The list names each address's networks**, and one this dApp could
+      be offered on none of them is greyed out, a tap saying why.
+    - The last per-app account of an address takes its aliases with it, so
+      that restoring the address later never links a site again unasked.
     - "Type the old site's host" follows in part 4c.
 - **Every per-app address is listed (D9)**, in the Per-app tab of the
   account detail of the phrase's first account (docs/wallet-ux.md, 4), and

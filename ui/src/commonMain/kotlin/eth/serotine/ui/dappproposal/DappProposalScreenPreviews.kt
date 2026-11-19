@@ -242,8 +242,15 @@ private fun DappProposalMovedPreview() = DappProposalPreview(moved)
 private fun DappProposalChoosingAliasPreview() = DappProposalPreview(
     moved.copy(
         aliasChoices = listOf(
-            AliasChoice("0x6", "uniswap.org", "Also seen by uniswap.exchange", "0x9fa6…8D52"),
-            AliasChoice("0x3", "safe.global", null, "0x3c17…a07b"),
+            AliasChoice("0x6", "uniswap.org", "Also seen by uniswap.exchange", "0x9fa6…8D52", "Ethereum, Gnosis Chain"),
+            AliasChoice(
+                "0x3",
+                "safe.global",
+                null,
+                "0x3c17…a07b",
+                "Sepolia",
+                unavailable = DappProposalViewModel.UNUSABLE_HERE,
+            ),
         ),
     ),
 )

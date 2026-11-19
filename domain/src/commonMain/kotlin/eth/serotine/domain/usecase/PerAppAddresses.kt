@@ -138,12 +138,14 @@ class ObservePerAppChoice(
         ) { (listed, phrases), memory, enabled, links ->
             val perApp = listed.mapNotNull { it.perApp }
             val sources = phraseSources(listed, phrases)
-            val alias = site?.let { links[it] }
+            val made = if (site == null) emptyList() else listed.filter { it.perApp?.site == site }
+            // The site's own address wins over an alias, should both stand (owner, 2026-11-19, on #328).
+            val alias = site?.let { links[it] }?.takeIf { made.isEmpty() }
             PerAppChoice(
                 host = host,
                 site = site,
                 sources = sources,
-                made = if (site == null) emptyList() else listed.filter { it.perApp?.site == site },
+                made = made,
                 remembered = site?.let { memory[it] }.orEmpty(),
                 enabled = enabled,
                 collision = site?.let { AppIsolation.collision(it, perApp.map { mark -> mark.site }) },
@@ -174,6 +176,11 @@ class MakePerAppAddress(
     private val accounts: AccountRepository,
     /** The app's one [WalletChanges]. */
     private val changes: WalletChanges,
+    /**
+     * The aliases the user linked: a site that gets an address of its own loses its alias, the own address winning
+     * (owner's decision, 2026-11-19, on PR #328), so that it never sees two.
+     */
+    private val aliases: PerAppAliases,
 ) {
     suspend operator fun invoke(
         from: AccountId,
@@ -212,7 +219,10 @@ class MakePerAppAddress(
             if (!accounts.addMarked(account, mark)) return PerAppMaking.ListNotSaved
             account.id
         }
-        return PerAppMaking.Made(stored.address, made, stored.steppedDown)
+        // Its own address wins over an alias it had: the site never sees two (owner, 2026-11-19, on #328).
+        val linked = aliases.observe().first()[site]
+        val unlinked = linked != null && linked != stored.address && aliases.unlink(site)
+        return PerAppMaking.Made(stored.address, made, stored.steppedDown, unlinked)
     }
 }
 
@@ -244,10 +254,15 @@ sealed interface PerAppMaking {
 
     /**
      * [address] is in the wallet as each of [accounts], held in the key store. [steppedDown] when its envelope was
-     * sealed at a lighter password cost than this device's own, which the user is told.
+     * sealed at a lighter password cost than this device's own, which the user is told; [unlinked] when the site's
+     * alias to another site's address was removed, its own address taking its place.
      */
-    data class Made(val address: Address, val accounts: List<AccountId>, val steppedDown: Boolean = false) :
-        PerAppMaking
+    data class Made(
+        val address: Address,
+        val accounts: List<AccountId>,
+        val steppedDown: Boolean = false,
+        val unlinked: Boolean = false,
+    ) : PerAppMaking
 
     /** No network to make it on was given; nothing changed. */
     data object NoNetwork : PerAppMaking

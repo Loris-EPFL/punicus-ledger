@@ -194,7 +194,7 @@ class DappViewModelsTest {
             ApproveDappProposal(sessions, accounts, networks, sites, aliases),
             RejectDappProposal(sessions),
             ObservePerAppChoice(accounts, keys, sites, networks, aliases),
-            MakePerAppAddress(keys, accounts, WalletChanges()),
+            MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
             LinkPerAppAlias(accounts, aliases),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -235,7 +235,7 @@ class DappViewModelsTest {
             ApproveDappProposal(sessions, wallet, on, sites, aliases),
             RejectDappProposal(sessions),
             ObservePerAppChoice(wallet, keys, sites, on, aliases),
-            MakePerAppAddress(keys, wallet, WalletChanges()),
+            MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
             LinkPerAppAlias(wallet, aliases),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -260,7 +260,7 @@ class DappViewModelsTest {
             ApproveDappProposal(sessions, wallet, on, sites, aliases),
             RejectDappProposal(sessions),
             ObservePerAppChoice(wallet, keys, sites, on, aliases),
-            MakePerAppAddress(keys, wallet, WalletChanges()),
+            MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
             LinkPerAppAlias(wallet, aliases),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -311,7 +311,7 @@ class DappViewModelsTest {
             ApproveDappProposal(sessions, wallet, on, sites, aliases),
             RejectDappProposal(sessions),
             ObservePerAppChoice(wallet, keys, sites, on, aliases),
-            MakePerAppAddress(keys, wallet, WalletChanges()),
+            MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
             LinkPerAppAlias(wallet, aliases),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -344,7 +344,7 @@ class DappViewModelsTest {
             ApproveDappProposal(sessions, wallet, on, sites, aliases),
             RejectDappProposal(sessions),
             ObservePerAppChoice(wallet, keys, sites, on, aliases),
-            MakePerAppAddress(keys, wallet, WalletChanges()),
+            MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
             LinkPerAppAlias(wallet, aliases),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -373,7 +373,7 @@ class DappViewModelsTest {
             ApproveDappProposal(sessions, accounts, networks, sites, aliases),
             RejectDappProposal(sessions),
             ObservePerAppChoice(accounts, keys, sites, networks, aliases),
-            MakePerAppAddress(keys, accounts, WalletChanges()),
+            MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
             LinkPerAppAlias(accounts, aliases),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -399,7 +399,7 @@ class DappViewModelsTest {
             ApproveDappProposal(sessions, accounts, networks, sites, aliases),
             RejectDappProposal(sessions),
             ObservePerAppChoice(accounts, keys, sites, networks, aliases),
-            MakePerAppAddress(keys, accounts, WalletChanges()),
+            MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
             LinkPerAppAlias(accounts, aliases),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -421,7 +421,7 @@ class DappViewModelsTest {
             ApproveDappProposal(sessions, accounts, networks, sites, aliases),
             RejectDappProposal(sessions),
             ObservePerAppChoice(accounts, keys, sites, networks, aliases),
-            MakePerAppAddress(keys, accounts, WalletChanges()),
+            MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
             LinkPerAppAlias(accounts, aliases),
         )
         backgroundScope.launch { vm.uiState.collect {} }
@@ -463,7 +463,7 @@ class DappViewModelsTest {
         ApproveDappProposal(sessions, wallet, realFunds, sites, aliases),
         RejectDappProposal(sessions),
         ObservePerAppChoice(wallet, keys, sites, realFunds, aliases),
-        MakePerAppAddress(keys, wallet, WalletChanges()),
+        MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
         LinkPerAppAlias(wallet, aliases),
     )
 
@@ -553,6 +553,61 @@ class DappViewModelsTest {
         vm.approve()
         runCurrent()
         assertEquals(listOf(proposalId to listOf(ofUniswap.id)), sessions.approved)
+    }
+
+    @Test
+    fun theAddressLinkedIsChosenOverWhatTheSitesMemoryPreselects() = runTest {
+        main()
+        val wallet = FakeAccounts(ethereumHeld, ofUniswap)
+        val moved = (AppHost.parse("uniswap.app") as AppHostResult.Host).host
+        // Approved before with an ordinary account, the new address unticked then.
+        sites.remembered.value = mapOf(moved to listOf(ethereumHeld.id))
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(wallet)
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.pickAlias(vm.uiState.value.aliasChoices!!.single().key)
+        vm.answerAlias(yes = true)
+        runCurrent()
+        val accounts = vm.uiState.value.accounts
+        assertTrue(accounts.first { it.key.endsWith(ofUniswap.address.hex) }.chosen, "the pick made here")
+        assertFalse(accounts.first { it.key.endsWith(ethereumHeld.address.hex) }.chosen)
+    }
+
+    @Test
+    fun anAddressThisDappCouldUseOnNoNetworkIsGreyedOutInTheList() = runTest {
+        main()
+        // uniswap.org's address held on Sepolia alone; the dApp asks for Ethereum and Gnosis Chain.
+        val onSepolia = ofUniswap.copy(network = Network.SEPOLIA)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld, onSepolia))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        val choice = vm.uiState.value.aliasChoices!!.single()
+        assertEquals("Sepolia", choice.networks)
+        assertEquals(DappProposalViewModel.UNUSABLE_HERE, choice.unavailable)
+        vm.pickAlias(choice.key)
+        assertNull(vm.uiState.value.confirmingAlias)
+        assertEquals(DappProposalViewModel.UNUSABLE_HERE, vm.uiState.value.explaining?.reason)
+    }
+
+    @Test
+    fun theWayToAnotherSitesAddressIsNamedOnlyWhereTheScreenOffersIt() = runTest {
+        main()
+        val safe = (AppHost.parse("safe.global") as AppHostResult.Host).host
+        val ofSafe = ofUniswap.copy(
+            address = Address.of("0x" + "7".repeat(40)),
+            perApp = PerAppAccount(safe, AppIsolation.pathOf(safe), ethereumHeld.address),
+        )
+        // uniswap.org connecting again: it has its own address, so no other is offered and none is named.
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(perAppProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld, ofUniswap, ofSafe))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        val greyed = vm.uiState.value.accounts.first { it.key.endsWith(ofSafe.address.hex) }.unavailable!!
+        assertFalse("Use an address from another site" in greyed, greyed)
     }
 
     @Test

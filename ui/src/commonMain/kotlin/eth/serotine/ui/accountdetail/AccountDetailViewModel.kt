@@ -344,15 +344,15 @@ class AccountDetailViewModel(
         .distinctUntilChanged()
         .flatMapLatest { shown -> if (shown) sharedActivity else flowOf(ActivityUiState.Loading) }
 
-    /**
-     * This account's Per-app tab, when a phrase is known by it and it is an account held here (never a watched entry
-     * of the same address, nor a Safe); null otherwise, and until the envelopes are read, so the screen never waits.
-     */
     /** The per-app addresses, read once for the tab and the aliases together. */
     private val perAppOverview = (observePerAppAddresses?.invoke() ?: flowOf(null))
         .onStart { emit(null) }
         .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
 
+    /**
+     * This account's Per-app tab, when a phrase is known by it and it is an account held here (never a watched entry
+     * of the same address, nor a Safe); null otherwise, and until the envelopes are read, so the screen never waits.
+     */
     private val perAppTab: Flow<PerAppTab?> = combine(lookup, perAppOverview) { lookup, overview ->
         val held = (lookup as? AccountLookup.Found)?.account
             ?.takeIf { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore && it.perApp == null }

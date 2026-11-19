@@ -67,7 +67,7 @@ class PerAppViewModelTest {
         val viewModel = PerAppViewModel(
             phrase,
             ObservePerAppAddresses(accounts, keys, settings, aliases),
-            RestorePerAppAddress(MakePerAppAddress(keys, accounts, WalletChanges()), settings),
+            RestorePerAppAddress(MakePerAppAddress(keys, accounts, WalletChanges(), aliases), settings),
             restoring,
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }

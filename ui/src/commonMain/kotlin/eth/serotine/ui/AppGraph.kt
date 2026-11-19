@@ -1096,7 +1096,7 @@ class AppGraph(
         ApproveDappProposal(dappSessions, accounts, networkSettings, dappSites, perAppAliases),
         RejectDappProposal(dappSessions),
         ObservePerAppChoice(accounts, perAppKeys, dappSites, networkSettings, perAppAliases),
-        MakePerAppAddress(perAppKeys, accounts, walletChanges),
+        MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases),
         LinkPerAppAlias(accounts, perAppAliases),
     )
 
@@ -1107,7 +1107,7 @@ class AppGraph(
     fun perAppViewModel(phrase: Address?, restoring: Boolean = false): PerAppViewModel = PerAppViewModel(
         phrase,
         ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases),
-        RestorePerAppAddress(MakePerAppAddress(perAppKeys, accounts, walletChanges), networkSettings),
+        RestorePerAppAddress(MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases), networkSettings),
         restoring,
     )
 

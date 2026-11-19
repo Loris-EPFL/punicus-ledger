@@ -56,7 +56,8 @@ class RemoveAccount(
             AccountChange.NotFound -> return AccountRemoval.NotFound
             AccountChange.NotSaved -> return AccountRemoval.NotSaved
         }
-        val lastOfItsAddress = listed.none { it.id != id && it.address == id.address }
+        // The last per-app account of it: an unmarked entry of the address (watched elsewhere) holds no alias up.
+        val lastOfItsAddress = listed.none { it.id != id && it.address == id.address && it.perApp != null }
         if (account.perApp != null && lastOfItsAddress) {
             aliases.observe().first().filterValues { it == id.address }.keys.forEach { aliases.unlink(it) }
         }

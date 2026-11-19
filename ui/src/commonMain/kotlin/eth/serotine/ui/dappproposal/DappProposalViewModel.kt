@@ -17,11 +17,13 @@ import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.usecase.AliasLinking
 import eth.serotine.domain.usecase.ApproveDappProposal
 import eth.serotine.domain.usecase.DappOffer
+import eth.serotine.domain.usecase.dappOffer
 import eth.serotine.domain.usecase.LinkPerAppAlias
 import eth.serotine.domain.usecase.MakePerAppAddress
 import eth.serotine.domain.usecase.ObserveDappConnections
 import eth.serotine.domain.usecase.ObservePerAppChoice
 import eth.serotine.domain.usecase.PerAppChoice
+import eth.serotine.domain.usecase.PerAppEntry
 import eth.serotine.domain.usecase.PerAppMaking
 import eth.serotine.domain.usecase.missingRequired
 import eth.serotine.domain.usecase.perAppNetworks
@@ -127,9 +129,17 @@ data class AliasOffer(val line: String, val unavailable: String?)
 
 /**
  * Another site's per-app address the dApp's site may be linked to: its [site], the sites already linked to it
- * ([linked], "Also seen by …", or null) and its short [address]; [key] names it.
+ * ([linked], "Also seen by …", or null), its short [address] and the [networks] it is held on; [key] names it.
+ * [unavailable] is why it is greyed out (this dApp could be offered it on none of them), said on a tap, or null.
  */
-data class AliasChoice(val key: String, val site: String, val linked: String?, val address: String)
+data class AliasChoice(
+    val key: String,
+    val site: String,
+    val linked: String?,
+    val address: String,
+    val networks: String = "",
+    val unavailable: String? = null,
+)
 
 /** What is asked before the site is linked: [title] and [text], which says the two sites can link the activity. */
 data class AliasQuestion(val title: String, val text: String)
@@ -196,7 +206,13 @@ class DappProposalViewModel(
      * The [address] of [other]'s site the user picked, to link the dApp's [site] to: held with both as they were shown,
      * so the question and its answer never depend on a list read again meanwhile.
      */
-    private data class PickedAlias(val address: Address, val site: AppHost, val other: AppHost)
+    private data class PickedAlias(
+        val address: Address,
+        val site: AppHost,
+        val other: AppHost,
+        /** The rows of the address's accounts this dApp may be offered, chosen once the site is linked. */
+        val keys: List<String> = emptyList(),
+    )
 
     /** A new per-app address to make on Approve: from the account [from]'s phrase, for [host], on [networks]. */
     private data class NewAddress(val from: AccountId, val host: AppHost, val networks: List<Network>)
@@ -208,7 +224,12 @@ class DappProposalViewModel(
      * The state shown and what Approve acts on, computed together so that the two never disagree, with the per-app
      * [choice] they were built from.
      */
-    private class Shown(val state: DappProposalUiState, val plan: Plan, val choice: PerAppChoice? = null)
+    private class Shown(
+        val state: DappProposalUiState,
+        val plan: Plan,
+        val choice: PerAppChoice? = null,
+        val proposal: DappProposal? = null,
+    )
 
     private val local = MutableStateFlow(Local())
 
@@ -249,6 +270,9 @@ class DappProposalViewModel(
         val making = newOption?.second
         // The new address counts as chosen on its networks: it decides the kind of funds as an account would.
         val counted = ticked + making?.networks.orEmpty().map { AccountId(it, PLACEHOLDER) }
+        // "Use an address from another site…" is named only where the screen offers it.
+        val aliasOffer = aliasOffer(proposal, perApp)
+        val aliasable = aliasOffer != null && aliasOffer.unavailable == null
         val options = overview.accounts.map { choice ->
             val offer = if (proposal.refusal != null) {
                 choice.offer
@@ -260,7 +284,7 @@ class DappProposalViewModel(
                 name = choice.account.label,
                 address = shortAddress(choice.account.address.hex),
                 chosen = offer == DappOffer.OFFERED && keyOf(choice.account.id) in wanted,
-                unavailable = offerLine(offer, choice.account.network, choice.account.perApp?.site?.name),
+                unavailable = offerLine(offer, choice.account.network, choice.account.perApp?.site?.name, aliasable),
                 network = choice.account.network.displayName,
                 perAppSite = choice.account.perApp?.site?.name,
                 linked = choice.account in perApp.aliased,
@@ -291,11 +315,11 @@ class DappProposalViewModel(
             newAddress = newOption?.first,
             phrases = if (local.choosingPhrase) phraseOptions(perApp, local) else null,
             password = local.password,
-            aliasOffer = aliasOffer(proposal, perApp),
-            aliasChoices = if (local.choosingAlias) aliasChoices(perApp) else null,
+            aliasOffer = aliasOffer,
+            aliasChoices = if (local.choosingAlias) aliasChoices(proposal, perApp) else null,
             confirmingAlias = local.pickedAlias?.let(::aliasQuestion),
         )
-        Shown(state, Plan(chosenKeys, making), perApp)
+        Shown(state, Plan(chosenKeys, making), perApp, proposal)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Shown(DappProposalUiState(), NO_PLAN))
 
     val uiState: StateFlow<DappProposalUiState> =
@@ -377,15 +401,27 @@ class DappProposalViewModel(
         return AliasOffer("No address for ${site.name} yet", NO_OTHER_SITE.takeIf { choice.others.isEmpty() })
     }
 
-    private fun aliasChoices(choice: PerAppChoice): List<AliasChoice> = choice.others.map { entry ->
+    /**
+     * The other sites' addresses, each with its networks; one this dApp could be offered on none of them is greyed out,
+     * a tap saying why (owner's decision, 2026-11-19, on PR #328).
+     */
+    private fun aliasChoices(proposal: DappProposal, choice: PerAppChoice): List<AliasChoice> =
+        choice.others.map { entry -> aliasChoice(proposal, choice, entry) }
+
+    private fun aliasChoice(proposal: DappProposal, choice: PerAppChoice, entry: PerAppEntry) =
         AliasChoice(
             key = entry.address.hex,
             site = entry.site.name,
             linked = entry.aliases.takeIf { it.isNotEmpty() }
                 ?.let { sites -> "Also seen by ${sites.joinToString { it.name }}" },
             address = shortAddress(entry.address.hex),
+            networks = entry.accounts.joinToString(", ") { it.network.displayName },
+            unavailable = UNUSABLE_HERE.takeIf { usableOn(proposal, choice, entry).isEmpty() },
         )
-    }
+
+    /** The accounts of [entry] this dApp could be offered, were the site linked to it. */
+    private fun usableOn(proposal: DappProposal, choice: PerAppChoice, entry: PerAppEntry) =
+        entry.accounts.filter { dappOffer(it, choice.enabled, proposal, alias = entry.address) == DappOffer.OFFERED }
 
     private fun aliasQuestion(picked: PickedAlias) = AliasQuestion(
         title = "Use ${picked.other.name}'s address?",
@@ -410,12 +446,23 @@ class DappProposalViewModel(
      */
     fun pickAlias(key: String?) {
         val choice = shown.value.choice
+        val proposal = shown.value.proposal
         val other = choice?.others?.firstOrNull { it.address.hex == key }
         val site = choice?.site
+        val greyed = shown.value.state.aliasChoices?.firstOrNull { it.key == key }?.unavailable
+        if (greyed != null) {
+            local.update { it.copy(explaining = Explanation("Not usable for this dApp", greyed)) }
+            return
+        }
         local.update {
             it.copy(
                 choosingAlias = false,
-                pickedAlias = if (other != null && site != null) PickedAlias(other.address, site, other.site) else null,
+                pickedAlias = if (other != null && site != null && choice != null && proposal != null) {
+                    val keys = usableOn(proposal, choice, other).map { account -> keyOf(account.id) }
+                    PickedAlias(other.address, site, other.site, keys)
+                } else {
+                    null
+                },
             )
         }
     }
@@ -432,9 +479,9 @@ class DappProposalViewModel(
         viewModelScope.launch {
             val linked = linkPerAppAlias(picked.site, picked.address)
             local.update {
-                // Linked: the choice starts again from the preselection, which is now the address linked to.
+                // Linked: the address picked here is chosen, newer than what the site's memory preselects.
                 if (linked == AliasLinking.Linked) {
-                    it.copy(busy = false, chosen = null, password = WalletPassword.EMPTY)
+                    it.copy(busy = false, chosen = picked.keys.toSet(), password = WalletPassword.EMPTY)
                 } else {
                     it.copy(busy = false, notice = aliasLine(linked))
                 }
@@ -556,6 +603,10 @@ class DappProposalViewModel(
 
     companion object {
         const val NOT_SAVED = "That could not be saved. Nothing was changed."
+
+        /** Why another site's address is greyed out in the list: this dApp could be offered it on no network. */
+        const val UNUSABLE_HERE = "This address is on none of the networks this dApp asks for that are on, of the " +
+            "kind of funds it requires. Linked, it would leave this site with no address it can use here."
 
         /** Why "Use an address from another site…" is greyed out: there is no other site's address here. */
         const val NO_OTHER_SITE = "No other site has a per-app address on this device yet, so there is none to " +
@@ -692,7 +743,16 @@ class DappProposalViewModel(
          * Why an account on [network] is not offered, for [offer]; null when it is. [site] is the site it is the
          * per-app address of, when it is one.
          */
-        fun offerLine(offer: DappOffer, network: Network, site: String? = null): String? = when (offer) {
+        /**
+         * Why an account is not offered, by [offer]; for another site's per-app address, the way to use it here anyway
+         * where the screen offers one ([aliasable]).
+         */
+        fun offerLine(
+            offer: DappOffer,
+            network: Network,
+            site: String? = null,
+            aliasable: Boolean = false,
+        ): String? = when (offer) {
             DappOffer.OFFERED -> null
             DappOffer.NOT_ASKED -> "This dApp did not ask for ${network.displayName}."
             DappOffer.OTHER_FUNDS -> if (network.testnet) {
@@ -703,8 +763,8 @@ class DappProposalViewModel(
             DappOffer.NETWORK_OFF -> "${network.displayName} is off. Turn it on in Settings, under Networks."
             DappOffer.NO_KEY -> "This account is watched: there is no key for it on this device."
             DappOffer.OTHER_SITE -> "This is the per-app address of ${site ?: "another site"}. It is offered to that " +
-                "site alone, so that the two sites cannot link your activity. To use it here anyway, choose " +
-                "\"Use an address from another site…\"."
+                "site alone, so that the two sites cannot link your activity." +
+                if (aliasable) " To use it here anyway, choose \"Use an address from another site…\"." else ""
         }
 
         fun approvalLine(approval: DappApproval): String? = when (approval) {

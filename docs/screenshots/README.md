@@ -22,7 +22,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Create Safe](#create-safe) | `create-safe/` | 19 |
 | [Display currency](#currency) | `currency/` | 4 |
 | [dApp connection request](#dapp-proposal) | `dapp-proposal/` | 27 |
-| [dApp signing request](#dapp-request) | `dapp-request/` | 20 |
+| [dApp signing request](#dapp-request) | `dapp-request/` | 23 |
 | [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 20 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
@@ -354,7 +354,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="dapp-request"></a>
 ## dApp signing request
 
-`dapp-request/`, 20 states: `sign-in`, `sign-in-dark`, `biometrics`, `other-site`, `message`, `hex`, `refused`, `wrong-password`, `signing`, `explaining`, `ended`, `loading`, `approval`, `approval-dark`, `unlimited`, `swap-order`, `not-decoded`, `other-network`, `real-funds`, `real-funds-dark`
+`dapp-request/`, 23 states: `sign-in`, `sign-in-dark`, `biometrics`, `other-site`, `message`, `hex`, `refused`, `wrong-password`, `signing`, `explaining`, `ended`, `loading`, `approval`, `approval-dark`, `unlimited`, `swap-order`, `not-decoded`, `other-network`, `real-funds`, `real-funds-dark`, `per-app`, `per-app-other-site`, `per-app-linked`
 
 <a href="dapp-request/sign-in.png"><img src="dapp-request/sign-in.png" width="206" alt="sign-in"></a>
 <a href="dapp-request/sign-in-dark.png"><img src="dapp-request/sign-in-dark.png" width="206" alt="sign-in-dark"></a>
@@ -376,6 +376,9 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="dapp-request/other-network.png"><img src="dapp-request/other-network.png" width="206" alt="other-network"></a>
 <a href="dapp-request/real-funds.png"><img src="dapp-request/real-funds.png" width="206" alt="real-funds"></a>
 <a href="dapp-request/real-funds-dark.png"><img src="dapp-request/real-funds-dark.png" width="206" alt="real-funds-dark"></a>
+<a href="dapp-request/per-app.png"><img src="dapp-request/per-app.png" width="206" alt="per-app"></a>
+<a href="dapp-request/per-app-other-site.png"><img src="dapp-request/per-app-other-site.png" width="206" alt="per-app-other-site"></a>
+<a href="dapp-request/per-app-linked.png"><img src="dapp-request/per-app-linked.png" width="206" alt="per-app-linked"></a>
 
 <a name="dapp-transaction"></a>
 ## dApp transaction

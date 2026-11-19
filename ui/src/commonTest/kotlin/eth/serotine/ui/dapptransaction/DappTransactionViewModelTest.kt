@@ -39,6 +39,7 @@ import eth.serotine.ui.FakeReceipts
 import eth.serotine.ui.FakeSigner
 import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.FakeTransactionInputs
+import eth.serotine.ui.MemoryAliases
 import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.MemorySentTransfers
 import eth.serotine.ui.MemorySyncPolicy
@@ -110,7 +111,7 @@ class DappTransactionViewModelTest {
         val catalog = FakeTokenCatalog(usdc)
         val vm = DappTransactionViewModel(
             "t/$id",
-            ObserveDappMessages(requests, accounts, networks, catalog, clock = { now }),
+            ObserveDappMessages(requests, accounts, networks, catalog, MemoryAliases(), clock = { now }),
             QuoteDappTransaction(
                 requests, accounts, networks, catalog, balances, inputs, sent, history, Outbox.None, clock = { now },
             ),

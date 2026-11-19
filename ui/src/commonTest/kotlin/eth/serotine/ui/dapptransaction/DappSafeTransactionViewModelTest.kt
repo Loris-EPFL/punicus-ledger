@@ -28,6 +28,7 @@ import eth.serotine.domain.usecase.SignDappSafeTx
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.ui.FakeDappRequests
 import eth.serotine.ui.FakeKeys
+import eth.serotine.ui.MemoryAliases
 import eth.serotine.ui.MemoryNetworkSettings
 import eth.serotine.ui.MemorySyncPolicy
 import eth.serotine.ui.MemoryTransactionHistory
@@ -84,7 +85,7 @@ class DappSafeTransactionViewModelTest {
         val history = MemoryTransactionHistory()
         val vm = DappTransactionViewModel(
             "t/$id",
-            ObserveDappMessages(requests, world.accounts, networks, world.catalog, clock = { now }),
+            ObserveDappMessages(requests, world.accounts, networks, world.catalog, MemoryAliases(), clock = { now }),
             QuoteDappTransaction(
                 requests, world.accounts, networks, world.catalog, world.balances, world.inputs, world.sent, history,
                 outbox = Outbox.None,
@@ -130,7 +131,7 @@ class DappSafeTransactionViewModelTest {
         val history = MemoryTransactionHistory()
         val vm = DappTransactionViewModel(
             "t/1",
-            ObserveDappMessages(requests, gnosis.accounts, on, gnosis.catalog, clock = { now }),
+            ObserveDappMessages(requests, gnosis.accounts, on, gnosis.catalog, MemoryAliases(), clock = { now }),
             QuoteDappTransaction(
                 requests, gnosis.accounts, on, gnosis.catalog, gnosis.balances, gnosis.inputs, gnosis.sent, history,
                 outbox = Outbox.None,

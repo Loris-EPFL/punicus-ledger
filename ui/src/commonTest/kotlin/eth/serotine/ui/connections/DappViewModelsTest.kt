@@ -133,7 +133,7 @@ class DappViewModelsTest {
         )
         val vm = ConnectionsViewModel(
             observe(),
-            ObserveDappMessages(requests, accounts, networks, FakeTokenCatalog(), clock = { 1_700_000_000 }),
+            ObserveDappMessages(requests, accounts, networks, FakeTokenCatalog(), aliases, clock = { 1_700_000_000 }),
             DisconnectDapp(sessions),
             ExtendDappSession(sessions),
             clock = { 1_700_000_000 },
@@ -160,7 +160,7 @@ class DappViewModelsTest {
         main()
         val vm = ConnectionsViewModel(
             ObserveDappConnections(OffDappSessions, accounts, networks),
-            ObserveDappMessages(OffDappRequests, accounts, networks, FakeTokenCatalog()),
+            ObserveDappMessages(OffDappRequests, accounts, networks, FakeTokenCatalog(), aliases),
             DisconnectDapp(OffDappSessions),
             ExtendDappSession(OffDappSessions),
         )

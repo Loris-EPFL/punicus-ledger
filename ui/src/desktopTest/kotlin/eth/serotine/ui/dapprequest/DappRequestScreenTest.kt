@@ -1,6 +1,7 @@
 package eth.serotine.ui.dapprequest
 
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -60,6 +61,12 @@ class DappRequestScreenTest {
         rule.onNodeWithText("Stated by the dApp, not verified: Punicus cannot check who is asking.").assertExists()
         rule.onNodeWithText("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed").assertExists()
         rule.onNodeWithText("abcdefgh12").assertExists()
+    }
+
+    @Test
+    fun aPerAppAddressIsNamedByItsSite() {
+        show(state.copy(perAppLine = "Per-app address for example.org"))
+        rule.onNodeWithTag(DAPP_REQUEST_PER_APP_TAG).assertTextEquals("Per-app address for example.org")
     }
 
     @Test

@@ -1,6 +1,8 @@
 package eth.serotine.ui.dappproposal
 
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -13,6 +15,7 @@ import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /** Renders the stateless [DappProposalScreen] headless. */
 class DappProposalScreenTest {
@@ -44,6 +47,8 @@ class DappProposalScreenTest {
                     onChoose = { aliasEvents += "choose" },
                     onPick = { aliasEvents += "pick $it" },
                     onAnswer = { aliasEvents += "answer $it" },
+                    onHostChange = { aliasEvents += "host $it" },
+                    onType = { aliasEvents += "type" },
                 ),
             )
         }
@@ -65,6 +70,38 @@ class DappProposalScreenTest {
         rule.onNodeWithTag(DAPP_PROPOSAL_ALIAS_CHOICE_TAG + "0x6").performClick()
         rule.onNodeWithText("Also seen by uniswap.exchange").assertExists()
         assertEquals(listOf("pick 0x6"), aliasEvents)
+    }
+
+    @Test
+    fun anOldSitesHostIsTypedInTheList() {
+        show(state.copy(aliasChoices = emptyList(), aliasHost = "app.uniswap.org"))
+        rule.onNodeWithTag(DAPP_PROPOSAL_ALIAS_HOST_TAG).performTextInput("x")
+        rule.onNodeWithTag(DAPP_PROPOSAL_ALIAS_TYPE_TAG).performClick()
+        assertEquals("type", aliasEvents.last())
+        assertTrue(aliasEvents.any { it.startsWith("host ") })
+    }
+
+    @Test
+    fun anAddressMadeAgainAsksForThePasswordInTheQuestion() {
+        val question = AliasQuestion("Use uniswap.org's address?", "Made again.", needsPassword = true)
+        show(state.copy(confirmingAlias = question))
+        rule.onNodeWithTag(DAPP_PROPOSAL_ALIAS_PASSWORD_TAG).performTextInput("secret")
+        assertEquals(listOf("secret"), passwords)
+    }
+
+    @Test
+    fun whyUseItDidNotGoThroughIsSaidInTheQuestion() {
+        val question =
+            AliasQuestion("Use uniswap.org's address?", "Made again.", needsPassword = true, error = "Wrong.")
+        show(state.copy(confirmingAlias = question))
+        rule.onNodeWithTag(DAPP_PROPOSAL_ALIAS_ERROR_TAG).assertTextEquals("Wrong.")
+    }
+
+    @Test
+    fun whileTheAddressIsMadeNeitherAnswerIsTaken() {
+        show(state.copy(busy = true, confirmingAlias = AliasQuestion("Use uniswap.org's address?", "Made again.")))
+        rule.onNodeWithTag(DAPP_PROPOSAL_ALIAS_YES_TAG).assertIsNotEnabled()
+        rule.onNodeWithText("Making…").assertExists()
     }
 
     @Test

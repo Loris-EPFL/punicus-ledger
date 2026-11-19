@@ -27,6 +27,7 @@ import eth.serotine.domain.repository.DappSessionId
 import eth.serotine.domain.usecase.ApproveDappProposal
 import eth.serotine.domain.usecase.DisconnectDapp
 import eth.serotine.domain.usecase.ExtendDappSession
+import eth.serotine.domain.usecase.LinkMadePerAppAlias
 import eth.serotine.domain.usecase.LinkPerAppAlias
 import eth.serotine.domain.usecase.MakePerAppAddress
 import eth.serotine.domain.usecase.ObserveDappConnections
@@ -108,6 +109,9 @@ class DappViewModelsTest {
     private fun TestScope.observe() = ObserveDappConnections(sessions, accounts, networks)
 
     private fun TestScope.main() = Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+
+    private fun makeAndLink(wallet: FakeAccounts) =
+        LinkMadePerAppAlias(MakePerAppAddress(keys, wallet, WalletChanges(), aliases), LinkPerAppAlias(wallet, aliases))
 
     @Test
     fun connectionsListProposalsAndSessionsWithTheirEnd() = runTest {
@@ -196,6 +200,7 @@ class DappViewModelsTest {
             ObservePerAppChoice(accounts, keys, sites, networks, aliases),
             MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
             LinkPerAppAlias(accounts, aliases),
+            makeAndLink(accounts),
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -237,6 +242,7 @@ class DappViewModelsTest {
             ObservePerAppChoice(wallet, keys, sites, on, aliases),
             MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
             LinkPerAppAlias(wallet, aliases),
+            makeAndLink(wallet),
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -262,6 +268,7 @@ class DappViewModelsTest {
             ObservePerAppChoice(wallet, keys, sites, on, aliases),
             MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
             LinkPerAppAlias(wallet, aliases),
+            makeAndLink(wallet),
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -313,6 +320,7 @@ class DappViewModelsTest {
             ObservePerAppChoice(wallet, keys, sites, on, aliases),
             MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
             LinkPerAppAlias(wallet, aliases),
+            makeAndLink(wallet),
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -346,6 +354,7 @@ class DappViewModelsTest {
             ObservePerAppChoice(wallet, keys, sites, on, aliases),
             MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
             LinkPerAppAlias(wallet, aliases),
+            makeAndLink(wallet),
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -375,6 +384,7 @@ class DappViewModelsTest {
             ObservePerAppChoice(accounts, keys, sites, networks, aliases),
             MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
             LinkPerAppAlias(accounts, aliases),
+            makeAndLink(accounts),
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -401,6 +411,7 @@ class DappViewModelsTest {
             ObservePerAppChoice(accounts, keys, sites, networks, aliases),
             MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
             LinkPerAppAlias(accounts, aliases),
+            makeAndLink(accounts),
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -423,6 +434,7 @@ class DappViewModelsTest {
             ObservePerAppChoice(accounts, keys, sites, networks, aliases),
             MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
             LinkPerAppAlias(accounts, aliases),
+            makeAndLink(accounts),
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -465,6 +477,7 @@ class DappViewModelsTest {
         ObservePerAppChoice(wallet, keys, sites, realFunds, aliases),
         MakePerAppAddress(keys, wallet, WalletChanges(), aliases),
         LinkPerAppAlias(wallet, aliases),
+        makeAndLink(wallet),
     )
 
     @Test
@@ -611,6 +624,176 @@ class DappViewModelsTest {
     }
 
     @Test
+    fun anOldSiteTypedIsMadeAgainUnderThePasswordAndLinked() = runTest {
+        main()
+        val wallet = FakeAccounts(ethereumHeld)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(wallet)
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        assertNull(vm.uiState.value.aliasOffer?.unavailable, "with a phrase, an old site can be typed")
+        vm.chooseAlias()
+        assertTrue(vm.uiState.value.aliasChoices!!.isEmpty())
+        vm.onAliasHostChange("app.uniswap.org/swap")
+        vm.typeAlias()
+        val question = vm.uiState.value.confirmingAlias!!
+        assertTrue(question.needsPassword)
+        assertEquals("Use uniswap.org's address?", question.title)
+        vm.answerAlias(yes = true)
+        assertEquals(DappProposalViewModel.PASSWORD_FOR_OLD_SITE, vm.uiState.value.confirmingAlias?.error)
+
+        vm.onPasswordChange("correct horse")
+        vm.answerAlias(yes = true)
+        runCurrent()
+        val oldHost = (AppHost.parse("app.uniswap.org") as AppHostResult.Host).host
+        assertEquals(listOf(ethereumHeld.address to oldHost), keys.derived)
+        val moved = (AppHost.parse("uniswap.app") as AppHostResult.Host).host
+        assertEquals(mapOf(moved to keys.address), aliases.linked.value)
+        val made = wallet.accounts.value.filter { it.perApp != null }
+        assertEquals(listOf(uniswap, uniswap), made.map { it.perApp?.site }, "made for the old site")
+        val state = vm.uiState.value
+        assertEquals("", state.password.text)
+        assertTrue(state.accounts.filter { it.key.endsWith(keys.address.hex) }.all { it.chosen && it.linked })
+        assertNull(state.newAddress)
+    }
+
+    @Test
+    fun anOldSiteTypedWhoseAddressIsHeldIsPickedAsFromTheList() = runTest {
+        main()
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld, ofUniswap))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.onAliasHostChange("https://swap.uniswap.org")
+        vm.typeAlias()
+        assertEquals(false, vm.uiState.value.confirmingAlias?.needsPassword)
+        assertTrue(keys.derived.isEmpty())
+    }
+
+    @Test
+    fun aWrongPasswordForAnOldSiteKeepsTheQuestionOpenToTryAgain() = runTest {
+        main()
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.onAliasHostChange("uniswap.org")
+        vm.typeAlias()
+        vm.onPasswordChange("not it")
+        vm.answerAlias(yes = true)
+        runCurrent()
+        assertEquals(
+            "That is not the wallet password. Nothing was made or linked.",
+            vm.uiState.value.confirmingAlias?.error,
+            "said in the question, which stays open",
+        )
+        vm.onPasswordChange("correct horse")
+        vm.answerAlias(yes = true)
+        runCurrent()
+        assertNull(vm.uiState.value.confirmingAlias)
+        assertEquals(1, aliases.linked.value.size)
+    }
+
+    @Test
+    fun anOldSiteThatWasItselfLinkedGetsTheAddressItSaw() = runTest {
+        main()
+        // uniswap.exchange saw uniswap.org's address; the dApp now moved on to uniswap.app.
+        val exchange = (AppHost.parse("uniswap.exchange") as AppHostResult.Host).host
+        aliases.linked.value = mapOf(exchange to ofUniswap.address)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld, ofUniswap))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.onAliasHostChange("uniswap.exchange")
+        vm.typeAlias()
+        assertEquals("Use uniswap.org's address?", vm.uiState.value.confirmingAlias?.title)
+        assertEquals(false, vm.uiState.value.confirmingAlias?.needsPassword)
+        assertTrue(keys.derived.isEmpty())
+    }
+
+    @Test
+    fun cancellingAQuestionThatTookNoPasswordKeepsTheNewAddresssOne() = runTest {
+        main()
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld, ofUniswap))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.onPasswordChange("correct horse")
+        vm.chooseAlias()
+        vm.pickAlias(vm.uiState.value.aliasChoices!!.single().key)
+        vm.answerAlias(yes = false)
+        assertEquals("correct horse", vm.uiState.value.password.text)
+    }
+
+    @Test
+    fun withSeveralPhrasesTheQuestionNamesTheOneTheOldAddressIsMadeFrom() = runTest {
+        main()
+        val second = account(Network.ETHEREUM, '2').copy(label = "Savings")
+        keys.phrases = mapOf(ethereumHeld.address to ethereumHeld.address, second.address to second.address)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld, second))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.onAliasHostChange("uniswap.org")
+        vm.typeAlias()
+        assertTrue("recovery phrase of ${ethereumHeld.label}" in vm.uiState.value.confirmingAlias!!.text)
+    }
+
+    @Test
+    fun aLighterSealOfTheOldSitesKeyIsSaidOnceLinked() = runTest {
+        main()
+        keys.steppedDown = true
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.onAliasHostChange("uniswap.org")
+        vm.typeAlias()
+        vm.onPasswordChange("correct horse")
+        vm.answerAlias(yes = true)
+        runCurrent()
+        assertEquals(DappProposalViewModel.oldSiteSteppedDown(uniswap), vm.uiState.value.notice)
+    }
+
+    @Test
+    fun theQuestionNamesWhyAnotherSiteAppearsForATypedOneThatWasLinked() = runTest {
+        main()
+        val exchange = (AppHost.parse("uniswap.exchange") as AppHostResult.Host).host
+        aliases.linked.value = mapOf(exchange to ofUniswap.address)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld, ofUniswap))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.onAliasHostChange("uniswap.exchange")
+        vm.typeAlias()
+        assertTrue(vm.uiState.value.confirmingAlias!!.text.startsWith("uniswap.exchange uses uniswap.org's address"))
+    }
+
+    @Test
+    fun aTypedHostThatIsThisSiteOrNoneIsSaid() = runTest {
+        main()
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.onAliasHostChange("www.uniswap.app")
+        vm.typeAlias()
+        assertEquals(DappProposalViewModel.SAME_SITE, vm.uiState.value.explaining?.reason)
+        vm.dismissExplanation()
+        vm.onAliasHostChange("not a host")
+        vm.typeAlias()
+        assertEquals(DappProposalViewModel.NOT_A_HOST, vm.uiState.value.explaining?.reason)
+        assertNull(vm.uiState.value.confirmingAlias)
+    }
+
+    @Test
     fun saidNoTheSiteIsNotLinked() = runTest {
         main()
         val wallet = FakeAccounts(ethereumHeld, ofUniswap)
@@ -628,10 +811,11 @@ class DappViewModelsTest {
     }
 
     @Test
-    fun withNoOtherSitesAddressUsingOneIsGreyedOutAndSaysWhy() = runTest {
+    fun withNoOtherSitesAddressAndNoPhraseUsingOneIsGreyedOutAndSaysWhy() = runTest {
         main()
         sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
-        val vm = perAppViewModel(FakeAccounts(ethereumHeld))
+        // Watched alone: no other site's address, and no phrase to make one again from.
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld.copy(custody = AccountCustody.Watched)))
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
         assertEquals(DappProposalViewModel.NO_OTHER_SITE, vm.uiState.value.aliasOffer?.unavailable)

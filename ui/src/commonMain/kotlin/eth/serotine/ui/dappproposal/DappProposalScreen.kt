@@ -145,9 +145,9 @@ class AliasActions(
  * of funds, what it asks to do, and the accounts to choose, each with its network, those this dApp may not
  * be offered greyed out, a tap saying why. At their head, the new per-app address for the dApp's site (issue #252),
  * ticked while the site has none and nothing it remembers is preselected, greyed out when it cannot be made, with
- * the phrase it comes from when there are several; chosen, it asks for the wallet password. For a site with no address yet, "Use an address from another
- * site…" links it to another site's per-app address after asking ([aliasActions]). Approve and
- * Reject; a proposal that asks for too much can only be rejected, and says why.
+ * the phrase it comes from when there are several; chosen, it asks for the wallet password. For a site with no
+ * address yet, "Use an address from another site…" links it to another site's per-app address after asking
+ * ([aliasActions]). Approve and Reject; a proposal that asks for too much can only be rejected, and says why.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

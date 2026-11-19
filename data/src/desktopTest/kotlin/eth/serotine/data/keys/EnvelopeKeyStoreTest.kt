@@ -746,6 +746,8 @@ class EnvelopeKeyStoreTest {
 
         // A per-app envelope naming another phrase is not kept: it is sealed again, naming its own.
         rewrite(exampleAddress) { it.with(phrase = abandonAddress.hex) }
+        // A per-app envelope signs nothing while it names another phrase: the check derives its first account.
+        assertEquals(Signing.Unavailable, store.sign(exampleAddress, digest, Unlock.WithPassword(password)))
         assertIs<PerAppDerivation.Stored>(store.derivePerApp(hardhatAddress, host("example.com"), password))
         assertEquals(hardhatAddress.hex, sealedIn(envelopeOf(exampleAddress)).phraseAccount)
         assertIs<Signing.Signed>(store.sign(exampleAddress, digest, Unlock.WithPassword(password)))

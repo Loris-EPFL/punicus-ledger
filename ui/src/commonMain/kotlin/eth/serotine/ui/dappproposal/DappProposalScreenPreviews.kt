@@ -165,8 +165,8 @@ private val firstVisit = realFunds.copy(
         unavailable = null,
     ),
     password = WalletPassword("made-up password"),
-    // No other site has an address here yet: there is none to use instead, said on a tap.
-    aliasOffer = AliasOffer("No address for uniswap.org yet", DappProposalViewModel.NO_OTHER_SITE),
+    // A phrase is held: another site's address can be used instead, or an old site's typed and made again.
+    aliasOffer = AliasOffer("No address for uniswap.org yet", null),
 )
 
 @Preview
@@ -209,6 +209,8 @@ private fun DappProposalNoPhrasePreview() = DappProposalPreview(
             chosen = false,
             unavailable = DappProposalViewModel.NO_PHRASE,
         ),
+        // No other site's address and no phrase: nothing to use instead, said on a tap.
+        aliasOffer = AliasOffer("No address for uniswap.org yet", DappProposalViewModel.NO_OTHER_SITE),
     ),
 )
 
@@ -262,6 +264,42 @@ private fun DappProposalConfirmingAliasPreview() = DappProposalPreview(
         confirmingAlias = AliasQuestion(
             "Use uniswap.org's address?",
             "uniswap.app will see the same address as uniswap.org. The two sites can link your activity.",
+        ),
+    ),
+)
+
+// The old site not listed (after a restore of the phrase, say): its host typed, to make its address again.
+@Preview
+@Composable
+private fun DappProposalTypingOldHostPreview() = DappProposalPreview(
+    moved.copy(aliasChoices = emptyList(), aliasHost = "app.uniswap.org"),
+)
+
+@Preview
+@Composable
+private fun DappProposalMadeAgainPreview() = DappProposalPreview(
+    moved.copy(
+        password = WalletPassword("made-up password"),
+        confirmingAlias = AliasQuestion(
+            "Use uniswap.org's address?",
+            "uniswap.app will see the same address as uniswap.org. The two sites can link your activity. " +
+                DappProposalViewModel.MADE_AGAIN,
+            needsPassword = true,
+        ),
+    ),
+)
+
+// "Use it" with a wrong password: said in the question, which stays open to try again.
+@Preview
+@Composable
+private fun DappProposalMadeAgainFailedPreview() = DappProposalPreview(
+    moved.copy(
+        confirmingAlias = AliasQuestion(
+            "Use uniswap.org's address?",
+            "uniswap.app will see the same address as uniswap.org. The two sites can link your activity. " +
+                DappProposalViewModel.MADE_AGAIN,
+            needsPassword = true,
+            error = "That is not the wallet password. Nothing was made or linked.",
         ),
     ),
 )
@@ -333,4 +371,7 @@ internal val dappProposalScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("choosing-alias") { DappProposalChoosingAliasPreview() },
     ScreenPreview("confirming-alias") { DappProposalConfirmingAliasPreview() },
     ScreenPreview("linked") { DappProposalLinkedPreview() },
+    ScreenPreview("typing-old-host") { DappProposalTypingOldHostPreview() },
+    ScreenPreview("made-again") { DappProposalMadeAgainPreview() },
+    ScreenPreview("made-again-failed") { DappProposalMadeAgainFailedPreview() },
 )

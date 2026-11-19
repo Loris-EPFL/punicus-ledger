@@ -67,6 +67,18 @@ const val DAPP_PROPOSAL_ALIAS_TAG = "dapp-proposal-alias"
 /** Test tag of another site's address in the alias list, followed by its key, for UI tests. */
 const val DAPP_PROPOSAL_ALIAS_CHOICE_TAG = "dapp-proposal-alias-choice-"
 
+/** Test tag of "Type the old site's host", for UI tests. */
+const val DAPP_PROPOSAL_ALIAS_HOST_TAG = "dapp-proposal-alias-host"
+
+/** Test tag of "Use that site's address", for UI tests. */
+const val DAPP_PROPOSAL_ALIAS_TYPE_TAG = "dapp-proposal-alias-type"
+
+/** Test tag of the alias question's password field, for UI tests. */
+const val DAPP_PROPOSAL_ALIAS_PASSWORD_TAG = "dapp-proposal-alias-password"
+
+/** Test tag of what the alias question says when "Use it" did not go through, for UI tests. */
+const val DAPP_PROPOSAL_ALIAS_ERROR_TAG = "dapp-proposal-alias-error"
+
 /** Test tag of the alias question's "Use it", for UI tests. */
 const val DAPP_PROPOSAL_ALIAS_YES_TAG = "dapp-proposal-alias-yes"
 
@@ -103,7 +115,13 @@ fun DappProposalRoute(
         onChoosePhrase = viewModel::choosePhrase,
         onPickPhrase = viewModel::pickPhrase,
         modifier = modifier,
-        aliasActions = AliasActions(viewModel::chooseAlias, viewModel::pickAlias, viewModel::answerAlias),
+        aliasActions = AliasActions(
+            viewModel::chooseAlias,
+            viewModel::pickAlias,
+            viewModel::answerAlias,
+            viewModel::onAliasHostChange,
+            viewModel::typeAlias,
+        ),
     )
 }
 
@@ -115,6 +133,10 @@ class AliasActions(
     val onChoose: () -> Unit = {},
     val onPick: (String?) -> Unit = {},
     val onAnswer: (Boolean) -> Unit = {},
+    /** "Type the old site's host" changed. */
+    val onHostChange: (String) -> Unit = {},
+    /** The old site's host typed was submitted. */
+    val onType: () -> Unit = {},
 )
 
 /**
@@ -143,8 +165,8 @@ fun DappProposalScreen(
     aliasActions: AliasActions = AliasActions(),
 ) {
     state.phrases?.let { PhraseDialog(it, onPickPhrase) }
-    state.aliasChoices?.let { AliasDialog(it, aliasActions.onPick) }
-    state.confirmingAlias?.let { AliasQuestionDialog(it, aliasActions.onAnswer) }
+    state.aliasChoices?.let { AliasDialog(it, state.aliasHost, aliasActions) }
+    state.confirmingAlias?.let { AliasQuestionDialog(it, state, aliasActions.onAnswer, onPasswordChange) }
     // Last, so that it shows over the list a greyed-out choice of which it explains.
     state.explaining?.let { UnavailableDialog(UnavailableNotice(it.title, it.reason), onDismissExplanation) }
     Scaffold(
@@ -375,7 +397,8 @@ private fun AliasOfferRow(offer: AliasOffer, busy: Boolean, onChoose: () -> Unit
  * "looks like" a site, the cue a look-alike phishing domain wants (docs/walletconnect.md, *Aliases*).
  */
 @Composable
-private fun AliasDialog(choices: List<AliasChoice>, onPick: (String?) -> Unit) {
+private fun AliasDialog(choices: List<AliasChoice>, host: String, actions: AliasActions) {
+    val onPick = actions.onPick
     AlertDialog(
         onDismissRequest = { onPick(null) },
         title = { Text("Use an address from another site") },
@@ -403,25 +426,95 @@ private fun AliasDialog(choices: List<AliasChoice>, onPick: (String?) -> Unit) {
                         choice.linked?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = color) }
                     }
                 }
+                // Not listed (after a restore of the phrase, say): its address is made again from the phrase.
+                OutlinedTextField(
+                    value = host,
+                    onValueChange = actions.onHostChange,
+                    modifier = Modifier.padding(top = 8.dp).fillMaxWidth().testTag(DAPP_PROPOSAL_ALIAS_HOST_TAG),
+                    label = { Text("Type the old site's host") },
+                    placeholder = { Text("app.uniswap.org") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        autoCorrectEnabled = false,
+                        keyboardType = KeyboardType.Uri,
+                        imeAction = ImeAction.Go,
+                    ),
+                    keyboardActions = KeyboardActions(onGo = { actions.onType() }),
+                )
+                // Always tappable: with nothing typed, the tap says what is missing (owner ruling, 2026-10-18, #55).
+                TextButton(
+                    onClick = actions.onType,
+                    modifier = Modifier.testTag(DAPP_PROPOSAL_ALIAS_TYPE_TAG),
+                ) { Text("Use that site's address") }
             }
         },
         confirmButton = { TextButton(onClick = { onPick(null) }) { Text("Cancel") } },
     )
 }
 
-/** What is asked before the dApp's site is linked to another site's address. */
+/**
+ * What is asked before the dApp's site is linked to another site's address; with the wallet password where that
+ * address is made again first, the window then kept out of capture.
+ */
 @Composable
-private fun AliasQuestionDialog(question: AliasQuestion, onAnswer: (Boolean) -> Unit) {
+private fun AliasQuestionDialog(
+    question: AliasQuestion,
+    state: DappProposalUiState,
+    onAnswer: (Boolean) -> Unit,
+    onPasswordChange: (String) -> Unit,
+) {
     AlertDialog(
         onDismissRequest = { onAnswer(false) },
         title = { Text(question.title) },
-        text = { Text(question.text) },
-        confirmButton = {
-            TextButton(onClick = { onAnswer(true) }, Modifier.testTag(DAPP_PROPOSAL_ALIAS_YES_TAG)) {
-                Text("Use it")
+        text = {
+            Column {
+                Text(question.text)
+                question.error?.let {
+                    Text(
+                        it,
+                        Modifier.padding(top = 8.dp).testTag(DAPP_PROPOSAL_ALIAS_ERROR_TAG),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                if (question.needsPassword) {
+                    val captureBlocked = protectFromScreenCapture()
+                    OutlinedTextField(
+                        value = state.password.text,
+                        onValueChange = onPasswordChange,
+                        modifier = Modifier.padding(top = 8.dp).fillMaxWidth()
+                            .testTag(DAPP_PROPOSAL_ALIAS_PASSWORD_TAG),
+                        enabled = !state.busy,
+                        label = { Text("Wallet password") },
+                        singleLine = true,
+                        isError = question.error != null,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            autoCorrectEnabled = false,
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done,
+                        ),
+                        keyboardActions = KeyboardActions(onDone = { onAnswer(true) }),
+                    )
+                    if (!captureBlocked) {
+                        Text(
+                            "Screenshots and screen recordings of this window cannot be blocked here. Make sure " +
+                                "nothing is recording your screen.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
             }
         },
-        dismissButton = { TextButton(onClick = { onAnswer(false) }) { Text("Cancel") } },
+        // While the address is made, neither answer is taken: what "Use it" started goes on.
+        confirmButton = {
+            TextButton(
+                onClick = { onAnswer(true) },
+                enabled = !state.busy,
+                modifier = Modifier.testTag(DAPP_PROPOSAL_ALIAS_YES_TAG),
+            ) { Text(if (state.busy) "Making…" else "Use it") }
+        },
+        dismissButton = { TextButton(onClick = { onAnswer(false) }, enabled = !state.busy) { Text("Cancel") } },
     )
 }
 

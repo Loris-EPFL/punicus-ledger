@@ -212,4 +212,24 @@ class PerAppListTest {
         assertEquals(true, assertIs<PerAppMaking.Made>(restored.making).unlinked)
         assertEquals(emptyMap(), aliases.linked.value)
     }
+
+    @Test
+    fun anOldSitesAddressIsMadeAndLinkedAsOneStepAndNothingIsLinkedUnlessMade() = runTest {
+        val accounts = ListAccountRepository(first)
+        val keys = FakePerAppKeys(address = address('9'))
+        val makeAndLink = LinkMadePerAppAlias(
+            MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
+            LinkPerAppAlias(accounts, aliases),
+        )
+        val app = testHost("uniswap.app")
+        val old = testHost("app.uniswap.org")
+        val wrong = makeAndLink(app, first.id, old, listOf(Network.ETHEREUM), WalletPassword("no"))
+        assertEquals(MadeLinking(PerAppMaking.WrongPassword, null), wrong)
+        assertEquals(emptyMap(), aliases.linked.value)
+        val done = makeAndLink(app, first.id, old, listOf(Network.ETHEREUM), WalletPassword("correct horse"))
+        assertIs<PerAppMaking.Made>(done.making)
+        assertEquals(AliasLinking.Linked, done.linking)
+        assertEquals(mapOf(app to address('9')), aliases.linked.value)
+        assertEquals(uniswap, accounts.accounts.value.last().perApp?.site)
+    }
 }

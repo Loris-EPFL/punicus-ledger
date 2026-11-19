@@ -128,6 +128,16 @@ fun restoreNetworks(enabled: Set<Network>): List<Network> {
 }
 
 /**
+ * The host the user typed as [text] (screen D9's Restore, D3's "Type the old site's host"): a web address as one; a
+ * host or a site as the web address it names, so that a port, a path, a query or a fragment typed after it is dropped
+ * as a dApp's URL has it ("app.uniswap.org/swap?x=1"). Or why it names none.
+ */
+fun typedHost(text: String): AppHostResult {
+    val trimmed = text.trim()
+    return AppHost.ofUrl(if ("://" in trimmed) trimmed else "https://$trimmed")
+}
+
+/**
  * Restores the per-app address of a site on request (screen D9, "Restore a per-app address"; owner's request,
  * 2026-11-14): [hostOrSite] as the user typed it (a host, a site or a web address), the phrase that [from]'s envelope
  * holds, and the wallet password. The address is derived again, key and all, into the key store and added on
@@ -139,10 +149,7 @@ class RestorePerAppAddress(
     private val networks: NetworkSettings,
 ) {
     suspend operator fun invoke(from: AccountId, hostOrSite: String, password: WalletPassword): PerAppRestoring {
-        val text = hostOrSite.trim()
-        // A web address as one; a host or a site as the web address it names, so that a port, a path, a query or a
-        // fragment typed after it is dropped as a dApp's URL has it ("app.uniswap.org/swap?x=1").
-        val host = AppHost.ofUrl(if ("://" in text) text else "https://$text")
+        val host = typedHost(hostOrSite)
         if (host !is AppHostResult.Host) return PerAppRestoring.NoHost(host)
         val on = restoreNetworks(networks.observe().first())
         return PerAppRestoring.Done(host.host.site, make(from, host.host, on, password))

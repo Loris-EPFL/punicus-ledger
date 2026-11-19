@@ -298,7 +298,22 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
       be offered on none of them is greyed out, a tap saying why.
     - The last per-app account of an address takes its aliases with it, so
       that restoring the address later never links a site again unasked.
-    - "Type the old site's host" follows in part 4c.
+  - "Type the old site's host", as built in part 4c, and confirmed by
+    the owner's decisions of 2026-11-19:
+    - What is typed is read as D9's Restore reads it: a site, a host or a
+      web address.
+    - A site whose address is held here is picked as from the list, and
+      the usual question follows.
+    - Otherwise its address is made again from the phrase D3 would make a
+      new address from, on the networks a new address would go on. The
+      question says so and takes the wallet password. "Use it" makes it,
+      named and marked after the old site, then links the dApp's site.
+    - Typing the dApp's own site, or what names no site, is said, and
+      nothing is asked.
+    - "Use an address from another site…" is now greyed out only with no
+      other site's address here and no phrase to make one again from. It
+      replaces the greying of part 4b, since an old site can be typed
+      (the same decisions).
 - **Every per-app address is listed (D9)**, in the Per-app tab of the
   account detail of the phrase's first account (docs/wallet-ux.md, 4), and
   for every phrase together under Settings → Connected dApps (owner's

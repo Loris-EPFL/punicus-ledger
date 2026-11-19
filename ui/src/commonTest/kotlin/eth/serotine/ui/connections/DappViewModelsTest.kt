@@ -611,6 +611,74 @@ class DappViewModelsTest {
     }
 
     @Test
+    fun anOldSiteTypedIsMadeAgainUnderThePasswordAndLinked() = runTest {
+        main()
+        val wallet = FakeAccounts(ethereumHeld)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(wallet)
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        assertNull(vm.uiState.value.aliasOffer?.unavailable, "with a phrase, an old site can be typed")
+        vm.chooseAlias()
+        assertTrue(vm.uiState.value.aliasChoices!!.isEmpty())
+        vm.onAliasHostChange("app.uniswap.org/swap")
+        vm.typeAlias()
+        val question = vm.uiState.value.confirmingAlias!!
+        assertTrue(question.needsPassword)
+        assertEquals("Use uniswap.org's address?", question.title)
+        vm.answerAlias(yes = true)
+        assertEquals(DappProposalViewModel.PASSWORD_FOR_OLD_SITE, vm.uiState.value.explaining?.reason)
+        assertNotNull(vm.uiState.value.confirmingAlias, "still asked")
+        vm.dismissExplanation()
+
+        vm.onPasswordChange("correct horse")
+        vm.answerAlias(yes = true)
+        runCurrent()
+        val oldHost = (AppHost.parse("app.uniswap.org") as AppHostResult.Host).host
+        assertEquals(listOf(ethereumHeld.address to oldHost), keys.derived)
+        val moved = (AppHost.parse("uniswap.app") as AppHostResult.Host).host
+        assertEquals(mapOf(moved to keys.address), aliases.linked.value)
+        val made = wallet.accounts.value.filter { it.perApp != null }
+        assertEquals(listOf(uniswap, uniswap), made.map { it.perApp?.site }, "made for the old site")
+        val state = vm.uiState.value
+        assertEquals("", state.password.text)
+        assertTrue(state.accounts.filter { it.key.endsWith(keys.address.hex) }.all { it.chosen && it.linked })
+        assertNull(state.newAddress)
+    }
+
+    @Test
+    fun anOldSiteTypedWhoseAddressIsHeldIsPickedAsFromTheList() = runTest {
+        main()
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld, ofUniswap))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.onAliasHostChange("https://swap.uniswap.org")
+        vm.typeAlias()
+        assertEquals(false, vm.uiState.value.confirmingAlias?.needsPassword)
+        assertTrue(keys.derived.isEmpty())
+    }
+
+    @Test
+    fun aTypedHostThatIsThisSiteOrNoneIsSaid() = runTest {
+        main()
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        vm.chooseAlias()
+        vm.onAliasHostChange("www.uniswap.app")
+        vm.typeAlias()
+        assertEquals(DappProposalViewModel.SAME_SITE, vm.uiState.value.explaining?.reason)
+        vm.dismissExplanation()
+        vm.onAliasHostChange("not a host")
+        vm.typeAlias()
+        assertEquals(DappProposalViewModel.NOT_A_HOST, vm.uiState.value.explaining?.reason)
+        assertNull(vm.uiState.value.confirmingAlias)
+    }
+
+    @Test
     fun saidNoTheSiteIsNotLinked() = runTest {
         main()
         val wallet = FakeAccounts(ethereumHeld, ofUniswap)
@@ -628,10 +696,11 @@ class DappViewModelsTest {
     }
 
     @Test
-    fun withNoOtherSitesAddressUsingOneIsGreyedOutAndSaysWhy() = runTest {
+    fun withNoOtherSitesAddressAndNoPhraseUsingOneIsGreyedOutAndSaysWhy() = runTest {
         main()
         sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(movedProposal()), emptyList())
-        val vm = perAppViewModel(FakeAccounts(ethereumHeld))
+        // Watched alone: no other site's address, and no phrase to make one again from.
+        val vm = perAppViewModel(FakeAccounts(ethereumHeld.copy(custody = AccountCustody.Watched)))
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
         assertEquals(DappProposalViewModel.NO_OTHER_SITE, vm.uiState.value.aliasOffer?.unavailable)

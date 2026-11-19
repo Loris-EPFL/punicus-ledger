@@ -266,6 +266,27 @@ private fun DappProposalConfirmingAliasPreview() = DappProposalPreview(
     ),
 )
 
+// The old site not listed (after a restore of the phrase, say): its host typed, to make its address again.
+@Preview
+@Composable
+private fun DappProposalTypingOldHostPreview() = DappProposalPreview(
+    moved.copy(aliasChoices = emptyList(), aliasHost = "app.uniswap.org"),
+)
+
+@Preview
+@Composable
+private fun DappProposalMadeAgainPreview() = DappProposalPreview(
+    moved.copy(
+        password = WalletPassword("made-up password"),
+        confirmingAlias = AliasQuestion(
+            "Use uniswap.org's address?",
+            "uniswap.app will see the same address as uniswap.org. The two sites can link your activity. " +
+                DappProposalViewModel.MADE_AGAIN,
+            needsPassword = true,
+        ),
+    ),
+)
+
 // Linked: uniswap.org's address is uniswap.app's now, preselected, and no new address is offered beside it.
 @Preview
 @Composable
@@ -333,4 +354,6 @@ internal val dappProposalScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("choosing-alias") { DappProposalChoosingAliasPreview() },
     ScreenPreview("confirming-alias") { DappProposalConfirmingAliasPreview() },
     ScreenPreview("linked") { DappProposalLinkedPreview() },
+    ScreenPreview("typing-old-host") { DappProposalTypingOldHostPreview() },
+    ScreenPreview("made-again") { DappProposalMadeAgainPreview() },
 )

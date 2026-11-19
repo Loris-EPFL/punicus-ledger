@@ -273,21 +273,15 @@ private fun DappRequestPerAppOtherSitePreview() = DappRequestPreview(
     ),
 )
 
-// A dApp at a site the user linked to it, signing in to its own domain: said, and not warned about.
+// A dApp at a site the user linked to the address (example.org, linked to example.net's), signing in to its own
+// domain: said, and not warned about.
 @Preview
 @Composable
 private fun DappRequestPerAppLinkedPreview() = DappRequestPreview(
-    perAppAccount.copy(
-        url = "https://app.example.net",
-        signIn = perAppAccount.signIn.map {
-            when (it.label) {
-                "Site" -> it.copy(value = "app.example.net")
-                "URI" -> it.copy(value = "https://app.example.net/login")
-                else -> it
-            }
-        },
+    signIn.copy(
+        accountName = "example.net",
         perAppLine = DappRequestViewModel.perAppLine(
-            PerAppSigner(host("example.org"), host("example.net"), linked = true),
+            PerAppSigner(host("example.net"), host("example.org"), linked = true),
         ),
     ),
 )

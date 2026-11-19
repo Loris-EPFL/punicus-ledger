@@ -115,6 +115,12 @@ sealed interface AccountDetailUiState {
          */
         val perAppMark: String? = null,
         /**
+         * For a per-app address, the other sites the user linked to it (its aliases, docs/walletconnect.md), each
+         * with Remove, which asks nothing as it deletes no key (owner's decision, 2026-11-14, on PR #297); empty
+         * otherwise.
+         */
+        val perAppAliases: List<String> = emptyList(),
+        /**
          * For the account a recovery phrase is known by (docs/wallet-ux.md, 4), its Per-app tab: that phrase's
          * per-app addresses as screen D9 lists them; null for any other account, which has no such tab.
          */

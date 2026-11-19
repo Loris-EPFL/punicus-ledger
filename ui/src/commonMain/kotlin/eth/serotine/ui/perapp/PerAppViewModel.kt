@@ -222,8 +222,12 @@ class PerAppViewModel(
                     "Type a host or a site, such as app.uniswap.org or uniswap.org."
             }
             is PerAppRestoring.Done -> when (val made = restoring.making) {
-                is PerAppMaking.Made -> "The address of ${restoring.site.name} is back in your accounts." +
-                    if (made.steppedDown) " $STEPPED_DOWN" else ""
+                is PerAppMaking.Made -> {
+                    val site = restoring.site.name
+                    "The address of $site is back in your accounts." +
+                        (if (made.unlinked) " $site sees it now, in place of the one it was linked to." else "") +
+                        if (made.steppedDown) " $STEPPED_DOWN" else ""
+                }
                 PerAppMaking.NoNetwork -> NO_NETWORK
                 PerAppMaking.NoKey -> "The phrase's account has no key on this device any more. Nothing changed."
                 PerAppMaking.WrongPassword -> "That is not the wallet password. Nothing changed."
@@ -262,5 +266,7 @@ internal fun perAppRows(entries: List<PerAppEntry>, overview: PerAppOverview): L
             path = entry.path.toString(),
             chainId = first.network.chainId,
             hex = entry.address.hex,
+            aliases = entry.aliases.takeIf { it.isNotEmpty() }
+                ?.let { sites -> "Also seen by ${sites.joinToString { it.name }}" },
         )
     }

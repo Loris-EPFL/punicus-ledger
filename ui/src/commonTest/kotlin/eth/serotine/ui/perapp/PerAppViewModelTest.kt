@@ -15,6 +15,7 @@ import eth.serotine.domain.usecase.RestorePerAppAddress
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakePerAppKeys
+import eth.serotine.ui.MemoryAliases
 import eth.serotine.ui.MemoryNetworkSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -34,6 +35,8 @@ import kotlin.test.assertTrue
 /** Screen D9's ViewModel (issue #252, part 4): the list of per-app addresses and their restore. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PerAppViewModelTest {
+
+    private val aliases = MemoryAliases()
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -63,8 +66,8 @@ class PerAppViewModelTest {
     ): PerAppViewModel {
         val viewModel = PerAppViewModel(
             phrase,
-            ObservePerAppAddresses(accounts, keys, settings),
-            RestorePerAppAddress(MakePerAppAddress(keys, accounts, WalletChanges()), settings),
+            ObservePerAppAddresses(accounts, keys, settings, aliases),
+            RestorePerAppAddress(MakePerAppAddress(keys, accounts, WalletChanges(), aliases), settings),
             restoring,
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
@@ -84,6 +87,7 @@ class PerAppViewModelTest {
         assertEquals(AppIsolation.pathOf(uniswap).toString(), row.path)
         assertEquals(Network.ETHEREUM.chainId, row.chainId)
         assertEquals(address('6').hex, row.hex)
+        assertNull(row.aliases)
         assertNull(state.empty)
         assertNull(state.restoreBlocked)
     }
@@ -278,5 +282,14 @@ class PerAppViewModelTest {
         val state = viewModel(FakeAccounts(main), keys, phrase = second.address).uiState.value
         assertEquals(PerAppViewModel.OF_A_PHRASE, state.title)
         assertEquals(PerAppViewModel.PHRASE_GONE, state.restoreBlocked)
+    }
+
+    @Test
+    fun aRowNamesTheSitesLinkedToIt() = runTest {
+        main()
+        aliases.linked.value = mapOf((AppHost.parse("uniswap.app") as AppHostResult.Host).host to address('6'))
+        val keys = FakePerAppKeys(phrases = mapOf(main.address to main.address))
+        val state = viewModel(FakeAccounts(main, perApp), keys).uiState.value
+        assertEquals("Also seen by uniswap.app", state.rows.single().aliases)
     }
 }

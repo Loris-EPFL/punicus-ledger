@@ -111,6 +111,7 @@ class AccountDetailScreenTest {
                 perAppActions = PerAppActions(
                     onOpen = { chain, address -> events += "open per-app $chain $address" },
                     onRestore = { phrase -> events += "restore per-app $phrase" },
+                    onRemoveAlias = { site -> events += "remove alias $site" },
                 ),
             )
         }
@@ -130,6 +131,7 @@ class AccountDetailScreenTest {
         show(
             ready.copy(
                 perAppMark = "Per-app address for uniswap.org · m/44'/60'/1'/2'/3'",
+                perAppAliases = listOf("uniswap.app"),
                 segment = DetailSegment.PER_APP,
                 perApp = PerAppTab("0xphrase", listOf(row), empty = null),
             ),
@@ -137,6 +139,9 @@ class AccountDetailScreenTest {
         rule.onNodeWithTag(ACCOUNT_PER_APP_MARK_TAG).assertTextEquals(
             "Per-app address for uniswap.org · m/44'/60'/1'/2'/3'",
         )
+        rule.onNodeWithText("Also seen by uniswap.app, linked by you").assertExists()
+        rule.onNodeWithTag(ACCOUNT_PER_APP_ALIAS_REMOVE_TAG + "uniswap.app").performClick()
+        assertEquals("remove alias uniswap.app", events.last())
         rule.onNodeWithText("Per-app").assertExists()
         rule.onNodeWithTag(PER_APP_ROW_TAG + row.hex).performScrollTo().performClick()
         rule.onNodeWithTag(ACCOUNT_PER_APP_RESTORE_TAG).performScrollTo().performClick()

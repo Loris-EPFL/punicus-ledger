@@ -40,8 +40,46 @@ class DappProposalScreenTest {
                 onPasswordChange = { passwords += it },
                 onChoosePhrase = { phraseChanges++ },
                 onPickPhrase = { picked += it },
+                aliasActions = AliasActions(
+                    onChoose = { aliasEvents += "choose" },
+                    onPick = { aliasEvents += "pick $it" },
+                    onAnswer = { aliasEvents += "answer $it" },
+                ),
             )
         }
+    }
+
+    private val aliasEvents = mutableListOf<String>()
+
+    @Test
+    fun aSiteWithNoAddressOffersAnotherSitesListsThemAndAsksFirst() {
+        show(
+            state.copy(
+                aliasOffer = AliasOffer("No address for uniswap.app yet", null),
+                aliasChoices = listOf(
+                    AliasChoice("0x6", "uniswap.org", "Also seen by uniswap.exchange", "0x9fa6…8D52"),
+                ),
+            ),
+        )
+        rule.onNodeWithText("No address for uniswap.app yet").assertExists()
+        rule.onNodeWithTag(DAPP_PROPOSAL_ALIAS_CHOICE_TAG + "0x6").performClick()
+        rule.onNodeWithText("Also seen by uniswap.exchange").assertExists()
+        assertEquals(listOf("pick 0x6"), aliasEvents)
+    }
+
+    @Test
+    fun theQuestionIsAnsweredWithUseIt() {
+        show(state.copy(confirmingAlias = AliasQuestion("Use uniswap.org's address?", "The two sites can link.")))
+        rule.onNodeWithText("The two sites can link.").assertExists()
+        rule.onNodeWithTag(DAPP_PROPOSAL_ALIAS_YES_TAG).performClick()
+        assertEquals(listOf("answer true"), aliasEvents)
+    }
+
+    @Test
+    fun usingAnotherSitesAddressIsGreyedOutWhereThereIsNoneAndStillAsks() {
+        show(state.copy(aliasOffer = AliasOffer("No address for uniswap.app yet", DappProposalViewModel.NO_OTHER_SITE)))
+        rule.onNodeWithTag(DAPP_PROPOSAL_ALIAS_TAG).performScrollTo().assert(unavailable).performClick()
+        assertEquals(listOf("choose"), aliasEvents)
     }
 
     private val unavailable = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable")

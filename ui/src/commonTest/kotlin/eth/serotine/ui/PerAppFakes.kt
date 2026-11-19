@@ -8,6 +8,7 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.DappSiteMemory
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.PerAppDerivation
+import eth.serotine.domain.repository.PerAppAliases
 import eth.serotine.domain.repository.PerAppKeys
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,4 +45,24 @@ internal class FakePerAppKeys(
     }
 
     override suspend fun phrases(): Map<Address, Address> = phrases
+}
+
+/** [PerAppAliases] in memory, which can be made to [failSaves]. */
+internal class MemoryAliases(initial: Map<AppHost, Address> = emptyMap()) : PerAppAliases {
+    val linked = MutableStateFlow(initial)
+    var failSaves = false
+
+    override fun observe(): Flow<Map<AppHost, Address>> = linked
+
+    override suspend fun link(site: AppHost, address: Address): Boolean {
+        if (failSaves) return false
+        linked.value = linked.value + (site to address)
+        return true
+    }
+
+    override suspend fun unlink(site: AppHost): Boolean {
+        if (failSaves) return false
+        linked.value = linked.value - site
+        return true
+    }
 }

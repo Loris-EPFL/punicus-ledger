@@ -21,7 +21,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Create account](#create-account) | `create-account/` | 16 |
 | [Create Safe](#create-safe) | `create-safe/` | 19 |
 | [Display currency](#currency) | `currency/` | 4 |
-| [dApp connection request](#dapp-proposal) | `dapp-proposal/` | 20 |
+| [dApp connection request](#dapp-proposal) | `dapp-proposal/` | 24 |
 | [dApp signing request](#dapp-request) | `dapp-request/` | 20 |
 | [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 20 |
 | [Debug](#debug) | `debug/` | 6 |
@@ -321,7 +321,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="dapp-proposal"></a>
 ## dApp connection request
 
-`dapp-proposal/`, 20 states: `request`, `request-dark`, `none-chosen`, `either-kind`, `real-funds`, `real-funds-dark`, `missing-required`, `missing-required-dark`, `mixed-funds-refused`, `refused`, `explaining`, `not-saved`, `ended`, `loading`, `new-address`, `new-address-dark`, `two-phrases`, `choosing-phrase`, `no-phrase`, `seen-before`
+`dapp-proposal/`, 24 states: `request`, `request-dark`, `none-chosen`, `either-kind`, `real-funds`, `real-funds-dark`, `missing-required`, `missing-required-dark`, `mixed-funds-refused`, `refused`, `explaining`, `not-saved`, `ended`, `loading`, `new-address`, `new-address-dark`, `two-phrases`, `choosing-phrase`, `no-phrase`, `seen-before`, `moved`, `choosing-alias`, `confirming-alias`, `linked`
 
 <a href="dapp-proposal/request.png"><img src="dapp-proposal/request.png" width="206" alt="request"></a>
 <a href="dapp-proposal/request-dark.png"><img src="dapp-proposal/request-dark.png" width="206" alt="request-dark"></a>
@@ -343,6 +343,10 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="dapp-proposal/choosing-phrase.png"><img src="dapp-proposal/choosing-phrase.png" width="206" alt="choosing-phrase"></a>
 <a href="dapp-proposal/no-phrase.png"><img src="dapp-proposal/no-phrase.png" width="206" alt="no-phrase"></a>
 <a href="dapp-proposal/seen-before.png"><img src="dapp-proposal/seen-before.png" width="206" alt="seen-before"></a>
+<a href="dapp-proposal/moved.png"><img src="dapp-proposal/moved.png" width="206" alt="moved"></a>
+<a href="dapp-proposal/choosing-alias.png"><img src="dapp-proposal/choosing-alias.png" width="206" alt="choosing-alias"></a>
+<a href="dapp-proposal/confirming-alias.png"><img src="dapp-proposal/confirming-alias.png" width="206" alt="confirming-alias"></a>
+<a href="dapp-proposal/linked.png"><img src="dapp-proposal/linked.png" width="206" alt="linked"></a>
 
 <a name="dapp-request"></a>
 ## dApp signing request

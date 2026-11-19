@@ -19,6 +19,7 @@ import eth.serotine.domain.repository.DappProposal
 import eth.serotine.domain.repository.DappSiteMemory
 import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.NetworkSettings
+import eth.serotine.domain.repository.PerAppAliases
 import eth.serotine.domain.repository.PerAppDerivation
 import eth.serotine.domain.repository.PerAppKeys
 import kotlinx.coroutines.NonCancellable
@@ -43,7 +44,10 @@ data class PhraseSource(val phrase: Address?, val from: Account)
  * none; its [site]; the phrases to make it from ([sources], in list order, the first the default); the per-app
  * accounts already made for the site ([made], on any network); the accounts last approved for the site
  * ([remembered]); the networks that are on ([enabled]); and [collision], another site of a per-app address held here
- * whose path is this site's, which refuses the new address.
+ * whose path is this site's, which refuses the new address. [alias] is the per-app address of another site the user
+ * linked this site to, with its accounts ([aliased]); [others], the per-app addresses of other sites, which the site
+ * may be linked to (docs/walletconnect.md, *Aliases*); [names], what each phrase is called on screen
+ * ([PerAppOverview.names]).
  */
 data class PerAppChoice(
     val host: AppHostResult,
@@ -53,7 +57,14 @@ data class PerAppChoice(
     val remembered: List<AccountId>,
     val enabled: Set<Network>,
     val collision: AppHost?,
-)
+    val alias: Address? = null,
+    val aliased: List<Account> = emptyList(),
+    val others: List<PerAppEntry> = emptyList(),
+    val names: Map<Address, String> = emptyMap(),
+) {
+    /** What [source]'s phrase is called on screen, as D9 calls it: one name everywhere (owner, 2026-11-19). */
+    fun nameOf(source: PhraseSource): String = source.phrase?.let(names::get) ?: source.from.label
+}
 
 /**
  * The phrases of the wallet's accounts held here, each named by its first account in [listed] that is not a per-app
@@ -110,6 +121,7 @@ class ObservePerAppChoice(
     private val keys: PerAppKeys,
     private val sites: DappSiteMemory,
     private val networks: NetworkSettings,
+    private val aliases: PerAppAliases,
 ) {
     operator fun invoke(url: String): Flow<PerAppChoice> {
         val host = AppHost.ofUrl(url)
@@ -118,16 +130,29 @@ class ObservePerAppChoice(
             .map { list -> (list as? AccountList.Loaded)?.accounts.orEmpty() }
             .distinctUntilChanged()
             .map { listed -> listed to keys.phrases() }
-        return combine(listedWithPhrases, sites.observe(), networks.observe()) { (listed, phrases), memory, enabled ->
+        return combine(
+            listedWithPhrases,
+            sites.observe(),
+            networks.observe(),
+            aliases.observe(),
+        ) { (listed, phrases), memory, enabled, links ->
             val perApp = listed.mapNotNull { it.perApp }
+            val sources = phraseSources(listed, phrases)
+            val made = if (site == null) emptyList() else listed.filter { it.perApp?.site == site }
+            // The site's own address wins over an alias, should both stand (owner, 2026-11-19, on #328).
+            val alias = site?.let { links[it] }?.takeIf { made.isEmpty() }
             PerAppChoice(
                 host = host,
                 site = site,
-                sources = phraseSources(listed, phrases),
-                made = if (site == null) emptyList() else listed.filter { it.perApp?.site == site },
+                sources = sources,
+                made = made,
                 remembered = site?.let { memory[it] }.orEmpty(),
                 enabled = enabled,
                 collision = site?.let { AppIsolation.collision(it, perApp.map { mark -> mark.site }) },
+                alias = alias,
+                aliased = listed.filter { alias != null && it.address == alias && it.perApp != null },
+                others = perAppEntries(listed, links).filter { it.site != site },
+                names = phraseNames(listed, phraseAccounts(listed, sources)),
             )
         }.distinctUntilChanged()
     }
@@ -151,6 +176,11 @@ class MakePerAppAddress(
     private val accounts: AccountRepository,
     /** The app's one [WalletChanges]. */
     private val changes: WalletChanges,
+    /**
+     * The aliases the user linked: a site that gets an address of its own loses its alias, the own address winning
+     * (owner's decision, 2026-11-19, on PR #328), so that it never sees two.
+     */
+    private val aliases: PerAppAliases,
 ) {
     suspend operator fun invoke(
         from: AccountId,
@@ -189,7 +219,10 @@ class MakePerAppAddress(
             if (!accounts.addMarked(account, mark)) return PerAppMaking.ListNotSaved
             account.id
         }
-        return PerAppMaking.Made(stored.address, made, stored.steppedDown)
+        // Its own address wins over an alias it had: the site never sees two (owner, 2026-11-19, on #328).
+        val linked = aliases.observe().first()[site]
+        val unlinked = linked != null && linked != stored.address && aliases.unlink(site)
+        return PerAppMaking.Made(stored.address, made, stored.steppedDown, unlinked)
     }
 }
 
@@ -221,10 +254,15 @@ sealed interface PerAppMaking {
 
     /**
      * [address] is in the wallet as each of [accounts], held in the key store. [steppedDown] when its envelope was
-     * sealed at a lighter password cost than this device's own, which the user is told.
+     * sealed at a lighter password cost than this device's own, which the user is told; [unlinked] when the site's
+     * alias to another site's address was removed, its own address taking its place.
      */
-    data class Made(val address: Address, val accounts: List<AccountId>, val steppedDown: Boolean = false) :
-        PerAppMaking
+    data class Made(
+        val address: Address,
+        val accounts: List<AccountId>,
+        val steppedDown: Boolean = false,
+        val unlinked: Boolean = false,
+    ) : PerAppMaking
 
     /** No network to make it on was given; nothing changed. */
     data object NoNetwork : PerAppMaking

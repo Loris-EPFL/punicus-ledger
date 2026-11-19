@@ -13,6 +13,7 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.NetworkSettings
+import eth.serotine.domain.repository.PerAppAliases
 import eth.serotine.domain.repository.PerAppKeys
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -23,8 +24,8 @@ import kotlinx.coroutines.flow.map
 /**
  * One per-app address held here, as screen D9 lists it (issue #252; docs/walletconnect.md, *Every per-app address is
  * listed*): its [address], the [site] it was made for, its [path] below the seed and the [phrase] it comes from (the
- * address of that phrase's first account), with its [accounts] in the wallet, one per network, in list order. Public
- * values only.
+ * address of that phrase's first account), with its [accounts] in the wallet, one per network, in list order, and
+ * the other sites the user linked to it ([aliases], [PerAppAliases]). Public values only.
  */
 data class PerAppEntry(
     val address: Address,
@@ -32,6 +33,7 @@ data class PerAppEntry(
     val path: PerAppPath,
     val phrase: Address,
     val accounts: List<Account>,
+    val aliases: List<AppHost> = emptyList(),
 )
 
 /**
@@ -59,20 +61,18 @@ class ObservePerAppAddresses(
     private val accounts: AccountRepository,
     private val keys: PerAppKeys,
     private val networks: NetworkSettings,
+    private val aliases: PerAppAliases,
 ) {
     operator fun invoke(): Flow<PerAppOverview> {
         val listedWithPhrases = accounts.observeAccounts()
             .map { list -> (list as? AccountList.Loaded)?.accounts }
             .distinctUntilChanged()
             .map { listed -> listed to listed?.let { keys.phrases() }.orEmpty() }
-        return combine(listedWithPhrases, networks.observe()) { (listed, phrases), enabled ->
+        return combine(listedWithPhrases, networks.observe(), aliases.observe()) { (listed, phrases), enabled, links ->
             if (listed == null) return@combine PerAppOverview(emptyList(), emptyList(), enabled, unreadable = true)
             val sources = phraseSources(listed, phrases)
             val knownBy = phraseAccounts(listed, sources)
-            val names = knownBy.mapNotNull { (phrase, address) ->
-                listed.firstOrNull { it.address == address && it.perApp == null }?.let { phrase to it.label }
-            }.toMap()
-            PerAppOverview(perAppEntries(listed), sources, enabled, knownBy, names)
+            PerAppOverview(perAppEntries(listed, links), sources, enabled, knownBy, phraseNames(listed, knownBy))
         }.distinctUntilChanged()
     }
 }
@@ -97,14 +97,24 @@ fun phraseAccounts(listed: List<Account>, sources: List<PhraseSource>): Map<Addr
     }.toMap()
 }
 
-/** The per-app addresses among [listed], each once with its accounts on every network ([PerAppEntry]). */
-fun perAppEntries(listed: List<Account>): List<PerAppEntry> =
+/**
+ * The per-app addresses among [listed], each once with its accounts on every network and the sites [aliases] links
+ * to it ([PerAppEntry]).
+ */
+fun perAppEntries(listed: List<Account>, aliases: Map<AppHost, Address> = emptyMap()): List<PerAppEntry> =
     listed.filter { it.perApp != null }
         .groupBy { it.address }
         .map { (address, held) ->
             val mark = requireNotNull(held.first().perApp)
-            PerAppEntry(address, mark.site, mark.path, mark.phrase, held)
+            val linked = aliases.filter { (site, to) -> to == address && site != mark.site }.keys.toList()
+            PerAppEntry(address, mark.site, mark.path, mark.phrase, held, linked)
         }
+
+/** What each phrase of [knownBy] is called on screen: the name of the account it is known by ([PerAppOverview]). */
+fun phraseNames(listed: List<Account>, knownBy: Map<Address, Address>): Map<Address, String> =
+    knownBy.mapNotNull { (phrase, address) ->
+        listed.firstOrNull { it.address == address && it.perApp == null }?.let { phrase to it.label }
+    }.toMap()
 
 /**
  * The networks a restored per-app address goes on (docs/walletconnect.md, D9): every network that is on, of one kind
@@ -147,4 +157,49 @@ sealed interface PerAppRestoring {
 
     /** It was made for [site], with [making] saying how that went. */
     data class Done(val site: AppHost, val making: PerAppMaking) : PerAppRestoring
+}
+
+/**
+ * Links the dApp site [site] to the per-app address [address] of another site (docs/walletconnect.md, *Aliases*), once
+ * the user was asked and agreed that the two sites can link their activity. [address] must be a per-app address in the
+ * wallet, of another site than [site], and [site] must have no per-app address of its own: anything else is refused,
+ * never linked, so that a site never sees two addresses through an alias.
+ */
+class LinkPerAppAlias(private val accounts: AccountRepository, private val aliases: PerAppAliases) {
+    suspend operator fun invoke(site: AppHost, address: Address): AliasLinking {
+        val listed = (accounts.observeAccounts().first() as? AccountList.Loaded)?.accounts
+            ?: return AliasLinking.ListUnreadable
+        val mark = listed.firstOrNull { it.address == address && it.perApp != null }?.perApp
+            ?: return AliasLinking.NotPerApp
+        if (mark.site == site.site) return AliasLinking.NotPerApp
+        if (listed.any { it.perApp?.site == site.site }) return AliasLinking.HasOwn
+        return if (aliases.link(site.site, address)) AliasLinking.Linked else AliasLinking.NotSaved
+    }
+}
+
+/** The outcome of [LinkPerAppAlias]. */
+enum class AliasLinking {
+    /** The site now sees the address. */
+    Linked,
+
+    /** The address is not another site's per-app address in the wallet; nothing changed. */
+    NotPerApp,
+
+    /** The site has a per-app address of its own; nothing changed. */
+    HasOwn,
+
+    /** The account list cannot be read; nothing changed. */
+    ListUnreadable,
+
+    /** The alias could not be saved; nothing changed. */
+    NotSaved,
+}
+
+/**
+ * Removes the alias of the site [site] (docs/wallet-ux.md, 4): asking nothing, as it deletes no key (owner's decision,
+ * 2026-11-14, on PR #297). The next connection from that site is offered an address of its own. False when it could
+ * not be saved.
+ */
+class UnlinkPerAppAlias(private val aliases: PerAppAliases) {
+    suspend operator fun invoke(site: AppHost): Boolean = aliases.unlink(site.site)
 }

@@ -762,6 +762,7 @@ private fun AccountDetailPerAppAddressPreview() = AccountDetailPreview(
     daily.copy(
         label = "uniswap.org",
         perAppMark = "Per-app address for uniswap.org · m/44'/60'/1736218'/915403'/66032'",
+        perAppAliases = listOf("uniswap.app"),
     ),
 )
 

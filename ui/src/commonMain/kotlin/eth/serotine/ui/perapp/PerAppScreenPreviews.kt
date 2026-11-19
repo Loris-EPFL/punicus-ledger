@@ -18,6 +18,7 @@ private val uniswap = PerAppRow(
     path = "m/44'/60'/1736218'/915403'/66032'",
     chainId = 1,
     hex = "0x9fa6c0b2e14d7a35c8e01b2f6d3a9c47b1e08d52",
+    aliases = "Also seen by uniswap.app",
 )
 
 private val safe = PerAppRow(

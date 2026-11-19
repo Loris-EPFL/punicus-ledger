@@ -61,6 +61,15 @@ const val DAPP_PROPOSAL_ACCOUNT_TAG = "dapp-proposal-account-"
 /** Test tag of the new per-app address's row, for UI tests. */
 const val DAPP_PROPOSAL_NEW_ADDRESS_TAG = "dapp-proposal-new-address"
 
+/** Test tag of "Use an address from another site…", for UI tests. */
+const val DAPP_PROPOSAL_ALIAS_TAG = "dapp-proposal-alias"
+
+/** Test tag of another site's address in the alias list, followed by its key, for UI tests. */
+const val DAPP_PROPOSAL_ALIAS_CHOICE_TAG = "dapp-proposal-alias-choice-"
+
+/** Test tag of the alias question's "Use it", for UI tests. */
+const val DAPP_PROPOSAL_ALIAS_YES_TAG = "dapp-proposal-alias-yes"
+
 /** Test tag of the wallet password field, for UI tests. */
 const val DAPP_PROPOSAL_PASSWORD_TAG = "dapp-proposal-password"
 
@@ -94,8 +103,19 @@ fun DappProposalRoute(
         onChoosePhrase = viewModel::choosePhrase,
         onPickPhrase = viewModel::pickPhrase,
         modifier = modifier,
+        aliasActions = AliasActions(viewModel::chooseAlias, viewModel::pickAlias, viewModel::answerAlias),
     )
 }
+
+/**
+ * What linking the dApp's site to another site's address does (docs/walletconnect.md, *Aliases*): [onChoose] opens the
+ * list, [onPick] picks an address from it by its key (null closes it), and [onAnswer] answers the question asked.
+ */
+class AliasActions(
+    val onChoose: () -> Unit = {},
+    val onPick: (String?) -> Unit = {},
+    val onAnswer: (Boolean) -> Unit = {},
+)
 
 /**
  * A dApp's session proposal (docs/walletconnect.md, screen D3) as a pure function of [state]: what
@@ -103,7 +123,8 @@ fun DappProposalRoute(
  * of funds, what it asks to do, and the accounts to choose, each with its network, those this dApp may not
  * be offered greyed out, a tap saying why. At their head, the new per-app address for the dApp's site (issue #252),
  * ticked while the site has none, greyed out when it cannot be made, with the phrase it comes from when there are
- * several; chosen, it asks for the wallet password. Approve and
+ * several; chosen, it asks for the wallet password. For a site with no address yet, "Use an address from another
+ * site…" links it to another site's per-app address after asking ([aliasActions]). Approve and
  * Reject; a proposal that asks for too much can only be rejected, and says why.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,9 +140,13 @@ fun DappProposalScreen(
     onChoosePhrase: () -> Unit = {},
     onPickPhrase: (String?) -> Unit = {},
     modifier: Modifier = Modifier,
+    aliasActions: AliasActions = AliasActions(),
 ) {
-    state.explaining?.let { UnavailableDialog(UnavailableNotice(it.title, it.reason), onDismissExplanation) }
     state.phrases?.let { PhraseDialog(it, onPickPhrase) }
+    state.aliasChoices?.let { AliasDialog(it, aliasActions.onPick) }
+    state.confirmingAlias?.let { AliasQuestionDialog(it, aliasActions.onAnswer) }
+    // Last, so that it shows over the list a greyed-out choice of which it explains.
+    state.explaining?.let { UnavailableDialog(UnavailableNotice(it.title, it.reason), onDismissExplanation) }
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -183,6 +208,7 @@ fun DappProposalScreen(
             Heading("Accounts it sees")
             state.newAddress?.let { NewAddressRow(it, state.busy, onToggle, onChoosePhrase) }
             if (state.newAddress?.chosen == true) PasswordField(state, onPasswordChange, onApprove)
+            state.aliasOffer?.let { AliasOfferRow(it, state.busy, aliasActions.onChoose) }
             state.accounts.forEach { account ->
                 val unavailable = account.unavailable != null
                 val color = if (unavailable) Unavailable.contentColor() else MaterialTheme.colorScheme.onSurface
@@ -204,7 +230,11 @@ fun DappProposalScreen(
                             account.network.isEmpty() -> account.address
                             else -> "${account.network} · ${account.address}"
                         }
-                        val line = account.perAppSite?.let { "Per-app address for $it · $where" } ?: where
+                        val line = when {
+                            account.perAppSite == null -> where
+                            account.linked -> "Per-app address for ${account.perAppSite}, linked by you · $where"
+                            else -> "Per-app address for ${account.perAppSite} · $where"
+                        }
                         Text(account.unavailable ?: line, color = color)
                     },
                     colors = ListItemDefaults.colors(),
@@ -316,6 +346,83 @@ private fun PasswordField(state: DappProposalUiState, onPasswordChange: (String)
             color = MaterialTheme.colorScheme.error,
         )
     }
+}
+
+/**
+ * "No address for `<site>` yet" and the way to another site's address instead, greyed out, still tappable, where there
+ * is none to use (owner ruling, 2026-10-18, #55).
+ */
+@Composable
+private fun AliasOfferRow(offer: AliasOffer, busy: Boolean, onChoose: () -> Unit) {
+    val unavailable = offer.unavailable != null
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Text(offer.line, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(
+            onClick = onChoose,
+            enabled = !busy,
+            colors = if (unavailable) {
+                ButtonDefaults.textButtonColors(contentColor = Unavailable.contentColor())
+            } else {
+                ButtonDefaults.textButtonColors()
+            },
+            modifier = Modifier.unavailable(unavailable).testTag(DAPP_PROPOSAL_ALIAS_TAG),
+        ) { Text("Use an address from another site…") }
+    }
+}
+
+/**
+ * The other sites' per-app addresses, each with its site and the sites already linked to it. It suggests none: no
+ * "looks like" a site, the cue a look-alike phishing domain wants (docs/walletconnect.md, *Aliases*).
+ */
+@Composable
+private fun AliasDialog(choices: List<AliasChoice>, onPick: (String?) -> Unit) {
+    AlertDialog(
+        onDismissRequest = { onPick(null) },
+        title = { Text("Use an address from another site") },
+        text = {
+            // It grows with every site connected: it scrolls, so that each can be reached.
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "The site that connects then sees that site's address, so the two can link your activity.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                choices.forEach { choice ->
+                    val greyed = choice.unavailable != null
+                    val color = if (greyed) Unavailable.contentColor() else MaterialTheme.colorScheme.onSurface
+                    Column(
+                        Modifier.fillMaxWidth().clickable { onPick(choice.key) }.unavailable(greyed)
+                            .padding(vertical = 6.dp)
+                            .testTag(DAPP_PROPOSAL_ALIAS_CHOICE_TAG + choice.key),
+                    ) {
+                        Text(choice.site, color = color)
+                        Text(
+                            "${choice.networks} · ${choice.address}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = color,
+                        )
+                        choice.linked?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = color) }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onPick(null) }) { Text("Cancel") } },
+    )
+}
+
+/** What is asked before the dApp's site is linked to another site's address. */
+@Composable
+private fun AliasQuestionDialog(question: AliasQuestion, onAnswer: (Boolean) -> Unit) {
+    AlertDialog(
+        onDismissRequest = { onAnswer(false) },
+        title = { Text(question.title) },
+        text = { Text(question.text) },
+        confirmButton = {
+            TextButton(onClick = { onAnswer(true) }, Modifier.testTag(DAPP_PROPOSAL_ALIAS_YES_TAG)) {
+                Text("Use it")
+            }
+        },
+        dismissButton = { TextButton(onClick = { onAnswer(false) }) { Text("Cancel") } },
+    )
 }
 
 /** The phrases a new address can come from, each named by an account of it; picking one closes the list. */

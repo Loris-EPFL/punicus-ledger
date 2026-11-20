@@ -120,7 +120,7 @@ its history is in the repository's commits.
 
 ## Contact
 
-Questions: open an issue at <https://github.com/biafra23/punicus/issues>.
+Questions: open an issue at <https://github.com/VesperBats/punicus/issues>.
 
 A security issue, a leak among them, is reported privately instead, never in
 a public issue: see [SECURITY.md](../SECURITY.md).

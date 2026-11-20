@@ -28,7 +28,7 @@ To see it as it is published, build it and open the result:
 ```bash
 python3 scripts/build_website.py                 # into build/website/
 python3 scripts/build_website.py --releases r.json   # with the newest release's files linked
-gh api "repos/biafra23/punicus/releases?per_page=30" > r.json   # how to get r.json
+gh api "repos/VesperBats/punicus/releases?per_page=30" > r.json   # how to get r.json
 ```
 
 ## What the build does

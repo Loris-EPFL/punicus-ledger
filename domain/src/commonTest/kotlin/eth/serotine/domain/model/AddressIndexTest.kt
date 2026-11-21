@@ -26,7 +26,7 @@ class AddressIndexTest {
         headGap: AddressIndexHeadGap? = null,
         tailGap: LongRange? = null,
         gaps: List<LongRange> = emptyList(),
-    ) = AddressIndexCoverage(importer, 3, 1_000, 2_000, headGap, tailGap, gaps)
+    ) = AddressIndexCoverage(importer, 3, 1_000L..2_000L, headGap, tailGap, gaps)
 
     @Test
     fun anEntryNamesItsTransactionBySlotAndKnowsWhenItRestsOnATraceAlone() {
@@ -57,7 +57,25 @@ class AddressIndexTest {
         assertFailsWith<IllegalArgumentException> { coverage(gaps = listOf(1_900L..2_001L)) }
         assertFailsWith<IllegalArgumentException> { coverage(gaps = listOf(1_500L..1_400L)) }
         assertFailsWith<IllegalArgumentException> {
-            AddressIndexCoverage(importer, 3, 2_000, 1_000, null, null, emptyList())
+            AddressIndexCoverage(importer, 3, 2_000L..1_000L, null, null, emptyList())
+        }
+    }
+
+    @Test
+    fun aRangeTheIndexDoesNotReachIsAllGapNeverAnInventedCoverage() {
+        // An index that covers nothing yet: the range asked is gap above and below, and no inner gap can be named.
+        AddressIndexCoverage(importer, 0, null, AddressIndexHeadGap(500, null), 0L..499L, emptyList())
+        AddressIndexCoverage(importer, 0, null, AddressIndexHeadGap(0, 900), null, emptyList())
+        // Newest blocks asked inside the head gap: the coverage below is the index's, and the gap spans the range.
+        coverage(headGap = AddressIndexHeadGap(2_500, 2_600))
+        // Blocks asked below where coverage starts: all tail gap.
+        coverage(tailGap = 100L..200L)
+
+        assertFailsWith<IllegalArgumentException> {
+            AddressIndexCoverage(importer, 0, null, null, null, listOf(10L..20L))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            AddressIndexCoverage(importer, 0, null, AddressIndexHeadGap(400, null), 0L..499L, emptyList())
         }
     }
 
@@ -65,6 +83,14 @@ class AddressIndexTest {
     fun aRowIsProvenInOneRoleAtLeastAndCarriesATransactionOnlyForATransactionEntry() {
         val tx = AddressIndexTransaction("0x" + "cc".repeat(32), alice, null, Wei.of("0"), null)
         AddressIndexRow(AddressIndexEntry(10, 1, setOf(FROM, TRACE)), hash, true, setOf(FROM), setOf(TRACE), tx)
+        val both = AddressIndexEntry(10, 1, setOf(FROM, TO))
+
+        // No role but the trace rests on the importer's word, and every role of the entry is accounted for.
+        assertFailsWith<IllegalArgumentException> { AddressIndexRow(both, hash, true, setOf(FROM), setOf(TO), tx) }
+        assertFailsWith<IllegalArgumentException> { AddressIndexRow(both, hash, true, setOf(FROM), emptySet(), tx) }
+        assertFailsWith<IllegalArgumentException> {
+            AddressIndexRow(AddressIndexEntry(10, 1, setOf(FROM)), hash, true, setOf(FROM), setOf(TRACE), tx)
+        }
         AddressIndexRow(AddressIndexEntry(10, 0, setOf(BLOCK)), hash, false, setOf(BLOCK), emptySet(), null)
 
         val sent = AddressIndexEntry(10, 1, setOf(FROM))
@@ -78,6 +104,11 @@ class AddressIndexTest {
         assertFailsWith<IllegalArgumentException> {
             AddressIndexTransaction("0x" + "CC".repeat(32), alice, null, Wei.of("0"), null)
         }
+        val token = Address.of("0x" + "7c".repeat(20))
+        val tokens = TokenTransfer.Fungible(token, alice, token, UInt256.of(1))
+        AddressIndexTransaction(tx.hash, alice, null, Wei.of("0"), tokens)
+        val eth = TokenTransfer.Fungible(TokenTransfers.ETH, alice, token, UInt256.of(1))
+        assertFailsWith<IllegalArgumentException> { AddressIndexTransaction(tx.hash, alice, token, Wei.of("1"), eth) }
     }
 
     @Test
@@ -85,6 +116,7 @@ class AddressIndexTest {
         val entry = AddressIndexEntry(10, 1, setOf(FROM))
         AddressIndexVerdict.Contradicted(entry, hash, true, setOf(FROM))
 
+        assertFailsWith<IllegalArgumentException> { AddressIndexVerdict.Contradicted(entry, "0xbb", true, setOf(FROM)) }
         assertFailsWith<IllegalArgumentException> { AddressIndexVerdict.Contradicted(entry, hash, true, emptySet()) }
         assertFailsWith<IllegalArgumentException> { AddressIndexVerdict.Contradicted(entry, hash, true, setOf(TO)) }
     }
@@ -118,10 +150,18 @@ class AddressIndexTest {
     }
 
     @Test
-    fun onlyAPassingRefusalIsRetryable() {
+    fun onlyAPassingRefusalIsRetryableAndOnlySyncingUnprovenOrOffPass() {
         assertTrue(AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING).retryable)
-        assertFalse(AddressIndexRefusal.NoImporter.retryable)
+        assertTrue(AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN).retryable)
+        assertTrue(AddressIndexRefusal.NotNow(ReadUnavailable.NETWORK_OFF).retryable)
+        assertFalse(AddressIndexRefusal.SettingOff.retryable)
+        assertFalse(AddressIndexRefusal.StaleAnchor.retryable)
+        assertFalse(AddressIndexRefusal.NoEngine.retryable)
+        assertFalse(AddressIndexRefusal.CheckpointAlarm("checkpoint table alarm: x").retryable)
+        assertFalse(AddressIndexRefusal.WrongImporter(importer, alice).retryable)
         assertFalse(AddressIndexRefusal.NetworkNotServed(Network.GNOSIS).retryable)
-        assertFailsWith<IllegalArgumentException> { AddressIndexRefusal.NotNow(ReadUnavailable.REFUSED) }
+        for (lasting in listOf(ReadUnavailable.REFUSED, ReadUnavailable.STALE_ANCHOR, ReadUnavailable.NO_ENGINE)) {
+            assertFailsWith<IllegalArgumentException> { AddressIndexRefusal.NotNow(lasting) }
+        }
     }
 }

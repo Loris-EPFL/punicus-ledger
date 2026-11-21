@@ -13,44 +13,60 @@ import eth.serotine.domain.repository.AddressIndexQuery
 import eth.serotine.domain.repository.AddressIndexReading
 import eth.serotine.domain.repository.AddressIndexRefusal
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Loads the next page of an account's history from the addr1 index (issue #334; owner ruling, 2026-11-21,
- * `.claude/rules/data-sources.md`, *The history may also take the addr1 index from Swarm*): it reads one page of
- * candidates from [history], has the engine check them, and gives back the verified ones only, as rows, newest
- * first, with what the index covers, the importer key the list rests on, and how many entries it left out.
+ * Loads the next page of an account's history from the addr1 index, for its *Activity* list alone (issue #334; owner
+ * ruling, 2026-11-21, and the owner's decisions of that day on #335, `.claude/rules/data-sources.md`, *The history
+ * may also take the addr1 index from Swarm*): it reads one page of candidates from [history], has the engine check
+ * them, and gives back the verified ones only, as rows, newest first, with what the index covers, the importer key
+ * the list rests on, and how many entries it left out.
  *
+ * - **The pinned key only.** A page whose index is signed by any key but [pinnedImporter], the key pinned in the
+ *   release, is refused ([AddressIndexRefusal.WrongImporter]) before anything of it is checked.
  * - **Verified rows only.** An entry becomes a row only on an [AddressIndexVerdict.Verified] of it. Every other
- *   entry is left out and counted ([AddressIndexLeftOut]).
+ *   entry is left out and counted ([AddressIndexLeftOut]); a contradicted one apart, a warning against the key.
  * - **TRACE-only entries are not sent to the check**: the engine never verifies one, so asking would only spend a
  *   slot of the check. They are counted apart ([AddressIndexLeftOut.traceOnly]), among the entries that could not
  *   be verified.
  * - **The check runs in chunks** of at most [AddressIndexHistory.MAX_CHECKED] entries, one after the other, in page
- *   order. An entry that comes back [AddressIndexVerdict.Unavailable], or with no verdict, is asked again, up to
- *   [attempts] checks in all, [retryPause] apart; one still unavailable after that is left out and counted apart
+ *   order. A verdict is matched to the entry asked by block and slot; one whose roles are not the roles asked, or
+ *   two different verdicts for one entry, count as no verdict. An entry that comes back
+ *   [AddressIndexVerdict.Unavailable], or with no verdict, is asked again, up to [attempts] checks in all,
+ *   [retryPause] apart. One still unavailable after that is left out and counted apart
  *   ([AddressIndexLeftOut.unavailable]), since a later load may verify it.
- * - **A refusal is said, never an empty list.** A page or a check refused for a lasting reason refuses the load
- *   with it ([AddressIndexLoad.Refused]). A check refused for a passing reason ([AddressIndexRefusal.NotNow]) is
- *   asked again like an unavailable entry; still refused at the last attempt, it refuses the load, so the caller
- *   loads the same page again later rather than pass its entries by.
- * - **One importer per list.** A page after the first must name the importer the list began with
- *   ([AddressIndexContinuation.importer]); one that names another ends the list ([AddressIndexLoad.ImporterChanged]),
- *   whose completeness rests on that one key.
+ * - **A passing refusal of a check** ([AddressIndexRefusal.NotNow]) is asked again like an unavailable entry; still
+ *   refused at the last attempt, that chunk's entries count as unavailable, and the rows already verified and the
+ *   page's continuation are kept.
+ * - **A lasting refusal is said, never an empty list.** A page refused for any reason refuses the load with it
+ *   ([AddressIndexLoad.Refused]). So does a check refused for a lasting reason (not in this build, the setting off,
+ *   Tor, a network not served, the checkpoint table's alarm, a stale checkpoint, no engine), since it holds for
+ *   every chunk, and the alarm withdraws the trust the rows rest on. [AddressIndexRefusal.Rejected] refuses it too:
+ *   the engine refusing an argument this port checked is a bug, and no part of the page is shown over it.
+ * - **One load takes at most [budget]**, retry pauses included: the entries no check answered by then count as
+ *   unavailable, the rows verified so far are kept, and so is the page's continuation.
  *
- * Pure: everything it knows comes from [history], and it calls it from the caller's coroutine only.
+ * Deterministic: everything it knows comes from [history], called from the caller's coroutine only, one check at a
+ * time (the engine bounds each at 90 seconds).
  */
 class LoadAddressIndexPage(
     private val history: AddressIndexHistory,
+    /** The importer key pinned in the release: the one key whose index the list may rest on. */
+    private val pinnedImporter: Address,
     /** How many checks an entry gets at most, the first one included: 1 or more. */
     private val attempts: Int = DEFAULT_ATTEMPTS,
     /** How long to wait before asking again for the entries no check answered. */
     private val retryPause: Duration = DEFAULT_RETRY_PAUSE,
+    /** The longest the checks of one load may take, retry pauses included. */
+    private val budget: Duration = DEFAULT_BUDGET,
 ) {
     init {
         require(attempts >= 1) { "an entry is checked once at least" }
         require(!retryPause.isNegative()) { "a pause is never negative" }
+        require(budget.isPositive()) { "a load has time to check" }
     }
 
     /**
@@ -70,14 +86,14 @@ class LoadAddressIndexPage(
             is AddressIndexReading.Page -> reading.page
         }
         val importer = page.coverage.importer
-        if (after != null && importer != after.importer) {
-            return AddressIndexLoad.ImporterChanged(trusted = after.importer, named = importer)
+        if (importer != pinnedImporter) {
+            return AddressIndexLoad.Refused(AddressIndexRefusal.WrongImporter(pinnedImporter, importer))
         }
         val checked = page.entries.filterNot { it.traceOnly }
-        val verdicts = when (val outcome = check(account, checked)) {
-            is Checked.Refused -> return AddressIndexLoad.Refused(outcome.reason)
-            is Checked.Done -> outcome.verdicts
-        }
+        val verdicts = mutableMapOf<AddressIndexEntry, AddressIndexVerdict>()
+        // Past the budget the check stops where it is: what it had verified stays, the rest is unavailable.
+        val outcome = withTimeoutOrNull(budget) { checkAll(account, checked, verdicts) }
+        if (outcome is Lasting) return AddressIndexLoad.Refused(outcome.reason)
         val rows = page.entries.mapNotNull { (verdicts[it] as? AddressIndexVerdict.Verified)?.row }
         val leftOut = AddressIndexLeftOut(
             unverified = verdicts.values.count { it is AddressIndexVerdict.Unverified },
@@ -90,43 +106,51 @@ class LoadAddressIndexPage(
             rows = rows,
             coverage = page.coverage,
             leftOut = leftOut,
-            next = page.next?.let { AddressIndexContinuation(account, importer, it) },
+            next = page.next?.let { AddressIndexContinuation(account, it) },
         )
     }
 
     /**
-     * The lasting verdicts of [entries]: every one but those still unavailable after [attempts] checks, which have
-     * none. A verdict is taken only for an entry asked, and only when the answer gives it one verdict.
+     * Checks [entries], putting into [verdicts] the lasting verdict of each that gets one: all but those still
+     * unavailable after [attempts] checks. [Lasting] when a check is refused for a lasting reason, else [Done].
      */
-    private suspend fun check(account: AccountId, entries: List<AddressIndexEntry>): Checked {
-        val verdicts = mutableMapOf<AddressIndexEntry, AddressIndexVerdict>()
+    private suspend fun checkAll(
+        account: AccountId,
+        entries: List<AddressIndexEntry>,
+        verdicts: MutableMap<AddressIndexEntry, AddressIndexVerdict>,
+    ): Outcome {
         var pending = entries
         for (attempt in 1..attempts) {
             if (pending.isEmpty()) break
             if (attempt > 1) delay(retryPause)
-            var notNow: AddressIndexRefusal? = null
             for (chunk in pending.chunked(AddressIndexHistory.MAX_CHECKED)) {
                 when (val answer = history.verify(account.network, account.address, chunk)) {
-                    is AddressIndexCheck.Refused ->
-                        if (answer.reason.retryable) notNow = answer.reason else return Checked.Refused(answer.reason)
+                    // A passing refusal leaves the chunk pending: asked again, or unavailable after the last attempt.
+                    is AddressIndexCheck.Refused -> if (!answer.reason.retryable) return Lasting(answer.reason)
                     is AddressIndexCheck.Verdicts -> chunk.forEach { entry ->
-                        answer.verdicts.filter { it.entry == entry }.distinct().singleOrNull()
-                            ?.takeUnless { it is AddressIndexVerdict.Unavailable }
-                            ?.let { verdicts[entry] = it }
+                        verdictOf(entry, answer.verdicts)?.let { verdicts[entry] = it }
                     }
                 }
             }
             pending = pending.filterNot { it in verdicts }
-            if (attempt == attempts && notNow != null) return Checked.Refused(notNow)
         }
-        return Checked.Done(verdicts)
+        return Done
     }
 
-    /** What [check] found: the lasting [Done.verdicts], or why nothing could be checked. */
-    private sealed interface Checked {
-        data class Done(val verdicts: Map<AddressIndexEntry, AddressIndexVerdict>) : Checked
-        data class Refused(val reason: AddressIndexRefusal) : Checked
-    }
+    /**
+     * The one lasting verdict [answer] gives [entry]: matched by block and slot, with the roles asked; null for none,
+     * for one whose roles differ, for two that differ, and for [AddressIndexVerdict.Unavailable].
+     */
+    private fun verdictOf(entry: AddressIndexEntry, answer: List<AddressIndexVerdict>): AddressIndexVerdict? =
+        answer.filter { it.entry.block == entry.block && it.entry.slot == entry.slot }
+            .distinct()
+            .singleOrNull()
+            ?.takeIf { it.entry.roles == entry.roles && it !is AddressIndexVerdict.Unavailable }
+
+    /** How [checkAll] ended: [Done], or refused for a [Lasting] reason. */
+    private sealed interface Outcome
+    private data object Done : Outcome
+    private data class Lasting(val reason: AddressIndexRefusal) : Outcome
 
     private companion object {
         /** A first check and two more for what it could not read. */
@@ -134,26 +158,27 @@ class LoadAddressIndexPage(
 
         /** Long enough for the engine to try other peers for a block or its receipts. */
         val DEFAULT_RETRY_PAUSE = 2.seconds
+
+        /** About three of the engine's longest checks, with their pauses: a page of 150 entries at its slowest. */
+        val DEFAULT_BUDGET = 5.minutes
     }
 }
 
 /**
- * Where an account's addr1 history goes on: below [cursor], in the index signed by [importer], the key the list's
- * rows so far rest on. Made by [LoadAddressIndexPage] only, so it is always a page's own.
+ * Where [account]'s addr1 history goes on: below [cursor]. Made by [LoadAddressIndexPage] only, so it is always a
+ * page's own.
  */
 @ConsistentCopyVisibility
-data class AddressIndexContinuation internal constructor(
-    val account: AccountId,
-    val importer: Address,
-    val cursor: AddressIndexCursor,
-)
+data class AddressIndexContinuation internal constructor(val account: AccountId, val cursor: AddressIndexCursor)
 
 /**
- * The entries of a page left out of the history because none of them could be shown as verified, by why
- * (`.claude/rules/data-sources.md`: the list says how many, and how many of those the chain contradicts). The
- * counts are disjoint: [unverified], the engine cannot verify them and asking again does not help; [contradicted],
- * the chain says otherwise; [traceOnly], their one role is `TRACE`, which the engine never verifies, so they were not
- * sent to the check; [unavailable], no check could read their block this time, and a later load may verify them.
+ * The entries of a page left out of the history, by why (`.claude/rules/data-sources.md`: the list says how many it
+ * could not verify, and, separately, how many the chain contradicts). The counts are disjoint: [contradicted], the
+ * chain says otherwise, a warning against the importer's key; and those that could not be verified ([notVerified]):
+ * [unverified], the engine cannot verify them and asking again does not help; [traceOnly], their one role is
+ * `TRACE`, which the engine never verifies, so they were not sent to the check; [unavailable], no check read their
+ * block this time (no peer served it, the light client not ready, the load's time spent), and a later load may
+ * verify them.
  */
 data class AddressIndexLeftOut(
     val unverified: Int = 0,
@@ -165,9 +190,13 @@ data class AddressIndexLeftOut(
         require(unverified >= 0 && contradicted >= 0 && traceOnly >= 0 && unavailable >= 0) { "a count of entries" }
     }
 
-    /** Every entry left out, whatever the reason: those that could not be verified. */
+    /** The entries that could not be verified: every one left out but the contradicted. */
+    val notVerified: Int
+        get() = unverified + traceOnly + unavailable
+
+    /** Every entry left out, whatever the reason. */
     val total: Int
-        get() = unverified + contradicted + traceOnly + unavailable
+        get() = notVerified + contradicted
 
     /** These and [other] together: what a list of several pages left out. */
     operator fun plus(other: AddressIndexLeftOut): AddressIndexLeftOut = AddressIndexLeftOut(
@@ -201,10 +230,4 @@ sealed interface AddressIndexLoad {
 
     /** Nothing loaded, for [reason], which the screen states. */
     data class Refused(val reason: AddressIndexRefusal) : AddressIndexLoad
-
-    /**
-     * The index now read is signed by [named], not by [trusted], whose key the list so far rests on (the setting
-     * changed): the list starts over from the newest page rather than mix two importers' words.
-     */
-    data class ImporterChanged(val trusted: Address, val named: Address) : AddressIndexLoad
 }

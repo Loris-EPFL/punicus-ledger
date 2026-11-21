@@ -85,31 +85,37 @@ data class AddressIndexHeadGap(val fromBlock: Long, val toBlock: Long?) {
 }
 
 /**
- * What a page of the addr1 index covers, and what it rests on. The index is signed by [importer], the key the user
- * trusts in its setting: that key alone vouches that no entry is missing, so entries may be missing, and a list
- * shown from it names this key and says so. Its index was read at head update [headUpdate]; it covers blocks
- * [coveredFrom] to [coveredTo] of the range asked, and not these, each clipped to that range: [headGap], the newest
- * blocks it has not reached yet; [tailGap], the blocks below where its coverage starts; and [gaps], the slices
- * inside its coverage the read could not get. A range not covered is never an empty one: none of them says the
- * address is absent there.
+ * What a page of the addr1 index covers, and what it rests on. The index is signed by [importer], the key pinned in
+ * the release (owner's decision, 2026-11-21, on #335): that key alone vouches that no entry is missing, so entries
+ * may be missing, and a list shown from it names this key and says so. Its index was read at head update
+ * [headUpdate] and covers the blocks [covered], null when it covers none yet (an index just started); the page
+ * names no range for it that the index does not hold. Of the range asked, these are not covered, each clipped to
+ * that range and null or left out when nothing of it remains: [headGap], the newest blocks the index has not
+ * reached yet; [tailGap], the blocks below where its coverage starts; and [gaps], the slices inside its coverage the
+ * read could not get. A range asked that the index does not reach at all is all gap: the head gap above it, the
+ * tail gap below it, or both when it covers nothing. A range not covered is never an empty one: none of them says
+ * the address is absent there.
  */
 data class AddressIndexCoverage(
     val importer: Address,
     val headUpdate: Long,
-    val coveredFrom: Long,
-    val coveredTo: Long,
+    val covered: LongRange?,
     val headGap: AddressIndexHeadGap?,
     val tailGap: LongRange?,
     val gaps: List<LongRange>,
 ) {
     init {
         require(headUpdate >= 0) { "a head update is counted from 0" }
-        require(coveredFrom in 0..coveredTo) { "coverage from block $coveredFrom to $coveredTo" }
-        require(headGap == null || headGap.fromBlock > coveredTo) { "the head gap lies above the coverage" }
-        require(tailGap == null || (!tailGap.isEmpty() && tailGap.first >= 0 && tailGap.last < coveredFrom)) {
-            "the tail gap lies below the coverage"
+        require(covered == null || (!covered.isEmpty() && covered.first >= 0)) { "coverage of one block at least" }
+        require(tailGap == null || (!tailGap.isEmpty() && tailGap.first >= 0)) { "a tail gap of one block at least" }
+        require(headGap == null || tailGap == null || tailGap.last < headGap.fromBlock) {
+            "the tail gap lies below the head gap"
         }
-        require(gaps.all { !it.isEmpty() && it.first >= coveredFrom && it.last <= coveredTo }) {
+        if (covered != null) {
+            require(headGap == null || headGap.fromBlock > covered.last) { "the head gap lies above the coverage" }
+            require(tailGap == null || tailGap.last < covered.first) { "the tail gap lies below the coverage" }
+        }
+        require(gaps.all { !it.isEmpty() && covered != null && it.first >= covered.first && it.last <= covered.last }) {
             "an inner gap lies inside the coverage"
         }
     }
@@ -118,7 +124,8 @@ data class AddressIndexCoverage(
 /**
  * What a verified transaction entry is, as the engine read it from the verified block: the transaction [hash]
  * (`0x` and 64 lower-case hex digits), sent by [from] to [to] (null for a contract creation) with [value], and
- * [transfer], the first ERC-20 or ERC-721 `Transfer` among its logs that the address is a party of (null: none).
+ * [transfer], the first ERC-20 or ERC-721 `Transfer` among its logs that the address is a party of (null: none),
+ * never the protocol's log of an ETH transfer (EIP-7708, [TokenTransfers.ETH]): the ether it moves is [value].
  */
 data class AddressIndexTransaction(
     val hash: String,
@@ -128,20 +135,18 @@ data class AddressIndexTransaction(
     val transfer: TokenTransfer?,
 ) {
     init {
-        require(HASH.matches(hash)) { "a transaction hash is 0x and 64 lower-case hex digits" }
-    }
-
-    private companion object {
-        val HASH = Regex("^0x[0-9a-f]{64}$")
+        require(isHash(hash)) { "a transaction hash is 0x and 64 lower-case hex digits" }
+        require(transfer?.isEth != true) { "the protocol's log of an ETH transfer (EIP-7708) is no token's transfer" }
     }
 }
 
 /**
  * A row of an address's history from the addr1 index: an [entry] the engine verified against the verified block
  * [blockHash] (`0x` and 64 lower-case hex digits), which the beacon chain had finalized when [final] (else a
- * reorganisation may still replace it). Of the entry's roles, [confirmed] were proven on chain, at least one; the
- * [unchecked] rest on the importer's word ([AddressIndexRole.TRACE]); none was contradicted. [transaction] is what
- * the engine read of its transaction, null for an entry about the block itself (slot 0).
+ * reorganisation may still replace it). Every role of the entry is in [confirmed], proven on chain, at least one,
+ * or in [unchecked], which holds [AddressIndexRole.TRACE] alone, the one role resting on the importer's word; none
+ * was contradicted, and no other role is left unchecked. [transaction] is what the engine read of its transaction,
+ * null for an entry about the block itself (slot 0).
  */
 data class AddressIndexRow(
     val entry: AddressIndexEntry,
@@ -152,17 +157,18 @@ data class AddressIndexRow(
     val transaction: AddressIndexTransaction?,
 ) {
     init {
-        require(HASH.matches(blockHash)) { "a block hash is 0x and 64 lower-case hex digits" }
+        require(isHash(blockHash)) { "a block hash is 0x and 64 lower-case hex digits" }
         require(confirmed.isNotEmpty()) { "a verified entry has one role proven at least" }
-        require(entry.roles.containsAll(confirmed + unchecked)) { "only the entry's own roles are checked" }
-        require(confirmed.intersect(unchecked).isEmpty()) { "a role is proven or unchecked, not both" }
+        require(unchecked.all { it == AddressIndexRole.TRACE }) { "only a trace rests on the importer's word" }
+        require(confirmed + unchecked == entry.roles) { "every role of the entry is proven, or is its trace" }
         require((transaction == null) == (entry.slot == 0)) { "a transaction for a transaction entry, only for one" }
     }
-
-    private companion object {
-        val HASH = Regex("^0x[0-9a-f]{64}$")
-    }
 }
+
+/** Whether [text] is a 32-byte hash as the engine writes one: `0x` and 64 lower-case hex digits. */
+private fun isHash(text: String): Boolean = HASH.matches(text)
+
+private val HASH = Regex("^0x[0-9a-f]{64}$")
 
 /**
  * What the engine's check of one [entry] found against verified chain data. Only [Verified] is ever shown as a row;
@@ -173,15 +179,20 @@ sealed interface AddressIndexVerdict {
     /** The entry checked. */
     val entry: AddressIndexEntry
 
-    /** Proven on chain: [row], as the history shows it. */
+    /**
+     * Proven on chain: [row], as the history shows it. An engine verdict that leaves a role other than
+     * [AddressIndexRole.TRACE] unchecked is not one ([AddressIndexRow]'s rule): the adapter reports it as
+     * [Unverified].
+     */
     data class Verified(val row: AddressIndexRow) : AddressIndexVerdict {
         override val entry: AddressIndexEntry
             get() = row.entry
     }
 
     /**
-     * The chain says otherwise: in the verified block [blockHash] (finalized when [final]), its roles [contradicted]
-     * are not what the index claims. The index's word on it is wrong.
+     * The chain says otherwise: in the verified block [blockHash] (`0x` and 64 lower-case hex digits; finalized when
+     * [final]), its roles [contradicted] are not what the index claims. The importer's key signed something false: a
+     * warning against that key (owner's decision, 2026-11-21, on #335), counted apart from what could not be verified.
      */
     data class Contradicted(
         override val entry: AddressIndexEntry,
@@ -190,6 +201,7 @@ sealed interface AddressIndexVerdict {
         val contradicted: Set<AddressIndexRole>,
     ) : AddressIndexVerdict {
         init {
+            require(isHash(blockHash)) { "a block hash is 0x and 64 lower-case hex digits" }
             require(contradicted.isNotEmpty()) { "a contradiction names the roles it contradicts" }
             require(entry.roles.containsAll(contradicted)) { "only the entry's own roles are contradicted" }
         }
@@ -197,8 +209,10 @@ sealed interface AddressIndexVerdict {
 
     /**
      * It cannot be verified, and asking again does not help: no role of it can be checked (a [AddressIndexRole.TRACE]
-     * alone), or the engine cannot anchor its block (outside what it can anchor, the checkpoint table's alarm);
-     * [reason] is the engine's words, null when it gave none.
+     * alone), a role other than the trace was left unchecked, or the engine cannot anchor its block (below what its
+     * light client's window and checkpoint table reach); [reason] is the engine's words, null when it gave none. The
+     * checkpoint table's alarm is never one: it refuses the whole check
+     * ([eth.serotine.domain.repository.AddressIndexRefusal.CheckpointAlarm]).
      */
     data class Unverified(override val entry: AddressIndexEntry, val reason: String? = null) : AddressIndexVerdict
 

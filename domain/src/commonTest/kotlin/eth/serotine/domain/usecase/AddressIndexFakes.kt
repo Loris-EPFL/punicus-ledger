@@ -11,11 +11,14 @@ import eth.serotine.domain.repository.AddressIndexPage
 import eth.serotine.domain.repository.AddressIndexQuery
 import eth.serotine.domain.repository.AddressIndexReading
 import eth.serotine.domain.repository.AddressIndexRefusal
+import kotlinx.coroutines.delay
+import kotlin.time.Duration
 
 /**
  * An [AddressIndexHistory] as the port's contract says one behaves, serving [served] only: [pages] by the cursor
  * asked (null: the newest page), [pageRefusal] in place of any page when set, and each check answered by [check],
- * given the entries of the call and how many checks came before it. Every call is recorded.
+ * given the entries of the call and how many checks came before it, after [checkTime] (virtual time in tests). Every
+ * call is recorded.
  */
 internal class FakeAddressIndexHistory(
     private val served: Set<Network> = setOf(Network.ETHEREUM),
@@ -25,6 +28,7 @@ internal class FakeAddressIndexHistory(
     var check: (entries: List<AddressIndexEntry>, before: Int) -> AddressIndexCheck = { entries, _ ->
         AddressIndexCheck.Verdicts(entries.map { AddressIndexVerdict.Unverified(it) })
     }
+    var checkTime: Duration = Duration.ZERO
     val queries = mutableListOf<Triple<Network, Address, AddressIndexQuery>>()
     val checks = mutableListOf<List<AddressIndexEntry>>()
 
@@ -45,6 +49,7 @@ internal class FakeAddressIndexHistory(
         require(entries.size in 1..AddressIndexHistory.MAX_CHECKED) { "1 to 50 entries" }
         val before = checks.size
         checks += entries
+        delay(checkTime)
         if (network !in served) return AddressIndexCheck.Refused(AddressIndexRefusal.NetworkNotServed(network))
         return check(entries, before)
     }

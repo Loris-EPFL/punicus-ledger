@@ -28,6 +28,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /** [LoadAddressIndexPage] over a fake addr1 index. */
@@ -41,13 +43,15 @@ class AddressIndexHistoriesTest {
     private val coverage = AddressIndexCoverage(
         importer = importer,
         headUpdate = 7,
-        coveredFrom = 21_000_000,
-        coveredTo = 21_200_000,
+        covered = 21_000_000L..21_200_000L,
         headGap = AddressIndexHeadGap(21_200_001, 21_200_100),
         tailGap = null,
         gaps = listOf(21_100_000L..21_100_999L),
     )
     private val index = FakeAddressIndexHistory()
+
+    private fun loader(attempts: Int = 3, retryPause: Duration = 2.seconds, budget: Duration = 5.minutes) =
+        LoadAddressIndexPage(index, importer, attempts, retryPause, budget)
 
     private fun entry(block: Long, slot: Int, vararg roles: AddressIndexRole) =
         AddressIndexEntry(block, slot, roles.toSet())
@@ -96,7 +100,7 @@ class AddressIndexHistoriesTest {
             )
         }
 
-        val load = assertIs<AddressIndexLoad.Loaded>(LoadAddressIndexPage(index, attempts = 1)(account))
+        val load = assertIs<AddressIndexLoad.Loaded>(loader(attempts = 1)(account))
 
         assertEquals(listOf(rowOf(sent), rowOf(reward)), load.rows)
         val counted = AddressIndexLeftOut(unverified = 1, contradicted = 1, traceOnly = 1, unavailable = 1)
@@ -114,7 +118,7 @@ class AddressIndexHistoriesTest {
         index.pages[null] = page(listOf(traced, mixed))
         verifyingAll()
 
-        val load = assertIs<AddressIndexLoad.Loaded>(LoadAddressIndexPage(index)(account))
+        val load = assertIs<AddressIndexLoad.Loaded>(loader()(account))
 
         assertEquals(listOf(listOf(mixed)), index.checks)
         assertEquals(listOf(rowOf(mixed)), load.rows)
@@ -126,7 +130,7 @@ class AddressIndexHistoriesTest {
     fun aPageOfTraceOnlyEntriesAsksNoCheckAtAll() = runTest {
         index.pages[null] = page(listOf(entry(21_150_000, 2, TRACE), entry(21_140_000, 0, TRACE)))
 
-        val load = assertIs<AddressIndexLoad.Loaded>(LoadAddressIndexPage(index)(account))
+        val load = assertIs<AddressIndexLoad.Loaded>(loader()(account))
 
         assertEquals(emptyList(), index.checks)
         assertEquals(emptyList(), load.rows)
@@ -139,7 +143,7 @@ class AddressIndexHistoriesTest {
         index.pages[null] = page(entries)
         verifyingAll()
 
-        val load = assertIs<AddressIndexLoad.Loaded>(LoadAddressIndexPage(index)(account, limit = 120))
+        val load = assertIs<AddressIndexLoad.Loaded>(loader()(account, limit = 120))
 
         assertEquals(listOf(50, 50, 20), index.checks.map { it.size })
         assertEquals(entries, index.checks.flatten())
@@ -160,7 +164,7 @@ class AddressIndexHistoriesTest {
             )
         }
 
-        val load = assertIs<AddressIndexLoad.Loaded>(LoadAddressIndexPage(index, retryPause = 3.seconds)(account))
+        val load = assertIs<AddressIndexLoad.Loaded>(loader(retryPause = 3.seconds)(account))
 
         assertEquals(listOf(listOf(first, second), listOf(second)), index.checks)
         assertEquals(listOf(rowOf(first), rowOf(second)), load.rows)
@@ -178,7 +182,7 @@ class AddressIndexHistoriesTest {
             AddressIndexCheck.Verdicts(entries.filter { it == unread }.map { AddressIndexVerdict.Unavailable(it, "x") })
         }
 
-        val load = assertIs<AddressIndexLoad.Loaded>(LoadAddressIndexPage(index, attempts = 3)(account))
+        val load = assertIs<AddressIndexLoad.Loaded>(loader(attempts = 3)(account))
 
         assertEquals(3, index.checks.size)
         assertEquals(emptyList(), load.rows)
@@ -200,7 +204,7 @@ class AddressIndexHistoriesTest {
             )
         }
 
-        val load = assertIs<AddressIndexLoad.Loaded>(LoadAddressIndexPage(index, attempts = 1)(account))
+        val load = assertIs<AddressIndexLoad.Loaded>(loader(attempts = 1)(account))
 
         assertEquals(emptyList(), load.rows)
         assertEquals(AddressIndexLeftOut(unavailable = 2), load.leftOut)
@@ -213,14 +217,14 @@ class AddressIndexHistoriesTest {
         index.pages[null] = page(listOf(newer), next = "7:21150000:1")
         index.pages[AddressIndexCursor("7:21150000:1")] = page(listOf(older))
         verifyingAll()
-        val load = LoadAddressIndexPage(index)
+        val load = loader()
 
         val first = assertIs<AddressIndexLoad.Loaded>(load(account))
         val next = assertIs<AddressIndexContinuation>(first.next)
         val second = assertIs<AddressIndexLoad.Loaded>(load(account, after = next))
 
         assertEquals(false, first.endOfCoverage)
-        assertEquals(AddressIndexContinuation(account, importer, AddressIndexCursor("7:21150000:1")), next)
+        assertEquals(AddressIndexContinuation(account, AddressIndexCursor("7:21150000:1")), next)
         assertEquals(
             listOf(AddressIndexQuery(), AddressIndexQuery(cursor = AddressIndexCursor("7:21150000:1"))),
             index.queries.map { it.third },
@@ -231,16 +235,21 @@ class AddressIndexHistoriesTest {
     }
 
     @Test
-    fun aLaterPageSignedByAnotherImporterEndsTheList() = runTest {
+    fun aPageSignedByAKeyOtherThanThePinnedOneIsRefusedUnchecked() = runTest {
         val other = Address.of("0x" + "0e".repeat(20))
         index.pages[null] = page(listOf(entry(21_150_000, 1, FROM)), next = "7:21150000:1")
         index.pages[AddressIndexCursor("7:21150000:1")] = page(listOf(entry(21_010_000, 5, TO)), signedBy = other)
         verifyingAll()
-        val load = LoadAddressIndexPage(index)
+        val load = loader()
         val first = assertIs<AddressIndexLoad.Loaded>(load(account))
         index.checks.clear()
 
-        assertEquals(AddressIndexLoad.ImporterChanged(trusted = importer, named = other), load(account, first.next))
+        val refused = AddressIndexLoad.Refused(AddressIndexRefusal.WrongImporter(importer, other))
+        assertEquals(refused, load(account, first.next))
+        assertEquals(emptyList(), index.checks)
+
+        index.pages[null] = page(listOf(entry(21_150_000, 1, FROM)), signedBy = other)
+        assertEquals(refused, load(account))
         assertEquals(emptyList(), index.checks)
     }
 
@@ -248,8 +257,11 @@ class AddressIndexHistoriesTest {
     fun eachRefusalOfThePageIsSaidAndNothingIsChecked() = runTest {
         val reasons = listOf(
             AddressIndexRefusal.NotInThisBuild,
-            AddressIndexRefusal.NoImporter,
+            AddressIndexRefusal.SettingOff,
             AddressIndexRefusal.TorRouting,
+            AddressIndexRefusal.CheckpointAlarm("checkpoint table alarm: block 1024 differs"),
+            AddressIndexRefusal.StaleAnchor,
+            AddressIndexRefusal.NoEngine,
             AddressIndexRefusal.Rejected("a cursor of a newer head"),
             AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING),
             AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN),
@@ -257,7 +269,7 @@ class AddressIndexHistoriesTest {
         for (reason in reasons) {
             index.pageRefusal = reason
 
-            assertEquals(AddressIndexLoad.Refused(reason), LoadAddressIndexPage(index)(account))
+            assertEquals(AddressIndexLoad.Refused(reason), loader()(account, limit = 60))
         }
         assertEquals(emptyList(), index.checks)
     }
@@ -268,25 +280,40 @@ class AddressIndexHistoriesTest {
         verifyingAll()
         val onGnosis = AccountId(Network.GNOSIS, alice)
 
-        val load = LoadAddressIndexPage(index)(onGnosis)
+        val load = loader()(onGnosis)
 
         assertEquals(AddressIndexLoad.Refused(AddressIndexRefusal.NetworkNotServed(Network.GNOSIS)), load)
         assertEquals(listOf(Network.GNOSIS), index.queries.map { it.first })
     }
 
     @Test
-    fun aLastingRefusalOfTheCheckRefusesTheLoadAtOnce() = runTest {
-        index.pages[null] = page(listOf(entry(21_150_000, 1, FROM)))
-        index.check = { _, _ -> AddressIndexCheck.Refused(AddressIndexRefusal.TorRouting) }
+    fun aLastingRefusalOfAnyChunksCheckRefusesTheWholeLoadAtOnce() = runTest {
+        val entries = (0 until 60).map { entry(21_199_000L - it, 1, FROM) }
+        index.pages[null] = page(entries, next = "7:21198941:1")
+        val reasons = listOf(
+            AddressIndexRefusal.TorRouting,
+            AddressIndexRefusal.CheckpointAlarm("checkpoint table alarm: block 1024 differs"),
+            AddressIndexRefusal.Rejected("an entry the engine does not take"),
+            AddressIndexRefusal.SettingOff,
+        )
+        for (reason in reasons) {
+            index.checks.clear()
+            // The first chunk verifies; the second is refused for good.
+            index.check = { chunk, before ->
+                if (before == 0) {
+                    AddressIndexCheck.Verdicts(chunk.map(::verified))
+                } else {
+                    AddressIndexCheck.Refused(reason)
+                }
+            }
 
-        val load = LoadAddressIndexPage(index)(account)
-
-        assertEquals(AddressIndexLoad.Refused(AddressIndexRefusal.TorRouting), load)
-        assertEquals(1, index.checks.size)
+            assertEquals(AddressIndexLoad.Refused(reason), loader()(account, limit = 60))
+            assertEquals(2, index.checks.size)
+        }
     }
 
     @Test
-    fun aPassingRefusalOfTheCheckIsAskedAgainAndRefusesTheLoadOnlyAtTheLastAttempt() = runTest {
+    fun aPassingRefusalIsAskedAgainAndAtTheLastAttemptCountsItsChunkUnavailableKeepingThePage() = runTest {
         val sent = entry(21_150_000, 1, FROM)
         index.pages[null] = page(listOf(sent))
         val syncing = AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING)
@@ -294,32 +321,78 @@ class AddressIndexHistoriesTest {
             if (before == 0) AddressIndexCheck.Refused(syncing) else AddressIndexCheck.Verdicts(entries.map(::verified))
         }
 
-        val passed = assertIs<AddressIndexLoad.Loaded>(LoadAddressIndexPage(index)(account))
+        val passed = assertIs<AddressIndexLoad.Loaded>(loader()(account))
         assertEquals(listOf(rowOf(sent)), passed.rows)
 
+        val entries = (0 until 60).map { entry(21_199_000L - it, 1, FROM) }
+        index.pages[null] = page(entries, next = "7:21198941:1")
         index.checks.clear()
-        index.check = { _, _ -> AddressIndexCheck.Refused(syncing) }
-        assertEquals(AddressIndexLoad.Refused(syncing), LoadAddressIndexPage(index, attempts = 2)(account))
+        // The first chunk verifies; the second is refused every time.
+        index.check = { chunk, _ ->
+            if (chunk.first() == entries.first()) {
+                AddressIndexCheck.Verdicts(chunk.map(::verified))
+            } else {
+                AddressIndexCheck.Refused(syncing)
+            }
+        }
+
+        val kept = assertIs<AddressIndexLoad.Loaded>(loader(attempts = 2)(account, limit = 60))
+
+        assertEquals(listOf(50, 10, 10), index.checks.map { it.size })
+        assertEquals(entries.take(50), kept.rows.map { it.entry })
+        assertEquals(AddressIndexLeftOut(unavailable = 10), kept.leftOut)
+        assertEquals(AddressIndexContinuation(account, AddressIndexCursor("7:21198941:1")), kept.next)
+    }
+
+    @Test
+    fun aLoadStopsCheckingAtItsBudgetKeepingWhatItVerifiedAndThePage() = runTest {
+        val entries = (0 until 120).map { entry(21_199_000L - it, 1, FROM) }
+        index.pages[null] = page(entries, next = "7:21198881:1")
+        index.checkTime = 60.seconds
+        verifyingAll()
+
+        val load = assertIs<AddressIndexLoad.Loaded>(loader(budget = 100.seconds)(account, limit = 120))
+
+        assertEquals(100_000, currentTime)
+        assertEquals(listOf(50, 50), index.checks.map { it.size })
+        assertEquals(entries.take(50), load.rows.map { it.entry })
+        assertEquals(AddressIndexLeftOut(unavailable = 70), load.leftOut)
+        assertEquals(AddressIndexContinuation(account, AddressIndexCursor("7:21198881:1")), load.next)
+    }
+
+    @Test
+    fun aVerdictIsMatchedByBlockAndSlotAndOneWithOtherRolesIsNone() = runTest {
+        val sent = entry(21_150_000, 1, FROM)
+        index.pages[null] = page(listOf(sent))
+        index.check = { _, before ->
+            val roles = if (before == 0) setOf(FROM, TO) else setOf(FROM)
+            AddressIndexCheck.Verdicts(listOf(verified(AddressIndexEntry(21_150_000, 1, roles))))
+        }
+
+        val load = assertIs<AddressIndexLoad.Loaded>(loader()(account))
+
         assertEquals(2, index.checks.size)
+        assertEquals(listOf(rowOf(sent)), load.rows)
     }
 
     @Test
     fun aContinuationOfAnotherAccountIsTheCallersError() = runTest {
         index.pages[null] = page(listOf(entry(21_150_000, 1, FROM)), next = "7:21150000:1")
         verifyingAll()
-        val load = LoadAddressIndexPage(index)
+        val load = loader()
         val next = assertIs<AddressIndexLoad.Loaded>(load(account)).next
 
         assertFailsWith<IllegalArgumentException> { load(AccountId(Network.ETHEREUM, bob), next) }
         assertFailsWith<IllegalArgumentException> { load(account, limit = 501) }
-        assertFailsWith<IllegalArgumentException> { LoadAddressIndexPage(index, attempts = 0) }
+        assertFailsWith<IllegalArgumentException> { loader(attempts = 0) }
     }
 
     @Test
-    fun leftOutCountsAddUpOverPages() {
+    fun leftOutCountsAddUpOverPagesAndTheContradictedStandApart() {
         val sum = AddressIndexLeftOut(1, 2, 3, 4) + AddressIndexLeftOut(10, 20, 30, 40)
 
         assertEquals(AddressIndexLeftOut(11, 22, 33, 44), sum)
+        assertEquals(11 + 33 + 44, sum.notVerified)
         assertEquals(110, sum.total)
     }
 }

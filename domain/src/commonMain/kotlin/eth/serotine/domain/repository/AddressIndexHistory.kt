@@ -35,9 +35,10 @@ interface AddressIndexHistory {
      * caller's error and throws) of [address]'s history on [network], the chain whose verified blocks and receipts
      * they are checked against:
      * [AddressIndexCheck.Verdicts] with one verdict per entry asked, in any order, or [AddressIndexCheck.Refused]
-     * and why. An entry the answer has no verdict for is the adapter's to report as
-     * [AddressIndexVerdict.Unavailable]; a caller treats a missing one as such. Suspends for up to about 90 seconds,
-     * the engine's bound on one check.
+     * and why. A verdict names its entry by block and slot, with the roles asked; an entry the answer has no
+     * verdict for is the adapter's to report as [AddressIndexVerdict.Unavailable], and a caller treats a missing one
+     * as such. A verdict the engine gives with the checkpoint table's alarm as its reason refuses the whole check
+     * ([AddressIndexRefusal.CheckpointAlarm]). Suspends for up to about 90 seconds, the engine's bound on one check.
      */
     suspend fun verify(network: Network, address: Address, entries: List<AddressIndexEntry>): AddressIndexCheck
 
@@ -112,8 +113,8 @@ sealed interface AddressIndexCheck {
 
 /**
  * Why the addr1 history was not read or checked, as a screen states it. Every one but [NotNow] is lasting: asking
- * again changes nothing until what it names changes (the engine's permanent `-32602`). [NotNow] may pass (the
- * engine's retryable `-32000`).
+ * again changes nothing until what it names changes (the engine's permanent `-32602`, or what this device knows
+ * stands). [NotNow] may pass (the engine's retryable `-32000`).
  */
 sealed interface AddressIndexRefusal {
 
@@ -124,8 +125,11 @@ sealed interface AddressIndexRefusal {
     /** This build's engine has no Swarm reader: the history is not available here (Android, iOS, a release). */
     data object NotInThisBuild : AddressIndexRefusal
 
-    /** No importer key is set: the experimental setting names none, so no index is trusted. */
-    data object NoImporter : AddressIndexRefusal
+    /**
+     * The experimental setting is off: the engine trusts no importer key, so no index is read (the engine's refusal
+     * without an importer).
+     */
+    data object SettingOff : AddressIndexRefusal
 
     /** Tor routing is on: the Swarm reader and the block reads of the check do not go through Tor. */
     data object TorRouting : AddressIndexRefusal
@@ -134,19 +138,50 @@ sealed interface AddressIndexRefusal {
     data class NetworkNotServed(val network: Network) : AddressIndexRefusal
 
     /**
+     * The engine raised its checkpoint table's alarm: the table and the beacon chain disagree, so every read
+     * resting on the table is refused (`.claude/rules/trust.md`, *The addr1 history*), and the app shows the alarm.
+     * [text] is the engine's words. An adapter refuses with it for the engine's refusal whose message starts with
+     * "checkpoint table alarm:", and refuses a whole check with it when any verdict's reason does.
+     */
+    data class CheckpointAlarm(val text: String) : AddressIndexRefusal
+
+    /**
+     * The light client of the network refuses to sync: its checkpoint is older than the weak-subjectivity bound
+     * ([ReadUnavailable.STALE_ANCHOR]). It stands until the user lets it catch up or fetches a fresh checkpoint.
+     */
+    data object StaleAnchor : AddressIndexRefusal
+
+    /**
+     * No light client runs for the network on this device: the engine does not ship for it or failed to start
+     * ([ReadUnavailable.NO_ENGINE]).
+     */
+    data object NoEngine : AddressIndexRefusal
+
+    /**
+     * The page was signed by [named], not by [pinned], the importer key pinned in the release: its index is not the
+     * one the list may rest on, and none of it is shown. The use case that loads the history
+     * ([eth.serotine.domain.usecase.LoadAddressIndexPage]) refuses with it; an adapter never does.
+     */
+    data class WrongImporter(val pinned: Address, val named: Address) : AddressIndexRefusal
+
+    /**
      * The engine refused this request for [reason], its words: a cursor or an argument it does not take. Asking the
-     * same again changes nothing.
+     * same again changes nothing; since this port's arguments are checked here, it means an adapter or engine bug.
      */
     data class Rejected(val reason: String) : AddressIndexRefusal
 
     /**
-     * No answer right now, for [reason]: the light client is still syncing, Swarm did not deliver what the read
-     * needs ([ReadUnavailable.UNPROVEN]), or no engine runs for the network. Never [ReadUnavailable.REFUSED], which
-     * is lasting and one of the reasons above.
+     * No answer right now, for [reason]: the light client is still syncing ([ReadUnavailable.SYNCING]), Swarm or the
+     * peers did not deliver what the read needs ([ReadUnavailable.UNPROVEN]), or no light client runs for the
+     * network yet ([ReadUnavailable.NETWORK_OFF]). No other reason: the lasting ones are refusals of their own.
      */
     data class NotNow(val reason: ReadUnavailable) : AddressIndexRefusal {
         init {
-            require(reason != ReadUnavailable.REFUSED) { "a lasting refusal is not a passing one" }
+            require(reason in PASSING) { "$reason is not a passing refusal" }
+        }
+
+        private companion object {
+            val PASSING = setOf(ReadUnavailable.SYNCING, ReadUnavailable.UNPROVEN, ReadUnavailable.NETWORK_OFF)
         }
     }
 }

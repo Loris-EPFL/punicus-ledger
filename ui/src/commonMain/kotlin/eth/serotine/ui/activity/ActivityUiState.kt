@@ -118,6 +118,13 @@ sealed interface IndexFooter {
     /** More entries lie below: the next page is read as the user nears the end of the list. */
     data object More : IndexFooter
 
+    /**
+     * More entries lie below, but the last page added no row to the list: the next is read only on the user's tap
+     * (Load older entries), never by itself; [text] says what that page left out. A tap that adds rows makes the list
+     * read on by itself again.
+     */
+    data class Paused(val text: String) : IndexFooter
+
     /** The end of what the index covers: [text], "The addr1 index starts at block …". */
     data class End(val text: String, val simpleText: String = text) : IndexFooter
 

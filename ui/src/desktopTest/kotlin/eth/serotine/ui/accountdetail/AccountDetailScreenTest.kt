@@ -953,6 +953,18 @@ class AccountDetailScreenTest {
     }
 
     @Test
+    fun afterAPageThatAddedNoRowTheAddr1IndexReadsOnOnlyOnATap() {
+        show(indexed(IndexFooter.Paused("The last page of the addr1 index added no row.")))
+        rule.waitForIdle()
+
+        assertEquals(emptyList(), events, "nothing read by itself")
+        rule.onNodeWithTag(ACTIVITY_INDEX_FOOTER_TAG).performScrollTo()
+        rule.onNodeWithText("The last page of the addr1 index added no row.").assertExists()
+        rule.onNodeWithText("Load older entries").performClick()
+        assertEquals(listOf("more activity"), events, "a tap reads exactly one page")
+    }
+
+    @Test
     fun theEndOfTheAddr1IndexsCoverageIsMarkedAndAsksForNothing() {
         show(indexed(IndexFooter.End("The addr1 index starts at block 9,000,000: nothing older comes from it.")))
 

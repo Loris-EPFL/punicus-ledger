@@ -38,6 +38,9 @@ const val ACTIVITY_ROW_TAG = "activity-row"
 /** Test tag of each card of a swap whose next step waits, for UI tests. */
 const val WAITING_STEP_TAG = "waiting-step"
 
+/** What reads the addr1 index's next page on the user's tap. */
+private const val LOAD_OLDER = "Load older entries"
+
 /** Test tag of the addr1 index's lines above the rows, for UI tests. */
 const val ACTIVITY_INDEX_TAG = "activity-index"
 
@@ -171,7 +174,16 @@ private fun IndexFooterItem(footer: IndexFooter, onMore: () -> Unit, automatic: 
             IndexFooter.More -> if (automatic) {
                 LaunchedEffect(Unit) { more() }
             } else {
-                TextButton(onClick = onMore) { Text("Load older entries") }
+                TextButton(onClick = onMore) { Text(LOAD_OLDER) }
+            }
+            // The last page added no row: read on only when the user asks.
+            is IndexFooter.Paused -> {
+                Text(
+                    footer.text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = onMore) { Text(LOAD_OLDER) }
             }
             is IndexFooter.End -> Text(
                 footer.text,

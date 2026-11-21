@@ -1295,7 +1295,13 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
         and apart, in a warning card, how many the chain contradicts: "the
         importer's index contradicts the chain in 1 entry". What follows a
         contradiction beyond the warning is the owner's to decide.
-      - An endless list: as the list nears its end, the next page is read;
+      - An endless list: as the list nears its end, the next page is read,
+        but only while the page before added a row to the list. Each page
+        sets off up to 50 checks of old blocks against archive peers, so
+        after a page that added none (its entries unverified, or listed
+        already) the footer says what it left out and the next page is read
+        only on *Load older entries*; a page that adds rows lets the list
+        read on by itself again;
         a footer holds its room while a page is read and checked ("Reading
         more of the addr1 index …"), and the end of its coverage is marked
         ("The addr1 index starts at block 9,000,000: nothing older comes from

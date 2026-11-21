@@ -194,12 +194,13 @@ class AccountActivity(
             val listedHere = entries.mapTo(HashSet()) { it.transfer.hash.lowercase() } +
                 orders.mapNotNull { (it.end as? CowOrderEnd.Filled)?.transactionHash?.lowercase() }
             if (transfers == null) {
+                val fromIndexHere = indexed(index, listedHere, parties, tokens, rows)
                 return ActivityUiState.Shown(
-                    merged(sent, indexed(index, listedHere, parties, tokens, rows)),
+                    merged(sent, fromIndexHere),
                     COVERAGE,
                     waiting = waiting,
                     queued = queued,
-                    index = index?.let { indexSection(it, account.network) },
+                    index = index?.let { indexSection(it, account.network, shownFromLast(it, fromIndexHere, tokens)) },
                 )
             }
             // Only a row that names its block says what its logs say: one no block was seen for (a
@@ -282,8 +283,22 @@ class AccountActivity(
                 simpleCoverage = simple,
                 waiting = waiting,
                 queued = queued,
-                index = index?.let { indexSection(it, account.network) },
+                index = index?.let { indexSection(it, account.network, shownFromLast(it, fromIndex, tokens)) },
             )
+        }
+
+        /**
+         * How many rows of [index]'s last page the list shows among [shown] (its rows from the index); null while
+         * the [tokens] are not read, and no row of it can be said yet.
+         */
+        private fun shownFromLast(
+            index: IndexPaging,
+            shown: List<Pair<ActivityRow, Long>>,
+            tokens: Map<Address, KnownToken>?,
+        ): Int? {
+            if (tokens == null) return null
+            val last = index.lastRows.mapTo(HashSet()) { "index:${it.entry.block}:${it.entry.slot}" }
+            return shown.count { it.first.key in last }
         }
 
         /**

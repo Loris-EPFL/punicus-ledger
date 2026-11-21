@@ -1115,6 +1115,24 @@ private fun AccountDetailActivityIndexLeftOutDarkPreview() = AccountDetailPrevie
     darkTheme = true,
 )
 
+/** The last page added no row: the next is read only on a tap, saying what that page left out. */
+private val indexPaused = IndexFooter.Paused(
+    "The last page of the addr1 index added no row: 48 entries could not be verified, 1 entry contradicts the " +
+        "chain. The next is read only when you ask, since each page fetches old blocks from archive peers.",
+)
+
+@Preview
+@Composable
+private fun AccountDetailActivityIndexPausedPreview() =
+    AccountDetailPreview(indexActivity(IndexSection(listOf(indexIntro), indexPaused), rows = listOf(activityRows[1])))
+
+@Preview
+@Composable
+private fun AccountDetailActivityIndexPausedDarkPreview() = AccountDetailPreview(
+    indexActivity(IndexSection(listOf(indexIntro), indexPaused), rows = listOf(activityRows[1])),
+    darkTheme = true,
+)
+
 private const val INDEX_READING = "Reading the addr1 index from Swarm and checking its entries…"
 
 /**
@@ -1275,4 +1293,6 @@ internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("activity-index-rejected") { AccountDetailActivityIndexRejectedPreview() },
     ScreenPreview("activity-index-syncing") { AccountDetailActivityIndexSyncingPreview() },
     ScreenPreview("activity-index-unproven") { AccountDetailActivityIndexUnprovenPreview() },
+    ScreenPreview("activity-index-paused") { AccountDetailActivityIndexPausedPreview() },
+    ScreenPreview("activity-index-paused-dark") { AccountDetailActivityIndexPausedDarkPreview() },
 )

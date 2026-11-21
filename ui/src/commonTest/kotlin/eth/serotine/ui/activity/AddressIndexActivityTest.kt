@@ -160,6 +160,55 @@ class AddressIndexActivityTest {
     }
 
     @Test
+    fun aPageThatAddsNoRowStopsTheListAndATapReadsExactlyOneMore() = runTest {
+        val unverified = { block: Long -> AddressIndexEntry(block, 1, setOf(AddressIndexRole.TOPIC)) }
+        index.page(null, emptyList(), next = "p2", others = listOf(unverified(9_390_000), unverified(9_380_000)))
+        index.page("p2", emptyList(), next = "p3", others = listOf(unverified(9_370_000)))
+        index.page("p3", listOf(indexRow(9_300_000, 3, alice.address, bob)), next = "p4")
+        index.page("p4", listOf(indexRow(9_200_000, 3, alice.address, bob)), next = null)
+        val activity = activity()
+
+        val paused = assertIs<IndexFooter.Paused>(shown(activity).index?.footer, "no row added: no page by itself")
+        assertEquals(
+            "The last page of the addr1 index added no row: 2 entries could not be verified. The next is read " +
+                "only when you ask, since each page fetches old blocks from archive peers.",
+            paused.text,
+        )
+        assertEquals(1, index.asked.size)
+
+        more.value = 1
+        val stillPaused = shown(activity)
+        assertEquals(2, index.asked.size, "a tap reads exactly one page")
+        assertIs<IndexFooter.Paused>(stillPaused.index?.footer)
+        assertTrue(stillPaused.rows.isEmpty())
+
+        more.value = 2
+        val resumed = shown(activity)
+        assertEquals(3, index.asked.size)
+        assertEquals(listOf("Sent a transaction"), resumed.rows.map { it.title })
+        assertEquals(IndexFooter.More, resumed.index?.footer, "a page that added a row reads on by itself again")
+    }
+
+    @Test
+    fun aPageWhoseRowsAreAllListedAlreadyAddsNoRowEither() = runTest {
+        val sent = SentTransfer(
+            network = Network.ETHEREUM,
+            account = alice.address,
+            nonce = 7,
+            signed = SignedTransfer(byteArrayOf(2, 7)),
+            action = SentAction.Transfer(bob, TransferAsset.Native, UInt256.of("250000000000000000")),
+            maxCost = UInt256.of(1_000_000),
+            sentAt = 300,
+        )
+        history.entries.value = listOf(HistoryEntry(sent, SentOutcome.Finalized(9_300_000, succeeded = true)))
+        index.page(null, listOf(indexRow(9_300_000, 3, alice.address, bob, hash = sent.hash)), next = "p2")
+
+        val footer = assertIs<IndexFooter.Paused>(shown(activity()).index?.footer)
+
+        assertTrue(footer.text.contains("1 entry was listed already or is not listed"), footer.text)
+    }
+
+    @Test
     fun aTransactionSentFromHereShowsOnce() = runTest {
         val sent = SentTransfer(
             network = Network.ETHEREUM,

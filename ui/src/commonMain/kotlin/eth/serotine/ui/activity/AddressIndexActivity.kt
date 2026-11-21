@@ -73,7 +73,9 @@ class AddressIndexActivity(
  * The pages of an account's addr1 history read so far, as one list: its verified [rows] (each entry once, by block
  * and slot), what the index covered at the last page read ([coverage]; null before the first) and the key [pinned]
  * in the release it rests on, the entries every page [leftOut], where it goes on ([next]), whether a page is being
- * read ([loading]), and why the last read was [refused], if it was.
+ * read ([loading]), and why the last read was [refused], if it was. Of the last page read, its verified rows
+ * ([lastRows]) and what it left out ([lastLeftOut]): whether it added a row to the list decides whether the next page
+ * is read by itself.
  */
 internal data class IndexPaging(
     val pinned: Address,
@@ -83,6 +85,8 @@ internal data class IndexPaging(
     val next: AddressIndexContinuation? = null,
     val loading: Boolean = true,
     val refused: AddressIndexRefusal? = null,
+    val lastRows: List<AddressIndexRow> = emptyList(),
+    val lastLeftOut: AddressIndexLeftOut = AddressIndexLeftOut(),
 ) {
     /** Whether a page was read: [coverage] is known, and [next] null means the end of its coverage. */
     val started: Boolean
@@ -112,6 +116,8 @@ internal data class IndexPaging(
             next = load.next,
             loading = false,
             refused = null,
+            lastRows = load.rows,
+            lastLeftOut = load.leftOut,
         )
         is AddressIndexLoad.Refused -> when (load.reason) {
             is AddressIndexRefusal.CheckpointAlarm -> IndexPaging(pinned, loading = false, refused = load.reason)
@@ -124,9 +130,11 @@ internal data class IndexPaging(
 /**
  * [paging] as the Activity says it (docs/wallet-ux.md, screen 25): what the index is and what it rests on, the
  * importer named in full; every range it does not cover; how many entries it left out, and apart, how many the chain
- * contradicts; and its footer. [network] names a network in a refusal.
+ * contradicts; and its footer. [network] names a network in a refusal. [shownFromLast] is how many of the last page's
+ * rows the list shows (the rest were listed already, or are not listed); null while the rows cannot be said yet (the
+ * tokens not read).
  */
-internal fun indexSection(paging: IndexPaging, network: Network): IndexSection {
+internal fun indexSection(paging: IndexPaging, network: Network, shownFromLast: Int?): IndexSection {
     val key = Eip55.format(paging.pinned)
     val coverage = paging.coverage
     val lines = buildList {
@@ -156,12 +164,17 @@ internal fun indexSection(paging: IndexPaging, network: Network): IndexSection {
                 "something the chain proves false may also leave entries out or be wrong elsewhere; its importer " +
                 "is ${shortAddress(key)}."
         },
-        footer = footerOf(paging, network),
+        footer = footerOf(paging, network, shownFromLast),
     )
 }
 
-/** The footer below the index's rows: loading, more, the end of its coverage, or why nothing (more) comes. */
-private fun footerOf(paging: IndexPaging, network: Network): IndexFooter {
+/**
+ * The footer below the index's rows: loading, more, the end of its coverage, or why nothing (more) comes. More is read
+ * by itself only while the last page added a row to the list ([shownFromLast]): each page sets off up to 50 checks of
+ * old blocks against archive peers, so after a page that added none, the next is read only on the user's tap
+ * ([IndexFooter.Paused]), which says what that page left out.
+ */
+private fun footerOf(paging: IndexPaging, network: Network, shownFromLast: Int?): IndexFooter {
     paging.refused?.let { reason ->
         return IndexFooter.Refused(
             indexRefusalText(reason, network),
@@ -180,6 +193,8 @@ private fun footerOf(paging: IndexPaging, network: Network): IndexFooter {
     }
     val covered = paging.coverage?.covered
     return when {
+        !paging.ended && shownFromLast == null -> IndexFooter.Loading("Reading the tokens its rows are said in…")
+        !paging.ended && shownFromLast == 0 -> IndexFooter.Paused(pausedText(paging))
         !paging.ended -> IndexFooter.More
         covered == null -> IndexFooter.End(
             "The addr1 index covers no block yet: nothing comes from it.",
@@ -194,6 +209,28 @@ private fun footerOf(paging: IndexPaging, network: Network): IndexFooter {
             "The shared index starts here: nothing older comes from it.",
         )
     }
+}
+
+/** Why the list waits for a tap: what the last page of [paging] held, none of it a new row. */
+private fun pausedText(paging: IndexPaging): String {
+    val left = paging.lastLeftOut
+    val listed = paging.lastRows.size
+    val parts = listOfNotNull(
+        left.notVerified.takeIf { it > 0 }?.let { "${entries(it)} could not be verified" },
+        left.contradicted.takeIf { it > 0 }?.let {
+            "${entries(it)} ${if (it == 1) "contradicts" else "contradict"} the chain"
+        },
+        listed.takeIf { it > 0 }?.let {
+            "${entries(it)} ${if (it == 1) "was listed already or is" else "were listed already or are"} not listed"
+        },
+    )
+    val what = if (parts.isEmpty()) {
+        "held no entry to list"
+    } else {
+        "added no row: " + parts.joinToString(", ")
+    }
+    return "The last page of the addr1 index $what. The next is read only when you ask, since each page fetches " +
+        "old blocks from archive peers."
 }
 
 /** Every range [coverage] leaves out, with block numbers: where it starts, the head gap, the gaps inside it. */

@@ -25,7 +25,6 @@ com.android.tools.build:gradle-common-api:8.13.2=classpath
 com.android.tools.build:gradle-settings-api:8.13.2=classpath
 com.android.tools.build:gradle:8.13.2=classpath
 com.android.tools.build:manifest-merger:31.13.2=classpath
-com.android.tools.build:transform-api:2.0.0-deprecated-use-gradle-api=classpath
 com.android.tools.ddms:ddmlib:31.13.2=classpath
 com.android.tools.layoutlib:layoutlib-api:31.13.2=classpath
 com.android.tools.lint:lint-model:31.13.2=classpath

@@ -237,6 +237,9 @@ of a stale feed.)
   topic, walked back over verified headers.
 - An account not created here is walked from the block it was added at,
   never further back ("since added"), and the history says so.
+- One widening: on the desktop, Activity may also take verified rows of the
+  addr1 index, below. "Since added" binds the log index's walk, not those
+  rows (owner ruling, 2026-11-21, #334).
 - The walk fetches receipts only for the blocks whose bloom flags an account.
   That tells the serving peer which blocks matter to this device. Accepted
   as is: the log index makes that trade-off for any watch-list.
@@ -244,7 +247,9 @@ of a stale feed.)
 ## The history may also take the addr1 index from Swarm: verified rows only, on the desktop
 
 (Owner ruling, 2026-11-21, #334. It widens *An account's history comes from
-the engine's verified log index*, as #334 proposed, with verified rows only.)
+the engine's verified log index*, as #334 proposed, with verified rows only.
+The owner's decisions of the same day, on #335, settle its scope, the key,
+contradicted entries and what others learn.)
 
 - **The source is the engine's address history**, nothing else: the calls
   of Myotis #899 (`myotis_getAddressHistory` and the per-entry check, through
@@ -252,23 +257,47 @@ the engine's verified log index*, as #334 proposed, with verified rows only.)
   through its own embedded light node, checks every chunk, and checks each
   entry against verified chain data (Myotis's carve-out, 2026-11-19, and its
   rule D1, 2026-11-20). Punicus adds no Swarm client, no gateway and no HTTP.
-- **Verified rows only.** An addr1 entry becomes a row of the history only
-  once the engine verified it. An entry that is unverified, contradicted or
-  unavailable is never shown as a row. An entry whose only role is `TRACE`
-  is never verified by the engine, so it is never shown.
+- **Activity only** (owner's decision, 2026-11-21, on #335). The rows reach
+  the account's *Activity* list and its row detail, nothing else. NFTs, the
+  recipient check's planted-sender test (`CheckRecipient`) and CoW orders'
+  ends keep reading the log index alone.
+- **Verified rows only.** An addr1 entry becomes a row only once the engine
+  verified it. An entry that is unverified, contradicted or unavailable is
+  never shown as a row. An entry whose only role is `TRACE` is never
+  verified by the engine, so it is never shown.
 - **Completeness rests on the importer.** The index is signed by an importer
-  key the user trusts. That key alone vouches that no entry is missing. The
-  list names the key, says that entries may be missing, and states every
-  range the index does not cover: the newest blocks it has not reached yet,
-  and where its coverage starts.
-- **On the desktop, behind an experimental setting.** It is off by default,
-  and it holds the importer key it trusts. The engine's Swarm reader is not in
-  Android or iOS builds in its first version, so there the history stays the
-  log index's.
+  key, and that key alone vouches that no entry is missing. The list names
+  the key, says that entries may be missing, and states every range the
+  index does not cover: the newest blocks it has not reached yet, where its
+  coverage starts, and the gaps inside it.
+- **The importer key is pinned in the release** (owner's decision,
+  2026-11-21, on #335). The user does not type one in. Which key is pinned is
+  the owner's choice, named in the PR that pins it.
+- **A contradicted entry is a warning against the key** (owner's decision,
+  2026-11-21, on #335). The chain proved that the key signed something false.
+  The row stays out; the list counts contradicted entries apart from the ones
+  it could not verify, and warns in plain words that the importer's index
+  contradicts the chain. What follows beyond that (no longer trusting the
+  key, reporting it) is open (*Open decisions*, below).
+- **What others learn** (owner's decision, 2026-11-21, on #335: accepted).
+  A lookup makes the engine's Swarm node fetch the account's part of the
+  index from Swarm peers: they see the device's IP address and which part it
+  asks for. That node does not go through Tor. The per-entry check fetches
+  old blocks and their receipts from archive peers: they learn which past
+  blocks matter to this device, older ones than the log index's walk
+  included. The privacy policy says so before the setting can be turned on.
+- **On the desktop, behind an experimental setting**, off by default, that
+  names the pinned key. In its first version the engine's Swarm reader is in
+  no published Myotis build (Myotis #908), the desktop's included: an engine
+  without it refuses with the permanent `-32602`. There the setting is greyed
+  out, a tap saying this build's engine has no Swarm reader (`ui.md`, the
+  greyed-out rule), and the history stays the log index's. Android and iOS
+  have no such setting.
 - How it is applied, not part of the ruling: the list says how many entries
-  of the index it left out because they could not be verified, and how many
-  of those the chain contradicts, so nothing is left out without saying so
-  (`.claude/rules/ui.md`).
+  of the index it left out because they could not be verified, and,
+  separately, how many the chain contradicts. That follows from this ruling
+  and from Myotis's carve-out, which names every range nobody covered as a
+  gap, never a shorter list.
 
 ## Heavy downloads stay off a metered connection unless the user allows them
 
@@ -400,4 +429,6 @@ docs/walletconnect.md is the contract.)
 ## Open decisions
 
 Each is recorded here before its code lands. Today: each optional
-WalletConnect service above.
+WalletConnect service above; and what follows a contradicted addr1 entry
+beyond the warning (no longer trusting the importer key, reporting it), the
+owner's to decide (2026-11-21, on #335).

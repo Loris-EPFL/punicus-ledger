@@ -283,10 +283,12 @@ rulings to the screens.
   rulings, 2026-10-20, #85). Its walk back is a heavy download: it waits
   off a metered connection unless the user allows it in Settings (owner
   ruling, 2026-10-20).
-- It may also take the addr1 address index, which the engine reads from
-  Swarm: verified rows only, on the desktop, behind an experimental setting
-  that names the importer key. Its completeness rests on that importer, and
-  the list says so (owner ruling, 2026-11-21, #334).
+- *Activity* may also take the addr1 address index, which the engine reads
+  from Swarm: verified rows only, on the desktop, behind an experimental
+  setting that names the importer key pinned in the release. Its
+  completeness rests on that importer, and the list says so; a contradicted
+  entry warns against the key (owner ruling, 2026-11-21, #334, and decisions
+  on #335).
 - Swaps: Uniswap first, then CoW Protocol; the user chooses the venue (owner's
   directions, 2026-10-18 and 2026-10-22). CoW's order API is used only for a
   swap the user sends to CoW (owner ruling, 2026-10-22).

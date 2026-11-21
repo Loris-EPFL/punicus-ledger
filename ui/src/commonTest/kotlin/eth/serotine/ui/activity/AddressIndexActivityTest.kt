@@ -244,6 +244,7 @@ class AddressIndexActivityTest {
         val shown = shown(activity)
 
         assertTrue(shown.rows.isEmpty(), "nothing resting on the table stays")
+        assertEquals(1, shown.index?.lines?.size, "nor what the index said of its coverage")
         val footer = assertIs<IndexFooter.Refused>(shown.index?.footer)
         assertTrue(footer.warning)
     }

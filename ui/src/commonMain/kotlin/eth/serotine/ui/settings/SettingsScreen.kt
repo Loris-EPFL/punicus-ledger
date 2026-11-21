@@ -154,7 +154,7 @@ fun SettingsRoute(
  * turns lenient mode on or off through [onSignWhileSyncingChange] (docs/lenient-mode.md). The
  * switch for the heavy downloads on a metered connection calls [onMeteredDownloadsChange] with the
  * new choice; greyed out, a tap says why it cannot be changed (owner ruling, 2026-10-20). On the
- * desktop, under Advanced, the experimental addr1 history ([SettingsUiState.addressIndex]) turns on
+ * desktop, under Experimental, the experimental addr1 history ([SettingsUiState.addressIndex]) turns on
  * or off through [onAddressIndexChange]; greyed out, a tap says what it needs (no importer key
  * pinned in this release, no Swarm reader in this build's engine).
  */
@@ -426,6 +426,10 @@ private fun AddressIndexRow(item: AddressIndexItem, onChange: (Boolean) -> Unit,
         // The row takes the tap, so a greyed switch still says why.
         trailingContent = { Switch(checked = item.on, onCheckedChange = null, enabled = reason == null) },
     )
+    // A choice to turn it on that is stored but not in force is taken back here, whatever greys the row out.
+    if (item.turnOff) {
+        TextButton(onClick = { onChange(false) }, Modifier.padding(start = 8.dp)) { Text("Turn off") }
+    }
 }
 
 /**

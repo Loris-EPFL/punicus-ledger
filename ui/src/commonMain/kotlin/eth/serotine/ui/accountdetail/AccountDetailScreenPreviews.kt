@@ -1139,7 +1139,7 @@ private fun AccountDetailActivityIndexNotInThisBuildPreview() = AccountDetailAct
 @Preview
 @Composable
 private fun AccountDetailActivityIndexSettingOffPreview() = AccountDetailActivityIndexRefused(
-    "The engine reads no addr1 index: the experimental setting is off. Settings → Advanced turns it on.",
+    "The engine reads no addr1 index: the experimental setting is off. Settings → Experimental turns it on.",
 )
 
 @Preview
@@ -1179,7 +1179,7 @@ private fun AccountDetailActivityIndexNoEnginePreview() = AccountDetailActivityI
 @Composable
 private fun AccountDetailActivityIndexWrongImporterPreview() = AccountDetailActivityIndexRefused(
     "The index read is signed by ${Eip55.format(Address.of("0x" + "2e".repeat(20)))}, not by the importer " +
-        "pinned in this release, $sampleImporter: none of it is shown.",
+        "pinned in this release, $sampleImporter: none of its entries is shown, and no more is read.",
 )
 
 @Preview

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SyncPolicy
+import eth.serotine.domain.repository.AddressIndexChoice
 import eth.serotine.domain.repository.ConnectionCost
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.MeteredDownloadsChoice
@@ -415,6 +416,11 @@ class SettingsViewModel(
                         "again, it trusts the one pinned now",
                 )
             }
+            if (trustsAnotherKey == null && !on && missing.isNotEmpty() &&
+                (choice as? AddressIndexChoice.Chosen)?.importer != null
+            ) {
+                append(" · Turned on in another build: it stays off here, and Turn off clears that choice")
+            }
             if (setAside) append(" (your saved choice was damaged and set aside)")
             if (notSaved) append(" · Your choice could not be saved")
         }
@@ -428,7 +434,13 @@ class SettingsViewModel(
                     "Punicus keeps trying to read it, and the switch works again once it can."
             }
         }
-        return AddressIndexItem(on = on, text = text, unavailableReason = reasons.joinToString(" ").ifEmpty { null })
+        return AddressIndexItem(
+            on = on,
+            text = text,
+            unavailableReason = reasons.joinToString(" ").ifEmpty { null },
+            // A stored choice not in force can always be taken back, greyed out or not (TurnAddressIndex).
+            turnOff = !on && (choice as? AddressIndexChoice.Chosen)?.importer != null,
+        )
     }
 
     /** Allows the heavy downloads on a metered connection, or not; a choice not saved is said on the switch. */

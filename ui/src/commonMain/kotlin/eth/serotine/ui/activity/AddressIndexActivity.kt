@@ -19,7 +19,7 @@ import eth.serotine.ui.components.shortAddress
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -39,17 +39,18 @@ class AddressIndexActivity(
     /**
      * The pages of [account]'s addr1 history while the setting is on, null while it is off (and until it is read).
      * The newest page is read at once; each later value of [more] above the one it started with asks for the next
-     * page, one at a time, or, after a passing refusal, the same page again. Nothing is read while it is off.
+     * page, one at a time, or, after a passing refusal, the same page again. An ask that comes while a page is read
+     * is that page's: it asks for nothing more. Nothing is read while it is off.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    internal fun of(account: AccountId, more: Flow<Int>): Flow<IndexPaging?> = status()
+    internal fun of(account: AccountId, more: StateFlow<Int>): Flow<IndexPaging?> = status()
         .map { if (it.on) it.pinned else null }
         .distinctUntilChanged()
         .flatMapLatest { pinned -> if (pinned == null) flowOf(null) else pages(account, pinned, more) }
         .onStart { emit(null) }
 
-    private fun pages(account: AccountId, pinned: Address, more: Flow<Int>): Flow<IndexPaging> = flow {
-        var asked = more.first()
+    private fun pages(account: AccountId, pinned: Address, more: StateFlow<Int>): Flow<IndexPaging> = flow {
+        var asked = more.value
         var paging = IndexPaging(pinned)
         emit(paging)
         paging = paging.after(load(account))
@@ -61,6 +62,8 @@ class AddressIndexActivity(
             paging = paging.copy(loading = true, refused = null)
             emit(paging)
             paging = paging.after(load(account, paging.next))
+            // What was asked while it was read was asked of this page.
+            asked = maxOf(asked, more.value)
             emit(paging)
         }
     }
@@ -95,7 +98,9 @@ internal data class IndexPaging(
 
     /**
      * This list after [load]: its rows added, newest first, and its counts; or the refusal said, the rows kept but
-     * on the checkpoint table's alarm, which withdraws the trust they rest on (`.claude/rules/trust.md`).
+     * on the checkpoint table's alarm, which withdraws the trust they rest on (`.claude/rules/trust.md`), and on an
+     * index signed by another key than the pinned one, which the list may not rest on. With the alarm, what the
+     * index said of its coverage and its counts go too.
      */
     fun after(load: AddressIndexLoad): IndexPaging = when (load) {
         is AddressIndexLoad.Loaded -> copy(
@@ -108,11 +113,11 @@ internal data class IndexPaging(
             loading = false,
             refused = null,
         )
-        is AddressIndexLoad.Refused -> copy(
-            rows = if (load.reason is AddressIndexRefusal.CheckpointAlarm) emptyList() else rows,
-            loading = false,
-            refused = load.reason,
-        )
+        is AddressIndexLoad.Refused -> when (load.reason) {
+            is AddressIndexRefusal.CheckpointAlarm -> IndexPaging(pinned, loading = false, refused = load.reason)
+            is AddressIndexRefusal.WrongImporter -> copy(rows = emptyList(), loading = false, refused = load.reason)
+            else -> copy(loading = false, refused = load.reason)
+        }
     }
 }
 
@@ -195,7 +200,7 @@ private fun footerOf(paging: IndexPaging, network: Network): IndexFooter {
 private fun coverageLines(coverage: AddressIndexCoverage): List<String> = buildList {
     val covered = coverage.covered
     if (covered == null) {
-        add("It covers no block yet.")
+        add("It covers no block yet" + (coverage.tailGap?.let { ": ${range(it)} are not in it." } ?: "."))
     } else if (covered.first == 0L) {
         add("It covers the blocks from the first to ${grouped(covered.last)}.")
     } else {
@@ -247,7 +252,7 @@ internal fun indexRefusalText(reason: AddressIndexRefusal, network: Network): St
     AddressIndexRefusal.NotInThisBuild ->
         "This build's engine has no Swarm reader, so nothing comes from the addr1 index here."
     AddressIndexRefusal.SettingOff ->
-        "The engine reads no addr1 index: the experimental setting is off. Settings → Advanced turns it on."
+        "The engine reads no addr1 index: the experimental setting is off. Settings → Experimental turns it on."
     AddressIndexRefusal.TorRouting ->
         "Tor routing is on, and the addr1 index is not read over Tor: nothing comes from it while Tor is on."
     is AddressIndexRefusal.NetworkNotServed ->
@@ -262,7 +267,7 @@ internal fun indexRefusalText(reason: AddressIndexRefusal, network: Network): St
         "No light client runs for ${network.displayName} on this device, so no entry of the index can be checked."
     is AddressIndexRefusal.WrongImporter ->
         "The index read is signed by ${Eip55.format(reason.named)}, not by the importer pinned in this release, " +
-            "${Eip55.format(reason.pinned)}: none of it is shown."
+            "${Eip55.format(reason.pinned)}: none of its entries is shown, and no more is read."
     is AddressIndexRefusal.Rejected ->
         "The engine refused the request (${reason.reason}). That is a bug in Punicus or the engine: nothing more " +
             "comes from the index until it is fixed."

@@ -706,6 +706,23 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun aChoiceToTurnItOnMadeInAnotherBuildCanBeTakenBackWhileGreyedOut() = runTest {
+        addressIndexSetting.choice.value = AddressIndexChoice.Chosen(FIXTURE_IMPORTER)
+        val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(reader = false), pinned = FIXTURE_IMPORTER)
+
+        val item = checkNotNull(viewModel.uiState.value.addressIndex)
+        assertFalse(item.on, "no reader: off here")
+        assertTrue(item.turnOff, "the stored choice can be taken back")
+        assertNotNull(item.unavailableReason)
+
+        viewModel.useAddressIndex(false)
+        runCurrent()
+
+        assertEquals(AddressIndexChoice.Chosen(null), addressIndexSetting.choice.value)
+        assertFalse(checkNotNull(viewModel.uiState.value.addressIndex).turnOff)
+    }
+
+    @Test
     fun aSwitchOfTheAddressIndexThatCannotBeSavedSaysSo() = runTest {
         val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(), pinned = FIXTURE_IMPORTER)
         addressIndexSetting.failSaves = true

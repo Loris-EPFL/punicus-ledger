@@ -100,7 +100,9 @@ fun LazyListScope.activityItems(
             }
             val index = state.index
             if (index != null) item(key = "index-lines") { IndexLines(index) }
-            if (index?.footerFirst == true) item(key = "index-footer") { IndexFooterItem(index.footer, onMore) }
+            if (index?.footerFirst == true) {
+                item(key = "index-footer") { IndexFooterItem(index.footer, onMore, automatic = false) }
+            }
             if (state.rows.isEmpty()) {
                 item { Text(state.empty, style = MaterialTheme.typography.bodyMedium) }
             }
@@ -149,10 +151,12 @@ private fun IndexLines(index: IndexSection) {
 /**
  * The addr1 index's footer: a ghost row while a page is read, which holds its room; nothing to see while more lies
  * below, but its being composed (the list near its end) asks for the next page ([onMore]); the end of its coverage;
- * or why nothing more comes, with Try again where asking again may answer.
+ * or why nothing more comes, with Try again where asking again may answer. Above the rows ([automatic] false, when
+ * they run oldest first) it is in sight from the start and stays there as pages load below it: more is then read
+ * only on Load older, never by itself.
  */
 @Composable
-private fun IndexFooterItem(footer: IndexFooter, onMore: () -> Unit) {
+private fun IndexFooterItem(footer: IndexFooter, onMore: () -> Unit, automatic: Boolean = true) {
     val more by rememberUpdatedState(onMore)
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag(ACTIVITY_INDEX_FOOTER_TAG)) {
         when (footer) {
@@ -164,7 +168,11 @@ private fun IndexFooterItem(footer: IndexFooter, onMore: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            IndexFooter.More -> LaunchedEffect(Unit) { more() }
+            IndexFooter.More -> if (automatic) {
+                LaunchedEffect(Unit) { more() }
+            } else {
+                TextButton(onClick = onMore) { Text("Load older entries") }
+            }
             is IndexFooter.End -> Text(
                 footer.text,
                 style = MaterialTheme.typography.bodySmall,

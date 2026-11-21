@@ -50,12 +50,15 @@ data class SettingsUiState(
  * the owner's decisions of that day on #335), off by default: [on] when it is, [text] what it trusts now (the
  * importer key pinned in the release, named in full, or that none is pinned), and [unavailableReason] when it cannot
  * be changed (no key pinned in this release, no Swarm reader in this build's engine, a choice that cannot be read),
- * said on a tap of the greyed row (owner ruling, 2026-10-18, #55). No block number: the same in both views.
+ * said on a tap of the greyed row (owner ruling, 2026-10-18, #55). [turnOff] when a choice to turn it on is stored
+ * that is not in force (made in another build, or for a key no longer pinned): Turn off clears it, whatever greys the
+ * row out, so that it never comes back on by itself. No block number: the same in both views.
  */
 data class AddressIndexItem(
     val on: Boolean,
     val text: String,
     val unavailableReason: String? = null,
+    val turnOff: Boolean = false,
 )
 
 /**

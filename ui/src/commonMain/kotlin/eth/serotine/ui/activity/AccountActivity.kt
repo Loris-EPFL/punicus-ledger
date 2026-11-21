@@ -36,6 +36,8 @@ import eth.serotine.ui.components.grouped
 import eth.serotine.ui.outbox.redatedAtTheirHour
 import eth.serotine.ui.platform.formatDateTime
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
@@ -85,14 +87,18 @@ class AccountActivity(
      * so (docs/wallet-ux.md, *Hiding amounts*); nothing is read until it is collected. Each value of
      * [more] above the one it started with asks the addr1 index for its next page, when it is on.
      */
-    fun of(account: AccountId, hideAmounts: Flow<Boolean>, more: Flow<Int> = flowOf(0)): Flow<ActivityUiState> =
+    fun of(
+        account: AccountId,
+        hideAmounts: Flow<Boolean>,
+        more: StateFlow<Int> = MutableStateFlow(0),
+    ): Flow<ActivityUiState> =
         Listing(account, hideAmounts, more).state
 
     /** One account's Activity: the [account] its rows and sources are of, and whether its amounts are hidden. */
     private inner class Listing(
         private val account: AccountId,
         private val hideAmounts: Flow<Boolean>,
-        more: Flow<Int>,
+        more: StateFlow<Int>,
     ) {
 
         private val address: Address = account.address

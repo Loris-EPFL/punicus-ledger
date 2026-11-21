@@ -49,6 +49,7 @@ import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.activity.IndexEntryKey
 import eth.serotine.ui.activity.IndexFooter
 import eth.serotine.ui.activity.IndexSection
+import eth.serotine.ui.activity.ordered
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.GHOST_ROWS_UNKNOWN
 import eth.serotine.ui.components.GHOST_ROW_TAG
@@ -938,6 +939,16 @@ class AccountDetailScreenTest {
         rule.onNodeWithText("The light client is still catching up.").assertExists()
         rule.onNodeWithText("Try again").performClick()
 
+        assertEquals(listOf("more activity"), events)
+    }
+
+    @Test
+    fun oldestFirstTheAddr1IndexLoadsOlderEntriesOnlyOnATap() {
+        show(indexed(IndexFooter.More).let { it.copy(activity = it.activity.ordered(ActivityOrder.OLDEST_FIRST)) })
+        rule.waitForIdle()
+
+        assertEquals(emptyList(), events, "above the rows, in sight from the start: nothing read by itself")
+        rule.onNodeWithText("Load older entries").performClick()
         assertEquals(listOf("more activity"), events)
     }
 

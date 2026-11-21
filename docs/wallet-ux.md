@@ -1275,7 +1275,7 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       the chain", "… not final yet"; simple mode "Final", "Confirmed"). It is
       said in the log index's words ("Sent 0.25 ETH", "Received 1 USDC", "An
       unlisted token logged a transfer to it"), or "Named in a transaction"
-      with the roles it is named in, or "Named by block … itself". The same
+      with the roles it is named in, or "Named by the block itself". The same
       protections hold: a transfer of nothing the account did not send is
       not listed, an unlisted token's transfer is its claim, and a row the
       account did not send, from an address it never sent to, is cautioned.
@@ -1299,12 +1299,13 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
         a footer holds its room while a page is read and checked ("Reading
         more of the addr1 index …"), and the end of its coverage is marked
         ("The addr1 index starts at block 9,000,000: nothing older comes from
-        it"). Turned oldest first, the footer goes above the rows.
+        it"). Turned oldest first, the footer goes above the rows, in sight
+        from the start, so older entries load only on *Load older entries*.
       - A refusal is said, never an empty list: this build's engine has no
         Swarm reader, the setting is off in the engine, Tor routing is on,
         the network is not served, the checkpoint table's alarm (in the
         error's colour; the rows already shown go, since they rest on the
-        table), a stale checkpoint, no light client, an index signed by
+        table, and so do its coverage and counts), a stale checkpoint, no light client, an index signed by
         another key than the pinned one, a request the engine rejected (a
         bug). The passing ones (still catching up, Swarm or the peers did not
         deliver) offer Try again. The rows of the other sources stay.
@@ -1401,7 +1402,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     importer key pinned in the release, says what it does and what Swarm
     and archive peers learn once it is on (docs/privacy-policy.md). A key is
     never typed in. Turned on for a key the release no longer pins, it is
-    off until turned on again. It is greyed out, a tap saying what is
+    off until turned on again. A choice to turn it on that is stored but not
+    in force (that, or made in a build with a Swarm reader) has *Turn off*
+    below the row, greyed out or not, so it never comes back on by itself. It is greyed out, a tap saying what is
     missing, while no importer key is pinned in the release (none is yet,
     owner's decision, 2026-11-21) and while the build's engine has no Swarm
     reader (no published Myotis build has it yet), both said when both hold.

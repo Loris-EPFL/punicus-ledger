@@ -207,7 +207,8 @@ internal class ActivityRows(
             ),
         )
         val tx = indexed.transaction ?: return base.copy(
-            title = "Named by block $block itself",
+            // No block number in the title: simple mode shows none, and the row's time names it.
+            title = "Named by the block itself",
             detail = rolesText(entry.roles).replaceFirstChar { it.uppercase() },
         )
         val sentByIt = tx.from == address

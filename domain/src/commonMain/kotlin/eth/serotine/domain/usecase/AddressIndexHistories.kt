@@ -247,3 +247,49 @@ sealed interface AddressIndexLoad {
     /** Nothing loaded, for [reason], which the screen states. */
     data class Refused(val reason: AddressIndexRefusal) : AddressIndexLoad
 }
+
+/**
+ * Checks one entry of an account's addr1 history again, for the detail of its row (docs/wallet-ux.md, screen 26):
+ * the detail never shows what the list once found, only what the engine's check finds now, against verified chain
+ * data. [importer] is the key pinned in the release that the list rests on, which the detail names. A
+ * `TRACE`-only entry is never sent to the check, since the engine never verifies one: it is unverified. A verdict is
+ * matched to the entry asked by block, slot and roles, as [LoadAddressIndexPage] matches it; none matched is
+ * [AddressIndexVerdict.Unavailable]. A refused check is [AddressIndexEntryCheck.Refused], never a verdict.
+ */
+class CheckAddressIndexEntry(
+    private val history: AddressIndexHistory,
+    /** The importer key pinned in the release: what the list's completeness rests on. */
+    val importer: Address,
+) {
+    /** [entry] of [account]'s history, checked on [account]'s network. */
+    suspend operator fun invoke(account: AccountId, entry: AddressIndexEntry): AddressIndexEntryCheck {
+        if (entry.traceOnly) {
+            return AddressIndexEntryCheck.Checked(AddressIndexVerdict.Unverified(entry, TRACE_ONLY))
+        }
+        return when (val answer = history.verify(account.network, account.address, listOf(entry))) {
+            is AddressIndexCheck.Refused -> AddressIndexEntryCheck.Refused(answer.reason)
+            is AddressIndexCheck.Verdicts -> AddressIndexEntryCheck.Checked(
+                answer.verdicts
+                    .filter { it.entry.block == entry.block && it.entry.slot == entry.slot }
+                    .distinct()
+                    .singleOrNull()
+                    ?.takeIf { it.entry.roles == entry.roles }
+                    ?: AddressIndexVerdict.Unavailable(entry, NO_VERDICT),
+            )
+        }
+    }
+
+    private companion object {
+        const val TRACE_ONLY = "its one role is a trace, which the engine never verifies"
+        const val NO_VERDICT = "the check gave no verdict for it"
+    }
+}
+
+/** What [CheckAddressIndexEntry] answers. */
+sealed interface AddressIndexEntryCheck {
+    /** The engine's [verdict] of the entry now. */
+    data class Checked(val verdict: AddressIndexVerdict) : AddressIndexEntryCheck
+
+    /** Nothing checked, for [reason], which the screen states. */
+    data class Refused(val reason: AddressIndexRefusal) : AddressIndexEntryCheck
+}

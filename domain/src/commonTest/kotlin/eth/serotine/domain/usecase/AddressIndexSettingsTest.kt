@@ -117,10 +117,29 @@ class AddressIndexSettingsTest {
         ),
     )
 
+    /** The setting on for the fixture's key, as the detail's check needs it. */
+    private fun turnedOn() {
+        setting.choice.value = AddressIndexChoice.Chosen(fixtureImporter)
+    }
+
+    @Test
+    fun theDetailChecksNothingWhileTheSettingIsNotOnForItsKey() = runTest {
+        val check = CheckAddressIndexEntry(index, setting, fixtureImporter)
+
+        assertEquals(AddressIndexEntryCheck.Refused(AddressIndexRefusal.SettingOff), check(account, entry), "off")
+        setting.choice.value = AddressIndexChoice.Chosen(otherImporter)
+        assertEquals(AddressIndexEntryCheck.Refused(AddressIndexRefusal.SettingOff), check(account, entry), "other key")
+        turnedOn()
+        index.reader = false
+        assertEquals(AddressIndexEntryCheck.Refused(AddressIndexRefusal.SettingOff), check(account, entry), "no reader")
+        assertTrue(index.checks.isEmpty(), "nothing fetched")
+    }
+
     @Test
     fun theDetailChecksItsEntryAgainAndTakesOnlyTheVerdictOfThatEntry() = runTest {
+        turnedOn()
         index.check = { entries, _ -> AddressIndexCheck.Verdicts(entries.map(::verified)) }
-        val check = CheckAddressIndexEntry(index, fixtureImporter)
+        val check = CheckAddressIndexEntry(index, setting, fixtureImporter)
 
         val checked = assertIs<AddressIndexEntryCheck.Checked>(check(account, entry))
 
@@ -131,10 +150,11 @@ class AddressIndexSettingsTest {
 
     @Test
     fun aVerdictForOtherRolesIsNoVerdict() = runTest {
+        turnedOn()
         val other = entry.copy(roles = setOf(AddressIndexRole.TO))
         index.check = { _, _ -> AddressIndexCheck.Verdicts(listOf(verified(other))) }
 
-        val answer = CheckAddressIndexEntry(index, fixtureImporter)(account, entry)
+        val answer = CheckAddressIndexEntry(index, setting, fixtureImporter)(account, entry)
 
         val checked = assertIs<AddressIndexEntryCheck.Checked>(answer)
 
@@ -143,9 +163,10 @@ class AddressIndexSettingsTest {
 
     @Test
     fun aTraceOnlyEntryIsNeverSentToTheCheck() = runTest {
+        turnedOn()
         val trace = AddressIndexEntry(21_000_000, 4, setOf(AddressIndexRole.TRACE))
 
-        val answer = CheckAddressIndexEntry(index, fixtureImporter)(account, trace)
+        val answer = CheckAddressIndexEntry(index, setting, fixtureImporter)(account, trace)
 
         val checked = assertIs<AddressIndexEntryCheck.Checked>(answer)
 
@@ -155,9 +176,10 @@ class AddressIndexSettingsTest {
 
     @Test
     fun aRefusedCheckIsARefusalNeverAVerdict() = runTest {
+        turnedOn()
         index.check = { _, _ -> AddressIndexCheck.Refused(AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING)) }
 
-        val refused = CheckAddressIndexEntry(index, fixtureImporter)(account, entry)
+        val refused = CheckAddressIndexEntry(index, setting, fixtureImporter)(account, entry)
 
         assertEquals(AddressIndexEntryCheck.Refused(AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING)), refused)
         assertNull((refused as? AddressIndexEntryCheck.Checked)?.verdict)

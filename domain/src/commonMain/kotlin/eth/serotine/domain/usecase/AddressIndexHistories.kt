@@ -13,8 +13,10 @@ import eth.serotine.domain.repository.AddressIndexPage
 import eth.serotine.domain.repository.AddressIndexQuery
 import eth.serotine.domain.repository.AddressIndexReading
 import eth.serotine.domain.repository.AddressIndexRefusal
+import eth.serotine.domain.repository.AddressIndexSetting
 import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -251,18 +253,25 @@ sealed interface AddressIndexLoad {
 /**
  * Checks one entry of an account's addr1 history again, for the detail of its row (docs/wallet-ux.md, screen 26):
  * the detail never shows what the list once found, only what the engine's check finds now, against verified chain
- * data. [importer] is the key pinned in the release that the list rests on, which the detail names. A
+ * data. [importer] is the key pinned in the release that the list rests on, which the detail names. Only while the
+ * experimental setting is on for that key, with a reader ([setting], [history]): otherwise it is refused
+ * ([AddressIndexRefusal.SettingOff]) and nothing is fetched, as the privacy policy promises. A
  * `TRACE`-only entry is never sent to the check, since the engine never verifies one: it is unverified. A verdict is
  * matched to the entry asked by block, slot and roles, as [LoadAddressIndexPage] matches it; none matched is
  * [AddressIndexVerdict.Unavailable]. A refused check is [AddressIndexEntryCheck.Refused], never a verdict.
  */
 class CheckAddressIndexEntry(
     private val history: AddressIndexHistory,
+    /** The user's choice: the check runs only while it is on for [importer]. */
+    private val setting: AddressIndexSetting,
     /** The importer key pinned in the release: what the list's completeness rests on. */
     val importer: Address,
 ) {
-    /** [entry] of [account]'s history, checked on [account]'s network. */
+    /** [entry] of [account]'s history, checked on [account]'s network, while the setting is on. */
     suspend operator fun invoke(account: AccountId, entry: AddressIndexEntry): AddressIndexEntryCheck {
+        if (!ObserveAddressIndexStatus(history, setting, importer)().first().on) {
+            return AddressIndexEntryCheck.Refused(AddressIndexRefusal.SettingOff)
+        }
         if (entry.traceOnly) {
             return AddressIndexEntryCheck.Checked(AddressIndexVerdict.Unverified(entry, TRACE_ONLY))
         }

@@ -28,6 +28,14 @@ buildscript {
     // buildscript-gradle.lockfile (#281).
     configurations.classpath {
         resolutionStrategy.activateDependencyLocking()
+        // AGP 8.13's `com.android.tools.build:gradle` still declares the
+        // `transform-api:2.0.0-deprecated-use-gradle-api` stub: a jar holding only a
+        // manifest, nothing to load. Its two copies differ (Maven Central's of 2016,
+        // which the pins hold, and Google's of 2019, same content, other timestamps),
+        // so a build that reaches Google's fails verification: CI did from
+        // 2026-11-20, on a Gradle cache saved by a run whose repository reads failed.
+        // AGP 9 no longer declares it; drop this with the move to AGP 9.
+        exclude(group = "com.android.tools.build", module = "transform-api")
     }
 }
 

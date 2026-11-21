@@ -23,9 +23,13 @@ the contract for keys.
 - **Peer-trusted is never an option.** Everything the wallet shows about the
   chain is cryptographically verified by the embedded Myotis engine, or shown
   as not available. The engine's only trust anchors are sync-committee
-  signatures and its embedded accumulators.
+  signatures and its embedded accumulators, and, in the Myotis releases that
+  carry its rule D1 (owner's decision there, 2026-11-20, Myotis #900), its
+  bundled checkpoint table: the hash of every 1024th block, which verifies a
+  block deeper than the light client's window.
 - No JSON-RPC provider, no indexer API and no "temporary" fallback supplies
-  chain state, in any build type.
+  chain state, in any build type. One bounded exception, below: the addr1
+  index's rows, each verified before it is shown.
 - **One older answer is shown, labelled as one** (owner's request,
   2026-10-19; docs/wallet-ux.md). While no verified head is fresh enough to
   read at, a balance the light client proved earlier (in this run, or kept
@@ -96,6 +100,24 @@ docs/lenient-mode.md, which has the detail.)
 - **A network that is off is not syncing.** Its actions stay greyed out with
   "Turn on" as the way to get them, in either mode: nothing is drafted on
   it.
+
+## The addr1 history: every row verified, its completeness on the importer's word
+
+(Owner ruling, 2026-11-21, #334, and the owner's decisions of that day on
+#335; `.claude/rules/data-sources.md`, *The history may also take the addr1
+index from Swarm*.)
+
+- An addr1 entry is shown only once the engine verified it against verified
+  chain data. For a block deeper than the light client's window that rests on
+  Myotis's checkpoint table (rule D1, above). Nothing about the chain is
+  taken from the index's word.
+- What the index alone vouches for is that no entry is missing: the
+  completeness of the list. That rests on the importer key pinned in the
+  release, and the list says so. A contradicted entry is a warning against
+  that key, said in plain words.
+- When the engine raises its checkpoint table's alarm (the table and the
+  beacon chain disagree, Myotis's `StatusSnapshot.checkpointAlarm`), every
+  read resting on the table is refused. The app shows the alarm.
 
 ## Past the weak-subjectivity window only on the user's word
 

@@ -91,6 +91,14 @@ class AddressIndexTest {
         assertFailsWith<IllegalArgumentException> {
             AddressIndexRow(AddressIndexEntry(10, 1, setOf(FROM)), hash, true, setOf(FROM), setOf(TRACE), tx)
         }
+        // A trace is never proven: neither a TRACE-only row nor a trace both proven and unchecked.
+        assertFailsWith<IllegalArgumentException> {
+            AddressIndexRow(AddressIndexEntry(10, 1, setOf(TRACE)), hash, true, setOf(TRACE), emptySet(), tx)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            val traced = AddressIndexEntry(10, 1, setOf(FROM, TRACE))
+            AddressIndexRow(traced, hash, true, setOf(FROM, TRACE), setOf(TRACE), tx)
+        }
         AddressIndexRow(AddressIndexEntry(10, 0, setOf(BLOCK)), hash, false, setOf(BLOCK), emptySet(), null)
 
         val sent = AddressIndexEntry(10, 1, setOf(FROM))
@@ -119,6 +127,10 @@ class AddressIndexTest {
         assertFailsWith<IllegalArgumentException> { AddressIndexVerdict.Contradicted(entry, "0xbb", true, setOf(FROM)) }
         assertFailsWith<IllegalArgumentException> { AddressIndexVerdict.Contradicted(entry, hash, true, emptySet()) }
         assertFailsWith<IllegalArgumentException> { AddressIndexVerdict.Contradicted(entry, hash, true, setOf(TO)) }
+        // The engine never checks a trace, so it never contradicts one.
+        val traced = AddressIndexEntry(10, 1, setOf(FROM, TRACE))
+        AddressIndexVerdict.Contradicted(traced, hash, true, setOf(FROM))
+        assertFailsWith<IllegalArgumentException> { AddressIndexVerdict.Contradicted(traced, hash, true, setOf(TRACE)) }
     }
 
     @Test

@@ -29,11 +29,13 @@ internal class FakeAddressIndexHistory(
         AddressIndexCheck.Verdicts(entries.map { AddressIndexVerdict.Unverified(it) })
     }
     var checkTime: Duration = Duration.ZERO
+    var pageTime: Duration = Duration.ZERO
     val queries = mutableListOf<Triple<Network, Address, AddressIndexQuery>>()
     val checks = mutableListOf<List<AddressIndexEntry>>()
 
     override suspend fun page(network: Network, address: Address, query: AddressIndexQuery): AddressIndexReading {
         queries += Triple(network, address, query)
+        delay(pageTime)
         if (network !in served) return AddressIndexReading.Refused(AddressIndexRefusal.NetworkNotServed(network))
         pageRefusal?.let { return AddressIndexReading.Refused(it) }
         val page = pages[query.cursor]

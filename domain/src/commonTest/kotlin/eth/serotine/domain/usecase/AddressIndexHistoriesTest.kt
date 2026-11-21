@@ -262,7 +262,7 @@ class AddressIndexHistoriesTest {
             AddressIndexRefusal.CheckpointAlarm("checkpoint table alarm: block 1024 differs"),
             AddressIndexRefusal.StaleAnchor,
             AddressIndexRefusal.NoEngine,
-            AddressIndexRefusal.Rejected("a cursor of a newer head"),
+            AddressIndexRefusal.Rejected("an argument the engine does not take"),
             AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING),
             AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN),
         )
@@ -358,6 +358,35 @@ class AddressIndexHistoriesTest {
         assertEquals(entries.take(50), load.rows.map { it.entry })
         assertEquals(AddressIndexLeftOut(unavailable = 70), load.leftOut)
         assertEquals(AddressIndexContinuation(account, AddressIndexCursor("7:21198881:1")), load.next)
+    }
+
+    @Test
+    fun aPageNotReadWithinTheBudgetIsAPassingRefusal() = runTest {
+        index.pages[null] = page(listOf(entry(21_199_000L, 1, FROM)))
+        index.pageTime = 200.seconds
+        verifyingAll()
+
+        val load = assertIs<AddressIndexLoad.Refused>(loader(budget = 100.seconds)(account))
+
+        assertEquals(AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN), load.reason)
+        assertEquals(100_000, currentTime)
+        assertEquals(emptyList(), index.checks)
+    }
+
+    @Test
+    fun theReadAndTheChecksShareOneBudget() = runTest {
+        val entries = (0 until 60).map { entry(21_199_000L - it, 1, FROM) }
+        index.pages[null] = page(entries, next = "7:21198941:1")
+        index.pageTime = 50.seconds
+        index.checkTime = 40.seconds
+        verifyingAll()
+
+        val load = assertIs<AddressIndexLoad.Loaded>(loader(budget = 100.seconds)(account, limit = 60))
+
+        // 50 s of reading leave room for one 40 s check: the second chunk is cut at 100 s.
+        assertEquals(100_000, currentTime)
+        assertEquals(entries.take(50), load.rows.map { it.entry })
+        assertEquals(AddressIndexLeftOut(unavailable = 10), load.leftOut)
     }
 
     @Test

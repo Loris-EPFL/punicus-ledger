@@ -167,6 +167,9 @@ sealed interface AddressIndexRefusal {
     /**
      * The engine refused this request for [reason], its words: a cursor or an argument it does not take. Asking the
      * same again changes nothing; since this port's arguments are checked here, it means an adapter or engine bug.
+     * That holds for the cursor too, although only the engine reads it: a cursor whose index head has moved on is
+     * read at the newer head, and one whose head the engine finds only an older update of is a passing refusal
+     * ([NotNow], the engine's retryable answer), never this one (Myotis's `addrhist.rs`, the head floor).
      */
     data class Rejected(val reason: String) : AddressIndexRefusal
 

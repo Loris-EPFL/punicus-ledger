@@ -9,9 +9,11 @@ import eth.serotine.domain.model.AddressIndexRow
 import eth.serotine.domain.model.AddressIndexVerdict
 import eth.serotine.domain.repository.AddressIndexCheck
 import eth.serotine.domain.repository.AddressIndexHistory
+import eth.serotine.domain.repository.AddressIndexPage
 import eth.serotine.domain.repository.AddressIndexQuery
 import eth.serotine.domain.repository.AddressIndexReading
 import eth.serotine.domain.repository.AddressIndexRefusal
+import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
@@ -46,8 +48,10 @@ import kotlin.time.Duration.Companion.seconds
  *   Tor, a network not served, the checkpoint table's alarm, a stale checkpoint, no engine), since it holds for
  *   every chunk, and the alarm withdraws the trust the rows rest on. [AddressIndexRefusal.Rejected] refuses it too:
  *   the engine refusing an argument this port checked is a bug, and no part of the page is shown over it.
- * - **One load takes at most [budget]**, retry pauses included: the entries no check answered by then count as
- *   unavailable, the rows verified so far are kept, and so is the page's continuation.
+ * - **One load takes at most [budget]**, the page's read and retry pauses included. A page not read by then refuses
+ *   the load as passing ([AddressIndexRefusal.NotNow], [ReadUnavailable.UNPROVEN]: Swarm did not deliver it); past
+ *   the read, the entries no check answered by then count as unavailable, the rows verified so far are kept, and so
+ *   is the page's continuation.
  *
  * Deterministic: everything it knows comes from [history], called from the caller's coroutine only, one check at a
  * time (the engine bounds each at 90 seconds).
@@ -60,7 +64,7 @@ class LoadAddressIndexPage(
     private val attempts: Int = DEFAULT_ATTEMPTS,
     /** How long to wait before asking again for the entries no check answered. */
     private val retryPause: Duration = DEFAULT_RETRY_PAUSE,
-    /** The longest the checks of one load may take, retry pauses included. */
+    /** The longest one load may take: the page's read, its checks and the retry pauses between them. */
     private val budget: Duration = DEFAULT_BUDGET,
 ) {
     init {
@@ -81,19 +85,31 @@ class LoadAddressIndexPage(
     ): AddressIndexLoad {
         require(after == null || after.account == account) { "a continuation of another account's history" }
         val query = AddressIndexQuery(cursor = after?.cursor, limit = limit)
-        val page = when (val reading = history.page(account.network, account.address, query)) {
-            is AddressIndexReading.Refused -> return AddressIndexLoad.Refused(reading.reason)
-            is AddressIndexReading.Page -> reading.page
-        }
-        val importer = page.coverage.importer
-        if (importer != pinnedImporter) {
-            return AddressIndexLoad.Refused(AddressIndexRefusal.WrongImporter(pinnedImporter, importer))
-        }
-        val checked = page.entries.filterNot { it.traceOnly }
+        var readPage: AddressIndexPage? = null
+        var refused: AddressIndexRefusal? = null
         val verdicts = mutableMapOf<AddressIndexEntry, AddressIndexVerdict>()
-        // Past the budget the check stops where it is: what it had verified stays, the rest is unavailable.
-        val outcome = withTimeoutOrNull(budget) { checkAll(account, checked, verdicts) }
-        if (outcome is Lasting) return AddressIndexLoad.Refused(outcome.reason)
+        // One budget for the read and the checks. Past it the check stops where it is: what it had verified stays,
+        // the rest is unavailable. A page not read by then is a passing refusal.
+        withTimeoutOrNull(budget) {
+            val read = when (val reading = history.page(account.network, account.address, query)) {
+                is AddressIndexReading.Refused -> {
+                    refused = reading.reason
+                    return@withTimeoutOrNull
+                }
+                is AddressIndexReading.Page -> reading.page
+            }
+            readPage = read
+            val importer = read.coverage.importer
+            if (importer != pinnedImporter) {
+                refused = AddressIndexRefusal.WrongImporter(pinnedImporter, importer)
+                return@withTimeoutOrNull
+            }
+            val outcome = checkAll(account, read.entries.filterNot { it.traceOnly }, verdicts)
+            if (outcome is Lasting) refused = outcome.reason
+        }
+        refused?.let { return AddressIndexLoad.Refused(it) }
+        val page = readPage ?: return AddressIndexLoad.Refused(AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN))
+        val checked = page.entries.filterNot { it.traceOnly }
         val rows = page.entries.mapNotNull { (verdicts[it] as? AddressIndexVerdict.Verified)?.row }
         val leftOut = AddressIndexLeftOut(
             unverified = verdicts.values.count { it is AddressIndexVerdict.Unverified },

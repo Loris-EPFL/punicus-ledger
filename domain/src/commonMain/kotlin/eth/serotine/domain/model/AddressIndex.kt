@@ -159,6 +159,7 @@ data class AddressIndexRow(
     init {
         require(isHash(blockHash)) { "a block hash is 0x and 64 lower-case hex digits" }
         require(confirmed.isNotEmpty()) { "a verified entry has one role proven at least" }
+        require(AddressIndexRole.TRACE !in confirmed) { "a trace is never proven" }
         require(unchecked.all { it == AddressIndexRole.TRACE }) { "only a trace rests on the importer's word" }
         require(confirmed + unchecked == entry.roles) { "every role of the entry is proven, or is its trace" }
         require((transaction == null) == (entry.slot == 0)) { "a transaction for a transaction entry, only for one" }
@@ -204,6 +205,7 @@ sealed interface AddressIndexVerdict {
             require(isHash(blockHash)) { "a block hash is 0x and 64 lower-case hex digits" }
             require(contradicted.isNotEmpty()) { "a contradiction names the roles it contradicts" }
             require(entry.roles.containsAll(contradicted)) { "only the entry's own roles are contradicted" }
+            require(AddressIndexRole.TRACE !in contradicted) { "a trace is never checked, so never contradicted" }
         }
     }
 

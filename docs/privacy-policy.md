@@ -113,7 +113,10 @@ IP address. Their privacy policies apply.
 - Keep Uniswap as the swap venue, and CoW is never contacted.
 - Remove an account or the app to delete what is stored for it: removing an
   account also takes it out of what each site remembers, and the last
-  account of a per-app address takes its links to other sites with it.
+  account of a per-app address takes its links to other sites with it. If
+  the device cannot save that change, a site's memory of the account stays
+  until that site is approved again; it never preselects an account that is
+  gone.
 - Remove a site's link to another site's address on that address's details.
 
 ## Children

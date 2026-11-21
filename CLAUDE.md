@@ -223,6 +223,8 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
 - **Peer-trusted is never an option.** Everything shown about the chain is
   verified by the embedded Myotis engine or shown as not available. No
   JSON-RPC provider, indexer or "temporary" fallback, in any build type.
+  The addr1 index's rows are shown only verified; its importer key vouches
+  for the list's completeness alone (owner ruling, 2026-11-21, #334).
 - One older answer is shown, labelled as one (owner's request, 2026-10-19):
   a balance proved earlier stays on screen, dated, out of totals, never acted
   on. Past the weak-subjectivity window only on the user's word (owner's

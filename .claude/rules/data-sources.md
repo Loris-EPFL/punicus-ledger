@@ -1,5 +1,5 @@
 ---
-description: "Data sources. The embedded engine is the only source of chain data; the three networks; Chainlink prices; the built-in token list; Safe co-signing without a service; history from the log index; an account's NFTs, on chain only; swaps on Uniswap and CoW; CoW's order API; dApp connections over WalletConnect."
+description: "Data sources. The embedded engine is the only source of chain data; the three networks; Chainlink prices; the built-in token list; Safe co-signing without a service; history from the log index, and verified addr1 rows from Swarm on the desktop; an account's NFTs, on chain only; swaps on Uniswap and CoW; CoW's order API; dApp connections over WalletConnect."
 paths:
   - "domain/**/*"
   - "data/**/*"
@@ -240,6 +240,35 @@ of a stale feed.)
 - The walk fetches receipts only for the blocks whose bloom flags an account.
   That tells the serving peer which blocks matter to this device. Accepted
   as is: the log index makes that trade-off for any watch-list.
+
+## The history may also take the addr1 index from Swarm: verified rows only, on the desktop
+
+(Owner ruling, 2026-11-21, #334. It widens *An account's history comes from
+the engine's verified log index*, as #334 proposed, with verified rows only.)
+
+- **The source is the engine's address history**, nothing else: the calls
+  of Myotis #899 (`myotis_getAddressHistory` and the per-entry check, through
+  `io.myotis.api`). The engine reads the addr1 address index from Swarm
+  through its own embedded light node, checks every chunk, and checks each
+  entry against verified chain data (Myotis's carve-out, 2026-11-19, and its
+  rule D1, 2026-11-20). Punicus adds no Swarm client, no gateway and no HTTP.
+- **Verified rows only.** An addr1 entry becomes a row of the history only
+  once the engine verified it. An entry that is unverified, contradicted or
+  unavailable is never shown as a row. An entry whose only role is `TRACE`
+  is never verified by the engine, so it is never shown.
+- **Completeness rests on the importer.** The index is signed by an importer
+  key the user trusts. That key alone vouches that no entry is missing. The
+  list names the key, says that entries may be missing, and states every
+  range the index does not cover: the newest blocks it has not reached yet,
+  and where its coverage starts.
+- **On the desktop, behind an experimental setting.** It is off by default,
+  and it holds the importer key it trusts. The engine's Swarm reader is not in
+  Android or iOS builds in its first version, so there the history stays the
+  log index's.
+- How it is applied, not part of the ruling: the list says how many entries
+  of the index it left out because they could not be verified, and how many
+  of those the chain contradicts, so nothing is left out without saying so
+  (`.claude/rules/ui.md`).
 
 ## Heavy downloads stay off a metered connection unless the user allows them
 

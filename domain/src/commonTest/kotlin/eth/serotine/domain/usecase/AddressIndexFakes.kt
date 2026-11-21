@@ -10,6 +10,7 @@ import eth.serotine.domain.repository.AddressIndexChoice
 import eth.serotine.domain.repository.AddressIndexHistory
 import eth.serotine.domain.repository.AddressIndexPage
 import eth.serotine.domain.repository.AddressIndexQuery
+import eth.serotine.domain.repository.AddressIndexReaderSettings
 import eth.serotine.domain.repository.AddressIndexReading
 import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.AddressIndexSetting
@@ -76,6 +77,16 @@ internal class MemoryAddressIndexSetting : AddressIndexSetting {
     override suspend fun trust(importer: Address?): Boolean {
         if (failSaves || choice.value is AddressIndexChoice.Unreadable) return false
         choice.value = AddressIndexChoice.Chosen(importer)
+        return true
+    }
+}
+
+/** An [AddressIndexReaderSettings] that records what it was told. */
+internal class RecordingReaderSettings : AddressIndexReaderSettings {
+    val applied = mutableListOf<Address?>()
+
+    override suspend fun apply(importer: Address?): Boolean {
+        applied += importer
         return true
     }
 }

@@ -65,9 +65,10 @@ rule in code.
   heavy downloads may run `ConnectionMeter` (`eth.serotine.data.network`) and
   `MeteredDownloadsSetting` (`eth.serotine.data.settings`); and on the desktop,
   for an account's history from the addr1 index, `AddressIndexHistory`
-  (`NoAddressIndexHistory` in `eth.serotine.data.history`, which refuses "not in
-  this build" until the engine's adapter lands) and `AddressIndexSetting`
-  (`FileAddressIndexSetting` in `eth.serotine.data.settings`)) and owns
+  (`EngineAddressIndexHistory`, over the engine's address history; `NoAddressIndexHistory`
+  in `eth.serotine.data.history` for an engine without the Swarm reader),
+  `AddressIndexReaderSettings` (the engine's own setting of the reader, which `MyotisHost`
+  applies) and `AddressIndexSetting` (`FileAddressIndexSetting` in `eth.serotine.data.settings`)) and owns
   every data source.
 - **Native code of our own lives in this repository** (owner ruling,
   2026-11-11, docs/privacy-pools.md D9): the Privacy Pools library in Rust

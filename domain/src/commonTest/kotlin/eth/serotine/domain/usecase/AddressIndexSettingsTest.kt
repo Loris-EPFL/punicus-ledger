@@ -14,6 +14,7 @@ import eth.serotine.domain.repository.AddressIndexChoice
 import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -183,5 +184,34 @@ class AddressIndexSettingsTest {
 
         assertEquals(AddressIndexEntryCheck.Refused(AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING)), refused)
         assertNull((refused as? AddressIndexEntryCheck.Checked)?.verdict)
+    }
+
+    @Test
+    fun theEngineReadsTheIndexOnlyWhileTheSettingIsOnForThePinnedKey() = runTest {
+        val reader = RecordingReaderSettings()
+        val follow = backgroundScope.launch { FollowAddressIndexSetting(status(fixtureImporter), reader)() }
+        testScheduler.runCurrent()
+        assertEquals(listOf<Address?>(null), reader.applied, "off: no importer")
+
+        turn(fixtureImporter)(on = true)
+        testScheduler.runCurrent()
+        assertEquals(listOf(null, fixtureImporter), reader.applied)
+
+        turn(fixtureImporter)(on = false)
+        testScheduler.runCurrent()
+        assertEquals(listOf(null, fixtureImporter, null), reader.applied)
+        follow.cancel()
+    }
+
+    @Test
+    fun withNoKeyPinnedOrNoReaderTheEngineIsToldNone() = runTest {
+        setting.choice.value = AddressIndexChoice.Chosen(fixtureImporter)
+        index.reader = false
+        val reader = RecordingReaderSettings()
+        val follow = backgroundScope.launch { FollowAddressIndexSetting(status(fixtureImporter), reader)() }
+        testScheduler.runCurrent()
+
+        assertEquals(listOf<Address?>(null), reader.applied)
+        follow.cancel()
     }
 }

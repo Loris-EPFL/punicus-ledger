@@ -3,11 +3,13 @@ package eth.serotine.domain.usecase
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AddressIndexChoice
 import eth.serotine.domain.repository.AddressIndexHistory
+import eth.serotine.domain.repository.AddressIndexReaderSettings
 import eth.serotine.domain.repository.AddressIndexSetting
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 
 /**
  * What is missing for the addr1 history's setting to be turned on (owner ruling, 2026-10-18, #55: a missing
@@ -101,5 +103,23 @@ class TurnAddressIndex(
             if (missing.isNotEmpty()) return AddressIndexSwitch.Unavailable(missing)
         }
         return if (setting.trust(if (on) pinned else null)) AddressIndexSwitch.Done else AddressIndexSwitch.NotSaved
+    }
+}
+
+/**
+ * Keeps the engine's addr1 reader to the user's choice, for as long as it runs (the composition root's app-wide work):
+ * the importer key pinned in the release while [status] is on for it, and none otherwise, so that the engine reads
+ * nothing of the index, nor fetches anything for it, while the setting is off. Each change is applied once, in order;
+ * a value that did not change is not applied again.
+ */
+class FollowAddressIndexSetting(
+    private val status: ObserveAddressIndexStatus,
+    private val reader: AddressIndexReaderSettings,
+) {
+    suspend operator fun invoke() {
+        status()
+            .map { if (it.on) it.pinned else null }
+            .distinctUntilChanged()
+            .collect { reader.apply(it) }
     }
 }

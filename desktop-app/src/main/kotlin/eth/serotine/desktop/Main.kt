@@ -14,7 +14,6 @@ import eth.serotine.data.cow.HttpCowApi
 import eth.serotine.data.engine.MyotisHost
 import eth.serotine.data.handoff.NoWalletHandoff
 import eth.serotine.data.history.FileHistoryStarts
-import eth.serotine.data.history.NoAddressIndexHistory
 import eth.serotine.data.history.PinnedAddressIndexImporter
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.Secp256k1Recovery
@@ -52,6 +51,7 @@ import eth.serotine.domain.usecase.AnswerDappRequestsAtOnce
 import eth.serotine.domain.usecase.CheckHeldSignature
 import eth.serotine.domain.usecase.CheckQueued
 import eth.serotine.domain.usecase.FollowAccountLogs
+import eth.serotine.domain.usecase.FollowAddressIndexSetting
 import eth.serotine.domain.usecase.FollowDappAccounts
 import eth.serotine.domain.usecase.FollowDebugScreen
 import eth.serotine.domain.usecase.FollowInterfaceMode
@@ -65,6 +65,7 @@ import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.KeepTransactionInputs
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.NetworkDemand
+import eth.serotine.domain.usecase.ObserveAddressIndexStatus
 import eth.serotine.domain.usecase.ObserveDebugTab
 import eth.serotine.domain.usecase.ObserveHeavyDownloads
 import eth.serotine.domain.usecase.ObserveSafe
@@ -185,6 +186,9 @@ private fun openWallet(dataDir: File) {
     // the graph and the accounts' log followers.
     val connectionMeter = UnreportedConnectionMeter()
     val meteredDownloads = FileMeteredDownloads(dataDir.resolve("metered-downloads.json").path)
+    // The experimental addr1 history's setting (owner ruling, 2026-11-21, #334): one instance, read by the graph and by
+    // the work that keeps the engine's reader to it, below.
+    val addressIndexSetting = FileAddressIndexSetting(dataDir.resolve("address-index.json").path)
     // One engine, one light client per network that is on and needed (FollowNetworks, below).
     val node = MyotisHost.start(
         dataDir.resolve("myotis"),
@@ -301,6 +305,20 @@ private fun openWallet(dataDir: File) {
                 } catch (e: Exception) {
                     System.err.println("Punicus: upgrade notices of ${network.displayName} stopped: $e")
                 }
+            }
+        }
+        LaunchedEffect(Unit) {
+            // The engine's addr1 reader follows the setting: the pinned key while it is on, none otherwise, so that
+            // nothing is read from Swarm or checked for it while it is off. A failure ends it, never the wallet.
+            try {
+                FollowAddressIndexSetting(
+                    ObserveAddressIndexStatus(node.addressIndex, addressIndexSetting, PinnedAddressIndexImporter.KEY),
+                    node,
+                )()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Punicus: following the addr1 history's setting stopped: ${e::class.simpleName}")
             }
         }
         LaunchedEffect(Unit) {
@@ -539,11 +557,11 @@ private fun openWallet(dataDir: File) {
                 perAppAliases = FileDappAliases(dataDir.resolve("walletconnect/aliases.json").path),
                 dappConnectionsOff = dappProjectId.isEmpty(),
                 // An account's history from the addr1 index on Swarm, the desktop's alone, behind its experimental
-                // setting (owner ruling, 2026-11-21, #334). No published engine has the Swarm reader yet, so its
-                // adapter refuses "not in this build" until part 4 of the plan, and no key is pinned in this release:
-                // the setting is greyed out for both reasons.
-                addressIndex = NoAddressIndexHistory(),
-                addressIndexSetting = FileAddressIndexSetting(dataDir.resolve("address-index.json").path),
+                // setting (owner ruling, 2026-11-21, #334), read and checked by the engine. An engine without the
+                // Swarm reader refuses it as not in this build, and no key is pinned in this release yet: the setting
+                // is greyed out for whichever holds.
+                addressIndex = node.addressIndex,
+                addressIndexSetting = addressIndexSetting,
                 addressIndexImporter = PinnedAddressIndexImporter.KEY,
             )
         }

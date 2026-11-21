@@ -11,6 +11,8 @@ import eth.serotine.data.swaps.UniswapDeployments
 import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.repository.AddressIndexHistory
+import eth.serotine.domain.repository.AddressIndexReaderSettings
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BlockTransactions
 import eth.serotine.domain.repository.Broadcaster
@@ -100,7 +102,8 @@ class MyotisHost private constructor(
     private val apiLog: LogSink?,
     keptInputsPath: String?,
     keptSafesPath: String?,
-) : LightClientControl, StaleAnchorConsent, FreshCheckpoints, NetworkFreshness {
+    private val addressIndexSwarm: AddressIndexSwarm,
+) : LightClientControl, StaleAnchorConsent, FreshCheckpoints, NetworkFreshness, AddressIndexReaderSettings {
 
     /** The engine of this process: none until a first start, [Absent] when its library does not run here. */
     private sealed interface EngineState {
@@ -212,6 +215,41 @@ class MyotisHost private constructor(
 
     /** What a built-in ENS collection's token stands for, verified (issue #246). */
     val ensNfts: EnsNfts = routed.ensNfts
+
+    /**
+     * An address's history from the addr1 index on Swarm, which the engine reads and checks (issue #334): mainnet's
+     * index, so Ethereum's light client alone serves it.
+     */
+    val addressIndex: AddressIndexHistory = EngineAddressIndexHistory(
+        Network.ETHEREUM,
+        nodes.getValue(Network.ETHEREUM).addressChain,
+        Dispatchers.IO,
+        POLL_INTERVAL,
+    )
+
+    /** The address history settings the engine is to hold: none until [apply], so its reader refuses every read. */
+    @Volatile
+    private var addressHistoryConfig: String? = null
+
+    /**
+     * Lets the engine read the addr1 index of [importer] on the host's Swarm network, or nothing (null). Kept, and
+     * applied on the control thread now if the engine exists, else as soon as the first start creates it. Returns at
+     * once: true, as what is kept is applied.
+     */
+    override suspend fun apply(importer: Address?): Boolean {
+        val config = addressHistoryConfigJson(importer, addressIndexSwarm)
+        addressHistoryConfig = config
+        onControlThread { (engine as? EngineState.Created)?.engine?.let { applyAddressHistory(it, config) } }
+        return true
+    }
+
+    /** Hands [config] to [engine]; a refusal is reported, and the engine keeps refusing every read. */
+    private fun applyAddressHistory(engine: MyotisEngine, config: String) {
+        val answer = engine.setAddressHistoryConfigJson(config)
+        if (answer.contains("\"error\"")) {
+            System.err.println("Punicus: the engine refused the address history's settings: $answer")
+        }
+    }
 
     /** Starts [network]'s light client, or stops it ([LightClientRun.IDLE], [LightClientRun.OFF]). Returns at once. */
     override fun set(network: Network, run: LightClientRun) {
@@ -370,6 +408,8 @@ class MyotisHost private constructor(
             return null
         }
         engine = EngineState.Created(created)
+        // The address history's settings as last applied: the engine starts refusing every read until it has them.
+        addressHistoryConfig?.let { applyAddressHistory(created, it) }
         // The engine's own log, in a debug build: the one account of why a sync stalls.
         if (debugLog != null) logScope.launch { EngineLogPump(Myotis::drainLogs, debugLog).run(ENGINE_LOG_INTERVAL) }
         return created
@@ -406,6 +446,10 @@ class MyotisHost private constructor(
 
         /** The handle, unwrapped: what [activity] reads (in memory, so neither logged nor shared). */
         private val handleChain = HandleChain()
+
+        /** The handle's address history, unwrapped as [activity]'s is (Ethereum's alone is asked). */
+        val addressChain: AddressHistoryChain
+            get() = handleChain
 
         /** The handle, each request written to [apiLog] when there is one, its status reads shared. */
         private val chain: EngineChain = handleChain.let { handle ->
@@ -662,7 +706,7 @@ class MyotisHost private constructor(
             }
         }
 
-        private inner class HandleChain : EngineChain, ActivityChain {
+        private inner class HandleChain : EngineChain, ActivityChain, AddressHistoryChain {
 
             // Each call a status read; SharedSnapshots shares one among the pollers.
             override fun snapshot(): EngineSnapshot {
@@ -854,6 +898,21 @@ class MyotisHost private constructor(
                 return handle.reads().getLogs(filterJson)
             }
 
+            override fun supportsAddressHistory(): Boolean? {
+                val handle = (state as? ChainState.Running)?.handle ?: return null
+                return handle.reads().supportsAddressHistory()
+            }
+
+            override fun addressHistory(address: String, optionsJson: String): String? {
+                val handle = (state as? ChainState.Running)?.handle ?: return null
+                return handle.reads().addressHistoryJson(address, optionsJson)
+            }
+
+            override fun verifyAddressHistory(address: String, entriesJson: String): String? {
+                val handle = (state as? ChainState.Running)?.handle ?: return null
+                return handle.reads().verifyAddressHistoryJson(address, entriesJson)
+            }
+
             override fun setActivityWatch(configJson: String): Boolean {
                 val handle = (state as? ChainState.Running)?.handle ?: return false
                 return handle.setActivityWatch(configJson)
@@ -920,7 +979,8 @@ class MyotisHost private constructor(
          * only; null records none. [keptInputs] is the file the mined counts and fee quotes last
          * verified are kept in, for a lenient draft ([KeptInputsFile]); null keeps none. [keptSafes] is
          * the file each Safe's state last verified is kept in, for a lenient Safe draft
-         * ([KeptSafesFile]); null keeps none.
+         * ([KeptSafesFile]); null keeps none. [addressIndexSwarm] is the Swarm network the engine's addr1 reader joins
+         * once [apply] lets it read an importer's index: Swarm mainnet in a release.
          *
          * A device without an engine — an Android ABI the library does not ship, a desktop whose
          * resources carry no host library (Windows, for now) — or one whose engine fails to start
@@ -934,6 +994,7 @@ class MyotisHost private constructor(
             apiLog: LogSink? = null,
             keptInputs: String? = null,
             keptSafes: String? = null,
+            addressIndexSwarm: AddressIndexSwarm = AddressIndexSwarm.Mainnet,
         ): MyotisHost = MyotisHost(
             dataDir,
             dnsServers?.let { servers -> DnsServers { servers() } },
@@ -942,6 +1003,7 @@ class MyotisHost private constructor(
             apiLog,
             keptInputs,
             keptSafes,
+            addressIndexSwarm,
         )
     }
 }

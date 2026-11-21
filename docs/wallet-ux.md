@@ -1262,6 +1262,52 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       nonce is used, by this transaction or by one that took its place,
       which the device cannot tell apart. The status screen (9) reads the
       same history once the record has forgotten a transaction.
+    - **And, on the desktop, the addr1 index** (owner ruling, 2026-11-21,
+      #334, and the owner's decisions of that day on #335;
+      `.claude/rules/data-sources.md`, *The history may also take the addr1
+      index from Swarm*), while its experimental setting is on (18): the
+      engine reads the account's part of the index from Swarm, page by page,
+      newest first, and checks each entry against verified chain data.
+      **Verified rows only**: an entry unverified, contradicted, unavailable
+      or whose only role is `TRACE` is never a row. Each row goes by its
+      block, as an event the engine did not date ("Block 9,412,300"), and
+      says it was checked ("Finalized in block 9,412,300 · checked against
+      the chain", "… not final yet"; simple mode "Final", "Confirmed"). It is
+      said in the log index's words ("Sent 0.25 ETH", "Received 1 USDC", "An
+      unlisted token logged a transfer to it"), or "Named in a transaction"
+      with the roles it is named in, or "Named by block … itself". The same
+      protections hold: a transfer of nothing the account did not send is
+      not listed, an unlisted token's transfer is its claim, and a row the
+      account did not send, from an address it never sent to, is cautioned.
+      **Each transaction once**: one the list holds already, sent from here,
+      a CoW order's fill, or any log of it the log index read (listed or left
+      out), is that row alone.
+      - Under what the list covers, what the index is and what it rests on:
+        its importer key, pinned in the release and named in full, vouches
+        that no entry is missing, so entries may be missing. Then every range
+        it does not cover: where its coverage starts ("It covers blocks
+        9,000,000 to 9,412,800: older blocks are not in it"), the newest
+        blocks it has not reached yet (the head gap), and the ranges inside
+        it that could not be read. Simple mode says the same with no block
+        number ("Older activity also comes from a shared index …", "It
+        hasn't reached the newest activity yet").
+      - How many entries were left out because they could not be verified,
+        and apart, in a warning card, how many the chain contradicts: "the
+        importer's index contradicts the chain in 1 entry". What follows a
+        contradiction beyond the warning is the owner's to decide.
+      - An endless list: as the list nears its end, the next page is read;
+        a footer holds its room while a page is read and checked ("Reading
+        more of the addr1 index …"), and the end of its coverage is marked
+        ("The addr1 index starts at block 9,000,000: nothing older comes from
+        it"). Turned oldest first, the footer goes above the rows.
+      - A refusal is said, never an empty list: this build's engine has no
+        Swarm reader, the setting is off in the engine, Tor routing is on,
+        the network is not served, the checkpoint table's alarm (in the
+        error's colour; the rows already shown go, since they rest on the
+        table), a stale checkpoint, no light client, an index signed by
+        another key than the pinned one, a request the engine rejected (a
+        bug). The passing ones (still catching up, Swarm or the peers did not
+        deliver) offer Try again. The rows of the other sources stay.
 26. **Activity detail**: one row of 25 in full, under the Accounts tab like
     its list (`activity/{address}/tx/{hash}`, `?log=` the log index for an
     event). Its row's headline and status first, then every party it
@@ -1301,6 +1347,21 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       Safe received, is shown in full but not selectable and with no Copy,
       and the note says so (the requirements of #324, 2026-11-18): a
       planted look-alike is never one tap from the clipboard.
+    - A row of the addr1 index
+      (`activity/{address}/index-entry/{block}/{slot}?roles=…&hash=…`) is
+      checked again as it opens, and shown only as the check finds it now:
+      its headline and status as its row says them, the transaction's hash,
+      From, To (or none, a contract created), its value and the token
+      contract of its transfer, the block, its hash, where in the block it
+      is ("Transaction 3", "The block itself"), the roles proven on chain,
+      and those on the importer's word alone (a trace). Its note says what
+      it rests on: the light client's check against the block's verified
+      header and receipts, finalized or not, and the checkpoint table for a
+      block older than the light client's window; and that the entry is
+      listed at all, and none missing, on the importer pinned in the
+      release, named in full. A cautioned sender has no Copy, as above. No
+      longer verified, contradicted now, not checkable right now, or a
+      check refused: it says why and shows nothing of the entry.
     - One no longer there (a reorganisation replaced its block, once every
       block from the history's start is checked again) says so; while the
       blocks it is in are still being checked, or its history cannot be
@@ -1333,7 +1394,18 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     says so. While the outbox holds something, it says that turning it off
     leaves that queued: it is still checked and sent, or discarded by the
     user (decision 10). A network that is off is not syncing, in either
-    mode: nothing is drafted on it. Tokens opens the list of every token the wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
+    mode: nothing is drafted on it. On the desktop only, an *Experimental*
+    section holds *Account history from the addr1 index* (owner ruling,
+    2026-11-21, #334; a file of its own, `address-index.json`, which keeps
+    the importer key it was turned on for): off by default, it names the
+    importer key pinned in the release, says what it does and what Swarm
+    and archive peers learn once it is on (docs/privacy-policy.md). A key is
+    never typed in. Turned on for a key the release no longer pins, it is
+    off until turned on again. It is greyed out, a tap saying what is
+    missing, while no importer key is pinned in the release (none is yet,
+    owner's decision, 2026-11-21) and while the build's engine has no Swarm
+    reader (no published Myotis build has it yet), both said when both hold.
+    Android and iOS have no such row. Tokens opens the list of every token the wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.
 19. **Display currency**: USD, EUR, GBP, CHF, JPY, ETH and BTC, limited to the

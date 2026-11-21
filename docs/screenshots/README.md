@@ -4,7 +4,7 @@ Every screen of Punicus in every state its previews draw, rendered headless from
 
 [index.html](index.html) shows them all on one page from a checkout.
 
-Clone without the images: `git clone --filter=blob:none https://github.com/biafra23/punicus.git` fetches a file only when a command needs it, so the history of this folder costs nothing until it is looked at. `git sparse-checkout set --no-cone '/*' '!/docs/screenshots/'` leaves it out of the working tree as well.
+Clone without the images: `git clone --filter=blob:none https://github.com/VesperBats/punicus.git` fetches a file only when a command needs it, so the history of this folder costs nothing until it is looked at. `git sparse-checkout set --no-cone '/*' '!/docs/screenshots/'` leaves it out of the working tree as well.
 
 If the folder grows too much, there are two levers, both the owner's. Deleting the folder stops the growth and keeps every past image in the history. Rewriting the history with `git filter-repo --path docs/screenshots --invert-paths` drops them for good, but changes the SHA of every commit since the first screenshot: tags, links to commits and every existing clone must follow. CI fails a pull request once the folder, or one image, passes its size budget (`scripts/screenshots.py`).
 
@@ -21,7 +21,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Create account](#create-account) | `create-account/` | 16 |
 | [Create Safe](#create-safe) | `create-safe/` | 19 |
 | [Display currency](#currency) | `currency/` | 4 |
-| [dApp connection request](#dapp-proposal) | `dapp-proposal/` | 27 |
+| [dApp connection request](#dapp-proposal) | `dapp-proposal/` | 28 |
 | [dApp signing request](#dapp-request) | `dapp-request/` | 23 |
 | [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 20 |
 | [Debug](#debug) | `debug/` | 6 |
@@ -321,7 +321,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="dapp-proposal"></a>
 ## dApp connection request
 
-`dapp-proposal/`, 27 states: `request`, `request-dark`, `none-chosen`, `either-kind`, `real-funds`, `real-funds-dark`, `missing-required`, `missing-required-dark`, `mixed-funds-refused`, `refused`, `explaining`, `not-saved`, `ended`, `loading`, `new-address`, `new-address-dark`, `two-phrases`, `choosing-phrase`, `no-phrase`, `seen-before`, `moved`, `choosing-alias`, `confirming-alias`, `linked`, `typing-old-host`, `made-again`, `made-again-failed`
+`dapp-proposal/`, 28 states: `request`, `request-dark`, `none-chosen`, `either-kind`, `real-funds`, `real-funds-dark`, `missing-required`, `missing-required-dark`, `mixed-funds-refused`, `refused`, `explaining`, `not-saved`, `ended`, `loading`, `new-address`, `new-address-dark`, `two-phrases`, `choosing-phrase`, `no-phrase`, `seen-before`, `seen-before-declined`, `moved`, `choosing-alias`, `confirming-alias`, `linked`, `typing-old-host`, `made-again`, `made-again-failed`
 
 <a href="dapp-proposal/request.png"><img src="dapp-proposal/request.png" width="206" alt="request"></a>
 <a href="dapp-proposal/request-dark.png"><img src="dapp-proposal/request-dark.png" width="206" alt="request-dark"></a>
@@ -343,6 +343,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="dapp-proposal/choosing-phrase.png"><img src="dapp-proposal/choosing-phrase.png" width="206" alt="choosing-phrase"></a>
 <a href="dapp-proposal/no-phrase.png"><img src="dapp-proposal/no-phrase.png" width="206" alt="no-phrase"></a>
 <a href="dapp-proposal/seen-before.png"><img src="dapp-proposal/seen-before.png" width="206" alt="seen-before"></a>
+<a href="dapp-proposal/seen-before-declined.png"><img src="dapp-proposal/seen-before-declined.png" width="206" alt="seen-before-declined"></a>
 <a href="dapp-proposal/moved.png"><img src="dapp-proposal/moved.png" width="206" alt="moved"></a>
 <a href="dapp-proposal/choosing-alias.png"><img src="dapp-proposal/choosing-alias.png" width="206" alt="choosing-alias"></a>
 <a href="dapp-proposal/confirming-alias.png"><img src="dapp-proposal/confirming-alias.png" width="206" alt="confirming-alias"></a>

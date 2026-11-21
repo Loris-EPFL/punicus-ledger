@@ -79,7 +79,7 @@ class WcWalletTest {
             store = store,
             connector = relay.connector("wallet"),
             projectId = "0123456789abcdef0123456789abcdef",
-            metadata = WcMetadata(name = "Punicus", url = "https://github.com/biafra23/punicus"),
+            metadata = WcMetadata(name = "Punicus", url = "https://github.com/VesperBats/punicus"),
             nowMillis = { now() },
         )
         val job = backgroundScope.launch { walletConnect.run() }

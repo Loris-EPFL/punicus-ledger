@@ -21,7 +21,7 @@ import build_website  # noqa: E402
 from build_website import BuildError  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
-DOWNLOADS = "https://github.com/biafra23/punicus/releases/download"
+DOWNLOADS = "https://github.com/VesperBats/punicus/releases/download"
 
 
 def temporary_folder(test):

@@ -35,14 +35,17 @@ import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.outbox.redatedAtTheirHour
 import eth.serotine.ui.platform.formatDateTime
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.stateIn
 
 /**
  * What an account's Activity shows, its detail's Activity tab (docs/wallet-ux.md, screen 25;
@@ -85,20 +88,25 @@ class AccountActivity(
     /**
      * The Activity of the [account], as it changes, with every amount masked while [hideAmounts] says
      * so (docs/wallet-ux.md, *Hiding amounts*); nothing is read until it is collected. Each value of
-     * [more] above the one it started with asks the addr1 index for its next page, when it is on.
+     * [more] above the one it started with asks the addr1 index for its next page, when it is on. The
+     * pages read are kept in [scope] (the screen's ViewModel's), from the first collection on, so that
+     * leaving the Activity and coming back shows them again and reads nothing new: each page costs a
+     * Swarm lookup and up to 50 checks against archive peers. Without a scope they last while collected.
      */
     fun of(
         account: AccountId,
         hideAmounts: Flow<Boolean>,
         more: StateFlow<Int> = MutableStateFlow(0),
+        scope: CoroutineScope? = null,
     ): Flow<ActivityUiState> =
-        Listing(account, hideAmounts, more).state
+        Listing(account, hideAmounts, more, scope).state
 
     /** One account's Activity: the [account] its rows and sources are of, and whether its amounts are hidden. */
     private inner class Listing(
         private val account: AccountId,
         private val hideAmounts: Flow<Boolean>,
         more: StateFlow<Int>,
+        scope: CoroutineScope?,
     ) {
 
         private val address: Address = account.address
@@ -122,7 +130,9 @@ class AccountActivity(
             .redatedAtTheirHour(now)
 
         /** The addr1 index's pages read so far, while its setting is on; null while it adds nothing. */
-        private val index: Flow<IndexPaging?> = addressIndex?.of(account, more) ?: flowOf(null)
+        private val index: Flow<IndexPaging?> = addressIndex?.of(account, more)
+            ?.let { pages -> scope?.let { pages.stateIn(it, SharingStarted.Lazily, null) } ?: pages }
+            ?: flowOf(null)
 
         val state: Flow<ActivityUiState> = combine(
             combine(

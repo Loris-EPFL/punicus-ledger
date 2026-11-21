@@ -1210,7 +1210,7 @@ private fun AccountDetailActivityIndexRejectedPreview() = AccountDetailActivityI
 @Preview
 @Composable
 private fun AccountDetailActivityIndexSyncingPreview() = AccountDetailActivityIndexRefused(
-    "The light client is still catching up: the index's entries are checked once it has.",
+    "The light client is still catching up, so the index's entries cannot be checked yet.",
     retry = true,
 )
 

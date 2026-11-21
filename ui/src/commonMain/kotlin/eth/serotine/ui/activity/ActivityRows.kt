@@ -1,7 +1,9 @@
 package eth.serotine.ui.activity
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexRole
 import eth.serotine.domain.model.AddressIndexRow
+import eth.serotine.domain.model.AddressIndexTransaction
 import eth.serotine.domain.model.DelayCall
 import eth.serotine.domain.model.DelayMemberChange
 import eth.serotine.domain.model.DelayTransfer
@@ -179,7 +181,11 @@ internal class ActivityRows(
      * listed: a transfer of nothing the account did not send, as the log index leaves one out ([movesNothing]). A
      * token's transfer is said as one only for a token the wallet shows; an unlisted contract's is its claim, naming
      * the contract alone. What it moved, or that the account is named in it ([rolesText]), and from whom: one the
-     * account did not send, from someone the user does not deal with ([Parties.familiar]), is cautioned. Its status
+     * account did not send, from someone the user does not deal with ([Parties.familiar]), is cautioned. A
+     * transaction's value is said as moved only when its verified receipt says it succeeded
+     * ([AddressIndexTransaction.succeeded]); reverted, it failed on chain, as a sent row says; not known (the engine
+     * does not report it yet), the row says how the account is named in it, and the value is left to the detail. Its
+     * status
      * says it was checked against the chain, and in which block; dated by that block alone, like an event the engine
      * did not date: the index carries no time.
      */
@@ -217,13 +223,14 @@ internal class ActivityRows(
         if (transfer != null && !transfer.movesNothing()) {
             val listed = tokens[transfer.token]
             val known = listed?.takeIf { it.shown }
-            val incoming = transfer.to == address && transfer.from != address
+            val itself = transfer.from == address && transfer.to == address
+            val incoming = transfer.to == address && !itself
             if (known == null) {
                 return base.copy(
-                    title = if (incoming) {
-                        "An unlisted token logged a transfer to it"
-                    } else {
-                        "An unlisted token logged a transfer from it"
+                    title = when {
+                        itself -> "An unlisted token logged a transfer to itself"
+                        incoming -> "An unlisted token logged a transfer to it"
+                        else -> "An unlisted token logged a transfer from it"
                     },
                     detail = "Contract ${shortAddress(Eip55.format(transfer.token))}",
                     about = Eip55.format(transfer.token),
@@ -242,11 +249,19 @@ internal class ActivityRows(
                 is TokenTransfer.Nft -> "$symbol NFT #${tokenId(transfer.tokenId)}"
             }
             val other = if (incoming) transfer.from else transfer.to
-            val row = base.copy(
-                title = if (incoming) "Received $what" else "Sent $what",
-                detail = (if (incoming) "From " else "To ") + named(other, parties.names),
-                about = Eip55.format(other),
-            )
+            val row = when {
+                // As the log index says it (transferRow, Direction.ITSELF).
+                itself -> base.copy(
+                    title = "Moved $what to itself",
+                    detail = "Token ${shortAddress(Eip55.format(transfer.token))}",
+                    about = Eip55.format(transfer.token),
+                )
+                else -> base.copy(
+                    title = if (incoming) "Received $what" else "Sent $what",
+                    detail = (if (incoming) "From " else "To ") + named(other, parties.names),
+                    about = Eip55.format(other),
+                )
+            }
             return when {
                 known.sharesBuiltInSymbol -> row.copy(
                     status = "Not the built-in $symbol: another contract",
@@ -259,28 +274,56 @@ internal class ActivityRows(
         }
         val value = tx.value.toUInt256OrNull()
         val other = if (sentByIt) tx.to else tx.from
-        val row = when {
-            sentByIt && tx.to == null -> base.copy(title = "Created a contract", detail = rolesText(entry.roles))
-            sentByIt -> base.copy(
-                title = if (value == null || value.isZero) {
-                    "Sent a transaction"
-                } else {
-                    "Sent ${amount(value, TransferAsset.Native)}"
-                },
-                detail = "To ${named(checkNotNull(tx.to), parties.names)}",
+        val counterpart = if (sentByIt) {
+            tx.to?.let { "To ${named(it, parties.names)}" } ?: "It creates a contract"
+        } else {
+            "By ${named(tx.from, parties.names)}"
+        }
+        val row = when (tx.succeeded) {
+            // The engine does not report the receipt's status yet: a reverted transaction keeps its value field and
+            // moves nothing, so the row says only how the account is named in it. Its value is in the detail.
+            null -> base.copy(title = "Named in a transaction · ${rolesText(entry.roles)}", detail = counterpart)
+            // As a sent row says a revert: its fee paid, nothing else done.
+            false -> base.copy(
+                title = "Failed on chain",
+                detail = counterpart,
+                status = "Reverted in block $block · checked against the chain",
+                simpleStatus = "Failed",
+                state = ActivityState.FAILED,
             )
-            tx.to == address && value != null && !value.isZero -> base.copy(
-                title = "Received ${amount(value, TransferAsset.Native)}",
-                detail = "From ${named(tx.from, parties.names)}",
-            )
-            else -> base.copy(
-                title = "Named in a transaction",
-                detail = "By ${named(tx.from, parties.names)} · ${rolesText(entry.roles)}",
-            )
+            true -> succeededRow(base, tx, value, sentByIt, parties, entry.roles)
         }.let { r -> other?.let { r.copy(about = Eip55.format(it)) } ?: r }
         // Anyone can name the account in a transaction of their own, from a look-alike address planted for the user
         // to copy: one it did not send, from someone the user does not deal with, is cautioned.
         return if (!sentByIt && !parties.familiar(tx.from)) row.cautioned() else row
+    }
+
+    /** A transaction whose verified receipt says it succeeded ([tx]), as its row says what it did. */
+    private fun succeededRow(
+        base: ActivityRow,
+        tx: AddressIndexTransaction,
+        value: UInt256?,
+        sentByIt: Boolean,
+        parties: Parties,
+        roles: Set<AddressIndexRole>,
+    ): ActivityRow = when {
+        sentByIt && tx.to == null -> base.copy(title = "Created a contract", detail = rolesText(roles))
+        sentByIt -> base.copy(
+            title = if (value == null || value.isZero) {
+                "Sent a transaction"
+            } else {
+                "Sent ${amount(value, TransferAsset.Native)}"
+            },
+            detail = "To ${named(checkNotNull(tx.to), parties.names)}",
+        )
+        tx.to == address && value != null && !value.isZero -> base.copy(
+            title = "Received ${amount(value, TransferAsset.Native)}",
+            detail = "From ${named(tx.from, parties.names)}",
+        )
+        else -> base.copy(
+            title = "Named in a transaction",
+            detail = "By ${named(tx.from, parties.names)} · ${rolesText(roles)}",
+        )
     }
 
     /** This row cautioned about its sender, the address poisoning protection's words (screen 25). */

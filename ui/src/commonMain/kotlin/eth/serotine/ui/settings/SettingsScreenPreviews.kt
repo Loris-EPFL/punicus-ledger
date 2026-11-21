@@ -346,9 +346,12 @@ private fun SettingsMeteredSetAsidePreview() = SettingsPreview(
 private val sampleImporter = Eip55.format(Address.of("0x" + "1e".repeat(20)))
 
 /** What the desktop shows today: no importer key pinned in this release, and no Swarm reader in its engine. */
+private const val ADDRESS_INDEX_GREYED_TEXT =
+    "Off: no importer key is pinned in this release yet · This build's engine has no Swarm reader"
+
 private val addressIndexGreyed = AddressIndexItem(
     on = false,
-    text = "Off: no importer key is pinned in this release yet · This build's engine has no Swarm reader",
+    text = ADDRESS_INDEX_GREYED_TEXT,
     unavailableReason = "No importer key is pinned in this release yet. The index is read only on the word of an " +
         "importer whose key a release pins; a key is never typed in here. This build's engine has no Swarm " +
         "reader, so the index cannot be read here. The history stays the light client's log index.",
@@ -390,6 +393,26 @@ private fun SettingsAddressIndexOnPreview() = SettingsPreview(
     atTheEnd = true,
 )
 
+/**
+ * A choice to turn it on, stored by another build, not in force here (no reader, no key pinned): greyed out, and
+ * Turn off below the row takes it back.
+ */
+private val addressIndexStored = addressIndexGreyed.copy(
+    text = "$ADDRESS_INDEX_GREYED_TEXT · Turned on in another build: it stays off here, and Turn off clears that " +
+        "choice",
+    turnOff = true,
+)
+
+@Preview
+@Composable
+private fun SettingsAddressIndexTurnOffPreview() =
+    SettingsPreview(synced.copy(addressIndex = addressIndexStored), atTheEnd = true)
+
+@Preview
+@Composable
+private fun SettingsAddressIndexTurnOffDarkPreview() =
+    SettingsPreview(synced.copy(addressIndex = addressIndexStored), darkTheme = true, atTheEnd = true)
+
 /** Every preview above, which SettingsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val settingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("synced") { SettingsSyncedPreview() },
@@ -425,6 +448,8 @@ internal val settingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("address-index-no-key-dark") { SettingsAddressIndexNoKeyDarkPreview() },
     ScreenPreview("address-index-no-reader") { SettingsAddressIndexNoReaderPreview() },
     ScreenPreview("address-index-on") { SettingsAddressIndexOnPreview() },
+    ScreenPreview("address-index-turn-off") { SettingsAddressIndexTurnOffPreview() },
+    ScreenPreview("address-index-turn-off-dark") { SettingsAddressIndexTurnOffDarkPreview() },
 )
 
 /** Not allowed, on a metered connection now, for this file's previews and simple mode's. */

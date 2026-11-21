@@ -410,16 +410,16 @@ class SettingsViewModel(
                     ?: ": no importer key is pinned in this release yet",
             )
             if (AddressIndexMissing.NO_READER in missing) append(" · This build's engine has no Swarm reader")
-            trustsAnotherKey?.let {
-                append(
-                    " · It was turned on for another importer, ${shortAddress(Eip55.format(it))}: turned on " +
+            val stored = (choice as? AddressIndexChoice.Chosen)?.importer
+            val other = trustsAnotherKey
+            when {
+                // Turned on again, it trusts the key pinned now: only when one is.
+                other != null && pinned != null -> append(
+                    " · It was turned on for another importer, ${shortAddress(Eip55.format(other))}: turned on " +
                         "again, it trusts the one pinned now",
                 )
-            }
-            if (trustsAnotherKey == null && !on && missing.isNotEmpty() &&
-                (choice as? AddressIndexChoice.Chosen)?.importer != null
-            ) {
-                append(" · Turned on in another build: it stays off here, and Turn off clears that choice")
+                stored != null && !on ->
+                    append(" · Turned on in another build: it stays off here, and Turn off clears that choice")
             }
             if (setAside) append(" (your saved choice was damaged and set aside)")
             if (notSaved) append(" · Your choice could not be saved")

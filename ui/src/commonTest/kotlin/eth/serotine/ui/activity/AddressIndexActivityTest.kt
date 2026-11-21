@@ -350,4 +350,47 @@ class AddressIndexActivityTest {
         assertNull(shown.index)
         assertTrue(index.asked.isEmpty())
     }
+
+    @Test
+    fun aTransactionWhoseOutcomeIsNotReportedClaimsNoValueAndARevertedOneFailed() = runTest {
+        index.page(
+            null,
+            listOf(
+                indexRow(9_300_000, 3, alice.address, bob, wei = "250000000000000000", succeeded = null),
+                indexRow(9_200_000, 2, alice.address, bob, wei = "250000000000000000", succeeded = false),
+                indexRow(9_100_000, 1, alice.address, null, succeeded = null),
+            ),
+            next = null,
+        )
+
+        val rows = shown(activity()).rows
+
+        assertEquals(
+            listOf("Named in a transaction · sender", "Failed on chain", "Named in a transaction · sender"),
+            rows.map { it.title },
+        )
+        assertEquals(ActivityState.FAILED, rows[1].state)
+        assertEquals("Reverted in block 9,200,000 · checked against the chain", rows[1].status)
+        assertEquals("It creates a contract", rows[2].detail)
+    }
+
+    @Test
+    fun aTransferToItselfReadsAsTheLogIndexSaysIt() = runTest {
+        index.page(
+            null,
+            listOf(
+                indexRow(
+                    9_300_000,
+                    3,
+                    alice.address,
+                    usdc.address,
+                    transfer = TokenTransfer.Fungible(usdc.address, alice.address, alice.address, UInt256.ONE),
+                    roles = setOf(AddressIndexRole.FROM, AddressIndexRole.TOPIC),
+                ),
+            ),
+            next = null,
+        )
+
+        assertEquals(listOf("Moved 0.000001 USDC to itself"), shown(activity()).rows.map { it.title })
+    }
 }

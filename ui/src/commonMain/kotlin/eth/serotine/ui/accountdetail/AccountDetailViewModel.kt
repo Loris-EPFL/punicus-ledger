@@ -333,7 +333,8 @@ class AccountDetailViewModel(
      * The account's Activity, read while its tab is shown and for 5 s after, as the screen's own
      * state is: back on the tab within that, it is there at once, and not read again.
      */
-    private val sharedActivity = activity.of(account, amountsHidden, moreActivity).stateIn(
+    // The addr1 index's pages are kept in this ViewModel's scope: back from a row's detail, nothing is read again.
+    private val sharedActivity = activity.of(account, amountsHidden, moreActivity, viewModelScope).stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
         ActivityUiState.Loading,

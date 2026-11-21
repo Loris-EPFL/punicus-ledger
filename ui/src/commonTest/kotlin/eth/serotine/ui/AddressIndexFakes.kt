@@ -92,7 +92,10 @@ internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressInde
     }
 }
 
-/** A verified row of the addr1 index: [account] named in block [block] at [slot], in a transaction from [from]. */
+/**
+ * A verified row of the addr1 index: named in block [block] at [slot], in a transaction from [from]; [succeeded] as a
+ * later engine may report its receipt's status (true by default here; null: not reported, as today).
+ */
 internal fun indexRow(
     block: Long,
     slot: Int,
@@ -103,13 +106,14 @@ internal fun indexRow(
     transfer: TokenTransfer? = null,
     roles: Set<AddressIndexRole> = setOf(AddressIndexRole.FROM),
     final: Boolean = true,
+    succeeded: Boolean? = true,
 ) = AddressIndexRow(
     entry = AddressIndexEntry(block, slot, roles),
     blockHash = "0x" + "bb".repeat(32),
     final = final,
     confirmed = roles - AddressIndexRole.TRACE,
     unchecked = roles intersect setOf(AddressIndexRole.TRACE),
-    transaction = AddressIndexTransaction(hash, from, to, Wei.of(wei), transfer),
+    transaction = AddressIndexTransaction(hash, from, to, Wei.of(wei), transfer, succeeded),
 )
 
 /** An [AddressIndexSetting] in memory, as the port's contract says one behaves; [failSaves] makes every save fail. */

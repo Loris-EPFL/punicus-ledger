@@ -1475,4 +1475,40 @@ class AccountDetailViewModelTest {
         assertIs<IndexFooter.End>(second.index?.footer)
         assertEquals(2, index.asked.size)
     }
+
+    @Test
+    fun theAddr1PagesReadAreKeptWhenTheScreenIsLeftAndNothingIsReadAgain() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val other = Address.of("0x" + "77".repeat(20))
+        val index = FakeAddressIndexHistory()
+        index.page(null, listOf(indexRow(9_300_000, 3, daily.address, other, wei = "250000000000000000")), next = "p2")
+        index.page("p2", listOf(indexRow(9_100_000, 1, daily.address, other)), next = "p3")
+        val setting = MemoryAddressIndexSetting(on = FIXTURE_IMPORTER)
+        val viewModel = viewModel(
+            activity = activity(
+                AddressIndexActivity(
+                    ObserveAddressIndexStatus(index, setting, FIXTURE_IMPORTER),
+                    LoadAddressIndexPage(index, FIXTURE_IMPORTER),
+                ),
+            ),
+        )
+        val shown = launch { viewModel.uiState.collect {} }
+        viewModel.show(DetailSegment.ACTIVITY)
+        runCurrent()
+        viewModel.loadMoreActivity()
+        runCurrent()
+        assertEquals(2, index.asked.size)
+
+        // A row's detail opened: the screen stops collecting for longer than its 5 s.
+        shown.cancel()
+        advanceTimeBy(60_000)
+        runCurrent()
+        val back = launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val activity = assertIs<ActivityUiState.Shown>((viewModel.uiState.value as AccountDetailUiState.Ready).activity)
+        assertEquals(listOf("Sent 0.25 ETH", "Sent a transaction"), activity.rows.map { it.title }, "what was read")
+        assertEquals(2, index.asked.size, "nothing read again, page 1 not either")
+        back.cancel()
+    }
 }

@@ -103,6 +103,21 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun aStoredChoiceIsTurnedOffWhileTheRowIsGreyedOut() {
+        show(
+            addressIndex = AddressIndexItem(
+                on = false,
+                text = "Off: no importer key is pinned in this release yet",
+                unavailableReason = "No importer key is pinned in this release yet.",
+                turnOff = true,
+            ),
+        )
+
+        rule.onNodeWithText("Turn off").performScrollTo().performClick()
+        assertEquals(listOf(false), addressIndexChoices)
+    }
+
+    @Test
     fun theAddr1SettingNamesItsKeyAndATapOnItsRowTurnsItOn() {
         show(addressIndex = AddressIndexItem(on = false, text = "Off: importer 0xAbc, pinned in this release"))
 

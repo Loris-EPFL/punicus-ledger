@@ -23,6 +23,7 @@ import eth.serotine.domain.repository.IndexedLog
 import eth.serotine.domain.repository.LogCoverage
 import eth.serotine.domain.repository.LogCoverageReading
 import eth.serotine.domain.repository.LogWatchKey
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentOutcome
@@ -42,6 +43,7 @@ import eth.serotine.ui.FakeAddressIndexHistory
 import eth.serotine.ui.FakeLogIndex
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
+import eth.serotine.ui.MemoryAddressIndexSetting
 import eth.serotine.ui.MemoryAmountsHidden
 import eth.serotine.ui.MemoryHistoryStarts
 import eth.serotine.ui.MemoryTransactionHistory
@@ -421,6 +423,10 @@ class ActivityDetailViewModelTest {
     }
 
     private val addressIndex = FakeAddressIndexHistory()
+    private val addressIndexOn = MemoryAddressIndexSetting(on = FIXTURE_IMPORTER)
+
+    /** The detail's check, with the setting on for the fixture's key. */
+    private val checkOn = CheckAddressIndexEntry(addressIndex, addressIndexOn, FIXTURE_IMPORTER)
 
     private fun indexKey(row: AddressIndexRow) = ActivityKey(
         row.transaction?.hash.orEmpty(),
@@ -434,7 +440,7 @@ class ActivityDetailViewModelTest {
         addressIndex.verifiedRows[row.entry] = row
 
         val shown = assertIs<ActivityDetailUiState.Shown>(
-            viewModel(indexKey(row), check = CheckAddressIndexEntry(addressIndex, FIXTURE_IMPORTER)).uiState.value,
+            viewModel(indexKey(row), check = checkOn).uiState.value,
         )
 
         assertEquals("Received 1 ETH", shown.headline)
@@ -455,7 +461,7 @@ class ActivityDetailViewModelTest {
     fun anIndexRowNoLongerVerifiedIsNotShown() = runTest {
         val row = indexRow(9_300_000, 3, alice.address, bob)
 
-        val check = CheckAddressIndexEntry(addressIndex, FIXTURE_IMPORTER)
+        val check = checkOn
 
         val state = viewModel(indexKey(row), check = check).uiState.value
 
@@ -471,12 +477,57 @@ class ActivityDetailViewModelTest {
         val row = indexRow(9_300_000, 3, alice.address, bob)
         addressIndex.checkRefusal = AddressIndexRefusal.TorRouting
 
-        val refused = viewModel(indexKey(row), check = CheckAddressIndexEntry(addressIndex, FIXTURE_IMPORTER))
+        val refused = viewModel(indexKey(row), check = checkOn)
         val none = viewModel(indexKey(row))
 
         assertTrue(assertIs<ActivityDetailUiState.Unavailable>(refused.uiState.value).message.startsWith("Tor routing"))
         assertTrue(
             assertIs<ActivityDetailUiState.Unavailable>(none.uiState.value).message.startsWith("This build's engine"),
         )
+    }
+
+    @Test
+    fun anIndexRowWhoseOutcomeIsNotReportedSaysSoBesideItsValue() = runTest {
+        val row = indexRow(9_300_000, 3, alice.address, bob, wei = "250000000000000000", succeeded = null)
+        addressIndex.verifiedRows[row.entry] = row
+
+        val check = checkOn
+        val shown = assertIs<ActivityDetailUiState.Shown>(viewModel(indexKey(row), check = check).uiState.value)
+
+        assertEquals("Named in a transaction · sender", shown.headline, "no value claimed as moved")
+        val fields = shown.fields.associate { it.label to it.value }
+        assertEquals("0.25 ETH", fields["Value"])
+        assertTrue(checkNotNull(fields["Outcome"]).startsWith("Not checked"), fields["Outcome"])
+    }
+
+    @Test
+    fun aCheckThatCouldNotBeMadeNowOffersTryAgainWhichChecksOnceMore() = runTest {
+        val row = indexRow(9_300_000, 3, alice.address, bob)
+        addressIndex.verifiedRows[row.entry] = row
+        addressIndex.checkRefusal = AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING)
+        val viewModel = viewModel(indexKey(row), check = checkOn)
+
+        val waiting = assertIs<ActivityDetailUiState.Unavailable>(viewModel.uiState.value)
+        assertTrue(waiting.retry)
+        assertTrue(waiting.message.contains("cannot be checked yet"), waiting.message)
+
+        addressIndex.checkRefusal = null
+        viewModel.checkAgain()
+        runCurrent()
+
+        assertIs<ActivityDetailUiState.Shown>(viewModel.uiState.value)
+    }
+
+    @Test
+    fun theDetailChecksNothingOnceTheSettingIsOff() = runTest {
+        val row = indexRow(9_300_000, 3, alice.address, bob)
+        addressIndex.verifiedRows[row.entry] = row
+        val off = MemoryAddressIndexSetting()
+
+        val state = viewModel(indexKey(row), check = CheckAddressIndexEntry(addressIndex, off, FIXTURE_IMPORTER))
+
+        val refused = assertIs<ActivityDetailUiState.Unavailable>(state.uiState.value)
+        assertTrue(refused.message.contains("experimental setting is off"), refused.message)
+        assertEquals(false, refused.retry)
     }
 }

@@ -968,8 +968,11 @@ class AppGraph(
         ObserveSentTo(transactionHistory),
         ObserveAmountsHidden(amountsHidden),
         toggleAmountsHidden,
+        // Gated by the setting as the list is: nothing is checked while it is not on for the pinned key.
         checkIndexEntry = addressIndex?.let { history ->
-            addressIndexImporter?.let { CheckAddressIndexEntry(history, it) }
+            addressIndexSetting?.let { setting ->
+                addressIndexImporter?.let { CheckAddressIndexEntry(history, setting, it) }
+            }
         },
     )
 

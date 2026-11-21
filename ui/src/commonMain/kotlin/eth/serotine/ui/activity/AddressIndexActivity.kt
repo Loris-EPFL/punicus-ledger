@@ -104,7 +104,9 @@ internal data class IndexPaging(
      * This list after [load]: its rows added, newest first, and its counts; or the refusal said, the rows kept but
      * on the checkpoint table's alarm, which withdraws the trust they rest on (`.claude/rules/trust.md`), and on an
      * index signed by another key than the pinned one, which the list may not rest on. With the alarm, what the
-     * index said of its coverage and its counts go too.
+     * index said of its coverage and its counts go too. In this part the alarm reaches the list only this way, as a
+     * read refused for it; part 4 of the plan feeds the engine's alarm itself (`StatusSnapshot.checkpointAlarm`) in,
+     * so that the rows go the moment it is raised, whether or not a page is read.
      */
     fun after(load: AddressIndexLoad): IndexPaging = when (load) {
         is AddressIndexLoad.Loaded -> copy(
@@ -164,6 +166,14 @@ internal fun indexSection(paging: IndexPaging, network: Network, shownFromLast: 
                 "something the chain proves false may also leave entries out or be wrong elsewhere; its importer " +
                 "is ${shortAddress(key)}."
         },
+        simpleLeftOut = leftOut.notVerified.takeIf { it > 0 }?.let { n ->
+            val shown = if (n == 1) "it isn't" else "they aren't"
+            "${entries(n)} of the shared index couldn't be confirmed, so $shown shown."
+        },
+        simpleContradicted = leftOut.contradicted.takeIf { it > 0 }?.let { n ->
+            "Warning: the shared index's publisher listed ${entries(n)} the chain shows to be wrong. " +
+                "${if (n == 1) "It isn't" else "They aren't"} shown, and the index may also miss or get others wrong."
+        },
         footer = footerOf(paging, network, shownFromLast),
     )
 }
@@ -180,21 +190,24 @@ private fun footerOf(paging: IndexPaging, network: Network, shownFromLast: Int?)
             indexRefusalText(reason, network),
             retry = reason.retryable,
             warning = reason is AddressIndexRefusal.CheckpointAlarm,
+            simpleText = indexRefusalSimpleText(reason, network),
         )
     }
     if (paging.loading) {
-        return IndexFooter.Loading(
-            if (paging.started) {
-                "Reading more of the addr1 index and checking its entries…"
-            } else {
-                "Reading the addr1 index from Swarm and checking its entries…"
-            },
-        )
+        return if (paging.started) {
+            IndexFooter.Loading("Reading more of the addr1 index and checking its entries…", CHECKING_MORE)
+        } else {
+            IndexFooter.Loading(
+                "Reading the addr1 index from Swarm and checking its entries…",
+                "Checking older activity from the shared index…",
+            )
+        }
     }
     val covered = paging.coverage?.covered
     return when {
-        !paging.ended && shownFromLast == null -> IndexFooter.Loading("Reading the tokens its rows are said in…")
-        !paging.ended && shownFromLast == 0 -> IndexFooter.Paused(pausedText(paging))
+        !paging.ended && shownFromLast == null ->
+            IndexFooter.Loading("Reading the tokens its rows are said in…", CHECKING_MORE)
+        !paging.ended && shownFromLast == 0 -> IndexFooter.Paused(pausedText(paging), simplePausedText(paging))
         !paging.ended -> IndexFooter.More
         covered == null -> IndexFooter.End(
             "The addr1 index covers no block yet: nothing comes from it.",
@@ -232,6 +245,23 @@ private fun pausedText(paging: IndexPaging): String {
     return "The last page of the addr1 index $what. The next is read only when you ask, since each page fetches " +
         "old blocks from archive peers."
 }
+
+/** [pausedText] in simple mode's words. */
+private fun simplePausedText(paging: IndexPaging): String {
+    val left = paging.lastLeftOut
+    val listed = paging.lastRows.size
+    val parts = listOfNotNull(
+        left.notVerified.takeIf { it > 0 }?.let { "${entries(it)} couldn't be confirmed" },
+        left.contradicted.takeIf { it > 0 }?.let { "${entries(it)} the chain shows to be wrong" },
+        listed.takeIf { it > 0 }?.let { "${entries(it)} ${if (it == 1) "is" else "are"} shown already" },
+    )
+    val what = if (parts.isEmpty()) "held nothing to show" else "added nothing here: " + parts.joinToString(", ")
+    return "The last part of the shared index $what. More is checked only when you ask, since each part means a " +
+        "lot of downloading."
+}
+
+/** Simple mode's words while more of the index is read. */
+private const val CHECKING_MORE = "Checking more of the shared index…"
 
 /** Every range [coverage] leaves out, with block numbers: where it starts, the head gap, the gaps inside it. */
 private fun coverageLines(coverage: AddressIndexCoverage): List<String> = buildList {
@@ -309,9 +339,31 @@ internal fun indexRefusalText(reason: AddressIndexRefusal, network: Network): St
         "The engine refused the request (${reason.reason}). That is a bug in Punicus or the engine: nothing more " +
             "comes from the index until it is fixed."
     is AddressIndexRefusal.NotNow -> when (reason.reason) {
-        ReadUnavailable.SYNCING -> "The light client is still catching up: the index's entries are checked once it has."
+        ReadUnavailable.SYNCING ->
+            "The light client is still catching up, so the index's entries cannot be checked yet."
         ReadUnavailable.NETWORK_OFF -> "${network.displayName}'s light client is not running yet."
         else -> "Swarm or the peers did not deliver what the index or its check needs right now."
+    }
+}
+
+/** [indexRefusalText] in simple mode's words: no block number, no quote of the engine. */
+internal fun indexRefusalSimpleText(reason: AddressIndexRefusal, network: Network): String = when (reason) {
+    AddressIndexRefusal.NotInThisBuild -> "This version can't read the shared index here."
+    AddressIndexRefusal.SettingOff -> "The shared index is off. Settings → Experimental turns it on."
+    AddressIndexRefusal.TorRouting -> "Tor is on, and the shared index isn't read over Tor."
+    is AddressIndexRefusal.NetworkNotServed -> "The shared index isn't read for ${reason.network.displayName} here."
+    is AddressIndexRefusal.CheckpointAlarm -> "Older activity from the shared index can't be shown: the checkpoints " +
+        "Punicus relies on disagree with the network."
+    AddressIndexRefusal.StaleAnchor -> "${network.displayName} can't be checked right now. Accounts shows the ways on."
+    AddressIndexRefusal.NoEngine ->
+        "${network.displayName} isn't running on this device, so the shared index can't be checked."
+    is AddressIndexRefusal.WrongImporter ->
+        "The shared index found isn't the one this version trusts, so none of it is shown."
+    is AddressIndexRefusal.Rejected -> "Something went wrong reading the shared index. Nothing more comes from it."
+    is AddressIndexRefusal.NotNow -> when (reason.reason) {
+        ReadUnavailable.SYNCING -> "Still catching up, so the shared index can't be checked yet."
+        ReadUnavailable.NETWORK_OFF -> "${network.displayName} isn't running yet."
+        else -> "The shared index couldn't be read right now."
     }
 }
 

@@ -47,12 +47,16 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.displaySymbol
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.platform.formatDateTime
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -93,6 +97,9 @@ class ActivityDetailViewModel(
     /** The account this screen is about: its address, on its network. */
     private val address: Address = account.address
 
+    /** How often the user asked a row of the addr1 index to be checked again: each rise checks it once more. */
+    private val checkAgain = MutableStateFlow(0)
+
     /** The account's network: everything here is read and sent there. */
     private val network: Network = account.network
 
@@ -125,17 +132,20 @@ class ActivityDetailViewModel(
      * Only what the row is read from is followed: the history for a sent one, the log index for an
      * event; the history beside an event too, for the request of a Safe transaction it may be of.
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     private val shown: Flow<ActivityDetailUiState> = observeAmountsHidden().let { hiddenFlow ->
         val indexed = key.index
         if (indexed != null) {
             val entry = AddressIndexEntry(indexed.block, indexed.slot, indexed.roles)
-            // Checked once each time the screen is read: Loading (null) until the engine answers.
-            val checked = flow<AddressIndexEntryCheck?> {
-                emit(null)
-                emit(
-                    checkIndexEntry?.invoke(account, entry)
-                        ?: AddressIndexEntryCheck.Refused(AddressIndexRefusal.NotInThisBuild),
-                )
+            // Checked once each time the screen is read, and again on Try again: Loading (null) until it answers.
+            val checked = checkAgain.flatMapLatest {
+                flow<AddressIndexEntryCheck?> {
+                    emit(null)
+                    emit(
+                        checkIndexEntry?.invoke(account, entry)
+                            ?: AddressIndexEntryCheck.Refused(AddressIndexRefusal.NotInThisBuild),
+                    )
+                }
             }
             combine(checked, sources.parties, combine(sources.tokens, hiddenFlow, ::Pair)) { check, parties, both ->
                 val (tokens, hidden) = both
@@ -162,6 +172,14 @@ class ActivityDetailViewModel(
                 renderLogged(parties, safe, transfers, tokens, rowsFor(hidden, tokens, entries)).withHidden(hidden)
             }
         }
+    }
+
+    /**
+     * Checks a row of the addr1 index once more: Try again, after a check that could not be made now (the light
+     * client still catching up, a block no peer served). Nothing for any other row.
+     */
+    fun checkAgain() {
+        if (key.index != null) checkAgain.update { it + 1 }
     }
 
     /**
@@ -230,8 +248,11 @@ class ActivityDetailViewModel(
         val title = sources.titleOf(names)
         val verdict = when (check) {
             null -> return ActivityDetailUiState.Loading(title)
-            is AddressIndexEntryCheck.Refused ->
-                return ActivityDetailUiState.Unavailable(title, indexRefusalText(check.reason, network))
+            is AddressIndexEntryCheck.Refused -> return ActivityDetailUiState.Unavailable(
+                title,
+                indexRefusalText(check.reason, network),
+                retry = check.reason.retryable,
+            )
             is AddressIndexEntryCheck.Checked -> check.verdict
         }
         val indexed = when (verdict) {
@@ -248,7 +269,8 @@ class ActivityDetailViewModel(
             )
             is AddressIndexVerdict.Unavailable -> return ActivityDetailUiState.Unavailable(
                 title,
-                "This entry cannot be checked right now (${verdict.reason}). Open it again to check it again.",
+                "This entry cannot be checked right now (${verdict.reason}).",
+                retry = true,
             )
         }
         // Until the tokens are known, what moved cannot be said.
@@ -261,7 +283,19 @@ class ActivityDetailViewModel(
                 add(DetailField("Transaction hash", tx.hash, DetailKind.HASH))
                 add(addressOf("From", tx.from, names))
                 add(tx.to?.let { addressOf("To", it, names) } ?: DetailField("To", "None: it creates a contract"))
+                // A fact of the transaction, not a claim that it moved: a reverted one keeps its value field.
                 tx.value.toUInt256OrNull()?.let { add(DetailField("Value", rows.amount(it, TransferAsset.Native))) }
+                add(
+                    DetailField(
+                        "Outcome",
+                        when (tx.succeeded) {
+                            true -> "Succeeded, as its verified receipt says"
+                            false -> "Failed on chain: its call reverted, and its value did not move"
+                            null -> "Not checked: whether it succeeded is not reported by the engine yet, so its " +
+                                "value may not have moved"
+                        },
+                    ),
+                )
                 tx.transfer?.let { add(addressOf("Token contract", it.token, names, tokens[it.token]?.token?.symbol)) }
             }
             add(DetailField("Block", grouped(entry.block), DetailKind.BLOCK))

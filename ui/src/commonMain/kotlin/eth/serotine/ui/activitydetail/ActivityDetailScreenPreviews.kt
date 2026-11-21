@@ -206,7 +206,7 @@ private val SAMPLE_IMPORTER = Eip55.format(Address.of("0x" + "1e".repeat(20)))
 /** A row of the addr1 index, checked again as its detail opens (owner ruling, 2026-11-21, #334). */
 private val indexed = ActivityDetailUiState.Shown(
     title = "Alice",
-    headline = "Sent 0.25 ETH",
+    headline = "Named in a transaction · sender",
     about = BOB,
     status = "Finalized in block 9,300,000 · checked against the chain",
     simpleStatus = "Final",
@@ -216,6 +216,10 @@ private val indexed = ActivityDetailUiState.Shown(
         DetailField("From", ALICE, DetailKind.ADDRESS, "Alice"),
         DetailField("To", BOB, DetailKind.ADDRESS, "Bob"),
         DetailField("Value", "0.25 ETH"),
+        DetailField(
+            "Outcome",
+            "Not checked: whether it succeeded is not reported by the engine yet, so its value may not have moved",
+        ),
         DetailField("Block", "9,300,000", DetailKind.BLOCK),
         DetailField("Block hash", "0x" + "b7".repeat(32), DetailKind.HASH),
         DetailField("In the block", "Transaction 3"),
@@ -246,6 +250,17 @@ private fun ActivityDetailIndexRefusedPreview() = ActivityDetailPreview(
     ),
 )
 
+/** A row of the addr1 index whose check could not be made now: Try again checks it once more. */
+@Preview
+@Composable
+private fun ActivityDetailIndexTryAgainPreview() = ActivityDetailPreview(
+    ActivityDetailUiState.Unavailable(
+        "Alice",
+        "The light client is still catching up, so the index's entries cannot be checked yet.",
+        retry = true,
+    ),
+)
+
 /** Every preview above, which ActivityDetailScreenPreviewsTest renders: a new preview goes in here too. */
 internal val activityDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("sent") { ActivityDetailSentPreview() },
@@ -262,4 +277,5 @@ internal val activityDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("index-row") { ActivityDetailIndexRowPreview() },
     ScreenPreview("index-row-dark") { ActivityDetailIndexRowDarkPreview() },
     ScreenPreview("index-row-refused") { ActivityDetailIndexRefusedPreview() },
+    ScreenPreview("index-row-try-again") { ActivityDetailIndexTryAgainPreview() },
 )

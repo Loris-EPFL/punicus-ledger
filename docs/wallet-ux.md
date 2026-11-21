@@ -1272,10 +1272,17 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       or whose only role is `TRACE` is never a row. Each row goes by its
       block, as an event the engine did not date ("Block 9,412,300"), and
       says it was checked ("Finalized in block 9,412,300 · checked against
-      the chain", "… not final yet"; simple mode "Final", "Confirmed"). It is
-      said in the log index's words ("Sent 0.25 ETH", "Received 1 USDC", "An
-      unlisted token logged a transfer to it"), or "Named in a transaction"
-      with the roles it is named in, or "Named by the block itself". The same
+      the chain", "… not final yet"; simple mode "Final", "Confirmed"). A
+      token's transfer, from its logs, is said in the log index's words
+      ("Received 1 USDC", "Moved 1 USDC to itself", "An unlisted token logged
+      a transfer to it"). A transaction's value is said as moved ("Sent 0.25
+      ETH", "Received 1 ETH", "Created a contract") only when its verified
+      receipt says it succeeded, and one that reverted reads "Failed on
+      chain", as a sent row does. The engine does not report the receipt's
+      status yet, so today such a row says how the account is named in it
+      ("Named in a transaction · sender"), and its value is left to the
+      detail (26), beside the fact that its outcome is not checked. An entry
+      about the block itself reads "Named by the block itself". The same
       protections hold: a transfer of nothing the account did not send is
       not listed, an unlisted token's transfer is its claim, and a row the
       account did not send, from an address it never sent to, is cautioned.
@@ -1301,8 +1308,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
         after a page that added none (its entries unverified, or listed
         already) the footer says what it left out and the next page is read
         only on *Load older entries*; a page that adds rows lets the list
-        read on by itself again;
-        a footer holds its room while a page is read and checked ("Reading
+        read on by itself again. The pages read stay while the account's
+        screen is open: back from a row's detail, or from another tab, they
+        are there and nothing is read again. A footer holds its room while a page is read and checked ("Reading
         more of the addr1 index …"), and the end of its coverage is marked
         ("The addr1 index starts at block 9,000,000: nothing older comes from
         it"). Turned oldest first, the footer goes above the rows, in sight
@@ -1311,9 +1319,14 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
         Swarm reader, the setting is off in the engine, Tor routing is on,
         the network is not served, the checkpoint table's alarm (in the
         error's colour; the rows already shown go, since they rest on the
-        table, and so do its coverage and counts), a stale checkpoint, no light client, an index signed by
-        another key than the pinned one, a request the engine rejected (a
-        bug). The passing ones (still catching up, Swarm or the peers did not
+        table, and so do its coverage and counts: in this part when a read is
+        refused for it; part 4 of the plan brings the alarm itself into the
+        app, so that they go the moment it is raised), a stale checkpoint, no
+        light client, an index signed by another key than the pinned one (its
+        rows go too), a request the engine rejected (a bug). Simple mode says
+        each in its own words, with no block number and no quote of the
+        engine; so are its footer and its counts ("Checking more of the
+        shared index…", "couldn't be confirmed"). The passing ones (still catching up, Swarm or the peers did not
         deliver) offer Try again. The rows of the other sources stay.
 26. **Activity detail**: one row of 25 in full, under the Accounts tab like
     its list (`activity/{address}/tx/{hash}`, `?log=` the log index for an
@@ -1356,10 +1369,14 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       planted look-alike is never one tap from the clipboard.
     - A row of the addr1 index
       (`activity/{address}/index-entry/{block}/{slot}?roles=…&hash=…`) is
-      checked again as it opens, and shown only as the check finds it now:
-      its headline and status as its row says them, the transaction's hash,
-      From, To (or none, a contract created), its value and the token
-      contract of its transfer, the block, its hash, where in the block it
+      checked again as it opens, only while the experimental setting is on
+      for the pinned key (off, it checks nothing and says so), and shown only
+      as the check finds it now: its headline and status as its row says
+      them, the transaction's hash, From, To (or none, a contract created),
+      its value, its outcome (succeeded or reverted, as its verified receipt
+      says; today "Not checked", since the engine does not report it yet, so
+      the value may not have moved), the token contract of its transfer, the
+      block, its hash, where in the block it
       is ("Transaction 3", "The block itself"), the roles proven on chain,
       and those on the importer's word alone (a trace). Its note says what
       it rests on: the light client's check against the block's verified
@@ -1368,7 +1385,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       listed at all, and none missing, on the importer pinned in the
       release, named in full. A cautioned sender has no Copy, as above. No
       longer verified, contradicted now, not checkable right now, or a
-      check refused: it says why and shows nothing of the entry.
+      check refused: it says why and shows nothing of the entry. A check that
+      could not be made now (the light client still catching up, a block no
+      peer served) offers Try again, which checks it once more.
     - One no longer there (a reorganisation replaced its block, once every
       block from the history's start is checked again) says so; while the
       blocks it is in are still being checked, or its history cannot be

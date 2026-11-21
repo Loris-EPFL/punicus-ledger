@@ -100,6 +100,7 @@ data class IndexEntryKey(val block: Long, val slot: Int, val roles: Set<AddressI
  *   nothing (more) comes from it.
  * - [footerFirst]: the footer goes above the rows, when they run oldest first, so that what loads next stays where
  *   the older rows are.
+ * - [simpleLeftOut], [simpleContradicted]: the two counts in simple mode's words.
  */
 data class IndexSection(
     val lines: List<String>,
@@ -108,31 +109,42 @@ data class IndexSection(
     val contradicted: String? = null,
     val simpleLines: List<String> = lines,
     val footerFirst: Boolean = false,
+    val simpleLeftOut: String? = leftOut,
+    val simpleContradicted: String? = contradicted,
 )
 
 /** What follows the addr1 index's rows in an account's Activity. */
 sealed interface IndexFooter {
-    /** A page is being read and checked: [text] says so, in a footer that holds its room. */
-    data class Loading(val text: String) : IndexFooter
+    /**
+     * A page is being read and checked: [text] says so ([simpleText] in simple mode), in a footer that holds its
+     * room.
+     */
+    data class Loading(val text: String, val simpleText: String = text) : IndexFooter
 
     /** More entries lie below: the next page is read as the user nears the end of the list. */
     data object More : IndexFooter
 
     /**
      * More entries lie below, but the last page added no row to the list: the next is read only on the user's tap
-     * (Load older entries), never by itself; [text] says what that page left out. A tap that adds rows makes the list
-     * read on by itself again.
+     * (Load older entries), never by itself; [text] says what that page left out ([simpleText] in simple mode). A tap
+     * that adds rows makes the list read on by itself again.
      */
-    data class Paused(val text: String) : IndexFooter
+    data class Paused(val text: String, val simpleText: String = text) : IndexFooter
 
     /** The end of what the index covers: [text], "The addr1 index starts at block …". */
     data class End(val text: String, val simpleText: String = text) : IndexFooter
 
     /**
      * Nothing (more) is read from it, for the reason [text] gives, never an empty list; [retry] when asking again
-     * may answer (Try again), [warning] when the reason is a warning (the checkpoint table's alarm).
+     * may answer (Try again), [warning] when the reason is a warning (the checkpoint table's alarm); [simpleText] in
+     * simple mode's words, with no block number and no quote of the engine.
      */
-    data class Refused(val text: String, val retry: Boolean = false, val warning: Boolean = false) : IndexFooter
+    data class Refused(
+        val text: String,
+        val retry: Boolean = false,
+        val warning: Boolean = false,
+        val simpleText: String = text,
+    ) : IndexFooter
 }
 
 /**
@@ -205,7 +217,15 @@ internal fun ActivityUiState.simple(): ActivityUiState = when (this) {
         index = index?.let { section ->
             section.copy(
                 lines = section.simpleLines,
-                footer = (section.footer as? IndexFooter.End)?.let { IndexFooter.End(it.simpleText) } ?: section.footer,
+                leftOut = section.simpleLeftOut,
+                contradicted = section.simpleContradicted,
+                footer = when (val footer = section.footer) {
+                    is IndexFooter.End -> IndexFooter.End(footer.simpleText)
+                    is IndexFooter.Loading -> IndexFooter.Loading(footer.simpleText)
+                    is IndexFooter.Paused -> IndexFooter.Paused(footer.simpleText)
+                    is IndexFooter.Refused -> footer.copy(text = footer.simpleText)
+                    IndexFooter.More -> footer
+                },
             )
         },
     )

@@ -72,4 +72,21 @@ class FileAddressIndexSettingTest {
         assertTrue(setting.trust(null))
         assertEquals(AddressIndexChoice.Chosen(importer = null), setting.observe().first())
     }
+
+    @Test
+    fun aDamagedChoiceIsWrittenAsOffSoThatARestartReadsOffNotTheDefault() = runTest {
+        write("""{"version":1,"importer":"0x1234"}""")
+        val first = setting()
+        assertEquals(AddressIndexChoice.Chosen(importer = null, setAside = true), first.observe().first())
+        // The off is written as the damaged choice is read.
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            AddressIndexChoice.Chosen(importer = null, setAside = true),
+            setting().observe().first(),
+            "after a restart: off, never the default, and still said",
+        )
+        assertTrue(setting().trust(null))
+        assertEquals(AddressIndexChoice.Chosen(importer = null), setting().observe().first(), "a choice made: not said")
+    }
 }

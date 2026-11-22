@@ -48,7 +48,10 @@ data class AddressIndexStatus(val pinned: Address?, val reader: Boolean, val cho
             if (choice is AddressIndexChoice.Unreadable) add(AddressIndexMissing.CHOICE_UNREADABLE)
         }
 
-    /** Whether *Activity* takes the addr1 index: on for the key pinned now, with a reader to read it. */
+    /**
+     * Whether *Activity* takes the addr1 index: a key pinned, a reader to read it, and no explicit off nor a choice
+     * that cannot be read or was set aside (the cases above): on by default otherwise.
+     */
     val on: Boolean
         get() = missing.isEmpty() && when (choice) {
             AddressIndexChoice.NotChosen -> true

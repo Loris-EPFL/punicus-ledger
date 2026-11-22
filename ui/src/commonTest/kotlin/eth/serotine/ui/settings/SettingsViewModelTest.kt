@@ -748,4 +748,16 @@ class SettingsViewModelTest {
         assertTrue(item.on, "still on by default")
         assertTrue(item.text.endsWith(" · Your choice could not be saved"), item.text)
     }
+
+    @Test
+    fun aChoiceFoundDamagedIsOffSaysSoAndOffersTurnOff() = runTest {
+        addressIndexSetting.choice.value = AddressIndexChoice.Chosen(importer = null, setAside = true)
+        val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(), pinned = FIXTURE_IMPORTER)
+
+        val item = checkNotNull(viewModel.uiState.value.addressIndex)
+
+        assertFalse(item.on, "it may have been an off")
+        assertTrue(item.text.contains("(your saved choice was damaged and set aside)"), item.text)
+        assertTrue(item.turnOff)
+    }
 }

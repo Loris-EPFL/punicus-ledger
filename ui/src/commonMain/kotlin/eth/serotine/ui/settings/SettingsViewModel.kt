@@ -444,8 +444,9 @@ class SettingsViewModel(
             unavailableReason = reasons.joinToString(" ").ifEmpty { null },
             // A stored choice not in force can always be taken back, and the default turned off ahead, greyed out
             // or not (TurnAddressIndex): an explicit off stays.
+            // A choice found damaged is off (and written so); Turn off confirms it, and harms nothing.
             turnOff = !on && ((choice as? AddressIndexChoice.Chosen)?.importer != null ||
-                choice == AddressIndexChoice.NotChosen),
+                choice == AddressIndexChoice.NotChosen || setAside),
         )
     }
 

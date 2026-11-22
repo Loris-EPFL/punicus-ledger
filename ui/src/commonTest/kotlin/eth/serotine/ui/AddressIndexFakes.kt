@@ -116,9 +116,12 @@ internal fun indexRow(
     transaction = AddressIndexTransaction(hash, from, to, Wei.of(wei), transfer, succeeded),
 )
 
-/** An [AddressIndexSetting] in memory, as the port's contract says one behaves; [failSaves] makes every save fail. */
+/**
+ * An [AddressIndexSetting] in memory, as the port's contract says one behaves: turned on for [on], or holding no choice
+ * yet (a fresh install, on by default) without one; [failSaves] makes every save fail.
+ */
 internal class MemoryAddressIndexSetting(on: Address? = null) : AddressIndexSetting {
-    val choice = MutableStateFlow<AddressIndexChoice>(AddressIndexChoice.Chosen(importer = on))
+    val choice = MutableStateFlow(on?.let { AddressIndexChoice.Chosen(it) } ?: AddressIndexChoice.NotChosen)
     var failSaves = false
 
     override fun observe(): Flow<AddressIndexChoice> = choice

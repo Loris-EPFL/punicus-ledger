@@ -44,8 +44,8 @@ class FileAddressIndexSettingTest {
     }
 
     @Test
-    fun offUntilTurnedOnAndTheKeyAcceptedSurvivesARestart() = runTest {
-        assertEquals(AddressIndexChoice.Chosen(importer = null), setting().observe().first())
+    fun noChoiceUntilOneIsMadeAndBothAKeyAndAnOffSurviveARestart() = runTest {
+        assertEquals(AddressIndexChoice.NotChosen, setting().observe().first(), "no file: no choice, on by default")
 
         assertTrue(setting().trust(fixtureImporter))
         assertEquals(AddressIndexChoice.Chosen(fixtureImporter), setting().observe().first())
@@ -71,5 +71,22 @@ class FileAddressIndexSettingTest {
         assertEquals(AddressIndexChoice.Chosen(importer = null, setAside = true), setting.observe().first())
         assertTrue(setting.trust(null))
         assertEquals(AddressIndexChoice.Chosen(importer = null), setting.observe().first())
+    }
+
+    @Test
+    fun aDamagedChoiceIsWrittenAsOffSoThatARestartReadsOffNotTheDefault() = runTest {
+        write("""{"version":1,"importer":"0x1234"}""")
+        val first = setting()
+        assertEquals(AddressIndexChoice.Chosen(importer = null, setAside = true), first.observe().first())
+        // The off is written as the damaged choice is read.
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            AddressIndexChoice.Chosen(importer = null, setAside = true),
+            setting().observe().first(),
+            "after a restart: off, never the default, and still said",
+        )
+        assertTrue(setting().trust(null))
+        assertEquals(AddressIndexChoice.Chosen(importer = null), setting().observe().first(), "a choice made: not said")
     }
 }

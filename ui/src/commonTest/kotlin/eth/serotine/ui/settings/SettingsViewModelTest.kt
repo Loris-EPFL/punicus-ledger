@@ -679,28 +679,42 @@ class SettingsViewModelTest {
 
         assertFalse(item.on)
         assertEquals(
-            "Off: no importer key is pinned in this release yet · This build's engine has no Swarm reader",
+            "Off: no importer key is pinned in this release yet · This build's engine has no Swarm reader · On by " +
+                "default once it can be read: Turn off keeps it off",
             item.text,
         )
         val reason = checkNotNull(item.unavailableReason)
         assertTrue(reason.startsWith("No importer key is pinned in this release yet."), reason)
         assertTrue(reason.contains("This build's engine has no Swarm reader"), reason)
+        assertTrue(item.turnOff, "the default can be turned off ahead")
 
         viewModel.useAddressIndex(true)
         runCurrent()
-        assertEquals(AddressIndexChoice.Chosen(null), addressIndexSetting.choice.value, "nothing turned on")
+        assertEquals(AddressIndexChoice.NotChosen, addressIndexSetting.choice.value, "nothing turned on")
+        viewModel.useAddressIndex(false)
+        runCurrent()
+        assertEquals(AddressIndexChoice.Chosen(null), addressIndexSetting.choice.value, "an explicit off, kept")
+        assertFalse(checkNotNull(viewModel.uiState.value.addressIndex).turnOff)
     }
 
     @Test
-    fun withAKeyPinnedAndAReaderItNamesTheKeyAndTurnsOnForIt() = runTest {
+    fun withAKeyPinnedAndAReaderItIsOnByDefaultNamingTheKeyAndAnOffStays() = runTest {
         val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(), pinned = FIXTURE_IMPORTER)
         val key = Eip55.format(FIXTURE_IMPORTER)
-        assertEquals("Off: importer $key, pinned in this release", viewModel.uiState.value.addressIndex?.text)
+        assertEquals(
+            "On: importer $key, pinned in this release · On by default: you can turn it off",
+            viewModel.uiState.value.addressIndex?.text,
+        )
+        assertEquals(true, viewModel.uiState.value.addressIndex?.on)
         assertNull(viewModel.uiState.value.addressIndex?.unavailableReason)
+
+        viewModel.useAddressIndex(false)
+        runCurrent()
+        assertEquals("Off: importer $key, pinned in this release", viewModel.uiState.value.addressIndex?.text)
+        assertEquals(AddressIndexChoice.Chosen(null), addressIndexSetting.choice.value)
 
         viewModel.useAddressIndex(true)
         runCurrent()
-
         assertEquals(true, viewModel.uiState.value.addressIndex?.on)
         assertEquals(AddressIndexChoice.Chosen(FIXTURE_IMPORTER), addressIndexSetting.choice.value)
     }
@@ -727,11 +741,23 @@ class SettingsViewModelTest {
         val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(), pinned = FIXTURE_IMPORTER)
         addressIndexSetting.failSaves = true
 
-        viewModel.useAddressIndex(true)
+        viewModel.useAddressIndex(false)
         runCurrent()
 
         val item = checkNotNull(viewModel.uiState.value.addressIndex)
-        assertFalse(item.on)
+        assertTrue(item.on, "still on by default")
         assertTrue(item.text.endsWith(" · Your choice could not be saved"), item.text)
+    }
+
+    @Test
+    fun aChoiceFoundDamagedIsOffSaysSoAndOffersTurnOff() = runTest {
+        addressIndexSetting.choice.value = AddressIndexChoice.Chosen(importer = null, setAside = true)
+        val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(), pinned = FIXTURE_IMPORTER)
+
+        val item = checkNotNull(viewModel.uiState.value.addressIndex)
+
+        assertFalse(item.on, "it may have been an off")
+        assertTrue(item.text.contains("(your saved choice was damaged and set aside)"), item.text)
+        assertTrue(item.turnOff)
     }
 }

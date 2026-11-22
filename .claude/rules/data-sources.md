@@ -273,6 +273,10 @@ contradicted entries and what others learn.)
 - **The importer key is pinned in the release** (owner's decision,
   2026-11-21, on #335). The user does not type one in. Which key is pinned is
   the owner's choice, named in the PR that pins it.
+- **A new key starts from the default** (owner's decision, 2026-11-22, #334).
+  When a release pins another key, only an explicit off carries over: a
+  choice to turn the setting on, made for the key pinned before, does not,
+  and the key pinned now is on by default, as on a fresh install.
 - **A contradicted entry is a warning against the key** (owner's decision,
   2026-11-21, on #335). The chain proved that the key signed something false.
   The row stays out; the list counts contradicted entries apart from the ones
@@ -285,10 +289,15 @@ contradicted entries and what others learn.)
   asks for. That node does not go through Tor. The per-entry check fetches
   old blocks and their receipts from archive peers: they learn which past
   blocks matter to this device, older ones than the log index's walk
-  included. The privacy policy says so before the setting can be turned on.
-- **On the desktop, behind an experimental setting**, off by default, that
-  names the pinned key. In its first version the engine's Swarm reader is in
-  no published Myotis build (Myotis #908), the desktop's included: an engine
+  included. The privacy policy says so, and how to turn the setting off
+  (owner's decision, 2026-11-22, #334, amending "before the setting can be
+  turned on" of 2026-11-21).
+- **On the desktop, behind an experimental setting**, on by default, that
+  names the pinned key. The user may turn it off, and a choice to keep it
+  off stays (owner's decision, 2026-11-22, #334, amending "off by default"
+  of 2026-11-21). With no key pinned, or no Swarm reader, it reads nothing.
+  In its first version the engine's Swarm reader is in no published Myotis
+  build (Myotis #908), the desktop's included: an engine
   without it refuses with the permanent `-32602`. There the setting is greyed
   out, a tap saying this build's engine has no Swarm reader (`ui.md`, the
   greyed-out rule), and the history stays the log index's. Android and iOS

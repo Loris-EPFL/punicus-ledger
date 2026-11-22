@@ -52,8 +52,8 @@ data class SettingsUiState(
  * [unavailableReason] when it cannot be changed (no key pinned in this release, no Swarm reader in this build's
  * engine, a choice that cannot be read), said on a tap of the greyed row (owner ruling, 2026-10-18, #55).
  * [turnOff] while it is not in force but would come on by itself (a choice to turn it on made in another build, or
- * the default while it cannot be read yet): Turn off stores an explicit off, whatever greys the row out, which
- * stays. No block number: the same in both views.
+ * the default while it cannot be read yet), and for a choice found damaged and set aside: Turn off stores an
+ * explicit off, whatever greys the row out, which stays. No block number: the same in both views.
  */
 data class AddressIndexItem(
     val on: Boolean,

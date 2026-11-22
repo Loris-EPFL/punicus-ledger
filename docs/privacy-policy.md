@@ -116,7 +116,7 @@ Activity: turned off, it stays off.
   network. They learn which past blocks matter to you, older ones than the
   history above reaches included.
 - The Swarm peers and archive peers are not run by Punicus. With the setting
-  off, which it is unless you turn it on, none of this happens.
+  turned off, none of this happens.
 
 ### Another wallet app (only if you hand a transfer to one)
 

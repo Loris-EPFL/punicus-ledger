@@ -420,6 +420,24 @@ private fun SettingsAddressIndexTurnOffPreview() =
 private fun SettingsAddressIndexTurnOffDarkPreview() =
     SettingsPreview(synced.copy(addressIndex = addressIndexStored), darkTheme = true, atTheEnd = true)
 
+/**
+ * A choice found damaged and set aside, with a key pinned and an engine that reads Swarm: it reads off, never the
+ * default, and Turn off below the row stores the same off as the user's own choice.
+ */
+@Preview
+@Composable
+private fun SettingsAddressIndexSetAsidePreview() = SettingsPreview(
+    synced.copy(
+        addressIndex = AddressIndexItem(
+            on = false,
+            text = "Off: importer $sampleImporter, pinned in this release" +
+                " (your saved choice was damaged and set aside)",
+            turnOff = true,
+        ),
+    ),
+    atTheEnd = true,
+)
+
 /** Every preview above, which SettingsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val settingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("synced") { SettingsSyncedPreview() },
@@ -457,6 +475,7 @@ internal val settingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("address-index-on") { SettingsAddressIndexOnPreview() },
     ScreenPreview("address-index-turn-off") { SettingsAddressIndexTurnOffPreview() },
     ScreenPreview("address-index-turn-off-dark") { SettingsAddressIndexTurnOffDarkPreview() },
+    ScreenPreview("address-index-set-aside") { SettingsAddressIndexSetAsidePreview() },
 )
 
 /** Not allowed, on a metered connection now, for this file's previews and simple mode's. */

@@ -427,7 +427,8 @@ private fun AddressIndexRow(item: AddressIndexItem, onChange: (Boolean) -> Unit,
         // The row takes the tap, so a greyed switch still says why.
         trailingContent = { Switch(checked = item.on, onCheckedChange = null, enabled = reason == null) },
     )
-    // A choice to turn it on that is stored but not in force is taken back here, whatever greys the row out.
+    // An explicit off is stored here, whatever greys the row out: for a choice to turn it on that is not in force, the
+    // default while it cannot be read, or a choice found damaged and set aside.
     if (item.turnOff) {
         TextButton(onClick = { onChange(false) }, Modifier.padding(start = 8.dp)) { Text("Turn off") }
     }

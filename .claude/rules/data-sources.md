@@ -289,7 +289,9 @@ contradicted entries and what others learn.)
   asks for. That node does not go through Tor. The per-entry check fetches
   old blocks and their receipts from archive peers: they learn which past
   blocks matter to this device, older ones than the log index's walk
-  included. The privacy policy says so, and how to turn the setting off.
+  included. The privacy policy says so, and how to turn the setting off
+  (owner's decision, 2026-11-22, #334, amending "before the setting can be
+  turned on" of 2026-11-21).
 - **On the desktop, behind an experimental setting**, on by default, that
   names the pinned key. The user may turn it off, and a choice to keep it
   off stays (owner's decision, 2026-11-22, #334, amending "off by default"

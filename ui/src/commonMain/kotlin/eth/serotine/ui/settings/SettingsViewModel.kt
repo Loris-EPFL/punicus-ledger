@@ -413,13 +413,17 @@ class SettingsViewModel(
             val stored = (choice as? AddressIndexChoice.Chosen)?.importer
             val other = trustsAnotherKey
             when {
-                // Turned on again, it trusts the key pinned now: only when one is.
-                other != null && pinned != null -> append(
-                    " · It was turned on for another importer, ${shortAddress(Eip55.format(other))}: turned on " +
-                        "again, it trusts the one pinned now",
+                // That choice does not carry over: the key pinned now had none, so it is on by default.
+                other != null && pinned != null && on -> append(
+                    " · It was turned on for another importer, ${shortAddress(Eip55.format(other))}: on by default " +
+                        "for the one pinned now",
                 )
                 stored != null && !on ->
                     append(" · Turned on in another build: it stays off here, and Turn off clears that choice")
+                // On by default (owner's decision, 2026-11-22), once nothing keeps it off.
+                choice == AddressIndexChoice.NotChosen && !on ->
+                    append(" · On by default once it can be read: Turn off keeps it off")
+                choice == AddressIndexChoice.NotChosen -> append(" · On by default: you can turn it off")
             }
             if (setAside) append(" (your saved choice was damaged and set aside)")
             if (notSaved) append(" · Your choice could not be saved")
@@ -438,8 +442,10 @@ class SettingsViewModel(
             on = on,
             text = text,
             unavailableReason = reasons.joinToString(" ").ifEmpty { null },
-            // A stored choice not in force can always be taken back, greyed out or not (TurnAddressIndex).
-            turnOff = !on && (choice as? AddressIndexChoice.Chosen)?.importer != null,
+            // A stored choice not in force can always be taken back, and the default turned off ahead, greyed out
+            // or not (TurnAddressIndex): an explicit off stays.
+            turnOff = !on && ((choice as? AddressIndexChoice.Chosen)?.importer != null ||
+                choice == AddressIndexChoice.NotChosen),
         )
     }
 

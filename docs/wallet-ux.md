@@ -1265,8 +1265,8 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     - **And, on the desktop, the addr1 index** (owner ruling, 2026-11-21,
       #334, and the owner's decisions of that day on #335;
       `.claude/rules/data-sources.md`, *The history may also take the addr1
-      index from Swarm*), while its experimental setting is on (18): the
-      engine reads the account's part of the index from Swarm, page by page,
+      index from Swarm*), while its experimental setting is on (18; on by
+      default since 2026-11-22): the engine reads the account's part of the index from Swarm, page by page,
       newest first, and checks each entry against verified chain data.
       **Verified rows only**: an entry unverified, contradicted, unavailable
       or whose only role is `TRACE` is never a row. Each row goes by its
@@ -1423,13 +1423,19 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     mode: nothing is drafted on it. On the desktop only, an *Experimental*
     section holds *Account history from the addr1 index* (owner ruling,
     2026-11-21, #334; a file of its own, `address-index.json`, which keeps
-    the importer key it was turned on for): off by default, it names the
-    importer key pinned in the release, says what it does and what Swarm
-    and archive peers learn once it is on (docs/privacy-policy.md). A key is
-    never typed in. Turned on for a key the release no longer pins, it is
-    off until turned on again. A choice to turn it on that is stored but not
-    in force (that, or made in a build with a Swarm reader) has *Turn off*
-    below the row, greyed out or not, so it never comes back on by itself. It is greyed out, a tap saying what is
+    the importer key it was turned on for, or an explicit off): on by
+    default (owner's decision, 2026-11-22, amending "off by default" of
+    2026-11-21), the user may turn it off, and an explicit off stays off,
+    whatever key a later release pins. It names the importer key pinned in
+    the release, says what it does and what Swarm and archive peers learn
+    while it is on (docs/privacy-policy.md). A key is never typed in. A
+    choice to turn it on made for a key the release no longer pins does not
+    carry over: the key pinned now has no choice, so it is on by default
+    for it. A choice that cannot be read, or one found damaged and set
+    aside, is off, since it may have been an off. While it is not in force
+    but would come on by itself (the default, or a choice to turn it on
+    made in another build), *Turn off* below the row stores an explicit off,
+    greyed out or not. It is greyed out, a tap saying what is
     missing, while no importer key is pinned in the release (none is yet,
     owner's decision, 2026-11-21) and while the build's engine has no Swarm
     reader (no published Myotis build has it yet), both said when both hold.

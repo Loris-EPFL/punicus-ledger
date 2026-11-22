@@ -44,8 +44,8 @@ class FileAddressIndexSettingTest {
     }
 
     @Test
-    fun offUntilTurnedOnAndTheKeyAcceptedSurvivesARestart() = runTest {
-        assertEquals(AddressIndexChoice.Chosen(importer = null), setting().observe().first())
+    fun noChoiceUntilOneIsMadeAndBothAKeyAndAnOffSurviveARestart() = runTest {
+        assertEquals(AddressIndexChoice.NotChosen, setting().observe().first(), "no file: no choice, on by default")
 
         assertTrue(setting().trust(fixtureImporter))
         assertEquals(AddressIndexChoice.Chosen(fixtureImporter), setting().observe().first())

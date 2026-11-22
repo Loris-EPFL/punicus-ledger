@@ -16,6 +16,7 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenTransfers
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.repository.AddressIndexChoice
 import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryStart
@@ -522,7 +523,7 @@ class ActivityDetailViewModelTest {
     fun theDetailChecksNothingOnceTheSettingIsOff() = runTest {
         val row = indexRow(9_300_000, 3, alice.address, bob)
         addressIndex.verifiedRows[row.entry] = row
-        val off = MemoryAddressIndexSetting()
+        val off = MemoryAddressIndexSetting().apply { choice.value = AddressIndexChoice.Chosen(null) }
 
         val state = viewModel(indexKey(row), check = CheckAddressIndexEntry(addressIndex, off, FIXTURE_IMPORTER))
 

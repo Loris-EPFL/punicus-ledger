@@ -15,10 +15,11 @@ import kotlinx.serialization.json.Json
 
 /**
  * [AddressIndexSetting] kept in the file at [path] (a [VersionedJsonFile]): the importer key the user turned the
- * experimental addr1 history on for, or none. No file is off: the setting is opt-in (owner ruling, 2026-11-21, #334).
- * A damaged file, a key that is not an address among it, is set aside, which reads as off and says so until another
- * choice is made ([AddressIndexChoice.Chosen.setAside]), and one that cannot be read is
- * [AddressIndexChoice.Unreadable]. It stores a key the user accepted, never one typed in: what may be accepted is the
+ * experimental addr1 history on for, or none, an explicit off. No file is no choice ([AddressIndexChoice.NotChosen]),
+ * which is on by default (owner's decision, 2026-11-22). A damaged file, a key that is not an address among it, is set
+ * aside, which reads as off (it may have been an explicit off) and says so until another choice is made
+ * ([AddressIndexChoice.Chosen.setAside]), and one that cannot be read is [AddressIndexChoice.Unreadable], off too.
+ * It stores a key the user accepted, never one typed in: what may be accepted is the
  * use case's to say (`TurnAddressIndex`, the key pinned in the release).
  */
 class FileAddressIndexSetting(
@@ -45,8 +46,12 @@ class FileAddressIndexSetting(
     override fun observe(): Flow<AddressIndexChoice> = file.observe().map { read ->
         when (read) {
             // Said until a choice is made again: then nothing is missing any more.
-            is VersionedJsonFile.Read.Loaded ->
-                AddressIndexChoice.Chosen(read.value.importer, setAside = read.damagedSetAside && !read.value.chosen)
+            is VersionedJsonFile.Read.Loaded -> when {
+                read.value.chosen -> AddressIndexChoice.Chosen(read.value.importer)
+                // A damaged choice may have been an explicit off: off, and said, until another is made.
+                read.damagedSetAside -> AddressIndexChoice.Chosen(importer = null, setAside = true)
+                else -> AddressIndexChoice.NotChosen
+            }
             is VersionedJsonFile.Read.Unreadable -> AddressIndexChoice.Unreadable
         }
     }

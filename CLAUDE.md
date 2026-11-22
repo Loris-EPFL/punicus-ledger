@@ -287,7 +287,8 @@ rulings to the screens.
   ruling, 2026-10-20).
 - *Activity* may also take the addr1 address index, which the engine reads
   from Swarm: verified rows only, on the desktop, behind an experimental
-  setting that names the importer key pinned in the release. Its
+  setting that names the importer key pinned in the release, on by default
+  and the user's to turn off (owner's decision, 2026-11-22). Its
   completeness rests on that importer, and the list says so; a contradicted
   entry warns against the key (owner ruling, 2026-11-21, #334, and decisions
   on #335).

@@ -285,9 +285,11 @@ contradicted entries and what others learn.)
   asks for. That node does not go through Tor. The per-entry check fetches
   old blocks and their receipts from archive peers: they learn which past
   blocks matter to this device, older ones than the log index's walk
-  included. The privacy policy says so before the setting can be turned on.
-- **On the desktop, behind an experimental setting**, off by default, that
-  names the pinned key. In its first version the engine's Swarm reader is in
+  included. The privacy policy says so, and how to turn the setting off.
+- **On the desktop, behind an experimental setting**, on by default, that
+  names the pinned key. The user may turn it off, and a choice to keep it
+  off stays (owner's decision, 2026-11-22, amending "off by default" of
+  2026-11-21). With no key pinned, or no Swarm reader, it reads nothing. In its first version the engine's Swarm reader is in
   no published Myotis build (Myotis #908), the desktop's included: an engine
   without it refuses with the permanent `-32602`. There the setting is greyed
   out, a tap saying this build's engine has no Swarm reader (`ui.md`, the

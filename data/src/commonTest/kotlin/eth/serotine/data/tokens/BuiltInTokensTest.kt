@@ -88,5 +88,8 @@ class BuiltInTokensTest {
 
             assertEquals(UniswapDeployments.of(network)?.deployment?.weth9, weth.address, network.displayName)
         }
+        // On Gnosis Chain the wrapped currency is WXDAI; its WETH is bridged ether, a token like any other.
+        val wxdai = BuiltInTokens.of(Network.GNOSIS).single { it.symbol == "WXDAI" }
+        assertEquals(UniswapDeployments.of(Network.GNOSIS)?.deployment?.weth9, wxdai.address)
     }
 }

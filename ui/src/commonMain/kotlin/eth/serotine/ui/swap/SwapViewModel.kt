@@ -98,7 +98,9 @@ import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.figureText
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.noRouteText
+import eth.serotine.ui.components.finalityWaitText
 import eth.serotine.ui.components.noVenueText
+import eth.serotine.ui.components.wrappedSymbol
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.priceHintText
@@ -564,20 +566,12 @@ class SwapViewModel(
     }
 
     /**
-     * The same swap on Uniswap: after CoW could not quote it, or from CoW's review when by CoW's own
-     * estimate Uniswap gives more. The user's choice, never made for them.
+     * The same swap on Uniswap, after CoW could not quote it. The user's choice, never made for
+     * them.
      */
     fun swapOnUniswap() {
-        when (val current = step.value) {
-            is Step.Composing -> if (!current.uniswapInstead || current.quoting) return
-            is Step.Reviewing -> {
-                val order = current.quoted as? Quoted.Cow ?: return
-                if (!current.idle || !order.quote.belowNet) return
-                job?.cancel()
-                step.value = Step.Composing()
-            }
-            else -> return
-        }
+        val current = step.value as? Step.Composing ?: return
+        if (!current.uniswapInstead || current.quoting) return
         onVenueChange(SwapVenue.UNISWAP)
         review(venue = SwapVenue.UNISWAP)
     }
@@ -985,7 +979,6 @@ class SwapViewModel(
                 review?.let { keepOrLetGo(it) }
                 return
             }
-            CowOrderPlacing.FloorRose -> FLOOR_ROSE
             CowOrderPlacing.QuoteStale -> STALE_QUOTE
             is CowOrderPlacing.NotSigned -> if (placing.signing == Signing.TimedOut) PROMPT_TIMED_OUT else null
             else -> null
@@ -997,8 +990,6 @@ class SwapViewModel(
                 is CowOrderPlacing.NotSigned -> notSignedText(placing.signing, ORDER_FAILED)
                 is CowOrderPlacing.EarlierOrderLive -> earlierOrderText(latest.request)
                 CowOrderPlacing.OrdersUnreadable -> ORDERS_UNREADABLE
-                is CowOrderPlacing.FloorUnavailable -> "The Uniswap floor could not be quoted again just before " +
-                    "signing: nothing was signed. Try again."
                 CowOrderPlacing.NotRecorded -> "The order was signed, but this device could not record it, so it " +
                     "was not sent: nothing can fill it. Try again."
                 else -> ORDER_FAILED
@@ -1277,7 +1268,7 @@ class SwapViewModel(
         // What the compose step can know: the rest of what keeps CoW from a swap, its quote says.
         val cowUnavailable = when {
             !cowHere -> NOT_ON_THIS_DEVICE
-            sell?.asset == TransferAsset.Native -> SELLS_ETHER
+            sell?.asset == TransferAsset.Native -> sellsNativeText(network)
             else -> null
         }
         val chosen = inputs.venue ?: last
@@ -1298,6 +1289,9 @@ class SwapViewModel(
     /** The estimate [key] needs, or null when the compose step has no complete swap to estimate. */
     private fun estimateKeyOf(model: Model): EstimateKey? {
         if (model.swapper !is Swapper.From) return null
+        // A CoW order reads nothing of Uniswap (owner ruling, 2026-11-23): CoW's own estimate comes with the
+        // review, which also tells a wrap.
+        if (model.venue == SwapVenue.COW) return null
         val sell = model.sell ?: return null
         val buy = model.buy ?: return null
         val amount = typedAmount(model.inputs.amount, sell).units ?: return null
@@ -1326,7 +1320,6 @@ class SwapViewModel(
             sell = checkNotNull(model.sell),
             buy = checkNotNull(model.buy),
             tolerance = toleranceOf(model.inputs),
-            cow = model.venue == SwapVenue.COW,
             network = network,
         )
     }
@@ -1546,9 +1539,10 @@ class SwapViewModel(
             routeNote = if (route.size == 1) {
                 "One Uniswap v3 pool, as the pinned factory lists it."
             } else {
-                "Through WETH: two Uniswap v3 pools, as the pinned factory lists them."
+                "Through ${wrappedSymbol(network)}: two Uniswap v3 pools, as the pinned factory lists them."
             } + if (sell.asset == TransferAsset.Native || buy.asset == TransferAsset.Native) {
-                " ETH goes in or out as WETH, which the router wraps or unwraps in the same transaction."
+                " $native goes in or out as ${wrappedSymbol(network)}, which the router wraps or unwraps in the same " +
+                    "transaction."
             } else {
                 ""
             },
@@ -1621,7 +1615,7 @@ class SwapViewModel(
             receive = exactAmount(quote.amount, buy.decimals, buy.symbol),
             explanation = explanation,
             ranAt = "The ${verb.lowercase()}, run as a verified call from this account $ran, goes through.",
-            contract = SpenderItem(WETH9_NAME, Eip55.format(quote.weth.address)),
+            contract = SpenderItem(weth9Name(network), Eip55.format(quote.weth.address)),
             maxFee = ether(quote.maxFee),
             feeDetail = feeDetail(quote.level, quote.transaction, quote.feeBlock),
             balances = when (quote.direction) {
@@ -1675,15 +1669,12 @@ class SwapViewModel(
 
     /**
      * Screen 23 for a CoW order (docs/swaps.md, *The user's choice of venue*): CoW's estimate, not
-     * verified, beside the verified Uniswap net, which gives more, and the minimum signed.
+     * verified, and the minimum signed, that estimate less the tolerance (owner ruling, 2026-11-23).
      */
     private fun cowReview(step: Step.Reviewing, quote: CowSwapQuote): SwapUiState.CowReview {
         val sell = step.request.sell
         val buy = step.request.buy
         val bought = { units: UInt256 -> exactAmount(units, buy.decimals, buy.symbol) }
-        val at = quote.quoteBlock?.let { " at block ${grouped(it)}" }.orEmpty()
-        val feeNote = quote.uniswapFeeOut?.let { " less its expected network fee, about ${bought(it)}" }
-            ?: ": its network fee could not be had, so it is not taken off"
         return SwapUiState.CowReview(
             network = network.displayName,
             from = step.sender,
@@ -1693,20 +1684,10 @@ class SwapViewModel(
             estimate = "about " + bought(quote.estimate),
             estimateNote = "CoW's own estimate, net of the network fee it takes out of the trade: " +
                 exactAmount(quote.cowFee, sell.decimals, sell.symbol) + ". Not verified.",
-            uniswapNet = bought(quote.uniswapNet),
-            uniswapNote = "Uniswap's verified quote$at$feeNote.",
-            comparison = if (quote.belowNet) {
-                "By CoW's own estimate, Uniswap gives more. The order is signed at the floor below, and may well " +
-                    "not fill. Then nothing is swapped, but the ${sell.symbol} it sells stays held back until a " +
-                    "finalized block is past its validity, about 18 to 24 minutes from now."
-            } else {
-                "By CoW's estimate, CoW gives about ${bought(quote.estimate - quote.uniswapNet)} more than Uniswap. " +
-                    "Only the minimum below is signed."
-            },
-            uniswapGivesMore = quote.belowNet,
             minimum = "at least " + bought(quote.minimumOut),
-            minimumNote = "CoW's estimate less the ${quote.tolerance} tolerance, never below the Uniswap net less it " +
-                "(${bought(quote.floor)}). A fill that buys less is refused by the settlement contract.",
+            minimumNote = "CoW's estimate less the ${quote.tolerance} tolerance. The estimate is CoW's word, not " +
+                "checked on chain, so the minimum rests on it. A fill that buys less is refused by the settlement " +
+                "contract.",
             validUntil = "Until ${formatTime(quote.order.validTo)}: the verified head's time and " +
                 "${COW_ORDER_VALIDITY_SECONDS / 60} minutes. It fills by then or not at all.",
             settlement = SpenderItem(SETTLEMENT_NAME, Eip55.format(quote.deployment.settlement)),
@@ -1810,7 +1791,7 @@ class SwapViewModel(
         -> error("not a refusal said as text")
         SwapQuoting.NothingToSwap -> "There is nothing to swap: enter an amount above zero."
         SwapQuoting.NotASwap -> sameTokenText(request.sell.symbol, request.buy.symbol)
-        SwapQuoting.NoRoute -> noRouteText(request.sell.symbol, request.buy.symbol)
+        SwapQuoting.NoRoute -> noRouteText(request.sell.symbol, request.buy.symbol, network)
         is SwapQuoting.NoVenue -> noVenueText(quoting.contract, network)
         SwapQuoting.TooSmall -> TOO_SMALL
         SwapQuoting.InsufficientFunds -> if (request.sell.asset == TransferAsset.Native) {
@@ -1857,17 +1838,11 @@ class SwapViewModel(
         CowSwapQuoting.NotASwap -> sameTokenText(request.sell.symbol, request.buy.symbol)
         is CowSwapQuoting.NotOffered -> when (quoting.why) {
             CowNotOffered.NOT_ON_THIS_DEVICE -> NOT_ON_THIS_DEVICE
-            CowNotOffered.SELLS_ETHER -> SELLS_ETHER
-            CowNotOffered.NO_ROUTE -> noRouteText(request.sell.symbol, request.buy.symbol) +
-                " Without a verified Uniswap quote no floor stands for a CoW order, so CoW is not offered either."
-            CowNotOffered.FEE_ABOVE_PROCEEDS -> "Uniswap's network fee for this swap is more than it returns, so no " +
-                "verified floor stands for a CoW order: swap more."
+            CowNotOffered.SELLS_ETHER -> sellsNativeText(network)
             CowNotOffered.NOT_FOLLOWED_YET -> "This account's history is followed from a block that is not " +
-                "finalized yet, so a CoW order's end could not be proven. CoW is offered once it is, in about a " +
-                "quarter of an hour."
+                "finalized yet, so a CoW order's end could not be proven. CoW is offered once it is, in about " +
+                "${finalityWaitText(network)}."
         }
-        is CowSwapQuoting.NoFloorVenue -> noVenueText(quoting.contract, network) +
-            " Without it no verified floor stands for a CoW order."
         CowSwapQuoting.HistoryUnreadable ->
             "Where this account's history starts cannot be read, so a CoW order's end could not be proven. Try again."
         is CowSwapQuoting.NoVenue -> when (val contract = quoting.contract) {
@@ -2003,12 +1978,24 @@ class SwapViewModel(
             "Punicus could not finish this swap. Check the account's balances before you swap again."
         const val ORDER_FAILED = "Punicus could not finish this order. If it reached CoW, it is held back until it " +
             "fills or can no longer fill: check the account's balances before you swap again."
-        const val FLOOR_ROSE = "The verified Uniswap net rose above this order's floor since it was quoted: it was " +
-            "quoted again. Check it."
         const val ORDERS_UNREADABLE = "The record of this device's CoW orders cannot be read: one may still fill, " +
             "so no token is swapped until it can be read."
-        const val SELLS_ETHER = "CoW Protocol is offered for tokens sold: selling ETH would go through CoW's " +
-            "ETH-flow contract, which this wallet does not use yet. Sell WETH on CoW, or swap ETH on Uniswap."
+
+        /** Why CoW is not offered for [network]'s own currency sold, naming it and its wrapped token. */
+        fun sellsNativeText(network: Network): String {
+            val native = network.nativeSymbol
+            return "CoW Protocol is offered for tokens sold: selling $native would go through CoW's ETH-flow " +
+                "contract, which this wallet does not use yet. Sell ${wrappedSymbol(network)} on CoW, or swap " +
+                "$native on Uniswap."
+        }
+
+        /** The pinned WETH9 contract of [network], named for the currency it wraps. */
+        fun weth9Name(network: Network): String = if (network.nativeSymbol == "ETH") {
+            WETH9_NAME
+        } else {
+            "${wrappedSymbol(network)}, the wrapped ${network.nativeName} contract (a WETH9)"
+        }
+
         const val VAULT_RELAYER_NAME = "CoW's vault relayer"
         const val WETH9_NAME = "WETH9, the wrapped ether contract"
         const val SETTLEMENT_NAME = "CoW's settlement contract"

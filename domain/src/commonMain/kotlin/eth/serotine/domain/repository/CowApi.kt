@@ -10,10 +10,11 @@ import eth.serotine.domain.model.UInt256
 /**
  * The port for CoW Protocol's order API (`api.cow.fi`), an off-chain service, used only for a
  * swap the user sends to CoW (owner ruling, 2026-10-22; CLAUDE.md, *Data sources*). Nothing it
- * answers is chain data, and nothing it answers is trusted:
+ * answers is chain data:
  *
- * - its quote is an estimate, shown as not verified, and the signed minimum never falls below
- *   the verified Uniswap floor ([eth.serotine.domain.model.CowMinimum]);
+ * - its quote is an estimate, shown as not verified. It is the one thing CoW is trusted with: the
+ *   signed minimum is that estimate less the tolerance ([eth.serotine.domain.model.CowMinimum];
+ *   owner ruling, 2026-11-23);
  * - the order is built, hashed and signed here, and the API only carries it;
  * - an order's fill is read from the chain, never from here ([life] says only how the order
  *   stands in CoW's order book).

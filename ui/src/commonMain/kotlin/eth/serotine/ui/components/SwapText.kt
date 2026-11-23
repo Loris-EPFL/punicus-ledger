@@ -64,9 +64,25 @@ internal fun notASwapText(sell: String, buy: String): String =
     "$sell and $buy are one token on Uniswap: ETH for WETH and back is a wrap, not a swap, and a Safe cannot " +
         "propose a wrap here yet."
 
-/** No pool for [sell] and [buy]. */
-internal fun noRouteText(sell: String, buy: String): String =
-    "No Uniswap v3 pool takes $sell for $buy, directly or through WETH, for this amount."
+/** No pool for [sell] and [buy] on [network]. */
+internal fun noRouteText(sell: String, buy: String, network: Network): String =
+    "No Uniswap v3 pool takes $sell for $buy, directly or through ${wrappedSymbol(network)}, for this amount."
+
+/**
+ * The token that wraps [network]'s own currency, as its pinned WETH9 contract is named: WETH on
+ * Ethereum and Sepolia, WXDAI on Gnosis Chain.
+ */
+internal fun wrappedSymbol(network: Network): String = "W" + network.nativeSymbol
+
+/**
+ * About how long a block takes to be finalized on [network], in words: two to three epochs, 13 to
+ * 19 minutes where an epoch is 32 slots of 12 seconds, about 3 to 4 where it is 16 of 5 (Gnosis
+ * Chain).
+ */
+internal fun finalityWaitText(network: Network): String = when (network) {
+    Network.GNOSIS -> "a few minutes"
+    Network.ETHEREUM, Network.SEPOLIA -> "a quarter of an hour"
+}
 
 /** Uniswap is no venue on [network]: not pinned, or [contract]'s code is not its pin. */
 internal fun noVenueText(contract: Address?, network: Network): String = contract?.let {
@@ -104,18 +120,17 @@ private const val ESTIMATE_IMPACT_WARNING = 100
 /**
  * What the compose step shows of [estimating], a verified Uniswap quote of selling [sell] for
  * [buy] on [network] (docs/swaps.md, *The compose step's estimate*), null while it is being read; at
- * [tolerance] when one is typed. [cow] when the swap goes to CoW, whose own estimate comes only
- * with the review: the figures are then said to be Uniswap's.
+ * [tolerance] when one is typed. Only for a swap on Uniswap: a CoW order quotes no Uniswap
+ * figure, here or in its review (owner ruling, 2026-11-23).
  */
 internal fun swapEstimateItem(
     estimating: SwapEstimating?,
     sell: AssetOption,
     buy: AssetOption,
     tolerance: SlippageTolerance?,
-    cow: Boolean,
     network: Network,
 ): SwapEstimateItem {
-    val label = if (cow) "On Uniswap, you would receive" else "You receive"
+    val label = "You receive"
     val bought = { units: UInt256 -> approxUnits(units, buy.decimals, buy.symbol) }
     return when (estimating) {
         null -> SwapEstimateItem(label, note = "Asking Uniswap's quoter, through the light client.", checking = true)
@@ -133,22 +148,13 @@ internal fun swapEstimateItem(
                     "Price impact ${impactFigure(it)} %: this amount moves the pools' price. " +
                         "The review says more."
                 },
-                note = if (cow) {
-                    "Uniswap's verified quote$block, to compare. CoW is asked for its own estimate only when " +
-                        "you review the order."
-                } else {
-                    "Uniswap's verified quote$block. The review quotes the swap again, with its network fee, " +
-                        "before anything is signed."
-                },
-                simpleNote = if (cow) {
-                    "Uniswap's price, checked on chain. CoW's own estimate comes with the review."
-                } else {
-                    "Checked on chain. The review checks it again before you confirm."
-                },
+                note = "Uniswap's verified quote$block. The review quotes the swap again, with its network fee, " +
+                    "before anything is signed.",
+                simpleNote = "Checked on chain. The review checks it again before you confirm.",
             )
         }
         SwapEstimating.NotASwap -> SwapEstimateItem(label, note = notASwapText(sell.symbol, buy.symbol))
-        SwapEstimating.NoRoute -> SwapEstimateItem(label, note = noRouteText(sell.symbol, buy.symbol))
+        SwapEstimating.NoRoute -> SwapEstimateItem(label, note = noRouteText(sell.symbol, buy.symbol, network))
         is SwapEstimating.NoVenue -> SwapEstimateItem(label, note = noVenueText(estimating.contract, network))
         is SwapEstimating.Unavailable -> SwapEstimateItem(label, note = estimateUnavailableText(estimating.reason))
     }

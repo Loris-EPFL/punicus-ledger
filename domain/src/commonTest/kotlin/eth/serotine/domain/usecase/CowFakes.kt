@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.map
 internal val COW_SEPOLIA = CowDeployment(
     settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41"),
     vaultRelayer = Address.of("0xc92e8bdf79f0507f65a392b0ab4667716bfe0110"),
+    wrappedNative = Address.of("0x" + "ff".repeat(20)),
 )
 
 /**
@@ -68,7 +69,7 @@ internal class MemoryCowOrders(vararg initial: CowOrderRecord) : CowOrders {
  * [placed]); [onPlace] sees the record of orders as it stands when an order is posted.
  */
 internal class FakeCowApi : CowApi {
-    var quote: CowQuoteReading = CowQuoteReading.Quoted(UInt256.ONE, UInt256.ZERO)
+    var quote: CowQuoteReading = CowQuoteReading.Quoted(UInt256.of("50000000000000000"), UInt256.ZERO)
     var placement: CowPlacement? = null
     val quotes = mutableListOf<List<Any>>()
     val placed = mutableListOf<Pair<CowOrder, CowOrderUid>>()

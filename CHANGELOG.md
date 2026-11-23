@@ -12,6 +12,9 @@ and issues of this repository.
 
 ### Added
 
+- Swaps on Gnosis Chain: Uniswap v3's Gnosis deployment, with WXDAI as the
+  wrapped xDAI, and CoW Protocol. Uniswap holds little there, so most pairs
+  go to CoW. CoW Protocol is offered on Ethereum too.
 - Address poisoning protection on Send. A recipient that starts and ends
   like an address you sent to from this device (or one of your accounts) but
   differs in the middle blocks the send, with both addresses shown and the
@@ -36,6 +39,13 @@ and issues of this repository.
   waits behind such an entry.
 - On a wide window (840 dp and wider: a desktop window, a tablet, an unfolded
   phone) the Accounts tab shows the list and the account chosen side by side.
+
+### Changed
+
+- A CoW order no longer depends on Uniswap: its minimum is CoW's own
+  estimate less your tolerance, and every pair CoW quotes is offered. The
+  review says the minimum rests on CoW's estimate, which is not checked on
+  chain, and shows no Uniswap figure beside it.
 
 ### Fixed
 

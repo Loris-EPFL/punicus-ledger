@@ -11,8 +11,13 @@ import kotlin.jvm.JvmInline
  * settles it, and its [vaultRelayer], `GPv2VaultRelayer`, the spender an order's sold token is
  * approved to. :data pins them per network with their code hashes, and the domain uses them only
  * once their code is proven (`CowChain.venue`).
+ *
+ * [wrappedNative] is the token that wraps the network's own currency (WETH, WXDAI), as CoW names
+ * it for the network. It is no contract an order calls: it only tells that selling it for the
+ * network's currency is a wrap, never a CoW order, without reading Uniswap's pins (owner ruling,
+ * 2026-11-23).
  */
-data class CowDeployment(val settlement: Address, val vaultRelayer: Address)
+data class CowDeployment(val settlement: Address, val vaultRelayer: Address, val wrappedNative: Address)
 
 /**
  * A CoW Protocol sell order as Punicus signs one (docs/swaps.md, *An order, step by step*):

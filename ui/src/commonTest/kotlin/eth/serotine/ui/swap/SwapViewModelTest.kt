@@ -269,7 +269,6 @@ class SwapViewModelTest {
             QuoteCowSwap(
                 cowChain,
                 cowApi,
-                FindUniswapRoute(uniswap, inputs),
                 inputs,
                 tokenBalances,
                 sent,
@@ -280,7 +279,7 @@ class SwapViewModelTest {
                 Outbox.None,
                 now,
             ),
-            PlaceCowOrder(FindUniswapRoute(uniswap, inputs), signer, cowOrders, cowApi, light),
+            PlaceCowOrder(signer, cowOrders, cowApi, light),
             KeepWaitingSwap(waitingSwaps),
             DropWaitingSwap(waitingSwaps),
             FindWaitingSwap(waitingSwaps),
@@ -507,7 +506,7 @@ class SwapViewModelTest {
     }
 
     @Test
-    fun onCowTheEstimateSaysItIsUniswaps() = runTest {
+    fun onCowNothingOfUniswapIsReadAndCowIsNotAskedBeforeTheReview() = runTest {
         val viewModel = viewModel(sell = usdc.address)
         viewModel.onBuyChange(null)
         viewModel.onAmountChange("40")
@@ -515,10 +514,8 @@ class SwapViewModelTest {
         advanceTimeBy(1.seconds)
         runCurrent()
 
-        val estimate = assertNotNull(viewModel.compose.estimate)
-        assertEquals("On Uniswap, you would receive", estimate.label)
-        assertEquals("≈ 0.016 ETH", estimate.receive)
-        assertTrue("CoW is asked for its own estimate only when you review" in estimate.note, estimate.note)
+        assertNull(viewModel.compose.estimate)
+        assertEquals(0, uniswap.quotes, "no Uniswap quote for a CoW order (owner ruling, 2026-11-23)")
         assertTrue(cowApi.quotes.isEmpty(), "CoW is not asked before the review")
     }
 
@@ -1225,6 +1222,7 @@ class SwapViewModelTest {
     private val cow = CowDeployment(
         settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41"),
         vaultRelayer = Address.of("0xc92e8bdf79f0507f65a392b0ab4667716bfe0110"),
+        wrappedNative = deployment.weth9,
     )
 
     /**
@@ -1273,7 +1271,7 @@ class SwapViewModelTest {
     }
 
     @Test
-    fun aCowOrderIsReviewedBesideTheVerifiedUniswapNetAndPlaced() = runTest {
+    fun aCowOrderIsReviewedAndPlaced() = runTest {
         cowReady()
         waitingSwaps.swaps.value = listOf(waiting("0x" + "a1".repeat(32)).copy(venue = SwapVenue.COW))
         val viewModel = reviewed()
@@ -1282,9 +1280,8 @@ class SwapViewModelTest {
         assertEquals("40 USDC", review.sold)
         assertEquals("about 0.0161 ETH", review.estimate)
         assertTrue(review.estimateNote.endsWith("Not verified."), review.estimateNote)
-        assertTrue(review.uniswapNote.startsWith("Uniswap's verified quote"), review.uniswapNote)
-        assertFalse(review.uniswapGivesMore)
-        assertEquals("at least 0.0160195 ETH", review.minimum, "CoW's estimate less the tolerance, above the floor")
+        assertEquals("at least 0.0160195 ETH", review.minimum, "CoW's estimate less the tolerance")
+        assertTrue("rests on it" in review.minimumNote, review.minimumNote)
         assertEquals(SpenderItem("CoW's settlement contract", Eip55.format(cow.settlement)), review.settlement)
         assertTrue(review.disclosure.startsWith("Sent to CoW's servers"))
         assertEquals(listOf(usdc.address), cowApi.quotes, "CoW asked once, for the review")
@@ -1303,14 +1300,12 @@ class SwapViewModelTest {
     }
 
     @Test
-    fun cowsEstimateBelowTheUniswapNetIsSaidAndTheOrderSignsTheFloor() = runTest {
+    fun cowsMinimumIsItsEstimateLessTheToleranceWhateverUniswapQuotes() = runTest {
+        // An estimate well below what Uniswap would give: no Uniswap figure enters a CoW order.
         cowReady(CowQuoteReading.Quoted(UInt256.of("12000000000000000"), UInt256.ONE))
         val review = assertIs<SwapUiState.CowReview>(reviewed().uiState.value)
 
-        assertTrue(review.uniswapGivesMore)
-        assertTrue(review.comparison.startsWith("By CoW's own estimate, Uniswap gives more."), review.comparison)
-        val floor = review.minimum.removePrefix("at least ")
-        assertTrue("never below the Uniswap net less it ($floor)" in review.minimumNote, review.minimumNote)
+        assertEquals("at least 0.01194 ETH", review.minimum)
     }
 
     @Test
@@ -1443,19 +1438,6 @@ class SwapViewModelTest {
         unread.sign()
         runCurrent()
         assertEquals("CoW's answer could not be read", assertIs<SwapUiState.OrderPlaced>(unread.uiState.value).title)
-    }
-
-    @Test
-    fun whereUniswapGivesMoreTheSameSwapOnUniswapIsOneTapFromTheReview() = runTest {
-        cowReady(CowQuoteReading.Quoted(UInt256.of("12000000000000000"), UInt256.ONE))
-        val viewModel = reviewed()
-        assertTrue(assertIs<SwapUiState.CowReview>(viewModel.uiState.value).uniswapGivesMore)
-
-        viewModel.swapOnUniswap()
-        runCurrent()
-
-        assertIs<SwapUiState.SwapReview>(viewModel.uiState.value)
-        assertEquals(VenueChoice.Chosen(SwapVenue.UNISWAP), swapVenue.choice.value)
     }
 
     @Test

@@ -140,16 +140,8 @@ private val composed = empty.with {
     )
 }.copy(venue = VenueItem(SwapVenue.UNISWAP))
 
-private val onCow = composed.with {
-    it.copy(
-        estimate = estimate.copy(
-            label = "On Uniswap, you would receive",
-            note = "Uniswap's verified quote at block 8,412,307, to compare. CoW is asked for its own estimate " +
-                "only when you review the order.",
-            simpleNote = "Uniswap's price, checked on chain. CoW's own estimate comes with the review.",
-        ),
-    )
-}.copy(venue = VenueItem(SwapVenue.COW))
+// On CoW nothing of Uniswap is read: CoW's own estimate comes with the review.
+private val onCow = composed.with { it.copy(estimate = null) }.copy(venue = VenueItem(SwapVenue.COW))
 
 /** This form step with [edit] applied to its form and the fee [fee]. */
 private fun SwapUiState.Compose.with(fee: FeeLevel = this.fee, edit: (SwapForm) -> SwapForm = { it }) =
@@ -218,13 +210,9 @@ private val cowReview = SwapUiState.CowReview(
     buy = ether,
     estimate = "about 0.015931 ETH",
     estimateNote = "CoW's own estimate, net of the network fee it takes out of the trade: 0.41 USDC. Not verified.",
-    uniswapNet = "0.015688 ETH",
-    uniswapNote = "Uniswap's verified quote at block 8,412,307 less its expected network fee, about 0.000185 ETH.",
-    comparison = "By CoW's estimate, CoW gives about 0.000243 ETH more than Uniswap. Only the minimum below is signed.",
-    uniswapGivesMore = false,
     minimum = "at least 0.015851 ETH",
-    minimumNote = "CoW's estimate less the 0.5 % tolerance, never below the Uniswap net less it (0.01561 ETH). A " +
-        "fill that buys less is refused by the settlement contract.",
+    minimumNote = "CoW's estimate less the 0.5 % tolerance. The estimate is CoW's word, not checked on chain, so the " +
+        "minimum rests on it. A fill that buys less is refused by the settlement contract.",
     validUntil = "Until 19 Oct 2026, 14:27: the verified head's time and 5 minutes. It fills by then or not at all.",
     settlement = SpenderItem("CoW's settlement contract", SETTLEMENT),
     balances = listOf(
@@ -517,19 +505,6 @@ private fun SwapCowReviewDarkPreview() = SwapPreview(cowReview, darkTheme = true
 
 @Preview
 @Composable
-private fun SwapCowReviewUniswapGivesMorePreview() = SwapPreview(
-    cowReview.copy(
-        estimate = "about 0.015402 ETH",
-        comparison = "By CoW's own estimate, Uniswap gives more. The order is signed at the floor below, and may " +
-            "well not fill. Then nothing is swapped, but the USDC it sells stays held back until a finalized block " +
-            "is past its validity, about 18 to 24 minutes from now.",
-        uniswapGivesMore = true,
-        minimum = "at least 0.01561 ETH",
-    ),
-)
-
-@Preview
-@Composable
 private fun SwapOrderPlacedPreview() = SwapPreview(
     SwapUiState.OrderPlaced(
         "Sepolia",
@@ -633,7 +608,6 @@ internal val swapScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("review-not-sent") { SwapReviewNotSentPreview() },
     ScreenPreview("cow-review") { SwapCowReviewPreview() },
     ScreenPreview("cow-review-dark") { SwapCowReviewDarkPreview() },
-    ScreenPreview("cow-review-uniswap-gives-more") { SwapCowReviewUniswapGivesMorePreview() },
     ScreenPreview("order-placed") { SwapOrderPlacedPreview() },
     ScreenPreview("loading") { SwapLoadingPreview() },
     ScreenPreview("watch-only") { SwapWatchOnlyPreview() },

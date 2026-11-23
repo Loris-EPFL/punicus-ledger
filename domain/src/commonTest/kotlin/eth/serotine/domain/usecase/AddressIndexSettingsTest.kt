@@ -204,15 +204,15 @@ class AddressIndexSettingsTest {
         val reader = RecordingReaderSettings()
         val follow = backgroundScope.launch { FollowAddressIndexSetting(status(fixtureImporter), reader)() }
         testScheduler.runCurrent()
-        assertEquals(listOf<Address?>(null), reader.applied, "off: no importer")
-
-        turn(fixtureImporter)(on = true)
-        testScheduler.runCurrent()
-        assertEquals(listOf(null, fixtureImporter), reader.applied)
+        assertEquals(listOf<Address?>(fixtureImporter), reader.applied, "on by default: the pinned key")
 
         turn(fixtureImporter)(on = false)
         testScheduler.runCurrent()
-        assertEquals(listOf(null, fixtureImporter, null), reader.applied)
+        assertEquals(listOf(fixtureImporter, null), reader.applied, "an explicit off: no importer")
+
+        turn(fixtureImporter)(on = true)
+        testScheduler.runCurrent()
+        assertEquals(listOf(fixtureImporter, null, fixtureImporter), reader.applied)
         follow.cancel()
     }
 

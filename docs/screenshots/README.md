@@ -4,7 +4,7 @@ Every screen of Punicus in every state its previews draw, rendered headless from
 
 [index.html](index.html) shows them all on one page from a checkout.
 
-Clone without the images: `git clone --filter=blob:none https://github.com/biafra23/punicus.git` fetches a file only when a command needs it, so the history of this folder costs nothing until it is looked at. `git sparse-checkout set --no-cone '/*' '!/docs/screenshots/'` leaves it out of the working tree as well.
+Clone without the images: `git clone --filter=blob:none https://github.com/VesperBats/punicus.git` fetches a file only when a command needs it, so the history of this folder costs nothing until it is looked at. `git sparse-checkout set --no-cone '/*' '!/docs/screenshots/'` leaves it out of the working tree as well.
 
 If the folder grows too much, there are two levers, both the owner's. Deleting the folder stops the growth and keeps every past image in the history. Rewriting the history with `git filter-repo --path docs/screenshots --invert-paths` drops them for good, but changes the SHA of every commit since the first screenshot: tags, links to commits and every existing clone must follow. CI fails a pull request once the folder, or one image, passes its size budget (`scripts/screenshots.py`).
 
@@ -62,7 +62,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Tokens (simple mode)](#simple-tokens) | `simple-tokens/` | 2 |
 | [Transfer status (simple mode)](#simple-transfer-status) | `simple-transfer-status/` | 13 |
 | [Watch address (simple mode)](#simple-watch) | `simple-watch/` | 9 |
-| [Swap](#swap) | `swap/` | 38 |
+| [Swap](#swap) | `swap/` | 37 |
 | [Tokens](#tokens) | `tokens/` | 7 |
 | [Transfer status](#transfer-status) | `transfer-status/` | 37 |
 | [Update required](#update-required) | `update-required/` | 2 |
@@ -1085,7 +1085,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="swap"></a>
 ## Swap
 
-`swap/`, 38 states: `compose-empty`, `compose-empty-dark`, `composed`, `compose-estimate-checking`, `compose-estimate-unavailable`, `compose-high-impact`, `compose-quoting`, `compose-input-errors`, `compose-no-route`, `compose-cow-orders-unreadable`, `compose-on-cow`, `compose-cow-did-not-answer`, `compose-earlier-order-live`, `compose-approval-sent`, `compose-earlier-maybe-sent`, `compose-token-not-found`, `approval`, `approval-reset-first`, `review`, `review-dark`, `review-through-weth-with-biometrics`, `review-wrong-password`, `review-signing`, `review-refreshing`, `review-not-sent`, `cow-review`, `cow-review-dark`, `cow-review-uniswap-gives-more`, `order-placed`, `loading`, `watch-only`, `sent`, `approval-pending`, `review-step-two`, `approval-earlier-failed`, `wrap-review`, `wrap-review-dark`, `unwrap-review`
+`swap/`, 37 states: `compose-empty`, `compose-empty-dark`, `composed`, `compose-estimate-checking`, `compose-estimate-unavailable`, `compose-high-impact`, `compose-quoting`, `compose-input-errors`, `compose-no-route`, `compose-cow-orders-unreadable`, `compose-on-cow`, `compose-cow-did-not-answer`, `compose-earlier-order-live`, `compose-approval-sent`, `compose-earlier-maybe-sent`, `compose-token-not-found`, `approval`, `approval-reset-first`, `review`, `review-dark`, `review-through-weth-with-biometrics`, `review-wrong-password`, `review-signing`, `review-refreshing`, `review-not-sent`, `cow-review`, `cow-review-dark`, `order-placed`, `loading`, `watch-only`, `sent`, `approval-pending`, `review-step-two`, `approval-earlier-failed`, `wrap-review`, `wrap-review-dark`, `unwrap-review`
 
 <a href="swap/compose-empty.png"><img src="swap/compose-empty.png" width="206" alt="compose-empty"></a>
 <a href="swap/compose-empty-dark.png"><img src="swap/compose-empty-dark.png" width="206" alt="compose-empty-dark"></a>
@@ -1114,7 +1114,6 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="swap/review-not-sent.png"><img src="swap/review-not-sent.png" width="206" alt="review-not-sent"></a>
 <a href="swap/cow-review.png"><img src="swap/cow-review.png" width="206" alt="cow-review"></a>
 <a href="swap/cow-review-dark.png"><img src="swap/cow-review-dark.png" width="206" alt="cow-review-dark"></a>
-<a href="swap/cow-review-uniswap-gives-more.png"><img src="swap/cow-review-uniswap-gives-more.png" width="206" alt="cow-review-uniswap-gives-more"></a>
 <a href="swap/order-placed.png"><img src="swap/order-placed.png" width="206" alt="order-placed"></a>
 <a href="swap/loading.png"><img src="swap/loading.png" width="206" alt="loading"></a>
 <a href="swap/watch-only.png"><img src="swap/watch-only.png" width="206" alt="watch-only"></a>

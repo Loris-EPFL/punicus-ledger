@@ -12,6 +12,12 @@ and issues of this repository.
 
 ### Added
 
+- Buy an exact amount: type the amount to buy, on Uniswap or CoW, and the
+  swap buys exactly that for at most its estimate plus your tolerance. The
+  first screen says what it would cost, and when your balance cannot cover
+  the most it may take.
+- With CoW chosen, the first screen shows CoW's estimate and the rate, marked
+  as not checked on chain. CoW then learns the amounts you compose.
 - Swaps on Gnosis Chain: Uniswap v3's Gnosis deployment, with WXDAI as the
   wrapped xDAI, and CoW Protocol. Uniswap holds little there, so most pairs
   go to CoW. CoW Protocol is offered on Ethereum too.

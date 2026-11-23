@@ -11,6 +11,7 @@ import eth.serotine.domain.model.GPv2Settlement
 import eth.serotine.domain.model.GPv2Signing
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -58,13 +59,17 @@ const val QUOTE_MAX_AGE_SECONDS: Long = 60
 
 /**
  * A CoW swap from an account this wallet holds, quoted for review (docs/swaps.md, *CoW
- * Protocol*): [order], selling exactly [amountIn] of [sell] for at least [minimumOut] of [buy],
- * paid to [from], on [deployment]; [digest] is what [from] signs and [uid] the order's UID.
+ * Protocol*): [order], of [kind], paid to [from], on [deployment]; [digest] is what [from] signs
+ * and [uid] the order's UID.
  *
- * - [estimate] is CoW's own estimate of what the order buys, net of [cowFee] (of the sold token)
- *   that CoW takes out of the trade: not verified. The order's minimum is that estimate less
- *   [tolerance] ([CowMinimum]): it rests on CoW's word, and no other venue is read for it (owner
- *   ruling, 2026-11-23).
+ * - A sell ([SwapKind.SELL]) sells exactly [amountIn] of [sell] for at least [minimumOut] of
+ *   [buy]; [estimate] is CoW's own estimate of what it buys, net of [cowFee] (of the sold token)
+ *   that CoW takes out of the trade, and the minimum is that estimate less [tolerance].
+ * - A buy ([SwapKind.BUY]; docs/swaps.md, *Buying an exact amount*) buys exactly [minimumOut] of
+ *   [buy] for at most [amountIn] of [sell]; [estimate] is CoW's own estimate of what it sells,
+ *   [cowFee] included, and the maximum is that estimate plus [tolerance].
+ * - Either way the estimate is not verified, and the amount signed rests on CoW's word: no other
+ *   venue is read for it (owner ruling, 2026-11-23; [CowMinimum]).
  * - The sold token's verified balance [sellBefore] (at [tokenBalanceBlock]), what this wallet's
  *   own transactions not mined yet still move of it ([pendingSell]) and what is left after the
  *   order ([sellAfter]).
@@ -83,6 +88,7 @@ data class CowSwapQuote internal constructor(
     val tolerance: SlippageTolerance,
     val deployment: CowDeployment,
     val order: CowOrder,
+    val kind: SwapKind,
     val digest: Digest,
     val uid: CowOrderUid,
     val estimate: UInt256,
@@ -94,7 +100,7 @@ data class CowSwapQuote internal constructor(
     val headTimestamp: Long,
     val rangeStart: Long,
 ) {
-    /** The least the order buys, as signed. */
+    /** The least the order buys, as signed: of a buy, exactly what it buys. */
     val minimumOut: UInt256
         get() = order.buyAmount
 }
@@ -103,16 +109,17 @@ data class CowSwapQuote internal constructor(
  * Quotes a CoW swap from an account this wallet holds (docs/swaps.md, *CoW Protocol*), the venue
  * the user chose (*The user's choice of venue*). Everything that can refuse it on verified state
  * is read first, side by side, and only then is CoW's API asked, so that a swap refused here never
- * reaches CoW (CLAUDE.md, *Data sources*: CoW learns only the swaps sent to it). The order is built
+ * reaches CoW (CLAUDE.md, *Data sources*). The order is built
  * here, never taken from CoW, and its domain separator is checked against the settlement
  * contract's own before it is offered. Its minimum is CoW's estimate less the tolerance: no other
  * venue is quoted for it (owner ruling, 2026-11-23).
  *
  * CoW is not offered ([CowSwapQuoting.NotOffered]) for the network's own currency sold, or an
  * account whose history the log index follows only from after the block finalized now (its
- * order's end could not be proven). One CoW order per sold token is live at a time: two would draw on the one
- * allowance of the vault relayer. What this wallet's own transactions not mined yet move of the
- * token is not the order's to sell. On [network] only. [clock] is in unix seconds.
+ * order's end could not be proven). One CoW order per sold token is live at a time: two would draw
+ * on the one allowance of the vault relayer. A buy's maximum is known only once CoW has quoted it:
+ * the balance and the allowance it needs are then checked against that maximum. What this wallet's
+ * own transactions not mined yet move of the token is not the order's to sell. On [network] only. [clock] is in unix seconds.
  */
 class QuoteCowSwap(
     private val cowChain: CowChain,
@@ -130,15 +137,19 @@ class QuoteCowSwap(
 ) {
     private val quoter = CallQuoter(inputs, sentTransfers, network, clock, outbox)
 
-    /** Exactly [amountIn] of [sell] for [buy] from [from], at [tolerance]. */
+    /**
+     * [sell] for [buy] from [from], at [tolerance]: exactly [amount] of [sell] sold ([SwapKind.SELL]),
+     * or exactly [amount] of [buy] bought ([SwapKind.BUY]).
+     */
     suspend operator fun invoke(
         from: Address,
         sell: TransferAsset,
         buy: TransferAsset,
-        amountIn: UInt256,
+        amount: UInt256,
         tolerance: SlippageTolerance,
+        kind: SwapKind = SwapKind.SELL,
     ): CowSwapQuoting = cancellingReads {
-        if (amountIn.isZero) return@cancellingReads CowSwapQuoting.NothingToSwap
+        if (amount.isZero) return@cancellingReads CowSwapQuoting.NothingToSwap
         if (!lightClient.datesFinalizedBlocks) {
             return@cancellingReads CowSwapQuoting.NotOffered(CowNotOffered.NOT_ON_THIS_DEVICE)
         }
@@ -207,7 +218,8 @@ class QuoteCowSwap(
             ?.let { return@cancellingReads CowSwapQuoting.ApprovalPending(it.hash) }
         val pendingSell = earlier.mapNotNull { it.tokenAmount(soldToken.address) }.sumOrNull()
             ?: return@cancellingReads CowSwapQuoting.InsufficientToken
-        val sellAvailable = sellBefore.minusOrNull(pendingSell)?.takeIf { it >= amountIn }
+        val sellAvailable = sellBefore.minusOrNull(pendingSell)
+            ?.takeIf { kind == SwapKind.BUY || it >= amount }
             ?: return@cancellingReads CowSwapQuoting.InsufficientToken
 
         val allowance = when (val read = readAllowance(network, inputs, from, soldToken, deployment.vaultRelayer)) {
@@ -217,8 +229,8 @@ class QuoteCowSwap(
             is AllowanceRead.Unavailable ->
                 return@cancellingReads CowSwapQuoting.Unavailable(read.reason, QuoteFigure.ALLOWANCE)
         }
-        if (allowance < amountIn) {
-            return@cancellingReads CowSwapQuoting.NeedsApproval(soldToken, deployment.vaultRelayer, allowance)
+        if (kind == SwapKind.SELL && allowance < amount) {
+            return@cancellingReads CowSwapQuoting.NeedsApproval(soldToken, deployment.vaultRelayer, allowance, amount)
         }
         when (val check = domainSeparatorHolds(deployment)) {
             DomainCheck.Holds -> Unit
@@ -227,21 +239,45 @@ class QuoteCowSwap(
         }
 
         // Only now does anything reach CoW.
-        val quoted = cowApi.quote(network, soldToken.address, buyToken, amountIn, from)
-        val (estimate, cowFee) = when (quoted) {
-            is CowQuoteReading.Quoted -> quoted.buyAmount to quoted.feeAmount
-            is CowQuoteReading.Refused -> return@cancellingReads CowSwapQuoting.CowRefused(quoted.why, quoted.errorType)
-            is CowQuoteReading.Unavailable -> return@cancellingReads CowSwapQuoting.CowNoAnswer(quoted.why)
+        val quoted = when (val reading = cowApi.quote(network, soldToken.address, buyToken, amount, from, kind)) {
+            is CowQuoteReading.Quoted -> reading
+            is CowQuoteReading.Refused ->
+                return@cancellingReads CowSwapQuoting.CowRefused(reading.why, reading.errorType)
+            is CowQuoteReading.Unavailable -> return@cancellingReads CowSwapQuoting.CowNoAnswer(reading.why)
         }
-        val buyAmount = CowMinimum.buyAmount(estimate, tolerance)
-        if (buyAmount.isZero) return@cancellingReads CowSwapQuoting.TooSmall
+        val (estimate, quotedSell, buyAmount) = when (kind) {
+            SwapKind.SELL -> Triple(quoted.buyAmount, amount, CowMinimum.buyAmount(quoted.buyAmount, tolerance))
+            SwapKind.BUY -> Triple(
+                quoted.sellAmount,
+                CowMinimum.sellMaximum(quoted.sellAmount, tolerance)
+                    ?: return@cancellingReads CowSwapQuoting.InsufficientToken,
+                amount,
+            )
+        }
+        if (buyAmount.isZero || quotedSell.isZero) return@cancellingReads CowSwapQuoting.TooSmall
+        // A buy's maximum, held to what the relayer may take already when CoW's estimate is within it.
+        val sellAmount = if (kind == SwapKind.BUY) withinAllowance(quotedSell, estimate, allowance) else quotedSell
+        if (kind == SwapKind.BUY) {
+            if (sellAmount > sellAvailable) {
+                return@cancellingReads CowSwapQuoting.MaximumAboveBalance(sellAmount, sellAvailable)
+            }
+            if (allowance < sellAmount) {
+                return@cancellingReads CowSwapQuoting.NeedsApproval(
+                    soldToken,
+                    deployment.vaultRelayer,
+                    allowance,
+                    sellAmount,
+                )
+            }
+        }
         val order = CowOrder(
             sellToken = soldToken.address,
             buyToken = buyToken,
             receiver = from,
-            sellAmount = amountIn,
+            sellAmount = sellAmount,
             buyAmount = buyAmount,
             validTo = validTo,
+            kind = kind,
         )
         val digest = order.digest(network.chainId, deployment.settlement)
         CowSwapQuoting.Quoted(
@@ -250,17 +286,18 @@ class QuoteCowSwap(
                 network = network,
                 sell = sell,
                 buy = buy,
-                amountIn = amountIn,
+                amountIn = sellAmount,
                 tolerance = tolerance,
                 deployment = deployment,
                 order = order,
+                kind = kind,
                 digest = digest,
                 uid = CowOrderUid.of(digest, from, validTo),
                 estimate = estimate,
-                cowFee = cowFee,
+                cowFee = quoted.feeAmount,
                 sellBefore = sellBefore,
                 pendingSell = pendingSell,
-                sellAfter = sellAvailable - amountIn,
+                sellAfter = sellAvailable - sellAmount,
                 tokenBalanceBlock = (reading as TokenBalanceReading.Verified).blockNumber,
                 headTimestamp = headTimestamp,
                 rangeStart = finalized.number,
@@ -362,11 +399,16 @@ sealed interface CowSwapQuoting {
     data object OrdersUnreadable : CowSwapQuoting
 
     /**
-     * The vault relayer may take only [allowance] of [token], less than the amount: an approval of
-     * [spender] (the vault relayer) for the amount comes first, its own transaction
-     * ([QuoteTokenApproval]).
+     * The vault relayer may take only [allowance] of [token], less than the order's [amount] (of a
+     * buy, its maximum): an approval of [spender] (the vault relayer) for [amount] comes first, its
+     * own transaction ([QuoteTokenApproval]).
      */
-    data class NeedsApproval(val token: Token, val spender: Address, val allowance: UInt256) : CowSwapQuoting
+    data class NeedsApproval(
+        val token: Token,
+        val spender: Address,
+        val allowance: UInt256,
+        val amount: UInt256,
+    ) : CowSwapQuoting
 
     /** The approval this order needs, [hash], is sent and not mined yet: the order waits for its receipt. */
     data class ApprovalPending(val hash: String) : CowSwapQuoting
@@ -376,6 +418,13 @@ sealed interface CowSwapQuoting {
 
     /** The sender holds less of the token than the amount, with what its own sends still move. */
     data object InsufficientToken : CowSwapQuoting
+
+    /**
+     * A buy's [maximum], CoW's estimate plus the tolerance, is more than the [available] balance of
+     * the token sold, with what the account's own sends still move (docs/swaps.md, *Buying an exact
+     * amount*): CoW was asked, nothing was signed.
+     */
+    data class MaximumAboveBalance(val maximum: UInt256, val available: UInt256) : CowSwapQuoting
 
     /** The token's address answers as no token. */
     data object NotAToken : CowSwapQuoting
@@ -501,12 +550,20 @@ internal suspend fun List<CowOrderRecord>.holding(
         .sumOrNull()
 }
 
-/** Whether the settlement's `filledAmount` of [order] at the head reads its sell amount or more. */
+/**
+ * Whether the settlement's `filledAmount` of [order] at the head reads all of it: GPv2 counts a
+ * sell's fill in the token sold and a buy's in the token bought, so its sell amount or its buy
+ * amount, or more.
+ */
 private suspend fun CowChain.doneAtHead(order: CowOrderRecord): Boolean {
     val run = call(order.network, order.settlement, GPv2Settlement.filledAmount(order.uid)) as? Simulation.Succeeded
         ?: return false
     val filled = GPv2Settlement.filledAmountOf(run.returnHex) ?: return false
-    return filled >= order.order.sellAmount
+    val whole = when (order.order.kind) {
+        SwapKind.SELL -> order.order.sellAmount
+        SwapKind.BUY -> order.order.buyAmount
+    }
+    return filled >= whole
 }
 
 /** Whether this transaction is an approval of [spender] for [token]. */

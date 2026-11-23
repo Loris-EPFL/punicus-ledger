@@ -273,13 +273,18 @@ and #144.)
 - Uniswap's contracts are chain data like any other: pinned, read with
   verified calls, and sent to like any transaction.
 
-## CoW Protocol's order API is an off-chain service, used only for a swap the user sends to CoW
+## CoW Protocol's order API is an off-chain service, used only while CoW is chosen for a swap
 
-(Owner ruling, 2026-10-22.)
+(Owner ruling, 2026-10-22; amended 2026-11-23 for the compose step's estimate.)
 
-- CoW learns the swaps the user sends to it and no others: the account's
-  address, the pair, the amounts, the device's IP address and, for a signed
-  order, the order. With Uniswap chosen, CoW is never contacted.
+- CoW learns the swaps the user sends to it, and no others but those composed
+  with CoW chosen (below): the account's address, the pair, the amounts, the
+  device's IP address and, for a signed order, the order. With Uniswap
+  chosen, CoW is never contacted.
+- With CoW chosen, the compose step asks CoW for its estimate too, so that
+  the first screen shows the rate and the amount (owner ruling, 2026-11-23,
+  amending the line above): CoW then learns the account's address, the pair
+  and the amount composed, whether the swap is sent or not.
 - The app data carries nothing beyond the required fields. The IP address is
   not hidden for now.
 - Of CoW's answers about an order, only its off-chain life is shown. A fill,

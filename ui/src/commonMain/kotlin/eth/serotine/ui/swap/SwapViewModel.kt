@@ -10,6 +10,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.Token
@@ -33,6 +34,7 @@ import eth.serotine.domain.usecase.AccountValue
 import eth.serotine.domain.usecase.ApprovalQuoting
 import eth.serotine.domain.usecase.COW_ORDER_VALIDITY_SECONDS
 import eth.serotine.domain.usecase.ChooseSwapVenue
+import eth.serotine.domain.usecase.CowEstimating
 import eth.serotine.domain.usecase.CowNotOffered
 import eth.serotine.domain.usecase.CowOfferedOnThisDevice
 import eth.serotine.domain.usecase.CowOrderPlacing
@@ -40,6 +42,7 @@ import eth.serotine.domain.usecase.CowSwapQuote
 import eth.serotine.domain.usecase.CowSwapQuoting
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DropWaitingSwap
+import eth.serotine.domain.usecase.EstimateCowSwap
 import eth.serotine.domain.usecase.EstimateSwap
 import eth.serotine.domain.usecase.FindWaitingSwap
 import eth.serotine.domain.usecase.KeepWaitingSwap
@@ -70,6 +73,10 @@ import eth.serotine.domain.usecase.WrapQuoting
 import eth.serotine.ui.components.AssetOption
 import eth.serotine.ui.components.SWAPS_STAY_STRICT
 import eth.serotine.ui.components.WRAPS_STAY_STRICT
+import eth.serotine.ui.components.approxUnits
+import eth.serotine.ui.components.cowEstimateItem
+import eth.serotine.ui.components.cowNoAnswerText
+import eth.serotine.ui.components.cowRefusalText
 import eth.serotine.ui.outbox.OPEN_QUEUED
 import eth.serotine.ui.outbox.QUEUED_FIRST
 import eth.serotine.ui.components.BalanceChange
@@ -143,13 +150,16 @@ import kotlinx.coroutines.withContext
 /**
  * The Swap screen's ViewModel (docs/swaps.md; screens 22 and 23): a swap from [from] on [network],
  * composed — the venue, the asset sold ([sell], the token asked for, null for the network's
- * currency), the asset bought, the amount in the sold asset's units, the slippage tolerance and
- * the fee level — then quoted for review and signed.
+ * currency), the asset bought, the amount sold or the amount bought (the one typed last is exact:
+ * docs/swaps.md, *Buying an exact amount*), the slippage tolerance and the fee level — then quoted
+ * for review and signed.
  *
- * - **While composing**, once the pair and the amount are set, what the swap would return and its rate
- *   are shown from a verified Uniswap quote ([EstimateSwap]; docs/swaps.md, *The compose step's
- *   estimate*): asked for [ESTIMATE_DELAY] after the last edit, and again every [ESTIMATE_REFRESH]
- *   while nothing changes. Display only: the review quotes everything again.
+ * - **While composing**, once the pair and the amount are set, what the swap would return or cost,
+ *   and its rate, are shown: on Uniswap from a verified quote ([EstimateSwap]), on CoW from CoW's
+ *   own estimate, not verified ([EstimateCowSwap]; owner ruling, 2026-11-23); docs/swaps.md, *The
+ *   compose step's estimate*. Asked for [ESTIMATE_DELAY] after the last edit, and again every
+ *   [ESTIMATE_REFRESH] while nothing changes. Display only: the review quotes everything again. A
+ *   buy whose most it may sell is more than the balance is said there, and Review stays greyed out.
  * - **The venue** is the user's to choose (*The user's choice of venue*): it starts at the one last
  *   chosen ([ObserveSwapVenue]), Uniswap the first time, and a choice is kept for the next swap
  *   ([ChooseSwapVenue]). CoW is greyed out where it is not offered, and a tap says why. When CoW
@@ -157,9 +167,9 @@ import kotlinx.coroutines.withContext
  *   itself.
  * - **On Uniswap**, the swap is quoted from verified state ([QuoteSwap]) and signed and broadcast
  *   ([SendSwap]).
- * - **On CoW**, it is quoted ([QuoteCowSwap]: CoW's estimate beside the verified Uniswap net) and
- *   its order signed and handed to CoW ([PlaceCowOrder]). CoW is asked only once the user chose
- *   it and asked for the review (CLAUDE.md, *Data sources*).
+ * - **On CoW**, it is quoted ([QuoteCowSwap]: CoW's estimate, less or plus the tolerance) and its
+ *   order signed and handed to CoW ([PlaceCowOrder]). CoW is asked only while the user has CoW
+ *   chosen: for the estimate and for the review (CLAUDE.md, *Data sources*).
  * - **ETH for WETH, or back,** is no swap but a wrap (docs/swaps.md, *Wrapping ETH*), on neither
  *   venue: WETH9's own `deposit` or `withdraw`, one for one, quoted ([QuoteWrap]) and signed and
  *   broadcast ([SendWrap]). It is asked for first, for every pair of ETH and a token, so that
@@ -205,6 +215,7 @@ class SwapViewModel(
     cowOfferedOnThisDevice: CowOfferedOnThisDevice,
     private val quoteCowSwap: QuoteCowSwap,
     private val placeCowOrder: PlaceCowOrder,
+    private val estimateCowSwap: EstimateCowSwap,
     private val keepWaitingSwap: KeepWaitingSwap,
     private val dropWaitingSwap: DropWaitingSwap,
     private val findWaitingSwap: FindWaitingSwap,
@@ -240,8 +251,9 @@ class SwapViewModel(
 
     /**
      * What the compose step has: the asset sold, the asset bought (null until chosen), the amount
-     * and the tolerance as typed, the fee level, and the venue chosen on this screen (null: the one
-     * last chosen).
+     * sold and the amount bought and the tolerance as typed, the fee level, and the venue chosen on
+     * this screen (null: the one last chosen). [kind] is which amount was typed last, the exact one
+     * (docs/swaps.md, *Buying an exact amount*): the other is the estimate's.
      */
     private data class Inputs(
         val sell: SwapPick,
@@ -250,6 +262,8 @@ class SwapViewModel(
         val tolerance: String = SlippageTolerance.DEFAULT.percent,
         val fee: FeeLevel = FeeLevel.NORMAL,
         val venue: SwapVenue? = null,
+        val buyAmount: String = "",
+        val kind: SwapKind = SwapKind.SELL,
     )
 
     /** The account swapped from, or why nothing can be swapped from it. */
@@ -277,9 +291,10 @@ class SwapViewModel(
     )
 
     /**
-     * A swap the compose step can have quoted, exactly as it has it, on [venue]. [tolerance] is null
-     * only for a pair of ETH and a token, which may be a wrap, where it does not apply: a swap of
-     * it is refused until one is typed.
+     * A swap the compose step can have quoted, exactly as it has it, on [venue]: [amount] is the exact
+     * one, of [sell] for a sell and of [buy] for a buy ([kind]). [tolerance] is null only for a pair
+     * of ETH and a token, which may be a wrap, where it does not apply: a swap of it is refused until
+     * one is typed. A wrap is one for one, so its amount is the same whichever side was typed.
      */
     private data class Request(
         val inputs: Inputs,
@@ -288,17 +303,34 @@ class SwapViewModel(
         val amount: UInt256,
         val tolerance: SlippageTolerance?,
         val venue: SwapVenue,
+        val kind: SwapKind = SwapKind.SELL,
     ) {
         /** ETH against a token: a wrap, when the token is the pinned WETH9. */
         val mayWrap: Boolean
             get() = (sell.asset == TransferAsset.Native) != (buy.asset == TransferAsset.Native)
     }
 
-    /** The compose step's swap as far as an estimate needs it: [sell] for [buy], [amount] of it. */
-    private data class EstimateKey(val sell: TransferAsset, val buy: TransferAsset, val amount: UInt256)
+    /**
+     * The compose step's swap as far as an estimate needs it: [sell] for [buy] on [venue], exactly
+     * [amount] of the side [kind] says.
+     */
+    private data class EstimateKey(
+        val sell: TransferAsset,
+        val buy: TransferAsset,
+        val amount: UInt256,
+        val kind: SwapKind,
+        val venue: SwapVenue,
+    )
 
-    /** The estimate of [key]: what [EstimateSwap] said, null while it is being read. */
-    private data class Estimate(val key: EstimateKey, val estimating: SwapEstimating?)
+    /** What one venue's estimate said: Uniswap's verified quote, or CoW's own, not verified. */
+    private sealed interface Estimating {
+        data class Uniswap(val reading: SwapEstimating) : Estimating
+
+        data class Cow(val reading: CowEstimating) : Estimating
+    }
+
+    /** The estimate of [key]: what its venue said, null while it is being read. */
+    private data class Estimate(val key: EstimateKey, val estimating: Estimating?)
 
     /** What a quote comes to: something to review ([Quoted]), or the compose step saying why not. */
     private sealed interface Next
@@ -402,8 +434,10 @@ class SwapViewModel(
         Inputs(
             sell = sell?.let(SwapPick::Token) ?: SwapPick.Native,
             buy = fill?.let { it.buy?.let(SwapPick::Token) ?: SwapPick.Native },
-            amount = fill?.amount.orEmpty(),
+            amount = fill?.takeIf { it.kind == SwapKind.SELL }?.amount.orEmpty(),
             venue = fill?.venue,
+            buyAmount = fill?.takeIf { it.kind == SwapKind.BUY }?.amount.orEmpty(),
+            kind = fill?.kind ?: SwapKind.SELL,
         ),
     )
     private val step = MutableStateFlow<Step>(Step.Composing())
@@ -521,14 +555,21 @@ class SwapViewModel(
         }
     }
 
-    /** Buys the token at [contract], or the network's currency (null). */
+    /** Buys the token at [contract], or the network's currency (null): an amount bought typed for another goes. */
     fun onBuyChange(contract: String?) {
         val pick = SwapPick.of(contract) ?: return
-        change { it.copy(buy = pick) }
+        change { it.copy(buy = pick, buyAmount = if (pick == it.buy) it.buyAmount else "") }
     }
 
-    /** The amount field now reads [text], in the sold asset's units. */
-    fun onAmountChange(text: String) = change { it.copy(amount = text) }
+    /** The amount field now reads [text], in the sold asset's units: the swap sells exactly it. */
+    fun onAmountChange(text: String) = change { it.copy(amount = text, kind = SwapKind.SELL) }
+
+    /**
+     * The field of the amount bought now reads [text], in the bought asset's units: the swap buys
+     * exactly it, for at most what its estimate sells and the tolerance (docs/swaps.md, *Buying an
+     * exact amount*).
+     */
+    fun onBuyAmountChange(text: String) = change { it.copy(buyAmount = text, kind = SwapKind.BUY) }
 
     /**
      * Fills in the sold asset's whole verified balance. For the network's currency that leaves
@@ -537,7 +578,7 @@ class SwapViewModel(
     fun onMax() {
         val option = model.value?.sell ?: return
         val balance = option.balance ?: return
-        change { it.copy(amount = balance.formatUnits(option.decimals)) }
+        change { it.copy(amount = balance.formatUnits(option.decimals), kind = SwapKind.SELL) }
     }
 
     /** The tolerance field now reads [text], a percentage. */
@@ -710,11 +751,19 @@ class SwapViewModel(
         val bought = { units: UInt256 -> exactAmount(units, request.buy.decimals, request.buy.symbol) }
         val prompt = when (val quoted = current.quoted) {
             is Quoted.Approval -> "Allow ${Eip55.format(quoted.quote.spender)} to take ${sold(quoted.quote.amount)}"
-            is Quoted.Swap -> "Swap ${sold(quoted.quote.amountIn)} for at least ${bought(quoted.quote.minimumOut)}"
+            is Quoted.Swap -> when (quoted.quote.kind) {
+                SwapKind.SELL -> "Swap ${sold(quoted.quote.amountIn)} for at least ${bought(quoted.quote.minimumOut)}"
+                SwapKind.BUY ->
+                    "Buy exactly ${bought(quoted.quote.minimumOut)} for at most ${sold(quoted.quote.amountIn)}"
+            }
             is Quoted.Wrap ->
                 "${verbOf(quoted.quote.direction)} ${sold(quoted.quote.amount)} into ${request.buy.symbol}"
-            is Quoted.Cow ->
-                "Sign a CoW order: ${sold(quoted.quote.amountIn)} for at least ${bought(quoted.quote.minimumOut)}"
+            is Quoted.Cow -> when (quoted.quote.kind) {
+                SwapKind.SELL ->
+                    "Sign a CoW order: ${sold(quoted.quote.amountIn)} for at least ${bought(quoted.quote.minimumOut)}"
+                SwapKind.BUY -> "Sign a CoW order: exactly ${bought(quoted.quote.minimumOut)} for at most " +
+                    sold(quoted.quote.amountIn)
+            }
         }
         sign(current, Unlock.WithBiometrics(prompt, notAfter))
     }
@@ -837,6 +886,7 @@ class SwapViewModel(
                     approval = now.hash,
                     step = now.sent.first + 1,
                     steps = now.sent.second,
+                    kind = request.kind,
                 ),
             )
             is Step.Sent, is Step.Placed -> dropWaitingSwap(account, token)
@@ -848,7 +898,7 @@ class SwapViewModel(
     private fun WaitingSwap.isFor(request: Request): Boolean =
         (request.sell.asset as? TransferAsset.Erc20Token)?.token?.address == sell &&
             (request.buy.asset as? TransferAsset.Erc20Token)?.token?.address == buy &&
-            request.amount == amount && request.venue == venue
+            request.amount == amount && request.venue == venue && request.kind == kind
 
     /**
      * Opened with Continue from the account's Activity: the swap kept as waiting for the token at
@@ -867,12 +917,28 @@ class SwapViewModel(
             val option = shown?.sell ?: return@launch
             // The user changed the form meanwhile: it is theirs, and nothing is quoted for them.
             if (inputs.value != opened || opened.sell != token) return@launch
-            val filled = opened.copy(
-                buy = waiting.buy?.let(SwapPick::Token) ?: SwapPick.Native,
-                amount = waiting.amount.formatUnits(option.decimals),
-                tolerance = waiting.tolerance.percent,
-                venue = waiting.venue,
-            )
+            val bought = waiting.buy?.let(SwapPick::Token) ?: SwapPick.Native
+            val filled = when (waiting.kind) {
+                SwapKind.SELL -> opened.copy(
+                    buy = bought,
+                    amount = waiting.amount.formatUnits(option.decimals),
+                    tolerance = waiting.tolerance.percent,
+                    venue = waiting.venue,
+                    kind = SwapKind.SELL,
+                )
+                SwapKind.BUY -> {
+                    // A buy's amount is in the bought asset's units: one no longer listed leaves the form as it is.
+                    val buyOption = shown.buyOptions.firstOrNull { it.asset.boughtAddress() == waiting.buy }
+                        ?: return@launch
+                    opened.copy(
+                        buy = bought,
+                        buyAmount = waiting.amount.formatUnits(buyOption.decimals),
+                        tolerance = waiting.tolerance.percent,
+                        venue = waiting.venue,
+                        kind = SwapKind.BUY,
+                    )
+                }
+            }
             change { filled }
             // Read for the form as filled, or edited since, which ends the wait too.
             val read = model.first { it?.inputs == filled || inputs.value != filled } ?: return@launch
@@ -1093,7 +1159,7 @@ class SwapViewModel(
     private suspend fun onVenue(request: Request, tolerance: SlippageTolerance): Next = when (request.venue) {
         SwapVenue.UNISWAP -> when (val swapping = askSwap(request, tolerance)) {
             is SwapQuoting.Quoted -> Quoted.Swap(swapping.quote)
-            is SwapQuoting.NeedsApproval -> approvalFirst(swapping.token, swapping.spender, request) {
+            is SwapQuoting.NeedsApproval -> approvalFirst(swapping.token, swapping.spender, request, swapping.amount) {
                 when (val again = askSwap(request, tolerance)) {
                     is SwapQuoting.Quoted -> Quoted.Swap(again.quote)
                     else -> composing(again, request)
@@ -1101,10 +1167,15 @@ class SwapViewModel(
             }
             else -> composing(swapping, request)
         }
-        // CoW is asked only here: the user chose it, and asked for the review.
+        // CoW is asked for the order only here: the user chose it, and asked for the review.
         SwapVenue.COW -> when (val ordering = askCow(request, tolerance)) {
             is CowSwapQuoting.Quoted -> Quoted.Cow(ordering.quote)
-            is CowSwapQuoting.NeedsApproval -> approvalFirst(ordering.token, ordering.spender, request) {
+            is CowSwapQuoting.NeedsApproval -> approvalFirst(
+                ordering.token,
+                ordering.spender,
+                request,
+                ordering.amount,
+            ) {
                 when (val again = askCow(request, tolerance)) {
                     is CowSwapQuoting.Quoted -> Quoted.Cow(again.quote)
                     else -> cowComposing(again, request)
@@ -1125,8 +1196,9 @@ class SwapViewModel(
         token: Token,
         spender: Address,
         request: Request,
+        amount: UInt256 = request.amount,
         allowed: suspend () -> Next,
-    ): Next = when (val approving = askApproval(token, spender, request.amount, request.inputs.fee)) {
+    ): Next = when (val approving = askApproval(token, spender, amount, request.inputs.fee)) {
         is ApprovalQuoting.Quoted -> Quoted.Approval(approving.quote)
         is ApprovalQuoting.AlreadyAllowed -> allowed()
         is ApprovalQuoting.ApprovalPending -> Step.Composing(
@@ -1145,7 +1217,15 @@ class SwapViewModel(
     }
 
     private suspend fun askSwap(request: Request, tolerance: SlippageTolerance): SwapQuoting = try {
-        quoteSwap(from, request.sell.asset, request.buy.asset, request.amount, tolerance, request.inputs.fee)
+        quoteSwap(
+            from,
+            request.sell.asset,
+            request.buy.asset,
+            request.amount,
+            tolerance,
+            request.inputs.fee,
+            request.kind,
+        )
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -1161,7 +1241,7 @@ class SwapViewModel(
     }
 
     private suspend fun askCow(request: Request, tolerance: SlippageTolerance): CowSwapQuoting = try {
-        quoteCowSwap(from, request.sell.asset, request.buy.asset, request.amount, tolerance)
+        quoteCowSwap(from, request.sell.asset, request.buy.asset, request.amount, tolerance, request.kind)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -1296,42 +1376,97 @@ class SwapViewModel(
         )
     }
 
-    /** The estimate [key] needs, or null when the compose step has no complete swap to estimate. */
-    private fun estimateKeyOf(model: Model): EstimateKey? {
-        if (model.swapper !is Swapper.From) return null
-        // A CoW order reads nothing of Uniswap (owner ruling, 2026-11-23): CoW's own estimate comes with the
-        // review, which also tells a wrap.
-        if (model.venue == SwapVenue.COW) return null
-        val sell = model.sell ?: return null
-        val buy = model.buy ?: return null
-        val amount = typedAmount(model.inputs.amount, sell).units ?: return null
-        return EstimateKey(sell.asset, buy.asset, amount)
+    /** The exact amount [inputs] has typed: of [sell] for a sell, of [buy] for a buy; null when it is none. */
+    private fun exactAmountOf(inputs: Inputs, sell: AssetOption, buy: AssetOption): UInt256? = when (inputs.kind) {
+        SwapKind.SELL -> typedAmount(inputs.amount, sell).units
+        SwapKind.BUY -> typedAmount(inputs.buyAmount, buy).units
     }
 
-    /** [EstimateSwap] of [key]; a use case that throws, which it promises not to, as a read not had. */
-    private suspend fun estimate(key: EstimateKey): SwapEstimating = try {
-        estimateSwap(network, key.sell, key.buy, key.amount)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        SwapEstimating.Unavailable(ReadUnavailable.UNPROVEN)
+    /**
+     * The estimate [key] needs, or null when the compose step has no complete swap to estimate. On
+     * CoW it is CoW's own (owner ruling, 2026-11-23): nothing of Uniswap is read for a CoW order.
+     */
+    private fun estimateKeyOf(model: Model): EstimateKey? {
+        if (model.swapper !is Swapper.From) return null
+        val sell = model.sell ?: return null
+        val buy = model.buy ?: return null
+        val amount = exactAmountOf(model.inputs, sell, buy) ?: return null
+        return EstimateKey(sell.asset, buy.asset, amount, model.inputs.kind, model.venue)
+    }
+
+    /** The estimate of [key] on its venue; a use case that throws, which it promises not to, as a read not had. */
+    private suspend fun estimate(key: EstimateKey): Estimating = when (key.venue) {
+        SwapVenue.UNISWAP -> Estimating.Uniswap(
+            try {
+                estimateSwap(network, key.sell, key.buy, key.amount, key.kind)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                SwapEstimating.Unavailable(ReadUnavailable.UNPROVEN)
+            },
+        )
+        SwapVenue.COW -> Estimating.Cow(
+            try {
+                estimateCowSwap(network, from, key.sell, key.buy, key.amount, key.kind)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                CowEstimating.Unavailable(ReadUnavailable.UNPROVEN)
+            },
+        )
+    }
+
+    /** What [estimate] says the swap [model] has sells and buys, when it is of that swap and has figures. */
+    private fun figuresOf(model: Model, estimate: Estimate?): Pair<UInt256, UInt256>? {
+        val key = estimateKeyOf(model) ?: return null
+        return when (val estimating = estimate?.takeIf { it.key == key }?.estimating) {
+            is Estimating.Uniswap ->
+                (estimating.reading as? SwapEstimating.Estimated)?.let { it.amountIn to it.amountOut }
+            is Estimating.Cow -> (estimating.reading as? CowEstimating.Estimated)?.let { it.amountIn to it.amountOut }
+            null -> null
+        }
     }
 
     /** What the compose step shows of [estimate], when it is of the swap [model] has. */
     private fun estimateItem(model: Model, estimate: Estimate?): SwapEstimateItem? {
         val key = estimateKeyOf(model) ?: return null
-        val estimating = estimate?.takeIf { it.key == key }?.estimating
-        // ETH for the pinned WETH9 and back is one token on Uniswap: here, a wrap, one for one.
-        if (estimating == SwapEstimating.NotASwap) {
-            return wrapEstimateItem(key.amount, checkNotNull(model.sell), checkNotNull(model.buy))
+        val sell = checkNotNull(model.sell)
+        val buy = checkNotNull(model.buy)
+        val tolerance = toleranceOf(model.inputs)
+        return when (val estimating = estimate?.takeIf { it.key == key }?.estimating) {
+            // ETH for the pinned WETH9 and back is one token: here, a wrap, one for one.
+            is Estimating.Uniswap -> if (estimating.reading == SwapEstimating.NotASwap) {
+                wrapEstimateItem(key.amount, sell, buy)
+            } else {
+                swapEstimateItem(estimating.reading, sell, buy, tolerance, network, key.kind)
+            }
+            is Estimating.Cow -> if (estimating.reading == CowEstimating.NotASwap) {
+                wrapEstimateItem(key.amount, sell, buy)
+            } else {
+                cowEstimateItem(estimating.reading, sell, buy, tolerance, network, key.kind)
+            }
+            null -> when (key.venue) {
+                SwapVenue.UNISWAP -> swapEstimateItem(null, sell, buy, tolerance, network, key.kind)
+                SwapVenue.COW -> cowEstimateItem(null, sell, buy, tolerance, network, key.kind)
+            }
         }
-        return swapEstimateItem(
-            estimating = estimating,
-            sell = checkNotNull(model.sell),
-            buy = checkNotNull(model.buy),
-            tolerance = toleranceOf(model.inputs),
-            network = network,
-        )
+    }
+
+    /**
+     * Why a buy cannot go ahead with what the account holds, once its estimate is in: the most it
+     * may sell, the estimate plus the tolerance, is more than the sold asset's verified balance (the
+     * owner's request, 2026-11-23); null when it may, or nothing says yet.
+     */
+    private fun shortfallOf(model: Model, estimate: Estimate?): String? {
+        if (model.inputs.kind != SwapKind.BUY) return null
+        val sell = model.sell ?: return null
+        val balance = sell.balance ?: return null
+        val (amountIn, _) = figuresOf(model, estimate) ?: return null
+        val maximum = (toleranceOf(model.inputs) ?: SlippageTolerance.DEFAULT).maximumOf(amountIn)
+        if (maximum != null && maximum <= balance) return null
+        val upTo = maximum?.let { approxUnits(it, sell.decimals, sell.symbol) } ?: "more than any balance can be"
+        return "Not enough ${sell.symbol}: this buy may take up to $upTo, and the account holds " +
+            approxUnits(balance, sell.decimals, sell.symbol) + "."
     }
 
     private fun render(model: Model?, step: Step, estimate: Estimate?): SwapUiState {
@@ -1350,7 +1485,11 @@ class SwapViewModel(
         }
         val inputs = model.inputs
         val at = now()
+        val selling = inputs.kind == SwapKind.SELL
         val amount = typedAmount(inputs.amount, model.sell)
+        val bought = typedAmount(inputs.buyAmount, model.buy)
+        val figures = figuresOf(model, estimate)
+        val shortfall = shortfallOf(model, estimate)
         val form = SwapForm(
             network = network,
             from = SendFrom(account.label, display),
@@ -1358,10 +1497,18 @@ class SwapViewModel(
             sell = model.sell?.choice(at),
             buyOptions = model.buyOptions.map { it.choice(at) },
             buy = model.buy?.choice(at),
-            amount = inputs.amount,
+            amount = if (selling) inputs.amount else "",
             tolerance = inputs.tolerance,
-            amountError = amount.error,
-            amountHint = amountHint(amount.units, model.sell, model.currency, this.network),
+            amountError = if (selling) amount.error else shortfall,
+            amountHint = if (selling) amountHint(amount.units, model.sell, model.currency, this.network) else null,
+            buyAmount = if (selling) "" else inputs.buyAmount,
+            buyAmountError = if (selling) null else bought.error,
+            amountPlaceholder = figures?.takeUnless { selling }?.let { (amountIn, _) ->
+                model.sell?.let { "≈ " + approxUnits(amountIn, it.decimals, it.symbol) }
+            },
+            buyAmountPlaceholder = figures?.takeIf { selling }?.let { (_, amountOut) ->
+                model.buy?.let { "≈ " + approxUnits(amountOut, it.decimals, it.symbol) }
+            },
             canMax = model.sell?.balance != null && !composing.quoting,
             toleranceError = toleranceError(inputs.tolerance),
             note = sellNote(model.sell, model.tokensRead, "this account"),
@@ -1369,7 +1516,7 @@ class SwapViewModel(
             error = composing.error,
             simpleError = composing.simpleError,
             info = composing.info,
-            canReview = !composing.quoting && requestOf(model) != null,
+            canReview = !composing.quoting && requestOf(model) != null && shortfall == null,
             // Without figures, an estimate's reason is left out while a refused Review says why, in its own words.
             estimate = estimateItem(model, estimate)?.takeUnless {
                 it.receive == null && !it.checking && composing.error != null
@@ -1470,8 +1617,16 @@ class SwapViewModel(
             },
             earlierFailed = step.earlierFailed?.let {
                 FailedApproval(
-                    "A block has the approval sent before, yet the allowance still falls short: it may have " +
-                        "failed. Open it to see why before you send another.",
+                    if (step.request.kind == SwapKind.BUY) {
+                        // A buy is held to what was approved while its quote stays within it: only a quote above
+                        // it, or a failed approval, asks again.
+                        "A block has the approval sent before, yet the allowance still falls short: it may have " +
+                            "failed, or the price moved past the most it allowed. Open it to see which before " +
+                            "you send another."
+                    } else {
+                        "A block has the approval sent before, yet the allowance still falls short: it may have " +
+                            "failed. Open it to see why before you send another."
+                    },
                     it,
                 )
             },
@@ -1498,6 +1653,7 @@ class SwapViewModel(
     private fun swapReview(step: Step.Reviewing, quote: SwapQuote): SwapUiState.SwapReview {
         val sell = step.request.sell
         val buy = step.request.buy
+        val buying = quote.kind == SwapKind.BUY
         val native = network.nativeSymbol
         val route = routeSteps(quote.route, quote.pools, sell, buy, network)
         val sold = sell.asset as? TransferAsset.Erc20Token
@@ -1508,7 +1664,8 @@ class SwapViewModel(
                 BalanceChange(
                     what = "${sell.symbol} balance",
                     before = exactAmount(before, sell.decimals, sell.symbol),
-                    after = exactAmount(after, sell.decimals, sell.symbol),
+                    // A buy's balance after counts its maximum: it is at least that.
+                    after = (if (buying) "at least " else "") + exactAmount(after, sell.decimals, sell.symbol),
                     verifiedAt = verifiedAt(quote.tokenBalanceBlock),
                 )
             },
@@ -1516,7 +1673,8 @@ class SwapViewModel(
                 BalanceChange(
                     what = "${buy.symbol} balance",
                     before = exactAmount(before, buy.decimals, buy.symbol),
-                    after = "at least " + exactAmount(before + quote.minimumOut, buy.decimals, buy.symbol),
+                    after = (if (buying) "" else "at least ") +
+                        exactAmount(before + quote.minimumOut, buy.decimals, buy.symbol),
                     verifiedAt = verifiedAt(quote.buyBalanceBlock),
                 )
             },
@@ -1537,14 +1695,26 @@ class SwapViewModel(
             network = network.displayName,
             from = step.sender,
             sell = sell.choice(),
-            sold = exactAmount(quote.amountIn, sell.decimals, sell.symbol),
+            sold = (if (buying) "at most " else "") + exactAmount(quote.amountIn, sell.decimals, sell.symbol),
             buy = buy.choice(),
             receive = exactAmount(quote.returnedOut, buy.decimals, buy.symbol),
             ranAt = "The swap, run as a verified call from this account " +
-                (quote.simulationBlock?.let { "at block ${grouped(it)}" } ?: "at the head") + ", returns this.",
-            minimum = "at least " + exactAmount(quote.minimumOut, buy.decimals, buy.symbol),
-            tolerance = "${quote.tolerance} tolerance, below QuoterV2's verified quote of " +
-                exactAmount(quote.quotedOut, buy.decimals, buy.symbol),
+                (quote.simulationBlock?.let { "at block ${grouped(it)}" } ?: "at the head") +
+                if (buying) {
+                    ", takes ${exactAmount(quote.takenIn, sell.decimals, sell.symbol)} for this."
+                } else {
+                    ", returns this."
+                },
+            minimum = (if (buying) "exactly " else "at least ") +
+                exactAmount(quote.minimumOut, buy.decimals, buy.symbol),
+            tolerance = if (buying) {
+                "${quote.tolerance} tolerance, above QuoterV2's verified quote of " +
+                    exactAmount(quote.quotedIn, sell.decimals, sell.symbol) + ": the most it sells"
+            } else {
+                "${quote.tolerance} tolerance, below QuoterV2's verified quote of " +
+                    exactAmount(quote.quotedOut, buy.decimals, buy.symbol)
+            },
+            receiveLead = if (buying) "for exactly" else "for at least",
             route = route,
             routeNote = if (route.size == 1) {
                 "One Uniswap v3 pool, as the pinned factory lists it."
@@ -1569,7 +1739,9 @@ class SwapViewModel(
             feeDetail = feeDetail(quote.level, quote.transaction, quote.feeBlock),
             balances = balances,
             pending = pendingText(quote, sell),
-            netNote = if (quote.netOfFees) {
+            // A buy is ranked by what each route takes, its fee aside, by design (docs/swaps.md, *Buying an exact
+            // amount*): no fee reading went missing, so nothing is said.
+            netNote = if (buying || quote.netOfFees) {
                 null
             } else {
                 "The route was chosen by what it returns, without its network fee, which could not be had right now."
@@ -1689,15 +1861,45 @@ class SwapViewModel(
             network = network.displayName,
             from = step.sender,
             sell = sell.choice(),
-            sold = exactAmount(quote.amountIn, sell.decimals, sell.symbol),
+            sold = when (quote.kind) {
+                SwapKind.SELL -> exactAmount(quote.amountIn, sell.decimals, sell.symbol)
+                SwapKind.BUY -> "at most " + exactAmount(quote.amountIn, sell.decimals, sell.symbol)
+            },
             buy = buy.choice(),
-            estimate = "about " + bought(quote.estimate),
-            estimateNote = "CoW's own estimate, net of the network fee it takes out of the trade: " +
-                exactAmount(quote.cowFee, sell.decimals, sell.symbol) + ". Not verified.",
-            minimum = "at least " + bought(quote.minimumOut),
-            minimumNote = "CoW's estimate less the ${quote.tolerance} tolerance. The estimate is CoW's word, not " +
-                "checked on chain, so the minimum rests on it. A fill that buys less is refused by the settlement " +
-                "contract.",
+            estimate = "about " + when (quote.kind) {
+                SwapKind.SELL -> bought(quote.estimate)
+                SwapKind.BUY -> exactAmount(quote.estimate, sell.decimals, sell.symbol)
+            },
+            estimateNote = when (quote.kind) {
+                SwapKind.SELL -> "CoW's own estimate, net of the network fee it takes out of the trade: " +
+                    exactAmount(quote.cowFee, sell.decimals, sell.symbol) + ". Not verified."
+                SwapKind.BUY -> "CoW's own estimate of what it sells, the network fee it takes out of the trade " +
+                    "included: " + exactAmount(quote.cowFee, sell.decimals, sell.symbol) + ". Not verified."
+            },
+            minimum = when (quote.kind) {
+                SwapKind.SELL -> "at least " + bought(quote.minimumOut)
+                SwapKind.BUY -> "exactly " + bought(quote.minimumOut)
+            },
+            minimumNote = when (quote.kind) {
+                SwapKind.SELL -> "CoW's estimate less the ${quote.tolerance} tolerance. The estimate is CoW's word, " +
+                    "not checked on chain, so the minimum rests on it. A fill that buys less is refused by the " +
+                    "settlement contract."
+                SwapKind.BUY -> "Exactly this, for at most CoW's estimate and the ${quote.tolerance} tolerance. The " +
+                    "estimate is CoW's word, not checked on chain, so the most it sells rests on it. A fill that " +
+                    "buys less, or sells more, is refused by the settlement contract."
+            },
+            receiveLead = if (quote.kind == SwapKind.BUY) "for exactly" else "for at least",
+            estimateAsset = if (quote.kind == SwapKind.BUY) sell.choice() else buy.choice(),
+            simpleChecked = if (quote.kind == SwapKind.BUY) {
+                "Checked on chain: the settlement contract refuses any fill that buys less, or sells more"
+            } else {
+                "Checked on chain: the settlement contract refuses any fill below the minimum"
+            },
+            simpleBasis = if (quote.kind == SwapKind.BUY) {
+                "The most it sells is CoW's estimate plus your tolerance. CoW's estimate is not checked on chain."
+            } else {
+                "The minimum is CoW's estimate less your tolerance. CoW's estimate is not checked on chain."
+            },
             validUntil = "Until ${formatTime(quote.order.validTo)}: the verified head's time and " +
                 "${COW_ORDER_VALIDITY_SECONDS / 60} minutes. It fills by then or not at all.",
             settlement = SpenderItem(SETTLEMENT_NAME, Eip55.format(quote.deployment.settlement)),
@@ -1705,7 +1907,8 @@ class SwapViewModel(
                 BalanceChange(
                     what = "${sell.symbol} balance",
                     before = exactAmount(quote.sellBefore, sell.decimals, sell.symbol),
-                    after = exactAmount(quote.sellAfter, sell.decimals, sell.symbol) + " once it fills",
+                    after = (if (quote.kind == SwapKind.BUY) "at least " else "") +
+                        exactAmount(quote.sellAfter, sell.decimals, sell.symbol) + " once it fills",
                     verifiedAt = verifiedAt(quote.tokenBalanceBlock),
                 ),
             ),
@@ -1789,9 +1992,9 @@ class SwapViewModel(
         if (model.swapper !is Swapper.From) return null
         val sell = model.sell ?: return null
         val buy = model.buy ?: return null
-        val amount = typedAmount(model.inputs.amount, sell).units ?: return null
+        val amount = exactAmountOf(model.inputs, sell, buy) ?: return null
         val tolerance = toleranceOf(model.inputs)
-        return Request(model.inputs, sell, buy, amount, tolerance, model.venue)
+        return Request(model.inputs, sell, buy, amount, tolerance, model.venue, model.inputs.kind)
             .takeIf { tolerance != null || it.mayWrap }
     }
 
@@ -1805,18 +2008,30 @@ class SwapViewModel(
         is SwapQuoting.NoVenue -> noVenueText(quoting.contract, network)
         SwapQuoting.TooSmall -> TOO_SMALL
         SwapQuoting.InsufficientFunds -> if (request.sell.asset == TransferAsset.Native) {
-            "Not enough ${network.nativeSymbol} for this amount and the most the fee can be: swap less, to leave " +
-                "room for the fee. Transactions not mined yet count too."
+            if (request.kind == SwapKind.BUY) {
+                "Not enough ${network.nativeSymbol} for the most this buy may take, its verified quote and the " +
+                    "tolerance, and the most the fee can be: buy less. Transactions not mined yet count too."
+            } else {
+                "Not enough ${network.nativeSymbol} for this amount and the most the fee can be: swap less, to " +
+                    "leave room for the fee. Transactions not mined yet count too."
+            }
         } else {
             "Not enough ${network.nativeSymbol} for the most the fee can be. Transactions not mined yet count too."
         }
-        SwapQuoting.InsufficientToken -> "This account holds less ${request.sell.symbol} than that, once what its " +
-            "transactions not mined yet and its CoW orders that may still fill can take is set aside."
+        SwapQuoting.InsufficientToken -> if (request.kind == SwapKind.BUY) {
+            "This account holds less ${request.sell.symbol} than the most this buy may take, its verified quote " +
+                "and the tolerance, once what its transactions not mined yet and its CoW orders that may still " +
+                "fill can take is set aside. Buy less."
+        } else {
+            "This account holds less ${request.sell.symbol} than that, once what its transactions not mined yet " +
+                "and its CoW orders that may still fill can take is set aside."
+        }
         SwapQuoting.CowOrdersUnreadable -> ORDERS_UNREADABLE
         is SwapQuoting.Infeasible -> "This swap cannot succeed: ${quoting.detail}"
         is SwapQuoting.Reverts -> {
             val at = quoting.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()
-            "The swap reverts, or returns less than its minimum, run as a verified call$at. Nothing was signed."
+            "The swap reverts, returns less than its minimum, or takes more than its maximum, run as a verified " +
+                "call$at. Nothing was signed."
         }
         SwapQuoting.NotAToken -> NOT_A_TOKEN
         SwapQuoting.Refused -> "The light client on this device cannot quote this swap."
@@ -1828,7 +2043,8 @@ class SwapViewModel(
     /** [swapRefusal] in simple mode's words, with no block (docs/simple-ui.md); null where it names none. */
     private fun simpleSwapRefusal(quoting: SwapQuoting): String? = when (quoting) {
         is SwapQuoting.Reverts ->
-            "The swap reverts, or returns less than its minimum, as checked on chain. Nothing was signed."
+            "The swap reverts, returns less than its minimum, or takes more than its maximum, as checked on chain. " +
+                "Nothing was signed."
         else -> null
     }
 
@@ -1870,21 +2086,13 @@ class SwapViewModel(
         CowSwapQuoting.Syncing -> "The light client is not synced yet: try again in a moment." + lenientNote(SWAPS_STAY_STRICT)
         is CowSwapQuoting.Unavailable -> unavailableText(quoting.reason, quoting.figure) +
             lenientNote(SWAPS_STAY_STRICT, quoting.reason)
-        is CowSwapQuoting.CowRefused -> when (quoting.why) {
-            CowRefusal.NO_LIQUIDITY -> "CoW found no liquidity for this swap"
-            CowRefusal.UNSUPPORTED_TOKEN ->
-                "CoW does not trade ${request.sell.symbol} or ${request.buy.symbol}, or not right now"
-            CowRefusal.TOO_SMALL -> "The amount does not cover CoW's fee"
-            CowRefusal.FORBIDDEN -> "CoW does not serve this account"
-            CowRefusal.FUNDS -> "By CoW's own check, the balance or the allowance does not cover the order"
-            CowRefusal.OTHER -> "CoW refused to quote this swap"
-        } + " (CoW's word: ${quoting.errorType})."
-        is CowSwapQuoting.CowNoAnswer -> when (quoting.why) {
-            CowUnavailable.UNDECODABLE ->
-                "CoW gave an answer this version does not understand: an update of Punicus brings CoW back."
-            CowUnavailable.NOT_PINNED -> "No CoW API is pinned for ${network.displayName}."
-            CowUnavailable.TIMEOUT, CowUnavailable.NO_CONNECTION, CowUnavailable.SERVER_ERROR -> "CoW did not answer."
-        }
+        is CowSwapQuoting.CowRefused ->
+            cowRefusalText(quoting.why, quoting.errorType, request.sell.symbol, request.buy.symbol)
+        is CowSwapQuoting.CowNoAnswer -> cowNoAnswerText(quoting.why, network)
+        is CowSwapQuoting.MaximumAboveBalance -> "Not enough ${request.sell.symbol}: by CoW's estimate this buy " +
+            "may take up to ${exactAmount(quoting.maximum, request.sell.decimals, request.sell.symbol)}, and the " +
+            "account has ${exactAmount(quoting.available, request.sell.decimals, request.sell.symbol)} to " +
+            "spare. Buy less, or add ${request.sell.symbol} to the account first."
     }
 
     /** [sell] and [buy], one token: no swap and no wrap. */
@@ -1979,8 +2187,8 @@ class SwapViewModel(
             "nothing was signed. Review again."
         const val NOT_ON_THIS_DEVICE = "CoW Protocol is not offered on this device: its light client cannot date " +
             "a finalized block yet, which proving an order's end needs. Swap on Uniswap."
-        const val NO_LONGER_MET =
-            "Run again just before signing, the swap no longer returned its minimum: it was quoted again. Check it."
+        const val NO_LONGER_MET = "Run again just before signing, the swap no longer met what it is signed for (its " +
+            "minimum, or a buy's maximum): it was quoted again. Check it."
         const val EARLIER_MAYBE_SENT = "An earlier transaction from this account may still be on its way: no peer " +
             "answered when it was broadcast, and no block has it yet. Try it again from its status rather than " +
             "sign a new one, which could pay twice."
@@ -2019,3 +2227,6 @@ class SwapViewModel(
             "This account is watch-only: its key is not on this device, so nothing can be swapped from it."
     }
 }
+
+/** The token's address of an asset bought, as a waiting swap keeps it: null for the network's currency. */
+private fun TransferAsset.boughtAddress(): Address? = (this as? TransferAsset.Erc20Token)?.token?.address

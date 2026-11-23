@@ -3,9 +3,14 @@ package eth.serotine.ui.components
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.repository.CowRefusal
+import eth.serotine.domain.repository.CowUnavailable
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.usecase.CowEstimating
+import eth.serotine.domain.usecase.CowNotOffered
 import eth.serotine.domain.usecase.SwapEstimating
 
 /** Why the tolerance typed is none: what a swap's form says under it. */
@@ -128,10 +133,45 @@ private const val ESTIMATE_SMALL_DIGITS = 4
 private const val ESTIMATE_IMPACT_WARNING = 100
 
 /**
- * What the compose step shows of [estimating], a verified Uniswap quote of selling [sell] for
- * [buy] on [network] (docs/swaps.md, *The compose step's estimate*), null while it is being read; at
- * [tolerance] when one is typed. Only for a swap on Uniswap: a CoW order quotes no Uniswap
- * figure, here or in its review (owner ruling, 2026-11-23).
+ * The headline figure of an estimate of [kind] and the bound it signs at [tolerance]: for a sell,
+ * what it would receive and the least it may; for a buy, what it would pay and the most it may
+ * (docs/swaps.md, *Buying an exact amount*). The label first, as the compose step heads it.
+ */
+private fun estimateFigures(
+    kind: SwapKind,
+    amountIn: UInt256,
+    amountOut: UInt256,
+    sell: AssetOption,
+    buy: AssetOption,
+    tolerance: SlippageTolerance?,
+): Triple<String, String, String?> = when (kind) {
+    SwapKind.SELL -> {
+        val bought = { units: UInt256 -> approxUnits(units, buy.decimals, buy.symbol) }
+        Triple(
+            "You receive",
+            "≈ " + bought(amountOut),
+            tolerance?.let { "At least ${bought(it.minimumOf(amountOut))} at $it tolerance" },
+        )
+    }
+    SwapKind.BUY -> {
+        val sold = { units: UInt256 -> approxUnits(units, sell.decimals, sell.symbol) }
+        Triple(
+            "You pay",
+            "≈ " + sold(amountIn),
+            tolerance?.let { at -> at.maximumOf(amountIn)?.let { "At most ${sold(it)} at $at tolerance" } },
+        )
+    }
+}
+
+/** The label an estimate of [kind] has before its figures are in. */
+private fun estimateLabel(kind: SwapKind): String = if (kind == SwapKind.BUY) "You pay" else "You receive"
+
+/**
+ * What the compose step shows of [estimating], a verified Uniswap quote on [network] of selling
+ * exactly an amount of [sell] for [buy], or of buying exactly one, as [kind] says (docs/swaps.md,
+ * *The compose step's estimate*, *Buying an exact amount*), null while it is being read; at
+ * [tolerance] when one is typed. Only for a swap on Uniswap: a CoW order quotes no Uniswap figure
+ * (owner ruling, 2026-11-23), and has [cowEstimateItem].
  */
 internal fun swapEstimateItem(
     estimating: SwapEstimating?,
@@ -139,17 +179,20 @@ internal fun swapEstimateItem(
     buy: AssetOption,
     tolerance: SlippageTolerance?,
     network: Network,
+    kind: SwapKind = SwapKind.SELL,
 ): SwapEstimateItem {
-    val label = "You receive"
+    val label = estimateLabel(kind)
     val bought = { units: UInt256 -> approxUnits(units, buy.decimals, buy.symbol) }
     return when (estimating) {
         null -> SwapEstimateItem(label, note = "Asking Uniswap's quoter, through the light client.", checking = true)
         is SwapEstimating.Estimated -> {
             val block = estimating.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()
+            val (heading, receive, bound) =
+                estimateFigures(kind, estimating.amountIn, estimating.amountOut, sell, buy, tolerance)
             SwapEstimateItem(
-                label = label,
-                receive = "≈ " + bought(estimating.amountOut),
-                minimum = tolerance?.let { "At least ${bought(it.minimumOf(estimating.amountOut))} at $it tolerance" },
+                label = heading,
+                receive = receive,
+                minimum = bound,
                 rate = estimating.rate?.let { "1 ${sell.symbol} ≈ ${bought(it)}" },
                 inverseRate = estimating.inverseRate?.let {
                     "1 ${buy.symbol} ≈ ${approxUnits(it, sell.decimals, sell.symbol)}"
@@ -168,6 +211,96 @@ internal fun swapEstimateItem(
         is SwapEstimating.NoVenue -> SwapEstimateItem(label, note = noVenueText(estimating.contract, network))
         is SwapEstimating.Unavailable -> SwapEstimateItem(label, note = estimateUnavailableText(estimating.reason))
     }
+}
+
+/**
+ * What the compose step shows of [estimating], CoW's own estimate on [network] of selling exactly an
+ * amount of [sell] for [buy], or of buying exactly one, as [kind] says, null while it is being asked
+ * for; at [tolerance] when one is typed (owner ruling, 2026-11-23: the first screen shows the rate and
+ * the amount). Every figure is marked as CoW's, not checked on chain.
+ */
+internal fun cowEstimateItem(
+    estimating: CowEstimating?,
+    sell: AssetOption,
+    buy: AssetOption,
+    tolerance: SlippageTolerance?,
+    network: Network,
+    kind: SwapKind,
+): SwapEstimateItem {
+    val label = estimateLabel(kind)
+    val bought = { units: UInt256 -> approxUnits(units, buy.decimals, buy.symbol) }
+    return when (estimating) {
+        null -> SwapEstimateItem(
+            label,
+            note = "Asking CoW's servers for their estimate.",
+            checking = true,
+            checkingText = "Asking CoW…",
+        )
+        is CowEstimating.Estimated -> {
+            val (heading, receive, bound) =
+                estimateFigures(kind, estimating.amountIn, estimating.amountOut, sell, buy, tolerance)
+            SwapEstimateItem(
+                label = heading,
+                receive = receive,
+                minimum = bound,
+                rate = estimating.rate?.let { "1 ${sell.symbol} ≈ ${bought(it)}" },
+                inverseRate = estimating.inverseRate?.let {
+                    "1 ${buy.symbol} ≈ ${approxUnits(it, sell.decimals, sell.symbol)}"
+                },
+                note = "CoW's estimate, not checked on chain: its fee of " +
+                    approxUnits(estimating.feeAmount, sell.decimals, sell.symbol) + " is in the price. The " +
+                    "review asks CoW again before anything is signed.",
+                simpleNote = "CoW's estimate, not checked on chain. The review asks CoW again before you confirm.",
+            )
+        }
+        is CowEstimating.NotOffered -> SwapEstimateItem(label, note = cowNotOfferedText(estimating.why, network))
+        CowEstimating.NotASwap -> SwapEstimateItem(
+            label,
+            note = "${sell.symbol} and ${buy.symbol} are one token: there is nothing to swap.",
+        )
+        is CowEstimating.NoVenue -> SwapEstimateItem(
+            label,
+            note = estimating.contract?.let {
+                "CoW's contract at ${Eip55.format(it)} is not what this wallet pins, so CoW is not offered."
+            } ?: "No CoW Protocol deployment is pinned for ${network.displayName}, so CoW is not offered.",
+        )
+        is CowEstimating.CowRefused -> SwapEstimateItem(
+            label,
+            note = cowRefusalText(estimating.why, estimating.errorType, sell.symbol, buy.symbol),
+        )
+        is CowEstimating.CowNoAnswer -> SwapEstimateItem(label, note = cowNoAnswerText(estimating.why, network))
+        is CowEstimating.Unavailable -> SwapEstimateItem(label, note = estimateUnavailableText(estimating.reason))
+    }
+}
+
+/** Why CoW is not offered for a swap on [network], for [why], before CoW is asked anything. */
+internal fun cowNotOfferedText(why: CowNotOffered, network: Network): String = when (why) {
+    CowNotOffered.NOT_ON_THIS_DEVICE -> "CoW Protocol is not offered on this device: its light client cannot " +
+        "date a finalized block yet, which proving an order's end needs. Swap on Uniswap."
+    CowNotOffered.SELLS_ETHER -> "CoW Protocol is offered for tokens sold: selling ${network.nativeSymbol} would " +
+        "go through CoW's ETH-flow contract, which this wallet does not use yet. Sell ${wrappedSymbol(network)} " +
+        "on CoW, or swap ${network.nativeSymbol} on Uniswap."
+    CowNotOffered.NOT_FOLLOWED_YET -> "This account's history is followed from a block that is not finalized " +
+        "yet, so a CoW order's end could not be proven. CoW is offered once it is, in " +
+        "${finalityWaitText(network)}."
+}
+
+/** CoW's refusal to quote [sell] for [buy], for [why], with CoW's own word for it, [errorType]. */
+internal fun cowRefusalText(why: CowRefusal, errorType: String, sell: String, buy: String): String = when (why) {
+    CowRefusal.NO_LIQUIDITY -> "CoW found no liquidity for this swap"
+    CowRefusal.UNSUPPORTED_TOKEN -> "CoW does not trade $sell or $buy, or not right now"
+    CowRefusal.TOO_SMALL -> "The amount does not cover CoW's fee"
+    CowRefusal.FORBIDDEN -> "CoW does not serve this account"
+    CowRefusal.FUNDS -> "By CoW's own check, the balance or the allowance does not cover the order"
+    CowRefusal.OTHER -> "CoW refused to quote this swap"
+} + " (CoW's word: $errorType)."
+
+/** That CoW gave no usable answer on [network], for [why]. */
+internal fun cowNoAnswerText(why: CowUnavailable, network: Network): String = when (why) {
+    CowUnavailable.UNDECODABLE -> "CoW gave an answer this version does not understand: an update of Punicus " +
+        "brings CoW back."
+    CowUnavailable.NOT_PINNED -> "No CoW API is pinned for ${network.displayName}."
+    CowUnavailable.TIMEOUT, CowUnavailable.NO_CONNECTION, CowUnavailable.SERVER_ERROR -> "CoW did not answer."
 }
 
 /**

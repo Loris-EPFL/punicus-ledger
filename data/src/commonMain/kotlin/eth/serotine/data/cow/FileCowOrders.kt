@@ -11,6 +11,7 @@ import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.CowTrade
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.CowOrderEnd
 import eth.serotine.domain.repository.CowOrderList
@@ -101,8 +102,12 @@ class FileCowOrders(
     private class StoredFile(val version: Int, val orders: List<JsonElement>)
 
     private companion object {
-        /** The file's format; a new kind of placement or end makes a new one. */
-        const val FORMAT_VERSION = 1
+        /**
+         * The file's format; a new kind of placement or end makes a new one. 2: an order's kind, a
+         * buy among them (docs/swaps.md, *Buying an exact amount*), which a build of format 1 would
+         * read as a sell; a format-1 entry, which has none, is a sell.
+         */
+        const val FORMAT_VERSION = 2
         val JSON = Json { ignoreUnknownKeys = true }
     }
 }
@@ -123,6 +128,7 @@ internal class StoredCowOrder(
     val sellAmount: String,
     val buyAmount: String,
     val validTo: Long,
+    val kind: String = SELL_KIND,
     val uid: String,
     val signature: StoredSignature,
     val sell: StoredToken? = null,
@@ -171,6 +177,10 @@ internal class StoredTrade(
     val uid: String,
 )
 
+/** An order's kind as stored: by a code of its own, never the enum's name. */
+private const val SELL_KIND = "sell"
+private const val BUY_KIND = "buy"
+
 /** How an entry is read: a field a newer build added is passed over, not the entry. */
 private val LENIENT = Json { ignoreUnknownKeys = true }
 
@@ -189,6 +199,11 @@ private fun decoded(entry: JsonElement): CowOrderRecord? = try {
             sellAmount = UInt256.of(stored.sellAmount),
             buyAmount = UInt256.of(stored.buyAmount),
             validTo = stored.validTo,
+            kind = when (stored.kind) {
+                SELL_KIND -> SwapKind.SELL
+                BUY_KIND -> SwapKind.BUY
+                else -> throw IllegalArgumentException("an order of no kind this build knows")
+            },
         ),
         uid = CowOrderUid.of(stored.uid),
         signature = Signature(stored.signature.r, stored.signature.s, stored.signature.recoveryId),
@@ -277,6 +292,10 @@ private fun stored(order: CowOrderRecord) = StoredCowOrder(
     sellAmount = order.order.sellAmount.toDecimal(),
     buyAmount = order.order.buyAmount.toDecimal(),
     validTo = order.order.validTo,
+    kind = when (order.order.kind) {
+        SwapKind.SELL -> SELL_KIND
+        SwapKind.BUY -> BUY_KIND
+    },
     uid = order.uid.hex,
     signature = StoredSignature(order.signature.r, order.signature.s, order.signature.recoveryId),
     sell = order.sell.storedToken(),

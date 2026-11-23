@@ -25,6 +25,7 @@ import eth.serotine.ui.components.AssetChoice
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.RouteStep
 import eth.serotine.ui.components.SWAP_AMOUNT_TAG
+import eth.serotine.ui.components.SWAP_BUY_AMOUNT_TAG
 import eth.serotine.ui.components.SWAP_BUY_TAG
 import eth.serotine.ui.components.SWAP_ESTIMATE_TAG
 import eth.serotine.ui.components.SWAP_INVERT_RATE_TAG
@@ -117,6 +118,7 @@ class SwapScreenTest {
                 onOpenTransfer = { events += "open $it" },
                 onOpenOrder = { events += "order $it" },
                 onBack = { events += "back" },
+                onBuyAmountChange = { events += "buy amount $it" },
             )
         }
     }
@@ -183,6 +185,30 @@ class SwapScreenTest {
         // The fields are stateless here: each edit is of the state's text, typed at its start.
         assertEquals(listOf("sell null", "buy null", "amount 40"), events.take(3))
         assertEquals("tolerance 10.5", events.last())
+    }
+
+    @Test
+    fun theAmountBoughtHasItsFieldAndTheEstimateShowsInTheFieldNotTyped() {
+        show(
+            compose.copy(
+                form = compose.form.copy(
+                    buy = ether,
+                    amount = "",
+                    buyAmount = "",
+                    amountPlaceholder = "≈ 40 USDC",
+                ),
+            ),
+        )
+
+        rule.onNodeWithText("≈ 40 USDC").assertExists()
+        rule.onNodeWithTag(SWAP_BUY_AMOUNT_TAG).performScrollTo().performTextInput("0.016")
+        assertEquals("buy amount 0.016", events.last())
+    }
+
+    @Test
+    fun aSwapThatSellsOnlyHasNoFieldForTheAmountBought() {
+        show(compose.copy(form = compose.form.copy(buyAmount = null)))
+        rule.onAllNodesWithTag(SWAP_BUY_AMOUNT_TAG).assertCountEquals(0)
     }
 
     @Test

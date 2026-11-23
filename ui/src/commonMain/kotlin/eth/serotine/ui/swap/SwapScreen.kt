@@ -156,6 +156,7 @@ fun SwapRoute(
             onSellChange = viewModel::onSellChange,
             onBuyChange = viewModel::onBuyChange,
             onAmountChange = viewModel::onAmountChange,
+            onBuyAmountChange = viewModel::onBuyAmountChange,
             onMax = viewModel::onMax,
             onToleranceChange = viewModel::onToleranceChange,
             onFeeChange = viewModel::onFeeChange,
@@ -181,6 +182,7 @@ fun SwapRoute(
             onSellChange = viewModel::onSellChange,
             onBuyChange = viewModel::onBuyChange,
             onAmountChange = viewModel::onAmountChange,
+            onBuyAmountChange = viewModel::onBuyAmountChange,
             onMax = viewModel::onMax,
             onToleranceChange = viewModel::onToleranceChange,
             onFeeChange = viewModel::onFeeChange,
@@ -234,6 +236,7 @@ fun SwapScreen(
     onOpenOrder: (uid: String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onBuyAmountChange: (String) -> Unit = {},
 ) {
     val review = state as? Signable
     // As on Send: back from a review is to the compose step, until bytes may be out there, and
@@ -309,6 +312,7 @@ fun SwapScreen(
                     onReview,
                     onOpenTransfer,
                     onOpenOrder,
+                    onBuyAmountChange,
                 )
                 is SwapUiState.ApprovalPending -> ReviewColumn {
                     Text(state.title, style = MaterialTheme.typography.titleLarge)
@@ -443,6 +447,7 @@ private fun ComposeContent(
     onReview: () -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
     onOpenOrder: (uid: String) -> Unit,
+    onBuyAmountChange: (String) -> Unit,
 ) {
     val form = state.form
     val cow = state.venue.chosen == SwapVenue.COW
@@ -456,13 +461,22 @@ private fun ComposeContent(
         VenueChoice(state.venue, enabled = !form.quoting, onVenueChange)
         Note(
             if (cow) {
-                "Through CoW's servers, which learn this swap. CoW's estimate is shown beside the verified " +
-                    "Uniswap quote, and the order never signs less than that quote, less its fee and the tolerance."
+                "Through CoW's servers, which learn this swap and its amounts while you compose it. CoW's estimate " +
+                    "is not checked on chain: the order signs it, less your tolerance (plus it, for a buy)."
             } else {
                 "Verified on chain: Uniswap's pools, read through the light client. Nothing goes to a server."
             },
         )
-        SwapFormFields(form, onSellChange, onBuyChange, onAmountChange, onMax, onToleranceChange, onReview = onReview)
+        SwapFormFields(
+            form,
+            onSellChange,
+            onBuyChange,
+            onAmountChange,
+            onMax,
+            onToleranceChange,
+            onReview = onReview,
+            onBuyAmountChange = onBuyAmountChange,
+        )
         Heading("Fee")
         FeeChoice(state.fee, enabled = !form.quoting, onFeeChange)
         Note(
@@ -548,7 +562,7 @@ private fun CowContent(state: SwapUiState.CowReview) {
     Heading("You sell")
     AmountLine(state.sell.icon, state.sell.symbol, state.sold)
     Heading("CoW's estimate, not verified")
-    AmountLine(state.buy.icon, state.buy.symbol, state.estimate)
+    AmountLine(state.estimateAsset.icon, state.estimateAsset.symbol, state.estimate)
     Note(state.estimateNote)
     Heading("You receive")
     SelectionContainer {
@@ -779,7 +793,7 @@ private fun SimpleApprovalContent(state: SwapUiState.ApprovalReview) {
 @Composable
 private fun SimpleSwapContent(state: SwapUiState.SwapReview) {
     AmountLine(state.sell.icon, state.sell.symbol, state.sold)
-    Text("for at least", style = MaterialTheme.typography.labelMedium)
+    Text(state.receiveLead, style = MaterialTheme.typography.labelMedium)
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         TokenIcon(state.buy.icon, state.buy.symbol, size = 40.dp)
         SelectionContainer {
@@ -821,7 +835,7 @@ private fun SimpleSwapContent(state: SwapUiState.SwapReview) {
 @Composable
 private fun SimpleCowContent(state: SwapUiState.CowReview) {
     AmountLine(state.sell.icon, state.sell.symbol, state.sold)
-    Text("for at least", style = MaterialTheme.typography.labelMedium)
+    Text(state.receiveLead, style = MaterialTheme.typography.labelMedium)
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         TokenIcon(state.buy.icon, state.buy.symbol, size = 40.dp)
         SelectionContainer {
@@ -830,10 +844,10 @@ private fun SimpleCowContent(state: SwapUiState.CowReview) {
     }
     ReviewLine("CoW expects, not checked on chain", state.estimate)
     Text(
-        "The minimum is CoW's estimate less your tolerance. CoW's estimate is not checked on chain.",
+        state.simpleBasis,
         style = MaterialTheme.typography.bodyMedium,
     )
-    Checked("Checked on chain: the settlement contract refuses any fill below the minimum")
+    Checked(state.simpleChecked)
     Text(
         "No network fee from this account: CoW takes it out of the trade.",
         style = MaterialTheme.typography.bodyMedium,

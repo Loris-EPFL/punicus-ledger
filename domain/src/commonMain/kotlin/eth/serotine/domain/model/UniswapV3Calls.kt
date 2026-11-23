@@ -66,19 +66,30 @@ object UniswapV3Pool {
 
 /**
  * QuoterV2's answer for a route: the [amountOut] the swap would return, and the [gasEstimate]
- * of the swaps in the pools, which the router's own work comes on top of.
+ * of the swaps in the pools, which the router's own work comes on top of. For a swap that buys
+ * an exact amount (docs/swaps.md, *Buying an exact amount*), [amountOut] is that amount.
  */
 data class RouteQuote(val route: SwapRoute, val amountOut: UInt256, val gasEstimate: Long)
 
 /**
- * The calls of the pinned `QuoterV2`, which quotes an exact input by running the swap and
- * reverting it, and the reading of what it returns. Its functions are not `view`, but run as a
+ * QuoterV2's answer for buying exactly an amount along a route ([QuoterV2.quoteToBuy]): the
+ * [amountIn] the swap would take of the route's first token, and the [gasEstimate] of the swaps
+ * in the pools.
+ */
+data class RouteCost(val route: SwapRoute, val amountIn: UInt256, val gasEstimate: Long)
+
+/**
+ * The calls of the pinned `QuoterV2`, which quotes an exact input, or an exact output, by running
+ * the swap and reverting it, and the reading of what it returns. Its functions are not `view`, but run as a
  * verified call (an `eth_call` over proven state, in the engine's own EVM) they change nothing
  * and answer: the quote is chain data, not a price (docs/swaps.md, *What both venues share*).
  */
 object QuoterV2 {
     private val QUOTE_EXACT_INPUT_SINGLE = selector("quoteExactInputSingle((address,address,uint256,uint24,uint160))")
     private val QUOTE_EXACT_INPUT = selector("quoteExactInput(bytes,uint256)")
+    private val QUOTE_EXACT_OUTPUT_SINGLE =
+        selector("quoteExactOutputSingle((address,address,uint256,uint24,uint160))")
+    private val QUOTE_EXACT_OUTPUT = selector("quoteExactOutput(bytes,uint256)")
 
     /** `quoteExactInputSingle` returns four words: the amount, the price after, the ticks crossed, the gas. */
     private const val SINGLE_WORDS = 4
@@ -111,19 +122,48 @@ object QuoterV2 {
      * function returns for a route of that many pools — every word of its type, each array of
      * one entry per pool, each offset where the ABI puts it — or the gas does not fit a [Long].
      */
-    fun quoteOf(route: SwapRoute, returnHex: String): RouteQuote? {
+    fun quoteOf(route: SwapRoute, returnHex: String): RouteQuote? =
+        amountAndGas(route, returnHex)?.let { (amountOut, gas) -> RouteQuote(route, amountOut, gas) }
+
+    /**
+     * The call data that quotes buying exactly [amountOut] of [route]'s last token along it
+     * (docs/swaps.md, *Buying an exact amount*): `quoteExactOutputSingle` with no price limit for
+     * one pool, `quoteExactOutput` with the route's [SwapRoute.reversedPath] for one hop.
+     */
+    fun quoteToBuy(route: SwapRoute, amountOut: UInt256): ByteArray =
+        if (route.isDirect) {
+            QUOTE_EXACT_OUTPUT_SINGLE +
+                word(route.tokenIn) +
+                word(route.tokenOut) +
+                amountOut.toBytes32() +
+                word(route.fees.single().pips.toLong()) +
+                word(0)
+        } else {
+            QUOTE_EXACT_OUTPUT + word((2 * WORD).toLong()) + amountOut.toBytes32() + dynamic(route.reversedPath())
+        }
+
+    /**
+     * What [quoteToBuy] of [route] returned as [returnHex]: the amount it takes, held to the same
+     * shape [quoteOf] holds a sell's quote to (the exact-output functions return the same types),
+     * or null when it is not exactly that.
+     */
+    fun costOf(route: SwapRoute, returnHex: String): RouteCost? =
+        amountAndGas(route, returnHex)?.let { (amountIn, gas) -> RouteCost(route, amountIn, gas) }
+
+    /** The amount and the gas a quote of [route] returned as [returnHex], or null when it is not exactly that. */
+    private fun amountAndGas(route: SwapRoute, returnHex: String): Pair<UInt256, Long>? {
         val data = AbiWords.returned(returnHex) ?: return null
-        return if (route.isDirect) single(route, data) else path(route, data)
+        return if (route.isDirect) single(data) else path(route, data)
     }
 
-    private fun single(route: SwapRoute, data: ByteArray): RouteQuote? {
-        val (amountOut, priceAfter, ticksCrossed, gas) = AbiWords.words(data, SINGLE_WORDS) ?: return null
+    private fun single(data: ByteArray): Pair<UInt256, Long>? {
+        val (amount, priceAfter, ticksCrossed, gas) = AbiWords.words(data, SINGLE_WORDS) ?: return null
         AbiWords.uint(priceAfter, UINT160) ?: return null
         AbiWords.uint(ticksCrossed, UINT32) ?: return null
-        return RouteQuote(route, AbiWords.uint(amountOut), AbiWords.long(gas) ?: return null)
+        return AbiWords.uint(amount) to (AbiWords.long(gas) ?: return null)
     }
 
-    private fun path(route: SwapRoute, data: ByteArray): RouteQuote? {
+    private fun path(route: SwapRoute, data: ByteArray): Pair<UInt256, Long>? {
         val pools = route.pools
         // The head, then each array as its length and one word per pool.
         val pricesAt = PATH_HEAD_WORDS * WORD
@@ -141,7 +181,7 @@ object QuoterV2 {
         }
         if (prices.drop(1).any { AbiWords.uint(it, UINT160) == null }) return null
         if (ticks.drop(1).any { AbiWords.uint(it, UINT32) == null }) return null
-        return RouteQuote(route, AbiWords.uint(amountOut), AbiWords.long(gas) ?: return null)
+        return AbiWords.uint(amountOut) to (AbiWords.long(gas) ?: return null)
     }
 }
 
@@ -169,7 +209,10 @@ class TransactionCall(val to: Address, val value: UInt256, data: ByteArray) {
  * The swap the account sends to the pinned `SwapRouter02` (docs/swaps.md, *The transaction*):
  * one `multicall(deadline, data)`, so that the router refuses it once the chain is past the
  * deadline, holding `exactInputSingle` for one pool or `exactInput` for one hop, with no price
- * limit, and `unwrapWETH9` after it when the account buys ETH.
+ * limit, and `unwrapWETH9` after it when the account buys ETH; for a swap that buys an exact
+ * amount ([buy]), `exactOutputSingle` or `exactOutput`, with `refundETH` after it when it sells
+ * ETH. [decode] reads the sells alone: a buy is no call a Safe's screen decodes, and reads as an
+ * undecoded call there.
  */
 object SwapRouter02 {
     private val MULTICALL = selector("multicall(uint256,bytes[])")
@@ -177,8 +220,15 @@ object SwapRouter02 {
         selector("exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))")
     private val EXACT_INPUT = selector("exactInput((bytes,address,uint256,uint256))")
     private val UNWRAP_WETH9 = selector("unwrapWETH9(uint256,address)")
+    private val EXACT_OUTPUT_SINGLE =
+        selector("exactOutputSingle((address,address,uint24,address,uint256,uint256,uint160))")
+    private val EXACT_OUTPUT = selector("exactOutput((bytes,address,uint256,uint256))")
+    private val REFUND_ETH = selector("refundETH()")
 
-    /** `exactInput`'s tuple has four head words: the path's offset, the recipient, the two amounts. */
+    /**
+     * `exactInput`'s tuple has four head words: the path's offset, the recipient, the two amounts;
+     * `exactOutput`'s too.
+     */
     private const val EXACT_INPUT_HEAD_WORDS = 4
 
     private const val SELECTOR_SIZE = 4
@@ -239,6 +289,75 @@ object SwapRouter02 {
             buysEther = buy == TransferAsset.Native,
         )
     }
+
+    /**
+     * The call that buys exactly [amountOut] of [buy] for at most [amountInMaximum] of [sell]
+     * along [route] through [deployment]'s router, paid to [account] and refused by the router
+     * after [deadline] (docs/swaps.md, *Buying an exact amount*): `exactOutputSingle` for one pool,
+     * `exactOutput` with the [SwapRoute.reversedPath] for one hop, in one `multicall`. Neither
+     * amount is zero.
+     *
+     * - Selling ETH, the call's value is [amountInMaximum], which the router wraps as needed, and
+     *   `refundETH()` follows, which pays back what the swap did not use, in the same transaction.
+     * - Buying ETH, the router keeps the WETH ([ADDRESS_THIS]) and `unwrapWETH9(amountOut,
+     *   account)` follows, as for a sell.
+     * - Otherwise the call carries no value and the router pays [account] directly.
+     */
+    fun buy(
+        deployment: UniswapV3Deployment,
+        sell: TransferAsset,
+        buy: TransferAsset,
+        route: SwapRoute,
+        amountOut: UInt256,
+        amountInMaximum: UInt256,
+        account: Address,
+        deadline: Long,
+    ): TransactionCall {
+        require(route.tokenIn == sell.tokenOn(deployment)) { "the route starts with another token than sold" }
+        require(route.tokenOut == buy.tokenOn(deployment)) { "the route ends with another token than bought" }
+        require(!amountOut.isZero) { "a swap buys something" }
+        require(!amountInMaximum.isZero) { "a swap that buys sells something" }
+        require(deadline >= 0) { "a deadline is not negative" }
+        val sellsEther = sell == TransferAsset.Native
+        val buysEther = buy == TransferAsset.Native
+        val recipient = if (buysEther) ADDRESS_THIS else account
+        val swap = if (route.isDirect) {
+            EXACT_OUTPUT_SINGLE +
+                word(route.tokenIn) +
+                word(route.tokenOut) +
+                word(route.fees.single().pips.toLong()) +
+                word(recipient) +
+                amountOut.toBytes32() +
+                amountInMaximum.toBytes32() +
+                word(0)
+        } else {
+            EXACT_OUTPUT +
+                // The one argument is a dynamic tuple: its offset, then its head and the path.
+                word(WORD.toLong()) +
+                word((EXACT_INPUT_HEAD_WORDS * WORD).toLong()) +
+                word(recipient) +
+                amountOut.toBytes32() +
+                amountInMaximum.toBytes32() +
+                dynamic(route.reversedPath())
+        }
+        val calls = when {
+            buysEther -> listOf(swap, unwrapWeth9(amountOut, account))
+            sellsEther -> listOf(swap, REFUND_ETH.copyOf())
+            else -> listOf(swap)
+        }
+        val value = if (sellsEther) amountInMaximum else UInt256.ZERO
+        val data = AbiWords.withBytesArray(MULTICALL, head = listOf(word(deadline)), elements = calls)
+        return TransactionCall(deployment.swapRouter02, value, data)
+    }
+
+    /**
+     * What a swap that buys takes, by what a [buy] call's run returned as [returnHex]:
+     * `multicall`'s results, a `bytes[]` holding `exactOutput`'s `amountIn` as one word, then the
+     * empty result of `refundETH` ([sellsEther]) or of `unwrapWETH9` ([buysEther]), if either
+     * follows. Null when it is not exactly that.
+     */
+    fun amountInOf(returnHex: String, sellsEther: Boolean, buysEther: Boolean): UInt256? =
+        firstResultWord(returnHex, followed = sellsEther || buysEther)
 
     private fun encode(
         router: Address,
@@ -383,14 +502,20 @@ object SwapRouter02 {
      * results, a `bytes[]` holding the swap's `amountOut` as one word, and when the account buys
      * ETH ([buysEther]) `unwrapWETH9`'s empty result after it. Null when it is not exactly that.
      */
-    fun amountOutOf(returnHex: String, buysEther: Boolean): UInt256? {
+    fun amountOutOf(returnHex: String, buysEther: Boolean): UInt256? = firstResultWord(returnHex, followed = buysEther)
+
+    /**
+     * The one word of `multicall`'s first result in [returnHex], when its results are exactly that
+     * word and, [followed], one empty result after it; null for anything else.
+     */
+    private fun firstResultWord(returnHex: String, followed: Boolean): UInt256? {
         val data = AbiWords.returned(returnHex) ?: return null
-        val calls = if (buysEther) 2 else 1
+        val calls = if (followed) 2 else 1
         // The array's offset and length, an offset per result, then the first result's length.
         val at = (2 + calls + 1) * WORD
         if (data.size < at + WORD) return null
         val amount = data.copyOfRange(at, at + WORD)
-        val results = if (buysEther) listOf(amount, ByteArray(0)) else listOf(amount)
+        val results = if (followed) listOf(amount, ByteArray(0)) else listOf(amount)
         val expected = AbiWords.withBytesArray(ByteArray(0), head = emptyList(), elements = results)
         return if (expected.contentEquals(data)) AbiWords.uint(amount) else null
     }

@@ -6,6 +6,7 @@ import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.CowApi
 import eth.serotine.domain.repository.CowChain
@@ -69,9 +70,14 @@ internal class MemoryCowOrders(vararg initial: CowOrderRecord) : CowOrders {
  * [placed]); [onPlace] sees the record of orders as it stands when an order is posted.
  */
 internal class FakeCowApi : CowApi {
-    var quote: CowQuoteReading = CowQuoteReading.Quoted(UInt256.of("50000000000000000"), UInt256.ZERO)
+    var quote: CowQuoteReading = CowQuoteReading.Quoted(
+        UInt256.of(100_000_000),
+        UInt256.of("50000000000000000"),
+        UInt256.ZERO,
+    )
     var placement: CowPlacement? = null
     val quotes = mutableListOf<List<Any>>()
+    val kinds = mutableListOf<SwapKind>()
     val placed = mutableListOf<Pair<CowOrder, CowOrderUid>>()
     var onPlace: () -> Unit = {}
 
@@ -79,10 +85,12 @@ internal class FakeCowApi : CowApi {
         network: Network,
         sellToken: Address,
         buyToken: Address,
-        sellAmount: UInt256,
+        amount: UInt256,
         from: Address,
+        kind: SwapKind,
     ): CowQuoteReading {
-        quotes += listOf(network, sellToken, buyToken, sellAmount, from)
+        quotes += listOf(network, sellToken, buyToken, amount, from)
+        kinds += kind
         return quote
     }
 

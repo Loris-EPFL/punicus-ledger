@@ -8,6 +8,7 @@ import eth.serotine.domain.model.GPv2Signing
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.TransferAsset
@@ -101,7 +102,11 @@ class CowSwapsTest {
 
     @Test
     fun anOrderIsBuiltHereWithItsMinimumItsValidityAndItsUid() = runTest {
-        cowApi.quote = CowQuoteReading.Quoted(UInt256.of("51000000000000000"), UInt256.of(300_000))
+        cowApi.quote = CowQuoteReading.Quoted(
+            UInt256.of(100_000_000),
+            UInt256.of("51000000000000000"),
+            UInt256.of(300_000),
+        )
 
         val quote = assertIs<CowSwapQuoting.Quoted>(quoteUsdcForWeth()).quote
         // CoW's 0.051 less 0.5 %.
@@ -116,10 +121,95 @@ class CowSwapsTest {
         assertEquals(listOf<Any>(Network.SEPOLIA, usdcToken.address, weth, hundredUsdc, account), asked)
     }
 
+    /** 0.05 WETH bought exactly with USDC, at the default tolerance. */
+    private val wethBought = UInt256.of("50000000000000000")
+
+    private suspend fun buyWethWithUsdc() =
+        quoteCow(account, usdc, wethAsset, wethBought, SlippageTolerance.DEFAULT, SwapKind.BUY)
+
+    @Test
+    fun aBuyOrderBuysExactlyTheAmountForAtMostCowsEstimatePlusTheTolerance() = runTest {
+        // CoW: 0.05 WETH costs 98 USDC, its fee included; the most it may sell is that and 0.5 %, rounded up.
+        cowApi.quote = CowQuoteReading.Quoted(UInt256.of(98_000_000), wethBought, UInt256.of(300_000))
+        allow(UInt256.of(98_490_000))
+
+        val quote = assertIs<CowSwapQuoting.Quoted>(buyWethWithUsdc()).quote
+        assertEquals(SwapKind.BUY, quote.kind)
+        assertEquals(
+            CowOrder(
+                usdcToken.address,
+                weth,
+                account,
+                UInt256.of(98_490_000),
+                wethBought,
+                headTime + 300,
+                SwapKind.BUY,
+            ),
+            quote.order,
+        )
+        assertEquals(UInt256.of(98_490_000), quote.amountIn, "the most it sells")
+        assertEquals(wethBought, quote.minimumOut, "exactly what it buys")
+        assertEquals(UInt256.of(98_000_000), quote.estimate, "CoW's estimate of what it sells")
+        assertEquals(UInt256.of(500_000_000 - 98_490_000), quote.sellAfter)
+        assertEquals(quote.order.digest(Network.SEPOLIA.chainId, COW_SEPOLIA.settlement), quote.digest)
+        assertEquals(listOf<Any>(Network.SEPOLIA, usdcToken.address, weth, wethBought, account), cowApi.quotes.single())
+        assertEquals(listOf(SwapKind.BUY), cowApi.kinds)
+    }
+
+    @Test
+    fun aBuyWhoseMaximumIsMoreThanTheAccountHoldsSaysBoth() = runTest {
+        cowApi.quote = CowQuoteReading.Quoted(UInt256.of(600_000_000), wethBought, UInt256.ZERO)
+        assertEquals(
+            CowSwapQuoting.MaximumAboveBalance(UInt256.of(603_000_000), UInt256.of(500_000_000)),
+            buyWethWithUsdc(),
+        )
+    }
+
+    @Test
+    fun aBuyNeedsTheRelayerAllowedItsMaximum() = runTest {
+        cowApi.quote = CowQuoteReading.Quoted(UInt256.of(98_000_000), wethBought, UInt256.ZERO)
+        allow(UInt256.of(97_999_999))
+        assertEquals(
+            CowSwapQuoting.NeedsApproval(
+                usdcToken,
+                COW_SEPOLIA.vaultRelayer,
+                UInt256.of(97_999_999),
+                UInt256.of(98_490_000),
+            ),
+            buyWethWithUsdc(),
+        )
+    }
+
+    @Test
+    fun aBuyQuotedAgainAfterItsApprovalSellsAtMostWhatWasApproved() = runTest {
+        // Approved for an earlier estimate's maximum of 98.2 USDC; CoW now estimates 98, its maximum 98.49.
+        cowApi.quote = CowQuoteReading.Quoted(UInt256.of(98_000_000), wethBought, UInt256.ZERO)
+        allow(UInt256.of(98_200_000))
+
+        val quote = assertIs<CowSwapQuoting.Quoted>(buyWethWithUsdc()).quote
+        assertEquals(UInt256.of(98_200_000), quote.amountIn, "the maximum approved, not a new approval")
+        assertEquals(UInt256.of(98_200_000), quote.order.sellAmount)
+    }
+
+    @Test
+    fun aBuyOrderTheSettlementReadsBoughtAtTheHeadHoldsNothingBack() = runTest {
+        // A buy's filled amount is in the token bought: done once it reads the amount bought.
+        val order = CowOrder(usdcToken.address, weth, account, hundredUsdc, wethBought, headTime + 200, SwapKind.BUY)
+        val uid = order.uid(Network.SEPOLIA.chainId, COW_SEPOLIA.settlement, account)
+        val live = liveOrder().copy(order = order, uid = uid)
+        val chain = FakeCowChain()
+        val filledAmount = COW_SEPOLIA.settlement to GPv2Settlement.filledAmount(uid).toHex()
+        chain.answers[filledAmount] = Simulation.Succeeded(word(wethBought), 121)
+        assertEquals(UInt256.ZERO, listOf(live).holding(account, usdcToken.address, finalized, chain))
+        chain.answers[filledAmount] = Simulation.Succeeded(word(UInt256.of("49999999999999999")), 121)
+        val held = listOf(live).holding(account, usdcToken.address, finalized, chain)
+        assertEquals(hundredUsdc, held, "its maximum held")
+    }
+
     @Test
     fun theMinimumIsCowsEstimateLessTheToleranceAndNothingElse() = runTest {
         // No other venue is read: whatever CoW estimates, the minimum is that less the tolerance.
-        cowApi.quote = CowQuoteReading.Quoted(UInt256.of("48000000000000000"), UInt256.ZERO)
+        cowApi.quote = CowQuoteReading.Quoted(UInt256.of(100_000_000), UInt256.of("48000000000000000"), UInt256.ZERO)
         val quote = assertIs<CowSwapQuoting.Quoted>(quoteUsdcForWeth()).quote
         assertEquals(UInt256.of("47760000000000000"), quote.minimumOut)
         assertEquals(UInt256.of("48000000000000000"), quote.estimate)
@@ -185,7 +275,7 @@ class CowSwapsTest {
     fun theVaultRelayersAllowanceComesFirst() = runTest {
         allow(UInt256.of(99_999_999))
         assertEquals(
-            CowSwapQuoting.NeedsApproval(usdcToken, COW_SEPOLIA.vaultRelayer, UInt256.of(99_999_999)),
+            CowSwapQuoting.NeedsApproval(usdcToken, COW_SEPOLIA.vaultRelayer, UInt256.of(99_999_999), hundredUsdc),
             quoteUsdcForWeth(),
         )
         assertTrue(cowApi.quotes.isEmpty())
@@ -312,7 +402,7 @@ class CowSwapsTest {
     @Test
     fun aMinimumThatRoundsToNothingIsNotSigned() = runTest {
         // CoW's estimate of one wei rounds down to nothing.
-        cowApi.quote = CowQuoteReading.Quoted(UInt256.ONE, UInt256.ZERO)
+        cowApi.quote = CowQuoteReading.Quoted(UInt256.of(100_000_000), UInt256.ONE, UInt256.ZERO)
         assertEquals(CowSwapQuoting.TooSmall, quoteUsdcForWeth())
     }
 

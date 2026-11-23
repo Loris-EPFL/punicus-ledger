@@ -167,6 +167,8 @@ class PostageViewModelTest {
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
     private val clock = TestTimeSource()
+    private val cowOrders = MemoryCowOrders()
+    private val cowChain = FakeCowChain()
 
     private val lightClient = object : eth.serotine.domain.repository.LightClient {
         override val datesFinalizedBlocks = true
@@ -187,9 +189,9 @@ class PostageViewModelTest {
             ObserveAccounts(held),
             ObservePostageBatch(contracts),
             ObserveSwarmNodes(candidates),
-            QuoteBatchPurchase(contracts, inputs, native, tokens, sent, outbox, MemoryCowOrders(), FakeCowChain(), lightClient),
-            QuoteBatchTopUp(contracts, inputs, native, tokens, sent, outbox, MemoryCowOrders(), FakeCowChain(), lightClient),
-            QuoteBatchDilution(contracts, inputs, native, tokens, sent, outbox, MemoryCowOrders(), FakeCowChain(), lightClient),
+            QuoteBatchPurchase(contracts, inputs, native, tokens, sent, outbox, cowOrders, cowChain, lightClient),
+            QuoteBatchTopUp(contracts, inputs, native, tokens, sent, outbox, cowOrders, cowChain, lightClient),
+            QuoteBatchDilution(contracts, inputs, native, tokens, sent, outbox, cowOrders, cowChain, lightClient),
             SendBatchApproval(signer, broadcaster, sent, inputs, contracts),
             SendBatchCall(signer, broadcaster, sent, inputs, candidates, contracts),
             DescribeKeyStore(FakeKeys()),

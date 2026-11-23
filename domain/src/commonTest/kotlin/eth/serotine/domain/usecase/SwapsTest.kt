@@ -220,7 +220,7 @@ class SwapsTest {
     fun anAllowanceThatFallsShortAsksForTheApprovalFirst() = runTest {
         pool(usdcToken.address, linkToken.address, hundredUsdc, amountOut)
         allow(UInt256.of(5))
-        assertEquals(SwapQuoting.NeedsApproval(usdcToken, router, UInt256.of(5)), quoteUsdcForLink())
+        assertEquals(SwapQuoting.NeedsApproval(usdcToken, router, UInt256.of(5), hundredUsdc), quoteUsdcForLink())
         assertEquals(0, inputs.estimates, "no swap is estimated before the approval")
     }
 
@@ -414,7 +414,7 @@ class SwapsTest {
     fun aBuyNeedsTheRoutersAllowanceForItsMaximum() = runTest {
         costs(amountOut, hundredUsdc)
         allow(hundredUsdc)
-        assertEquals(SwapQuoting.NeedsApproval(usdcToken, router, hundredUsdc), buyLink())
+        assertEquals(SwapQuoting.NeedsApproval(usdcToken, router, hundredUsdc, mostUsdc), buyLink())
     }
 
     @Test

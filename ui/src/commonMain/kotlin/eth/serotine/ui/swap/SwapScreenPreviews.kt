@@ -512,6 +512,24 @@ private fun SwapReviewPreview() = SwapPreview(
 
 @Preview
 @Composable
+private fun SwapReviewBuyPreview() = SwapPreview(
+    review.copy(
+        sold = "at most 40.2 USDC",
+        receive = "0.016 ETH",
+        ranAt = "The swap, run as a verified call from this account at block 8,412,307, takes 39.98 USDC for this.",
+        minimum = "exactly 0.016 ETH",
+        receiveLead = "for exactly",
+        tolerance = "0.5 % tolerance, above QuoterV2's verified quote of 40 USDC: the most it sells",
+        balances = listOf(
+            BalanceChange("USDC balance", "250 USDC", "at least 209.8 USDC", "verified at block 8,412,305"),
+            BalanceChange("ETH balance", "1.25 ETH", "at least 1.262665 ETH", "verified at block 8,412,307"),
+        ),
+        unlock = UnlockStep(WalletPassword("made-up preview password")),
+    ),
+)
+
+@Preview
+@Composable
 private fun SwapReviewDarkPreview() = SwapPreview(review, darkTheme = true)
 
 @Preview
@@ -572,7 +590,12 @@ private fun SwapCowReviewBuyPreview() = SwapPreview(
         simpleBasis = "The most it sells is CoW's estimate plus your tolerance. CoW's estimate is not checked on " +
             "chain.",
         balances = listOf(
-            BalanceChange("USDC balance", "250 USDC", "at least 209.8 USDC once it fills", "verified at block 8,412,305"),
+            BalanceChange(
+                "USDC balance",
+                "250 USDC",
+                "at least 209.8 USDC once it fills",
+                "verified at block 8,412,305",
+            ),
         ),
         unlock = UnlockStep(WalletPassword("made-up preview password")),
     ),
@@ -678,6 +701,7 @@ internal val swapScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("approval-reset-first") { SwapApprovalResetFirstPreview() },
     ScreenPreview("review") { SwapReviewPreview() },
     ScreenPreview("review-dark") { SwapReviewDarkPreview() },
+    ScreenPreview("review-buy") { SwapReviewBuyPreview() },
     ScreenPreview("review-through-weth-with-biometrics") { SwapReviewThroughWethWithBiometricsPreview() },
     ScreenPreview("review-wrong-password") { SwapReviewWrongPasswordPreview() },
     ScreenPreview("review-signing") { SwapReviewSigningPreview() },

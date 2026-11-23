@@ -748,11 +748,19 @@ class SwapViewModel(
         val bought = { units: UInt256 -> exactAmount(units, request.buy.decimals, request.buy.symbol) }
         val prompt = when (val quoted = current.quoted) {
             is Quoted.Approval -> "Allow ${Eip55.format(quoted.quote.spender)} to take ${sold(quoted.quote.amount)}"
-            is Quoted.Swap -> "Swap ${sold(quoted.quote.amountIn)} for at least ${bought(quoted.quote.minimumOut)}"
+            is Quoted.Swap -> when (quoted.quote.kind) {
+                SwapKind.SELL -> "Swap ${sold(quoted.quote.amountIn)} for at least ${bought(quoted.quote.minimumOut)}"
+                SwapKind.BUY ->
+                    "Buy exactly ${bought(quoted.quote.minimumOut)} for at most ${sold(quoted.quote.amountIn)}"
+            }
             is Quoted.Wrap ->
                 "${verbOf(quoted.quote.direction)} ${sold(quoted.quote.amount)} into ${request.buy.symbol}"
-            is Quoted.Cow ->
-                "Sign a CoW order: ${sold(quoted.quote.amountIn)} for at least ${bought(quoted.quote.minimumOut)}"
+            is Quoted.Cow -> when (quoted.quote.kind) {
+                SwapKind.SELL ->
+                    "Sign a CoW order: ${sold(quoted.quote.amountIn)} for at least ${bought(quoted.quote.minimumOut)}"
+                SwapKind.BUY -> "Sign a CoW order: exactly ${bought(quoted.quote.minimumOut)} for at most " +
+                    sold(quoted.quote.amountIn)
+            }
         }
         sign(current, Unlock.WithBiometrics(prompt, notAfter))
     }
@@ -1148,7 +1156,7 @@ class SwapViewModel(
     private suspend fun onVenue(request: Request, tolerance: SlippageTolerance): Next = when (request.venue) {
         SwapVenue.UNISWAP -> when (val swapping = askSwap(request, tolerance)) {
             is SwapQuoting.Quoted -> Quoted.Swap(swapping.quote)
-            is SwapQuoting.NeedsApproval -> approvalFirst(swapping.token, swapping.spender, request) {
+            is SwapQuoting.NeedsApproval -> approvalFirst(swapping.token, swapping.spender, request, swapping.amount) {
                 when (val again = askSwap(request, tolerance)) {
                     is SwapQuoting.Quoted -> Quoted.Swap(again.quote)
                     else -> composing(again, request)
@@ -1159,7 +1167,12 @@ class SwapViewModel(
         // CoW is asked only here: the user chose it, and asked for the review.
         SwapVenue.COW -> when (val ordering = askCow(request, tolerance)) {
             is CowSwapQuoting.Quoted -> Quoted.Cow(ordering.quote)
-            is CowSwapQuoting.NeedsApproval -> approvalFirst(ordering.token, ordering.spender, request, ordering.amount) {
+            is CowSwapQuoting.NeedsApproval -> approvalFirst(
+                ordering.token,
+                ordering.spender,
+                request,
+                ordering.amount,
+            ) {
                 when (val again = askCow(request, tolerance)) {
                     is CowSwapQuoting.Quoted -> Quoted.Cow(again.quote)
                     else -> cowComposing(again, request)
@@ -1201,7 +1214,15 @@ class SwapViewModel(
     }
 
     private suspend fun askSwap(request: Request, tolerance: SlippageTolerance): SwapQuoting = try {
-        quoteSwap(from, request.sell.asset, request.buy.asset, request.amount, tolerance, request.inputs.fee, request.kind)
+        quoteSwap(
+            from,
+            request.sell.asset,
+            request.buy.asset,
+            request.amount,
+            tolerance,
+            request.inputs.fee,
+            request.kind,
+        )
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -1396,7 +1417,8 @@ class SwapViewModel(
     private fun figuresOf(model: Model, estimate: Estimate?): Pair<UInt256, UInt256>? {
         val key = estimateKeyOf(model) ?: return null
         return when (val estimating = estimate?.takeIf { it.key == key }?.estimating) {
-            is Estimating.Uniswap -> (estimating.reading as? SwapEstimating.Estimated)?.let { it.amountIn to it.amountOut }
+            is Estimating.Uniswap ->
+                (estimating.reading as? SwapEstimating.Estimated)?.let { it.amountIn to it.amountOut }
             is Estimating.Cow -> (estimating.reading as? CowEstimating.Estimated)?.let { it.amountIn to it.amountOut }
             null -> null
         }
@@ -1620,6 +1642,7 @@ class SwapViewModel(
     private fun swapReview(step: Step.Reviewing, quote: SwapQuote): SwapUiState.SwapReview {
         val sell = step.request.sell
         val buy = step.request.buy
+        val buying = quote.kind == SwapKind.BUY
         val native = network.nativeSymbol
         val route = routeSteps(quote.route, quote.pools, sell, buy, network)
         val sold = sell.asset as? TransferAsset.Erc20Token
@@ -1630,7 +1653,8 @@ class SwapViewModel(
                 BalanceChange(
                     what = "${sell.symbol} balance",
                     before = exactAmount(before, sell.decimals, sell.symbol),
-                    after = exactAmount(after, sell.decimals, sell.symbol),
+                    // A buy's balance after counts its maximum: it is at least that.
+                    after = (if (buying) "at least " else "") + exactAmount(after, sell.decimals, sell.symbol),
                     verifiedAt = verifiedAt(quote.tokenBalanceBlock),
                 )
             },
@@ -1638,7 +1662,8 @@ class SwapViewModel(
                 BalanceChange(
                     what = "${buy.symbol} balance",
                     before = exactAmount(before, buy.decimals, buy.symbol),
-                    after = "at least " + exactAmount(before + quote.minimumOut, buy.decimals, buy.symbol),
+                    after = (if (buying) "" else "at least ") +
+                        exactAmount(before + quote.minimumOut, buy.decimals, buy.symbol),
                     verifiedAt = verifiedAt(quote.buyBalanceBlock),
                 )
             },
@@ -1659,14 +1684,26 @@ class SwapViewModel(
             network = network.displayName,
             from = step.sender,
             sell = sell.choice(),
-            sold = exactAmount(quote.amountIn, sell.decimals, sell.symbol),
+            sold = (if (buying) "at most " else "") + exactAmount(quote.amountIn, sell.decimals, sell.symbol),
             buy = buy.choice(),
             receive = exactAmount(quote.returnedOut, buy.decimals, buy.symbol),
             ranAt = "The swap, run as a verified call from this account " +
-                (quote.simulationBlock?.let { "at block ${grouped(it)}" } ?: "at the head") + ", returns this.",
-            minimum = "at least " + exactAmount(quote.minimumOut, buy.decimals, buy.symbol),
-            tolerance = "${quote.tolerance} tolerance, below QuoterV2's verified quote of " +
-                exactAmount(quote.quotedOut, buy.decimals, buy.symbol),
+                (quote.simulationBlock?.let { "at block ${grouped(it)}" } ?: "at the head") +
+                if (buying) {
+                    ", takes ${exactAmount(quote.takenIn, sell.decimals, sell.symbol)} for this."
+                } else {
+                    ", returns this."
+                },
+            minimum = (if (buying) "exactly " else "at least ") +
+                exactAmount(quote.minimumOut, buy.decimals, buy.symbol),
+            tolerance = if (buying) {
+                "${quote.tolerance} tolerance, above QuoterV2's verified quote of " +
+                    exactAmount(quote.quotedIn, sell.decimals, sell.symbol) + ": the most it sells"
+            } else {
+                "${quote.tolerance} tolerance, below QuoterV2's verified quote of " +
+                    exactAmount(quote.quotedOut, buy.decimals, buy.symbol)
+            },
+            receiveLead = if (buying) "for exactly" else "for at least",
             route = route,
             routeNote = if (route.size == 1) {
                 "One Uniswap v3 pool, as the pinned factory lists it."

@@ -793,7 +793,7 @@ private fun SimpleApprovalContent(state: SwapUiState.ApprovalReview) {
 @Composable
 private fun SimpleSwapContent(state: SwapUiState.SwapReview) {
     AmountLine(state.sell.icon, state.sell.symbol, state.sold)
-    Text("for at least", style = MaterialTheme.typography.labelMedium)
+    Text(state.receiveLead, style = MaterialTheme.typography.labelMedium)
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         TokenIcon(state.buy.icon, state.buy.symbol, size = 40.dp)
         SelectionContainer {

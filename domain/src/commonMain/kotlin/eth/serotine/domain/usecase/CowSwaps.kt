@@ -118,8 +118,8 @@ data class CowSwapQuote internal constructor(
  * account whose history the log index follows only from after the block finalized now (its
  * order's end could not be proven). One CoW order per sold token is live at a time: two would draw
  * on the one allowance of the vault relayer. A buy's maximum is known only once CoW has quoted it:
- * the balance and the allowance it needs are then checked against that maximum. What this wallet's own transactions not mined yet move of the
- * token is not the order's to sell. On [network] only. [clock] is in unix seconds.
+ * the balance and the allowance it needs are then checked against that maximum. What this wallet's
+ * own transactions not mined yet move of the token is not the order's to sell. On [network] only. [clock] is in unix seconds.
  */
 class QuoteCowSwap(
     private val cowChain: CowChain,
@@ -241,7 +241,8 @@ class QuoteCowSwap(
         // Only now does anything reach CoW.
         val quoted = when (val reading = cowApi.quote(network, soldToken.address, buyToken, amount, from, kind)) {
             is CowQuoteReading.Quoted -> reading
-            is CowQuoteReading.Refused -> return@cancellingReads CowSwapQuoting.CowRefused(reading.why, reading.errorType)
+            is CowQuoteReading.Refused ->
+                return@cancellingReads CowSwapQuoting.CowRefused(reading.why, reading.errorType)
             is CowQuoteReading.Unavailable -> return@cancellingReads CowSwapQuoting.CowNoAnswer(reading.why)
         }
         val (estimate, sellAmount, buyAmount) = when (kind) {

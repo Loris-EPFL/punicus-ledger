@@ -322,8 +322,13 @@ internal class ActivityRows(
             }
             is SentAction.Swap -> {
                 val (symbol, decimals) = shown(action.buy)
-                val title = "Swapped ${amount(action.amountIn, action.sell)} for at least " +
-                    figure(action.minimumOut, decimals, symbol)
+                val bought = figure(action.minimumOut, decimals, symbol)
+                val sold = amount(action.amountIn, action.sell)
+                val title = if (action.kind == SwapKind.BUY) {
+                    "Bought $bought for at most $sold"
+                } else {
+                    "Swapped $sold for at least $bought"
+                }
                 Triple(title, action.router, "On Uniswap ·")
             }
             is SentAction.Wrap -> {

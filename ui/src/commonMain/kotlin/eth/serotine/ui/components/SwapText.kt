@@ -264,8 +264,10 @@ internal fun cowEstimateItem(
                 "CoW's contract at ${Eip55.format(it)} is not what this wallet pins, so CoW is not offered."
             } ?: "No CoW Protocol deployment is pinned for ${network.displayName}, so CoW is not offered.",
         )
-        is CowEstimating.CowRefused ->
-            SwapEstimateItem(label, note = cowRefusalText(estimating.why, estimating.errorType, sell.symbol, buy.symbol))
+        is CowEstimating.CowRefused -> SwapEstimateItem(
+            label,
+            note = cowRefusalText(estimating.why, estimating.errorType, sell.symbol, buy.symbol),
+        )
         is CowEstimating.CowNoAnswer -> SwapEstimateItem(label, note = cowNoAnswerText(estimating.why, network))
         is CowEstimating.Unavailable -> SwapEstimateItem(label, note = estimateUnavailableText(estimating.reason))
     }

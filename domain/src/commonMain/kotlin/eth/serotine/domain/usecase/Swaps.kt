@@ -318,7 +318,7 @@ class QuoteSwap(
                     return@cancellingReads SwapQuoting.Unavailable(read.reason, QuoteFigure.ALLOWANCE)
             }
             if (allowance < amountIn) {
-                return@cancellingReads SwapQuoting.NeedsApproval(soldToken, router, allowance)
+                return@cancellingReads SwapQuoting.NeedsApproval(soldToken, router, allowance, amountIn)
             }
         }
         val buysEther = buy == TransferAsset.Native
@@ -539,10 +539,16 @@ sealed interface SwapQuoting {
     data class NoVenue(val contract: Address?) : SwapQuoting
 
     /**
-     * The router may take only [allowance] of [token], less than the amount: an approval of
-     * [spender] for the amount comes first, its own transaction ([QuoteTokenApproval]).
+     * The router may take only [allowance] of [token], less than the swap's [amount] (of a buy, its
+     * maximum): an approval of [spender] for [amount] comes first, its own transaction
+     * ([QuoteTokenApproval]).
      */
-    data class NeedsApproval(val token: Token, val spender: Address, val allowance: UInt256) : SwapQuoting
+    data class NeedsApproval(
+        val token: Token,
+        val spender: Address,
+        val allowance: UInt256,
+        val amount: UInt256,
+    ) : SwapQuoting
 
     /** The approval this swap needs, [hash], is sent and not mined yet: the swap waits for its receipt. */
     data class ApprovalPending(val hash: String) : SwapQuoting

@@ -265,8 +265,10 @@ class AccountActivity(
                     }
                     bought?.let {
                         when (swap.kind) {
-                            SwapKind.SELL -> "Swap ${rows.figure(swap.amount, sold.decimals, sold.symbol)} → ${it.symbol}"
-                            SwapKind.BUY -> "Buy ${rows.figure(swap.amount, it.decimals, it.symbol)} with ${sold.symbol}"
+                            SwapKind.SELL ->
+                                "Swap ${rows.figure(swap.amount, sold.decimals, sold.symbol)} → ${it.symbol}"
+                            SwapKind.BUY ->
+                                "Buy ${rows.figure(swap.amount, it.decimals, it.symbol)} with ${sold.symbol}"
                         }
                     }
                 } ?: "A swap",

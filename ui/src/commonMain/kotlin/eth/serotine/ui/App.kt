@@ -1200,7 +1200,9 @@ private fun NavController.swapAgain(network: Network, again: SwapAgain) {
     popBackStack(COW_ORDER_ROUTE, inclusive = true)
     if (currentDestination?.route == SWAP_ROUTE) popBackStack()
     val kind = if (again.kind == SwapKind.BUY) "&$KIND=$BUY_KIND" else ""
-    navigate("${Destination.SWAP}/${from.route}?$ASSET=${sell.hex}&$BUY=$buy&$AMOUNT=$amount&$VENUE=$UNISWAP_VENUE$kind")
+    navigate(
+        "${Destination.SWAP}/${from.route}?$ASSET=${sell.hex}&$BUY=$buy&$AMOUNT=$amount&$VENUE=$UNISWAP_VENUE$kind",
+    )
 }
 
 /**

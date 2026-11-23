@@ -285,7 +285,9 @@ rulings to the screens.
   ruling, 2026-10-20).
 - Swaps: Uniswap first, then CoW Protocol; the user chooses the venue (owner's
   directions, 2026-10-18 and 2026-10-22). CoW's order API is used only for a
-  swap the user sends to CoW (owner ruling, 2026-10-22). A CoW order does not
+  swap the user sends to CoW (owner ruling, 2026-10-22), and, with CoW
+  chosen, for the compose step's estimate (owner ruling, 2026-11-23). A CoW
+  order does not
   depend on Uniswap: its minimum is CoW's estimate less the tolerance (owner
   ruling, 2026-11-23).
 - An account's NFTs are found in its verified log index and shown only once

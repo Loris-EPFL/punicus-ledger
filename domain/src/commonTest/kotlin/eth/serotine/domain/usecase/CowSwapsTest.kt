@@ -136,7 +136,15 @@ class CowSwapsTest {
         val quote = assertIs<CowSwapQuoting.Quoted>(buyWethWithUsdc()).quote
         assertEquals(SwapKind.BUY, quote.kind)
         assertEquals(
-            CowOrder(usdcToken.address, weth, account, UInt256.of(98_490_000), wethBought, headTime + 300, SwapKind.BUY),
+            CowOrder(
+                usdcToken.address,
+                weth,
+                account,
+                UInt256.of(98_490_000),
+                wethBought,
+                headTime + 300,
+                SwapKind.BUY,
+            ),
             quote.order,
         )
         assertEquals(UInt256.of(98_490_000), quote.amountIn, "the most it sells")
@@ -162,7 +170,12 @@ class CowSwapsTest {
         cowApi.quote = CowQuoteReading.Quoted(UInt256.of(98_000_000), wethBought, UInt256.ZERO)
         allow(UInt256.of(98_000_000))
         assertEquals(
-            CowSwapQuoting.NeedsApproval(usdcToken, COW_SEPOLIA.vaultRelayer, UInt256.of(98_000_000), UInt256.of(98_490_000)),
+            CowSwapQuoting.NeedsApproval(
+                usdcToken,
+                COW_SEPOLIA.vaultRelayer,
+                UInt256.of(98_000_000),
+                UInt256.of(98_490_000),
+            ),
             buyWethWithUsdc(),
         )
     }
@@ -178,7 +191,8 @@ class CowSwapsTest {
         chain.answers[filledAmount] = Simulation.Succeeded(word(wethBought), 121)
         assertEquals(UInt256.ZERO, listOf(live).holding(account, usdcToken.address, finalized, chain))
         chain.answers[filledAmount] = Simulation.Succeeded(word(UInt256.of("49999999999999999")), 121)
-        assertEquals(hundredUsdc, listOf(live).holding(account, usdcToken.address, finalized, chain), "its maximum held")
+        val held = listOf(live).holding(account, usdcToken.address, finalized, chain)
+        assertEquals(hundredUsdc, held, "its maximum held")
     }
 
     @Test

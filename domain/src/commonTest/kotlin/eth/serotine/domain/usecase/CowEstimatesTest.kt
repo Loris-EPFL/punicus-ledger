@@ -47,7 +47,10 @@ class CowEstimatesTest {
             ),
             estimated,
         )
-        assertEquals(listOf<Any>(Network.GNOSIS, wxdai.address, bzz.address, twoHundredBzz, account), cowApi.quotes.single())
+        assertEquals(
+            listOf<Any>(Network.GNOSIS, wxdai.address, bzz.address, twoHundredBzz, account),
+            cowApi.quotes.single(),
+        )
         assertEquals(listOf(SwapKind.BUY), cowApi.kinds)
     }
 

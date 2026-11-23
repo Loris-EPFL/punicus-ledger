@@ -212,7 +212,8 @@ class FileCowOrdersTest {
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
         // A sell is stored with no kind, as format 1 stored every order.
         assertFalse("\"kind\":\"sell\"" in text, text)
-        SystemFileSystem.sink(file).buffered().use { it.writeString(text.replace("{\"version\":2,", "{\"version\":1,")) }
+        val older = text.replace("{\"version\":2,", "{\"version\":1,")
+        SystemFileSystem.sink(file).buffered().use { it.writeString(older) }
 
         assertEquals(listOf(sell), stored())
     }

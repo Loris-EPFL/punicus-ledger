@@ -299,7 +299,13 @@ change what it trusts.
   tolerance and the rate, both ways, from a verified Uniswap quote,
   "Checked on chain" (docs/swaps.md, *The compose step's estimate*). It
   has no "You pay" and "You get" cards or flip button: the figures sit
-  under the asset bought.
+  under the asset bought. With CoW chosen, the figures are CoW's estimate,
+  "not checked on chain" (owner ruling, 2026-11-23). The amount bought has
+  a field of its own (owner's request, 2026-11-23): typed, the swap buys
+  exactly it, the figures say what it would pay and the most it may, the
+  amount sold shows the estimate under its field, and a maximum above the
+  balance is said there and keeps Review greyed out (docs/swaps.md, *Buying
+  an exact amount*).
 - **W2 · Swap review, Uniswap, 2 steps.** The swap in one line ("100 USDC →
   7.18 LINK, at least · via Uniswap · from Main"). Step 1, "Allow Uniswap to
   use 100 USDC: only this amount, for this swap", with its fee. Step 2,

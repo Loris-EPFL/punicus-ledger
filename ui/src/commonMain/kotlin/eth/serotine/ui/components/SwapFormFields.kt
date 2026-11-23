@@ -67,7 +67,8 @@ const val SWAP_INVERT_RATE_TAG = "swap-invert-rate"
  * [buyAmount] is the amount bought as typed, in [buy]'s units, or null where a swap sells only (a
  * Safe's): typed last, it is the exact one, and [amount] is left to the estimate (docs/swaps.md,
  * *Buying an exact amount*), with [buyAmountError] why it is no amount. [amountPlaceholder] and
- * [buyAmountPlaceholder] show the estimate in the field that is not typed ("≈ 17.58 XDAI").
+ * [buyAmountPlaceholder] are the estimate of the field that is not typed ("≈ 17.58 XDAI"), shown
+ * under it: a placeholder of a labelled field shows only once it is focused.
  */
 data class SwapForm(
     val network: String,
@@ -162,9 +163,9 @@ internal fun SwapFormFields(
         label = { Text(form.sell?.let { "Amount of ${it.symbol} to sell" } ?: "Amount") },
         singleLine = true,
         trailingIcon = { TextButton(onClick = onMax, enabled = form.canMax && !form.fixed) { Text("Max") } },
-        placeholder = form.amountPlaceholder?.let { text -> { Text(text) } },
         isError = form.amountError != null,
-        supportingText = (form.amountError ?: form.amountHint)?.let { text -> { Text(text) } },
+        supportingText = (form.amountError ?: form.amountHint ?: form.amountPlaceholder)
+            ?.let { text -> { Text(text) } },
         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal).next(),
         keyboardActions = nextTo(toleranceField),
     )
@@ -186,11 +187,13 @@ internal fun SwapFormFields(
             modifier = Modifier.fillMaxWidth().testTag(SWAP_BUY_AMOUNT_TAG),
             enabled = !form.quoting && !form.fixed && form.buy != null,
             label = { Text(form.buy?.let { "Amount of ${it.symbol} to buy" } ?: "Amount to buy") },
-            placeholder = form.buyAmountPlaceholder?.let { text -> { Text(text) } },
             singleLine = true,
             isError = form.buyAmountError != null,
             supportingText = {
-                Text(form.buyAmountError ?: "Type the amount to buy to buy exactly it, or the amount to sell above.")
+                Text(
+                    form.buyAmountError ?: form.buyAmountPlaceholder
+                        ?: "Type the amount to buy to buy exactly it, or the amount to sell above.",
+                )
             },
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal).next(),
             keyboardActions = nextTo(toleranceField),

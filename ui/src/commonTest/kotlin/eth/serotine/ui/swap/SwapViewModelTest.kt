@@ -577,6 +577,26 @@ class SwapViewModelTest {
     }
 
     @Test
+    fun aBuyOnUniswapIsEstimatedByItsVerifiedQuoteToBuy() = runTest {
+        // QuoterV2: exactly 0.016 ETH costs 40 USDC through the one pool, at 100 000 gas.
+        val route = SwapRoute.direct(usdc.address, deployment.weth9, FeeTier.MEDIUM)
+        uniswap.answers[deployment.quoterV2 to QuoterV2.quoteToBuy(route, UInt256.of("16000000000000000")).hex()] =
+            word(fortyUsdc) + "00".repeat(64) + word(UInt256.of(100_000))
+        val viewModel = viewModel(sell = usdc.address)
+        viewModel.onBuyChange(null)
+        viewModel.onBuyAmountChange("0.016")
+        advanceTimeBy(1.seconds)
+        runCurrent()
+
+        val form = viewModel.compose
+        assertEquals("You pay", form.estimate?.label)
+        assertEquals("≈ 40 USDC", form.estimate?.receive)
+        assertEquals("At most 40.2 USDC at 0.5 % tolerance", form.estimate?.minimum)
+        assertEquals("≈ 40 USDC", form.amountPlaceholder)
+        assertTrue(cowApi.quotes.isEmpty(), "CoW is never asked with Uniswap chosen")
+    }
+
+    @Test
     fun typingTheAmountSoldAgainMakesItASellOnceMore() = runTest {
         cowReady()
         val viewModel = viewModel(sell = usdc.address)

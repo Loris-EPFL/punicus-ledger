@@ -55,6 +55,8 @@ private val composed = SwapUiState.Compose(
         amountHint = "≈ €92.10",
         canMax = true,
         canReview = true,
+        buyAmount = "",
+        buyAmountPlaceholder = "≈ 7.183 LINK",
         // The detailed note names its block; simple mode draws simpleNote in its place.
         estimate = SwapEstimateItem(
             label = "You receive",
@@ -188,6 +190,26 @@ private fun SimpleSwapComposePreview() = SimpleSwapPreview(composed)
 @Composable
 private fun SimpleSwapComposeDarkPreview() = SimpleSwapPreview(composed, darkTheme = true)
 
+/** Exactly 10 LINK bought: the amount sold is the estimate's (docs/swaps.md, *Buying an exact amount*). */
+@Preview
+@Composable
+private fun SimpleSwapComposeBuyPreview() = SimpleSwapPreview(
+    composed.copy(
+        form = composed.form.copy(
+            amount = "",
+            amountHint = null,
+            amountPlaceholder = "≈ 139.21 USDC",
+            buyAmount = "10",
+            buyAmountPlaceholder = null,
+            estimate = composed.form.estimate?.copy(
+                label = "You pay",
+                receive = "≈ 139.21 USDC",
+                minimum = "At most 139.91 USDC at 0.5 % tolerance",
+            ),
+        ),
+    ),
+)
+
 /** W2: step 1 of 2, the approval, for this swap only. */
 @Preview
 @Composable
@@ -265,6 +287,7 @@ private fun SimpleSwapNotSentPreview() = SimpleSwapPreview(
 internal val simpleSwapScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("compose") { SimpleSwapComposePreview() },
     ScreenPreview("compose-dark") { SimpleSwapComposeDarkPreview() },
+    ScreenPreview("compose-buy") { SimpleSwapComposeBuyPreview() },
     ScreenPreview("approval") { SimpleSwapApprovalPreview() },
     ScreenPreview("approval-dark") { SimpleSwapApprovalDarkPreview() },
     ScreenPreview("pending") { SimpleSwapPendingPreview() },

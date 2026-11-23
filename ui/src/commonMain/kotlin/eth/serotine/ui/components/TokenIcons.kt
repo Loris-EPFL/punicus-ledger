@@ -21,8 +21,10 @@ import androidx.compose.ui.unit.dp
  * - `eurc`, `pyusd`, `gho`, `gno`, `eure`, `cow`, `safe` and `bzz`, which that set lacks:
  *   0xa3k5/web3icons, `raw-svgs/tokens/background/<KEY>.svg` at commit
  *   3cce0f390cf902f204a1b3d52f485bcc95d2fe9e (https://github.com/0xa3k5/web3icons), its
- *   square background drawn as a circle like the others'. The marks are the trademarks of
- *   their issuers (Circle, Paxos, Aave, Gnosis, Monerium, CoW DAO, Safe, the Swarm Foundation).
+ *   square background drawn as a circle like the others'; `bzz` is that repository's branded
+ *   drawing of the mark, drawn as there, on no disc (added to main by 24cc32be). The marks are
+ *   the trademarks of their issuers (Circle, Paxos, Aave, Gnosis, Monerium, CoW DAO, Safe, the
+ *   Swarm Foundation).
  *   Its licence, which these eight icons carry:
  *
  *   MIT License. Copyright (c) 2024 0xa3k5.

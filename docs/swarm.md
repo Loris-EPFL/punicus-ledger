@@ -66,8 +66,8 @@ keccak-256 of its code, as Uniswap's and CoW's contracts are (docs/swaps.md,
   and `0x30d1…F381`). They are not read: their batches are no longer served
   by the network, and two of them are paused.
 - xBZZ joins Gnosis Chain's built-in token list. No Chainlink feed is pinned
-  for it and Gnosis Chain pins no Uniswap, so it shows "no price" and stays
-  out of totals.
+  for it and no Uniswap pool is pinned to price it there, so it shows "no
+  price" and stays out of totals.
 - Gnosis Chain only. Swarm's testnet runs on Sepolia. It is open, the owner's
   to decide.
 

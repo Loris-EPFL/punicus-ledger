@@ -3,6 +3,7 @@ package eth.serotine.domain.usecase
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceImpact
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.ReadUnavailable
@@ -23,24 +24,36 @@ class EstimateSwap(
     private val findRoute: FindUniswapRoute,
     private val ranking: RouteRanking,
 ) {
-    /** Exactly [amountIn] (not zero) of [sell] for [buy] on [network]. */
+    /**
+     * Exactly [amountIn] (not zero) of [sell] for [buy] on [network], a sell; or, [kind] being
+     * [SwapKind.BUY], exactly [amountIn] of [buy] bought (docs/swaps.md, *Buying an exact
+     * amount*): the route that sells the least for it ([FindUniswapRoute.buying], ranked gross),
+     * whose estimate's [SwapEstimating.Estimated.amountIn] is what it takes.
+     */
     suspend operator fun invoke(
         network: Network,
         sell: TransferAsset,
         buy: TransferAsset,
         amountIn: UInt256,
+        kind: SwapKind = SwapKind.SELL,
     ): SwapEstimating {
-        require(!amountIn.isZero) { "a swap sells something" }
-        return when (val found = findRoute(network, sell, buy, amountIn, ranking)) {
+        require(!amountIn.isZero) { "a swap moves something" }
+        val finding = when (kind) {
+            SwapKind.SELL -> findRoute(network, sell, buy, amountIn, ranking)
+            SwapKind.BUY -> findRoute.buying(network, sell, buy, amountOut = amountIn)
+        }
+        return when (val found = finding) {
             is RouteFinding.Found -> {
+                val sold = found.amountIn
                 val out = found.quote.amountOut
                 SwapEstimating.Estimated(
-                    amountIn = amountIn,
+                    amountIn = sold,
                     amountOut = out,
-                    rate = rateOf(out, amountIn, decimalsOf(sell)),
-                    inverseRate = rateOf(amountIn, out, decimalsOf(buy)),
+                    rate = rateOf(out, sold, decimalsOf(sell)),
+                    inverseRate = rateOf(sold, out, decimalsOf(buy)),
                     priceImpact = found.spotOut?.let { PriceImpact.basisPoints(it, out) },
                     blockNumber = found.blockNumber,
+                    kind = kind,
                 )
             }
             RouteFinding.NotASwap -> SwapEstimating.NotASwap
@@ -81,7 +94,8 @@ sealed interface SwapEstimating {
      * returns, in the bought asset's smallest units; [inverseRate] what one whole unit of the
      * asset bought costs, in the sold asset's smallest units; each null when it cannot be had (a
      * quote of nothing). [priceImpact] is how far the quote falls below the route's pools' spot
-     * prices, in basis points ([PriceImpact.basisPoints]); null when not known.
+     * prices, in basis points ([PriceImpact.basisPoints]); null when not known. [kind] says which
+     * amount was asked for: [amountIn] for a sell, [amountOut] for a buy, the other the quote's.
      */
     data class Estimated(
         val amountIn: UInt256,
@@ -90,6 +104,7 @@ sealed interface SwapEstimating {
         val inverseRate: UInt256?,
         val priceImpact: Int?,
         val blockNumber: Long?,
+        val kind: SwapKind = SwapKind.SELL,
     ) : SwapEstimating
 
     /** The two assets are one token on Uniswap: the same one, or ETH and WETH, a wrap. */

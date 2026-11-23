@@ -124,11 +124,15 @@ internal class Parties(val list: AccountList, private val sent: SentTo, network:
      * signed for. Its sender is the swap's pool, which the user asked for, not a stranger; dust of
      * the same asset, which code the swap ran could move from anyone, is not. The caller says
      * whether the token is one whose logs can be trusted for that (built in, its contract not
-     * contradicting it): an added one's contract could log any sender.
+     * contradicting it): an added one's contract could log any sender. The ETH a buy's router pays
+     * back in that transaction (what the buy did not use) is the swap's too.
      */
     fun boughtHere(transaction: String, transfer: TokenTransfer): Boolean {
         val bought = sent.bought[transaction] ?: return false
-        if (transfer !is TokenTransfer.Fungible || transfer.amount < bought.minimum) return false
+        if (transfer !is TokenTransfer.Fungible) return false
+        // What a buy selling the network's currency did not use, paid back by its own router.
+        if (transfer.isEth && bought.refundFrom != null && transfer.from == bought.refundFrom) return true
+        if (transfer.amount < bought.minimum) return false
         return if (bought.token == null) transfer.isEth else transfer.token == bought.token
     }
 }

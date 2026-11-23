@@ -317,7 +317,7 @@ Through `feature/swarm`, one part per PR:
    held for an hour.
 5. The batches' transactions, domain and data: the calls, the PostageStamp's
    and xBZZ's fresh read, the quotes and the sends of buy, top up and
-   dilute, their record (format 13 of the sent transactions) and their
+   dilute, their record (format 14 of the sent transactions) and their
    rows in Activity.
 6. The batches' forms and reviews on the Swarm screen.
 7. The chequebook's withdrawal.

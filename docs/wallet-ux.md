@@ -1189,7 +1189,12 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       by its fill's or cancellation's block ("Swapped 40 USDC for 0.0161 ETH
       on CoW", "CoW order cancelled"), or by when it was signed when it
       never filled ("CoW order not filled"). A fill's transfer of what it sold is not listed
-      again. A tap opens the order's status, not 26.
+      again. A tap opens the order's status, not 26. A buy order (docs/swaps.md,
+      *Buying an exact amount*) names what it buys for at most its maximum,
+      while it may fill and when it did not ("CoW order: 4 LINK for at most
+      105 USDC", "CoW order cancelled: 4 LINK for at most 105 USDC"), and
+      once filled, what its trade sold ("Swapped 104.2 USDC for 4 LINK on
+      CoW").
     - And its events on chain, from the engine's verified log index
       (`ObserveSafeHistory`): ETH received ("Received 0.5 ETH", "From Bob ·
       …"), executions and failed ones, approvals, its set-up, owner,

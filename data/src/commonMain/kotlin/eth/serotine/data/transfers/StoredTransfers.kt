@@ -11,6 +11,7 @@ import eth.serotine.domain.model.DelayTransferPlan
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -43,8 +44,8 @@ private const val SKIP = "skip"
  * token approval ([approval]), a swap ([swap]), a wrap or unwrap ([wrap]), a CoW order's
  * cancellation on chain ([cancellation]), a dApp's transaction ([dappCall]) or a Gnosis Pay
  * account's transfer or member change queued or executed through its Delay ([delay]), or a Swarm
- * node's postage batch bought, topped up or diluted ([postage], format 13), or xBZZ withdrawn from a
- * Swarm node's chequebook ([chequebook], format 13) — exactly one of the eleven, else the file is damaged.
+ * node's postage batch bought, topped up or diluted ([postage], format 14), or xBZZ withdrawn from a
+ * Swarm node's chequebook ([chequebook], format 14) — exactly one of the eleven, else the file is damaged.
  */
 @Serializable
 internal class StoredTransfer(
@@ -211,6 +212,8 @@ internal class StoredApproval(val token: StoredToken, val spender: String, val a
 /**
  * A swap through [router]: [amountIn] of [sell] for at least [minimumOut] of [buy], each asset
  * a token, or the native currency (null); [weth] the WETH9 the router unwraps ETH bought from.
+ * [kind] is [BUY] for a swap that buys exactly [minimumOut] for at most [amountIn]; absent, as in
+ * every record older than it, a sell. Any other value is no record this version reads.
  */
 @Serializable
 internal class StoredSwap(
@@ -220,6 +223,7 @@ internal class StoredSwap(
     val buy: StoredToken? = null,
     val minimumOut: String,
     val weth: String? = null,
+    val kind: String? = null,
 ) {
     fun toAction() = SentAction.Swap(
         router = Address.of(router),
@@ -228,7 +232,17 @@ internal class StoredSwap(
         buy = buy.asset(),
         minimumOut = UInt256.of(minimumOut),
         weth = weth?.let(Address::of),
+        kind = when (kind) {
+            null -> SwapKind.SELL
+            BUY -> SwapKind.BUY
+            else -> throw IllegalArgumentException("a swap of kind '$kind'")
+        },
     )
+
+    companion object {
+        /** [kind] of a swap that buys an exact amount. */
+        const val BUY = "buy"
+    }
 }
 
 /** A wrap ([WRAP]) or an unwrap ([UNWRAP]) of [amount] through the WETH9 [weth]. */
@@ -347,6 +361,7 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
                 it.buy.storedToken(),
                 it.minimumOut.toDecimal(),
                 it.weth?.hex,
+                StoredSwap.BUY.takeIf { _ -> it.kind == SwapKind.BUY },
             )
         },
         wrap = when (action) {
@@ -401,7 +416,7 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
 }
 
 /**
- * A Swarm node's postage batch call (format 13, docs/swarm.md): bought ([kind] `purchase`, with
+ * A Swarm node's postage batch call (format 14, docs/swarm.md): bought ([kind] `purchase`, with
  * its [owner], [perChunk], [immutable] and the [token] it pulls, xBZZ), topped up (`top-up`, with
  * the node as [owner], [perChunk] and [token]) or diluted
  * (`dilution`), of the batch [id] at the PostageStamp [stamp], at [depth] (the new one for a
@@ -450,7 +465,7 @@ internal class StoredPostageCall(
 }
 
 /**
- * xBZZ withdrawn from a Swarm node's chequebook (format 13, docs/swarm.md): [kind] `withdraw`, the
+ * xBZZ withdrawn from a Swarm node's chequebook (format 14, docs/swarm.md): [kind] `withdraw`, the
  * chequebook at [chequebook], the [amount] and the [token] it pays out, xBZZ.
  */
 @Serializable

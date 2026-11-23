@@ -306,9 +306,10 @@ are unchanged.
   as the same token on another network. Added 2026-10-28, on the owner's
   instruction: Gnosis's GNO also on Ethereum; CoW Protocol's COW and Safe's
   SAFE on Ethereum and, bridged from there, on Gnosis Chain. None of the
-  three is on Sepolia. Added 2026-11-23, with Swarm nodes (the owner's
-  decisions of that day; docs/swarm.md): Swarm's BZZ on Gnosis Chain,
-  unpriced.
+  three is on Sepolia. Added 2026-11-23, on the owner's instruction and with
+  Swarm nodes (the owner's decisions of that day; docs/swarm.md): Swarm's
+  xBZZ on Gnosis Chain, listed as its contract names it, `BZZ`, with no
+  price (no Chainlink feed there).
 - **Settings → Tokens** groups the list by network. **Add token** asks for
   the network first (N17), then reads the contract on that network.
 - **Multicall3** is pinned per network (its code hash proven on each) before
@@ -337,7 +338,11 @@ are unchanged.
   account's network. Ethereum's canonical deployment is pinned like
   Sepolia's. On Gnosis, Swap is greyed out with the reason ("No swap venue is
   pinned on Gnosis Chain yet") until a deployment is pinned and its code
-  proven (open question 7).
+  proven (open question 7). Since 2026-11-23 both venues are pinned there:
+  Uniswap v3's Gnosis deployment, with WXDAI as its WETH9, and CoW
+  Protocol, which stands without Uniswap (owner ruling, 2026-11-23;
+  docs/swaps.md). CoW is pinned on Ethereum the same day. Swap is greyed
+  out only on a network where neither venue is pinned.
 
 ## Names
 
@@ -572,6 +577,8 @@ sources*): the default named in each item below is the ruling.
    choice there; the plan), or the L1 singleton as on Ethereum?
 7. **Swaps on Gnosis**: pin Uniswap v3's Gnosis deployment (if its code and
    liquidity hold up), or leave Swap greyed out there until CoW's ruling?
+   Since 2026-11-23 both venues are pinned there, at the owner's request,
+   and CoW stands without Uniswap (owner ruling, 2026-11-23).
 8. **The network step's default**: nothing ticked (the plan; the user
    answers), or Ethereum ticked?
 9. **The built-in token lists** for Ethereum and Gnosis: which of the

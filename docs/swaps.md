@@ -19,6 +19,12 @@ this page is fixed.
   unavailable, the user can still use Uniswap. This replaces the direction of
   2026-10-18, under which a swap went to CoW automatically while CoW's
   servers worked and fell back to Uniswap.
+- **CoW stands without Uniswap** (owner ruling, 2026-11-23). A CoW order
+  reads nothing of Uniswap: its signed minimum is CoW's own estimate less
+  the tolerance, as CoW's own app sets it, and a pair is offered on CoW
+  whether Uniswap has a route for it or not. This replaces decision 1 of
+  2026-10-22 and the floor made of the verified Uniswap quote (*The signed
+  minimum*).
 - **An API change must not break swaps.** CoW's HTTP API can change, and the
   app would then need an update. *How often CoW's API changes*, below,
   measures that and sets out how the design limits what it costs.
@@ -33,14 +39,18 @@ this page is fixed.
 | What enforces the signed minimum | The router: `amountOutMinimum`, or the call reverts | The settlement contract: the order's `buyAmount`, or it does not settle |
 | MEV | The transaction is gossiped to the public mempool, so a sandwich can take up to the slippage tolerance | A batch auction: the user's order never sits in the public mempool |
 | Gas | The account pays it in ETH | Taken out of the price; ETH only for an approval, and for a cancellation on chain |
-| What leaves the device | The signed transaction, to peers, like every send | The order, the account's address and the device's IP address, to `api.cow.fi`, and only for a swap the user sends to CoW |
+| What leaves the device | The signed transaction, to peers, like every send | The order, the account's address and the device's IP address, to `api.cow.fi`, only while CoW is chosen: for the compose step's estimate and the swap sent |
 | On Sepolia | v3 and v4 deployed | Deployed; the API is `https://api.cow.fi/sepolia/api/v1` |
+| On Ethereum | v3's canonical deployment | Deployed; the API is `https://api.cow.fi/mainnet/api/v1` |
+| On Gnosis Chain | v3, deployed by Uniswap governance; little liquidity (*Pins*) | Deployed; the API is `https://api.cow.fi/xdai/api/v1` |
 
 Uniswap is the venue that needs no server. CoW is open to anyone but runs on
 CoW's servers. Its trust is bounded: the settlement contract checks the
 signature and the limit, so the API and the solvers can delay an order or
 leave it unfilled, but they can never fill it at a worse rate than the one
-signed.
+signed. The rate signed, though, is CoW's own estimate less the tolerance
+(*The signed minimum*): CoW's servers are trusted with that one figure, and
+the review says so.
 
 ## What both venues share
 
@@ -50,8 +60,9 @@ signed.
     - On Uniswap it is the pool's own verified quote for this exact amount,
       less the tolerance. That is the same kind of value as Send's verified
       simulation.
-    - On CoW it is never below a floor made of that verified quote (*The
-      signed minimum*); CoW's estimate can only raise it.
+    - On CoW it is CoW's own estimate for this exact amount, less the
+      tolerance (*The signed minimum*; owner ruling, 2026-11-23). That is no
+      price either, but it is not verified, and the review says so.
   - So the ruling that a price never reaches a signature (CLAUDE.md, *Data
     sources*) stands unchanged.
   - Fiat values stay hints beside the amounts.
@@ -97,9 +108,9 @@ signed.
     at the current head. When it still succeeds, what the user saw is what is
     signed. When it does not (the minimum no longer met), it is quoted again
     and shown, not signed.
-  - At the tap that signs a CoW order, the Uniswap net is quoted again. When
-    the floor it makes has risen above the minimum shown, the review is made
-    again and shown, not signed.
+  - At the tap that signs a CoW order, nothing is quoted again: the order is
+    signed as shown, its quote at most a minute old by the verified head's
+    clock.
   - A Safe's swap has its own rules (*A Safe's swap*).
 - **The record.**
   - `SentAction` gains an approval, a Uniswap swap (the token sold and its
@@ -119,6 +130,57 @@ signed.
   - On CoW it comes from the settlement's `Trade` log (*Proving an order's
     end*). Until that log is found, the status says "at least" the minimum.
 - **Native ETH** goes in and out through WETH, as each venue does it (below).
+
+## Buying an exact amount
+
+(Owner's request, 2026-11-23: "I should be able to give the target amount and
+the UI should choose the amount to exchange", with an error when the account
+holds too little; exactly the amount bought, at most an amount sold.)
+
+- **Two kinds of swap, on both venues.** A *sell* sells exactly the amount
+  typed for at least a minimum, as before. A *buy* buys exactly the amount
+  typed for at most a maximum. The compose step has both amounts; the one
+  typed last is the exact one, and the other is the estimate's.
+- **The maximum** is the quote's amount sold × (1 + tolerance), rounded up:
+  the tolerance above the quote, as the minimum is the tolerance below it.
+  - On Uniswap the quote is QuoterV2's `quoteExactOutputSingle` or
+    `quoteExactOutput` (its path from the token bought back to the token
+    sold), a verified call as every Uniswap quote. The route is the one that
+    sells the least; on a tie, the one with fewer hops.
+  - On CoW it is CoW's quote of `kind: buy` (`buyAmountAfterFee`): the
+    amount sold plus CoW's fee, not verified, as every CoW figure.
+- **Too little is said before the review.** Once the estimate is in, the
+  compose step compares the maximum with the account's balance of the token
+  sold; the network fee, for the network's own currency sold, is the
+  review's to check: "Not enough
+  XDAI: this buy may take up to 41.2 XDAI, and the account holds 30". Review
+  stays refused until it is met; the review checks it again on verified
+  state.
+- **On Uniswap**, the call is `exactOutputSingle` or `exactOutput` with
+  `amountOut` (exact) and `amountInMaximum`, in the same `multicall` with its
+  deadline.
+  - Selling the network's currency, the value is the maximum and
+    `refundETH()` follows, which pays back what was not used in the same
+    transaction.
+  - Buying it, the router keeps the wrapped token and `unwrapWETH9(amountOut,
+    account)` follows, as for a sell.
+  - The approval is of the router for the maximum, its own transaction as
+    always.
+- **On CoW**, the order is GPv2's `kind: buy`: `buyAmount` exact,
+  `sellAmount` the maximum, fill-or-kill. The approval is of the vault
+  relayer for the maximum. The settlement's `filledAmount` of a buy order is
+  in the bought token, so the order is done at the head once it reads the
+  amount bought. What a live buy order holds back of the token sold is its
+  maximum.
+- **What is shown afterwards** comes from the verified logs. On CoW, the
+  settlement's `Trade` says what a buy took, as for a sell. On Uniswap the
+  record, its Activity row and its status keep the maximum ("at most"): the
+  sale's own `Transfer`, of at most that, is the row's and not listed again,
+  and the router's refund of the network's currency a buy did not use is no
+  stranger's. Reading what it took from the receipt is for later.
+- **A wrap stays a wrap**: buying an exact amount of WETH (WXDAI) with the
+  network's currency, or the reverse, is the same one-for-one wrap.
+- **A Safe's swap stays a sell** for now: its screen has no buy.
 
 ## Wrapping ETH
 
@@ -255,7 +317,11 @@ Safe transaction*), on Uniswap only until CoW's pre-signature is built
 ### Pins
 
 The deployment table on Uniswap's developer docs gives these addresses on
-Sepolia (read 2026-10-18):
+Sepolia (read 2026-10-18). Ethereum pins the canonical deployment of the same
+table (read 2026-10-23). Gnosis Chain pins the deployment Uniswap governance
+made there, as Uniswap's deployment list names it (read 2026-11-23), with
+WXDAI, the WETH9 its router and quoter name, in WETH's place
+(`UniswapDeployments`):
 
 | contract | Sepolia |
 |---|---|
@@ -263,6 +329,19 @@ Sepolia (read 2026-10-18):
 | `QuoterV2` | `0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3` |
 | `SwapRouter02` | `0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E` |
 | `WETH9` | `0xfff9976782d46cc05630d1f6ebab18b2324d6b14` |
+
+| contract | Gnosis Chain |
+|---|---|
+| `UniswapV3Factory` | `0xe32F7dD7e3f098D518ff19A22d5f028e076489B1` |
+| `QuoterV2` | `0x7E9cB3499A6cee3baBe5c8a3D328EA7FD36578f4` |
+| `SwapRouter02` | `0xc6D25285D5C5b62b7ca26D6092751A145D50e9Be` |
+| `WETH9` (WXDAI) | `0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d` |
+
+Uniswap v3 holds little on Gnosis Chain. On 2026-11-23 only three of the
+built-in tokens' pools held funds that matter, all at 0.01 %: WXDAI/USDC.e
+(about 58 000 WXDAI and 46 000 USDC.e), USDC.e/EURe and USDC.e/sDAI. Every
+other pair says it has no route there; CoW, which does not depend on Uniswap,
+may still take it.
 
 They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
 
@@ -287,9 +366,7 @@ They are pinned per `Network`, as Safe's deployments are (`SafeDeployments`):
     token) for one hop.
 - **The largest amount out, net of the swap's expected fee, wins**; on a tie,
   the route with fewer hops.
-  - The net is the one CoW's floor and the review's comparison use (*The
-    signed minimum*), so a one-hop route that only grosses more does not beat
-    a direct one.
+  - So a one-hop route that only grosses more does not beat a direct one.
   - A Safe's swap is paid for by whoever executes it, so it compares routes
     gross.
 - **Uniswap's routing API is not used**: it is an off-chain service, and its
@@ -355,10 +432,13 @@ would return and its rate, before the review.
   Ranked net of fees, the fee market is read to rank the routes, as the
   review reads it. The review quotes everything again (23), and only what
   it shows is signed.
-- **With CoW chosen, the figures are Uniswap's, and say so** ("On Uniswap,
-  you would receive"). CoW is asked for its own estimate only at the review:
-  it is contacted only for a swap the user sends to it (owner ruling,
-  2026-10-22).
+- **With CoW chosen, the figures are CoW's, and say so** (owner ruling,
+  2026-11-23: "The first screen should show both", the rate and the amount):
+  CoW's own estimate, asked as the Uniswap one is, a moment after the last
+  edit and again every 30 seconds, and marked "CoW's estimate, not checked on
+  chain". Uniswap is not quoted for a CoW order (owner ruling, 2026-11-23).
+  CoW thereby learns the pairs and amounts composed with CoW chosen, sent or
+  not (*What CoW learns*).
 - **Without a quote, it says why**, in the words the review would use: no
   route, one token, no venue, or the light client's state.
 
@@ -479,48 +559,22 @@ They are pinned with their code hashes, as Uniswap's are.
 
 ### The signed minimum
 
-CoW's estimate is net of its fee. Uniswap's quote is not: there the account
-pays the gas in ETH on top. So the two are compared net.
+(Owner ruling, 2026-11-23. It replaces the floor made of the verified Uniswap
+quote, and decision 1, of 2026-10-22.)
 
-- **The Uniswap net** is the verified Uniswap quote less that swap's expected
-  network fee, converted into the bought token by a verified quote of that
-  much WETH.
-  - The expected fee is the swap's gas × (the next base fee + the Normal
-    level's tip). It is not the fee cap, which would overstate it.
-  - The gas is QuoterV2's own `gasEstimate` for the route, the figure that
-    ranks the routes (*Finding a route*). `estimateGas` of the real router
-    call cannot be used here: without an allowance for SwapRouter02 it
-    reverts, and `CallQuoter` refuses it. On the CoW path the allowance goes
-    to the vault relayer, and no state override is used
-    (docs/embedding-myotis.md, *Safe transactions*).
-  - Each figure errs low. QuoterV2's gas leaves out the router's own (the
-    `transferFrom` and the multicall), so no overhead is added: an
-    overstated fee would lower the net, and with it the floor that bounds
-    what CoW may fill.
-  - The conversion is a pool's answer for an exact amount, not a price.
-  - When the bought token is ETH or WETH, nothing is converted.
-  - When there is no route to convert through, the Uniswap net is the quote
-    itself. CoW's floor is then higher.
-  - When the fee is more than the swap returns, the net is zero or less, and
-    no floor stands. CoW is then not offered for the swap: this follows from
-    the ruling on a pair with no route (below, decision 1), whose reason is
-    the same missing floor. Uniswap's review says that the fee is more than
-    the swap buys.
-- **The floor** is the Uniswap net × (1 − tolerance).
-- **The order's `buyAmount`** is max(CoW's estimate × (1 − tolerance), the
-  floor).
-  - With CoW's estimate at or above the Uniswap net, the order keeps its
-    whole tolerance below CoW's estimate.
-  - The signed minimum is never below the floor. CoW's servers can therefore
-    make an order fail to fill, but never fill it below what Uniswap would
-    give.
-  - An estimate below the Uniswap net means that, by CoW's own account,
-    Uniswap gives more. The review says so, and says that an order signed at
-    the floor may well not fill: an order that does not fill holds its tokens
-    until `validTo` is final, about 18 to 24 minutes. Switching to Uniswap is
-    one tap, and the choice stays the user's (owner's direction, 2026-10-22).
-- **A pair with no Uniswap route** has no floor, only CoW's estimate. It is
-  not offered on CoW (owner ruling, 2026-10-22, decision 1).
+- **The order's `buyAmount`** is CoW's estimate × (1 − tolerance), rounded
+  down (`CowMinimum`). CoW's estimate is net of the fee CoW takes out of the
+  trade, so the account pays nothing on top.
+- **Nothing of Uniswap is read for it.** No Uniswap quote, route or fee
+  enters a CoW order, its review or its signature, and a pair is offered on
+  CoW whether Uniswap has a route for it or not.
+- **The minimum rests on CoW's word.** The light client cannot prove CoW's
+  estimate. A wrong or hostile estimate makes a minimum the settlement
+  contract still enforces: a solver may then fill the order at that minimum.
+  The review says that the minimum rests on CoW's estimate, not checked on
+  chain. What protects the user beyond the minimum is CoW's auction: solvers
+  compete, and the surplus above the minimum goes to the user.
+- A minimum that rounds down to nothing is not signed.
 
 ### The user's choice of venue
 
@@ -533,14 +587,14 @@ The user decides which venue each swap uses (owner's direction,
     (owner ruling, 2026-10-22, decision 10).
   - The choice is kept on the device, in a file of its own like the display
     currency.
-- **CoW is contacted only for a swap the user sends to CoW.** With Uniswap
-  chosen, nothing goes to `api.cow.fi`, not even a quote (*What CoW learns*).
-- **With CoW chosen, the review compares the two venues.** It shows CoW's
-  estimate, marked as not verified, beside the verified Uniswap net, says
-  which gives more, and signs the minimum *The signed minimum* sets.
+- **CoW is contacted only while CoW is chosen**: for the compose step's
+  estimate (owner ruling, 2026-11-23) and for the swap the user sends. With
+  Uniswap chosen, nothing goes to `api.cow.fi`, not even a quote (*What CoW
+  learns*).
+- **With CoW chosen, the review shows CoW's estimate**, marked as not
+  verified, and signs the minimum *The signed minimum* sets. It shows no
+  Uniswap figure (owner ruling, 2026-11-23).
 - **CoW is not offered** for:
-  - a pair with no Uniswap route, or a swap whose fee is more than it buys
-    (*The signed minimum*);
   - an account whose history the log index follows only from a block after
     the finalized head, an account added minutes ago: its order's end could
     not be proven (*Proving an order's end*). CoW is offered once the
@@ -760,12 +814,18 @@ So the proof is the account's own verified logs.
 ### What CoW learns, and how the app talks to it
 
 - **What CoW learns** is ruled in CLAUDE.md, *Data sources* (owner ruling,
-  2026-10-22, decision 7). It learns only the swaps the user sends to CoW.
-  With Uniswap chosen, CoW is never contacted.
+  2026-10-22, decision 7, amended 2026-11-23). It learns the swaps the user
+  sends to CoW, and those composed with CoW chosen. With Uniswap chosen, CoW
+  is never contacted.
   - For each such swap, over HTTPS to `api.cow.fi`: the account's address,
     the pair, the amounts, the device's IP address and the timing.
   - Each quote of a review with CoW chosen reaches CoW. So does a review the
     user then gives up, or switches to Uniswap.
+  - So does the compose step's estimate with CoW chosen (owner ruling,
+    2026-11-23): the account's address, the pair and the amount typed, a
+    moment after the last edit
+    and every 30 seconds while the step shows, whether the swap is then sent
+    or not. With Uniswap chosen, still nothing.
   - For a signed order, also the order itself, its signature, `validTo` and
     UID. CoW's order book is public, and anyone can list an owner's orders
     in it.
@@ -836,10 +896,10 @@ route being unavailable, never to a wrong swap:
 1. **Everything that matters is built and checked here:**
    - the order and its UID;
    - the domain separator, against the chain;
-   - the floor, from verified quotes;
    - the fill, from the account's verified logs up to a finalized block.
 
-   The API delivers the order and offers an estimate no one trusts.
+   The API delivers the order and offers the estimate its minimum is made
+   of (*The signed minimum*): an estimate the review marks as not verified.
 2. **Lenient decoding of the few fields used.** Unknown fields are ignored,
    and only the fields the app reads are required. Requests carry only
    required fields.
@@ -950,7 +1010,8 @@ the plan asks again (CLAUDE.md, *Multi-PR plans*, step 3).
 1. **The order, in the domain.**
    - The GPv2 order, its EIP-712 digest and UID, and the pinned app-data
      document.
-   - The Uniswap net, the floor and the signed minimum, as pure arithmetic.
+   - The Uniswap net, the floor and the signed minimum, as pure arithmetic
+     (the net and the floor removed by the owner ruling of 2026-11-23).
    - The ports: CoW's API, the record of live orders, and the chosen venue;
      and the finalized block with its header's timestamp, which the light
      client's status does not carry yet.
@@ -982,8 +1043,8 @@ the plan asks again (CLAUDE.md, *Multi-PR plans*, step 3).
      Protocol, starting at the last choice (`ObserveSwapVenue`,
      `ChooseSwapVenue`). CoW greyed out for ETH sold, a tap saying why.
    - CoW's review on 23: its estimate marked as not verified beside the
-     verified Uniswap net, which gives more, the minimum signed and how it
-     is set, until when the order may fill, the settlement contract, and
+     verified Uniswap net, which gives more (removed by the owner ruling of
+     2026-11-23), the minimum signed and how it is set, until when the order may fill, the settlement contract, and
      what CoW learns. The vault relayer's approval first when needed, as
      the router's is.
    - Signing places the order (`PlaceCowOrder`), and the screen says how CoW
@@ -1026,6 +1087,9 @@ on issue #69 (and CoW's on #144) until answered. This page cites each as
 
 1. **A pair with no verified Uniswap quote.** *Answered (owner ruling,
    2026-10-22):* not offered on CoW, since no verified floor stands.
+   *Replaced (owner ruling, 2026-11-23):* CoW does not depend on Uniswap in
+   any way. No floor is made, every pair CoW quotes is offered, and the
+   minimum is CoW's estimate less the tolerance (*The signed minimum*).
 2. **Tolerance.** *Answered (owner ruling, 2026-10-19):* 0.5 % by default,
    between 0.1 % and 5 %, and no second confirmation for a large price
    impact for now.
@@ -1047,7 +1111,8 @@ on issue #69 (and CoW's on #144) until answered. This page cites each as
    - the IP address is not hidden for now;
    - from CoW's answers, only the order's off-chain life is shown, and fills
      come from the chain. The review also shows CoW's estimate, marked as
-     not verified, for the comparison #144's point 3 describes.
+     not verified, for the comparison #144's point 3 describes. Since the
+     owner ruling of 2026-11-23 it shows no Uniswap figure beside it.
 8. **Mainnet**, once allowed: a Uniswap swap in the public mempool, bounded
    by its minimum, with no private relay.
 9. **One plan or two.** *Answered (owner ruling, 2026-10-19):* two. Uniswap

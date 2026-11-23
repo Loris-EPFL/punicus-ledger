@@ -2,6 +2,8 @@ package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwapVenue
+import eth.serotine.domain.repository.CowChain
+import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.SwapVenueSetting
 import eth.serotine.domain.repository.UniswapV3Chain
@@ -35,12 +37,14 @@ class CowOfferedOnThisDevice(private val lightClient: LightClient) {
 }
 
 /**
- * Whether Swap is offered on a network: false only where no Uniswap v3 deployment is pinned
- * ([VenueReading.NotPinned]), as on Gnosis Chain until one is (owner ruling, 2026-10-22;
- * docs/networks.md, open question 7), so that the account screen greys Swap out with the reason.
- * A pinned deployment not proven right now still offers Swap, whose quote proves it or says why
- * it cannot.
+ * Whether Swap is offered on a network: false only where neither venue is pinned, no Uniswap v3
+ * deployment ([VenueReading.NotPinned]) and no CoW Protocol one ([CowVenueReading.NotPinned]), so
+ * that the account screen greys Swap out with the reason (owner ruling, 2026-10-22; docs/networks.md,
+ * open question 7). Either venue pinned offers Swap: CoW stands without Uniswap (owner ruling,
+ * 2026-11-23). A pinned deployment not proven right now still offers Swap, whose quote proves it or
+ * says why it cannot.
  */
-class HasSwapVenue(private val uniswap: UniswapV3Chain) {
-    suspend operator fun invoke(network: Network): Boolean = uniswap.venue(network) != VenueReading.NotPinned
+class HasSwapVenue(private val uniswap: UniswapV3Chain, private val cow: CowChain) {
+    suspend operator fun invoke(network: Network): Boolean =
+        uniswap.venue(network) != VenueReading.NotPinned || cow.venue(network) != CowVenueReading.NotPinned
 }

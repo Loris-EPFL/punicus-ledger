@@ -51,6 +51,7 @@ import eth.serotine.ui.settings.settingsScreenPreviews
 import eth.serotine.ui.settings.simpleSettingsScreenPreviews
 import eth.serotine.ui.swap.simpleSwapScreenPreviews
 import eth.serotine.ui.swap.swapScreenPreviews
+import eth.serotine.ui.swarm.swarmScreenPreviews
 import eth.serotine.ui.tokens.simpleTokensScreenPreviews
 import eth.serotine.ui.tokens.tokensScreenPreviews
 import eth.serotine.ui.transferstatus.simpleTransferStatusScreenPreviews
@@ -85,6 +86,7 @@ internal object Screens {
     val debug = Screen("debug", "Debug", debugScreenPreviews)
     val deriveAccount = Screen("derive-account", "Add account from the same phrase", deriveAccountScreenPreviews)
     val gnosisPay = Screen("gnosis-pay", "Gnosis Pay account", gnosisPayScreenPreviews)
+    val swarm = Screen("swarm", "Swarm node", swarmScreenPreviews)
     val handoff = Screen("handoff", "Send from another wallet", handoffScreenPreviews)
     val mnemonicImport = Screen("mnemonic-import", "Import recovery phrase", mnemonicImportScreenPreviews)
     val noAccountOpen = Screen("no-account-open", "No account open (wide window)", noAccountOpenScreenPreviews)
@@ -189,6 +191,7 @@ internal object Screens {
         simpleTransferStatus,
         simpleWatch,
         swap,
+        swarm,
         tokens,
         transferStatus,
         updateRequired,

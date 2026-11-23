@@ -6,6 +6,7 @@ import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceImpact
 import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.SwapRouter02
 import eth.serotine.domain.model.Token
@@ -58,6 +59,12 @@ import kotlinx.coroutines.flow.first
  * - [netOfFees]: whether the route was chosen net of the fees (`RouteFinding.Found.netOfFees`).
  * - [spotOut] is what the route returns at its pools' spot prices, less their fees, and
  *   [priceImpact] how far [quotedOut] falls below it; null when a pool's price could not be read.
+ * - [kind] [SwapKind.BUY]: a swap that buys exactly [minimumOut] (docs/swaps.md, *Buying an exact
+ *   amount*), which [quotedOut] and [returnedOut] are too. [amountIn] is then the most it sells:
+ *   [quotedIn], QuoterV2's verified quote of what the route takes, plus [tolerance], rounded up
+ *   ([SlippageTolerance.maximumOf]); [takenIn] is what the exact transaction took, run as a
+ *   verified call. For a sell, [quotedIn] and [takenIn] are [amountIn]. [sellAfter] counts the
+ *   maximum.
  *
  * Only [QuoteSwap] makes one, and nothing copies it: what [SendSwap] signs is its [transaction].
  */
@@ -96,6 +103,9 @@ data class SwapQuote internal constructor(
     val buyBalanceBlock: Long?,
     val feeBlock: Long,
     val simulationBlock: Long?,
+    val kind: SwapKind = SwapKind.SELL,
+    val quotedIn: UInt256 = amountIn,
+    val takenIn: UInt256 = amountIn,
 ) {
     /** The price impact in basis points ([PriceImpact.basisPoints]), or null when [spotOut] is not known. */
     val priceImpact: Int?
@@ -125,6 +135,7 @@ data class SwapQuote internal constructor(
             buy,
             minimumOut,
             weth = weth9.takeIf { buy == TransferAsset.Native },
+            kind = kind,
         )
 }
 
@@ -173,16 +184,25 @@ class QuoteSwap(
 ) {
     private val quoter = CallQuoter(inputs, sentTransfers, network, clock, outbox)
 
-    /** Exactly [amountIn] of [sell] for [buy] from [from], at [tolerance], at [level]'s fees. */
+    /**
+     * Exactly [amount] of [sell] for [buy] from [from], at [tolerance], at [level]'s fees; or, [kind]
+     * being [SwapKind.BUY], exactly [amount] of [buy] for at most the route's verified quote of what
+     * it takes, plus [tolerance] (docs/swaps.md, *Buying an exact amount*). A buy's balance and
+     * allowance are held to that maximum once the route is quoted: what is too little is said
+     * then, as [SwapQuoting.InsufficientToken], [SwapQuoting.InsufficientFunds] or
+     * [SwapQuoting.NeedsApproval].
+     */
     suspend operator fun invoke(
         from: Address,
         sell: TransferAsset,
         buy: TransferAsset,
-        amountIn: UInt256,
+        amount: UInt256,
         tolerance: SlippageTolerance,
         level: FeeLevel,
+        kind: SwapKind = SwapKind.SELL,
     ): SwapQuoting = cancellingReads {
-        if (amountIn.isZero) return@cancellingReads SwapQuoting.NothingToSwap
+        if (amount.isZero) return@cancellingReads SwapQuoting.NothingToSwap
+        val buys = kind == SwapKind.BUY
         // An earlier transaction maybe still on its way: refused before any other read.
         quoter.heldBack(from)?.let { return@cancellingReads it.asSwapQuoting() }
         val soldToken = (sell as? TransferAsset.Erc20Token)?.token
@@ -240,15 +260,20 @@ class QuoteSwap(
             } ?: return@cancellingReads SwapQuoting.InsufficientToken
             CowOrderList.Unreadable -> return@cancellingReads SwapQuoting.CowOrdersUnreadable
         }
-        if (sellBefore != null && soldToken != null) {
+        // What the token's balance has for this swap, once what is already moving is set aside: a
+        // sell's amount is held to it now, a buy's maximum once the route is quoted.
+        val sellRoom = if (sellBefore != null && soldToken != null) {
             val moving = earlier.mapNotNull { it.tokenAmount(soldToken.address) }.sumOrNull()
                 ?.plusOrNull(held)
                 ?: return@cancellingReads SwapQuoting.InsufficientToken
-            if ((sellBefore.minusOrNull(moving) ?: UInt256.ZERO) < amountIn) {
-                return@cancellingReads SwapQuoting.InsufficientToken
-            }
+            sellBefore.minusOrNull(moving) ?: UInt256.ZERO
+        } else {
+            null
         }
-        if (soldToken == null && nativeBefore.wei < amountIn) return@cancellingReads SwapQuoting.InsufficientFunds
+        if (!buys) {
+            if (sellRoom != null && sellRoom < amount) return@cancellingReads SwapQuoting.InsufficientToken
+            if (soldToken == null && nativeBefore.wei < amount) return@cancellingReads SwapQuoting.InsufficientFunds
+        }
         val deadline = when (val status = head.await()) {
             // A verified head whose time is not known yet gives no deadline: no figure of the swap's
             // own is missing, so none is named.
@@ -263,32 +288,66 @@ class QuoteSwap(
                 ?.let { return@cancellingReads SwapQuoting.ApprovalPending(it.hash) }
         }
 
-        val found = when (val finding = findRoute(network, sell, buy, amountIn, RouteRanking.NET_OF_FEES)) {
+        val finding = if (buys) {
+            findRoute.buying(network, sell, buy, amountOut = amount)
+        } else {
+            findRoute(network, sell, buy, amount, RouteRanking.NET_OF_FEES)
+        }
+        val found = when (finding) {
             is RouteFinding.Found -> finding
             else -> return@cancellingReads finding.asSwapQuoting()
         }
-        val minimum = tolerance.minimumOf(found.quote.amountOut)
+        // A sell's minimum below its quote; a buy's maximum above what its route takes.
+        val minimum = if (buys) amount else tolerance.minimumOf(found.quote.amountOut)
         if (minimum.isZero) return@cancellingReads SwapQuoting.TooSmall
-        if (soldToken != null) {
-            val allowance = when (val read = readAllowance(network, inputs, from, soldToken, router)) {
+        val allowance = if (soldToken != null) {
+            when (val read = readAllowance(network, inputs, from, soldToken, router)) {
                 is AllowanceRead.Read -> read.allowance
                 AllowanceRead.NotAToken -> return@cancellingReads SwapQuoting.NotAToken
                 AllowanceRead.Refused -> return@cancellingReads SwapQuoting.Refused
                 is AllowanceRead.Unavailable ->
                     return@cancellingReads SwapQuoting.Unavailable(read.reason, QuoteFigure.ALLOWANCE)
             }
-            if (allowance < amountIn) {
-                return@cancellingReads SwapQuoting.NeedsApproval(soldToken, router, allowance)
-            }
+        } else {
+            null
         }
-        val swap = SwapRouter02.swap(found.deployment, sell, buy, found.quote.route, amountIn, minimum, from, deadline)
+        val amountIn = if (buys) {
+            val tooLittle = if (soldToken == null) SwapQuoting.InsufficientFunds else SwapQuoting.InsufficientToken
+            val most = tolerance.maximumOf(found.amountIn)?.let { withinAllowance(it, found.amountIn, allowance) }
+                ?: return@cancellingReads tooLittle
+            if (sellRoom != null && sellRoom < most) return@cancellingReads tooLittle
+            if (soldToken == null && nativeBefore.wei < most) return@cancellingReads SwapQuoting.InsufficientFunds
+            most
+        } else {
+            amount
+        }
+        if (soldToken != null && allowance != null && allowance < amountIn) {
+            return@cancellingReads SwapQuoting.NeedsApproval(soldToken, router, allowance, amountIn)
+        }
         val buysEther = buy == TransferAsset.Native
+        val sellsEther = sell == TransferAsset.Native
+        val swap = if (buys) {
+            SwapRouter02.buy(found.deployment, sell, buy, found.quote.route, amount, amountIn, from, deadline)
+        } else {
+            SwapRouter02.swap(found.deployment, sell, buy, found.quote.route, amountIn, minimum, from, deadline)
+        }
         var returned: UInt256? = null
-        // The run must return the swap's amount, and that at least the minimum (the router checks
-        // it too, but a run that says less is no swap to sign).
-        val accepts: (String) -> Boolean = { hex ->
-            returned = SwapRouter02.amountOutOf(hex, buysEther)
-            returned?.let { it >= minimum } == true
+        var taken: UInt256? = null
+        // A sell's run must return its amount, and that at least the minimum; a buy's must say what
+        // it took, and that at most the maximum (the router checks either, but a run that says
+        // otherwise is no swap to sign).
+        val accepts: (String) -> Boolean = if (buys) {
+            { hex ->
+                taken = SwapRouter02.amountInOf(hex, sellsEther, buysEther)
+                returned = amount
+                taken?.let { it <= amountIn } == true
+            }
+        } else {
+            { hex ->
+                returned = SwapRouter02.amountOutOf(hex, buysEther)
+                taken = amountIn
+                returned?.let { it >= minimum } == true
+            }
         }
         val (call, unmined) = when (
             val quoting = quoter.quote(from, swap.to, swap.value, swap.data, level, nativeBefore, accepts = accepts)
@@ -340,10 +399,23 @@ class QuoteSwap(
                 buyBalanceBlock = buyBlock,
                 feeBlock = call.feeBlock,
                 simulationBlock = call.simulationBlock,
+                kind = kind,
+                quotedIn = found.amountIn,
+                takenIn = checkNotNull(taken) { "an accepted run took the amount" },
             ),
         )
     }
 }
+
+/**
+ * A buy's maximum, [maximum] (its [quote] plus the tolerance), held to the [allowance] its spender
+ * already has when the quote itself is within it (docs/swaps.md, *Buying an exact amount*): after
+ * its approval, a buy is quoted again, and a quote that moved a little must not ask for another
+ * approval of the maximum the user approved. The buy then sells at most what was approved, which
+ * is still at least what it is quoted to take. Otherwise, [maximum] itself (null: no allowance read).
+ */
+internal fun withinAllowance(maximum: UInt256, quote: UInt256, allowance: UInt256?): UInt256 =
+    if (allowance != null && allowance < maximum && allowance >= quote) allowance else maximum
 
 /** What [unminedOf] read. */
 internal sealed interface Unmined {
@@ -480,10 +552,16 @@ sealed interface SwapQuoting {
     data class NoVenue(val contract: Address?) : SwapQuoting
 
     /**
-     * The router may take only [allowance] of [token], less than the amount: an approval of
-     * [spender] for the amount comes first, its own transaction ([QuoteTokenApproval]).
+     * The router may take only [allowance] of [token], less than the swap's [amount] (of a buy, its
+     * maximum): an approval of [spender] for [amount] comes first, its own transaction
+     * ([QuoteTokenApproval]).
      */
-    data class NeedsApproval(val token: Token, val spender: Address, val allowance: UInt256) : SwapQuoting
+    data class NeedsApproval(
+        val token: Token,
+        val spender: Address,
+        val allowance: UInt256,
+        val amount: UInt256,
+    ) : SwapQuoting
 
     /** The approval this swap needs, [hash], is sent and not mined yet: the swap waits for its receipt. */
     data class ApprovalPending(val hash: String) : SwapQuoting
@@ -555,8 +633,14 @@ class SendSwap(
         val buysEther = quote.buy == TransferAsset.Native
         when (val run = inputs.simulate(quote.network, quote.from, tx.to, tx.value, tx.data)) {
             is Simulation.Succeeded -> {
-                val out = SwapRouter02.amountOutOf(run.returnHex, buysEther)
-                if (out == null || out < quote.minimumOut) return SwapSending.NoLongerMet(run.blockNumber)
+                val met = if (quote.kind == SwapKind.BUY) {
+                    // A buy that would take more than its maximum: the router refuses it as well.
+                    SwapRouter02.amountInOf(run.returnHex, quote.sell == TransferAsset.Native, buysEther)
+                        ?.let { it <= quote.amountIn } == true
+                } else {
+                    SwapRouter02.amountOutOf(run.returnHex, buysEther)?.let { it >= quote.minimumOut } == true
+                }
+                if (!met) return SwapSending.NoLongerMet(run.blockNumber)
             }
             is Simulation.Reverted -> return SwapSending.NoLongerMet(run.blockNumber)
             Simulation.Refused -> return SwapSending.NotRun(ReadUnavailable.REFUSED)

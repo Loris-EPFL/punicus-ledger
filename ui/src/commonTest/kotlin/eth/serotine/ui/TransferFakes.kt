@@ -7,6 +7,7 @@ import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BlockReading
@@ -380,16 +381,19 @@ internal class FakeCowApi : CowApi {
     var quote: CowQuoteReading = CowQuoteReading.Unavailable(CowUnavailable.NO_CONNECTION)
     var placement: CowPlacement? = null
     val quotes = mutableListOf<Address>()
+    val kinds = mutableListOf<SwapKind>()
     val placed = mutableListOf<CowOrderUid>()
 
     override suspend fun quote(
         network: Network,
         sellToken: Address,
         buyToken: Address,
-        sellAmount: UInt256,
+        amount: UInt256,
         from: Address,
+        kind: SwapKind,
     ): CowQuoteReading {
         quotes += sellToken
+        kinds += kind
         return quote
     }
 

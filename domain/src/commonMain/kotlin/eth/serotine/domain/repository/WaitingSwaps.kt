@@ -3,6 +3,7 @@ package eth.serotine.domain.repository
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.UInt256
 import kotlinx.coroutines.flow.Flow
@@ -30,10 +31,11 @@ interface WaitingSwaps {
 }
 
 /**
- * A swap from [account] of [amount] of the token at [sell] (in its own units) for [buy] (a token's
- * address, null: the network's currency), on [venue] at [tolerance], whose approval [approval] (its
- * transaction hash) was sent: step [step] of [steps] waits, the swap itself or, after an allowance
- * set to zero first, the approval of the whole amount.
+ * A swap from [account] of the token at [sell] for [buy] (a token's address, null: the network's
+ * currency), on [venue] at [tolerance], of [kind]: selling exactly [amount] of the token sold, in its
+ * own units, or buying exactly [amount] of [buy], in its units (docs/swaps.md, *Buying an exact
+ * amount*); its approval [approval] (its transaction hash) was sent: step [step] of [steps] waits,
+ * the swap itself or, after an allowance set to zero first, the approval of the whole amount.
  */
 data class WaitingSwap(
     val account: AccountId,
@@ -45,6 +47,7 @@ data class WaitingSwap(
     val approval: String,
     val step: Int,
     val steps: Int,
+    val kind: SwapKind = SwapKind.SELL,
 ) {
     init {
         require(step in 2..steps) { "a waiting step follows one that was sent" }

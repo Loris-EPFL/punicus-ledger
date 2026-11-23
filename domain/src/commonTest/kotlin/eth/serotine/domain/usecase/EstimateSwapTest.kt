@@ -5,6 +5,7 @@ import eth.serotine.domain.model.FeeTier
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PoolKey
 import eth.serotine.domain.model.QuoterV2
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
@@ -65,6 +66,28 @@ class EstimateSwapTest {
         assertEquals(UInt256.of(400_000_000_000_000L), estimated.inverseRate, "0.0004 WETH in its 18 decimals")
         assertEquals(7L, estimated.blockNumber)
         assertNull(estimated.priceImpact, "slot0 was not read")
+    }
+
+    @Test
+    fun aBuysEstimateSaysWhatItTakesWithItsRateBothWays() = runTest {
+        // 5 000 USDC bought for 2 WETH: the same rates as the sell's.
+        val twoWeth = UInt256.of(2_000_000_000_000_000_000L)
+        val fiveThousand = UInt256.of(5_000_000_000L)
+        chain.answers[deployment.factory to UniswapV3Factory.getPool(PoolKey.of(usdc, weth, FeeTier.MEDIUM)).toHex()] =
+            "00".repeat(12) + pool.hex.drop(2)
+        chain.answers[pool to UniswapV3Pool.liquidity().toHex()] = UInt256.of(10).toBytes32().toHex()
+        val route = SwapRoute.direct(weth, usdc, FeeTier.MEDIUM)
+        chain.answers[deployment.quoterV2 to QuoterV2.quoteToBuy(route, fiveThousand).toHex()] =
+            twoWeth.toBytes32().toHex() + "00".repeat(64) + UInt256.of(100_000).toBytes32().toHex()
+
+        val estimated = assertIs<SwapEstimating.Estimated>(
+            estimate(Network.SEPOLIA, wethAsset, usdcAsset, fiveThousand, SwapKind.BUY),
+        )
+        assertEquals(SwapKind.BUY, estimated.kind)
+        assertEquals(twoWeth, estimated.amountIn)
+        assertEquals(fiveThousand, estimated.amountOut)
+        assertEquals(UInt256.of(2_500_000_000L), estimated.rate)
+        assertEquals(UInt256.of(400_000_000_000_000L), estimated.inverseRate)
     }
 
     @Test

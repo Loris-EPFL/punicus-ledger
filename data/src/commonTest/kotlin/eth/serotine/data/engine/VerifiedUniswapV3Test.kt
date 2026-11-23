@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class VerifiedUniswapV3Test {
@@ -157,5 +158,19 @@ class VerifiedUniswapV3Test {
         assertEquals(4, sepolia.codeHashes.size)
         sepolia.codeHashes.values.forEach { assertEquals(64, it.length) }
         assertFailsWith<IllegalArgumentException> { PinnedUniswapV3(deployment, codes.minus(deployment.weth9)) }
+    }
+
+    @Test
+    fun everyNetworkPinsADeploymentGnosisChainsWithWxdaiAsItsWeth9() {
+        Network.entries.forEach { network ->
+            val pinned = assertNotNull(UniswapDeployments.of(network), network.displayName)
+            assertEquals(4, pinned.codeHashes.size)
+            pinned.codeHashes.values.forEach { assertEquals(64, it.length) }
+        }
+        val gnosis = UniswapDeployments.of(Network.GNOSIS)!!.deployment
+        assertEquals(Address.of("0xe32f7dd7e3f098d518ff19a22d5f028e076489b1"), gnosis.factory)
+        assertEquals(Address.of("0x7e9cb3499a6cee3babe5c8a3d328ea7fd36578f4"), gnosis.quoterV2)
+        assertEquals(Address.of("0xc6d25285d5c5b62b7ca26d6092751a145d50e9be"), gnosis.swapRouter02)
+        assertEquals(Address.of("0xe91d153e0b41518a2ce8dd3d7944fa863463a97d"), gnosis.weth9)
     }
 }

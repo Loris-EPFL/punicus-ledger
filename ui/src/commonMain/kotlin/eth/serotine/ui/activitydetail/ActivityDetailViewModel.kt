@@ -12,6 +12,7 @@ import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.repository.AccountList
@@ -388,8 +389,13 @@ class ActivityDetailViewModel(
                 fields += addressOf("Spender", action.spender, names)
             }
             is SentAction.Swap -> {
-                fields += DetailField("Sold", rows.amount(action.amountIn, action.sell))
-                fields += DetailField("Bought at least", rows.amount(action.minimumOut, action.buy))
+                if (action.kind == SwapKind.BUY) {
+                    fields += DetailField("Sold at most", rows.amount(action.amountIn, action.sell))
+                    fields += DetailField("Bought exactly", rows.amount(action.minimumOut, action.buy))
+                } else {
+                    fields += DetailField("Sold", rows.amount(action.amountIn, action.sell))
+                    fields += DetailField("Bought at least", rows.amount(action.minimumOut, action.buy))
+                }
                 fields.addContract("Token sold", action.sell, names)
                 fields.addContract("Token bought", action.buy, names)
                 fields += addressOf("Router", action.router, names)

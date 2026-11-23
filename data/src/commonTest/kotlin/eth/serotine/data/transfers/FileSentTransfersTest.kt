@@ -13,6 +13,7 @@ import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -212,6 +213,33 @@ class FileSentTransfersTest {
     }
 
     @Test
+    fun aSwapThatBuysAnExactAmountIsRecordedAsOneAndAnOlderSwapReadsAsASell() = runTest {
+        val router = Address.of("0x" + "50".repeat(20))
+        val link = Token(Address.of("0x" + "77".repeat(20)), "LINK", "ChainLink Token", 18, icon = "link")
+        val buy = transfer(7).copy(
+            action = SentAction.Swap(
+                router = router,
+                sell = TransferAsset.Erc20Token(usdc),
+                amountIn = UInt256.of(100_500_000),
+                buy = TransferAsset.Erc20Token(link),
+                minimumOut = UInt256.of("5000000000000000000"),
+                kind = SwapKind.BUY,
+            ),
+        )
+        record().record(buy)
+        assertEquals(listOf(buy), stored())
+        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
+        assertTrue(""""kind":"buy"""" in text, text)
+
+        // A format 12 swap has no kind: a sell.
+        SystemFileSystem.delete(file)
+        val swap = """"swap":{"router":"${bob.hex}","amountIn":"1","minimumOut":"1"}"""
+        val older = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff",$swap,"maxCost":"1","sentAt":1800000008}"""
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":12,"transfers":[$older]}""") }
+        assertEquals(SwapKind.SELL, (stored().single().action as SentAction.Swap).kind)
+    }
+
+    @Test
     fun aWrapAndAnUnwrapAreRecordedWithTheirWeth9AndAmount() = runTest {
         val weth = Token(Address.of("0x" + "ff".repeat(20)), "WETH", "Wrapped Ether", 18, icon = "weth")
         val wrap = transfer(7).copy(action = SentAction.Wrap(weth, UInt256.of("100000000000000000")))
@@ -222,7 +250,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(wrap, unwrap), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":12,"""), "written as format 12: $text")
+        assertTrue(text.startsWith("""{"version":13,"""), "written as format 13: $text")
     }
 
     @Test
@@ -246,7 +274,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(cancellation), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":12,"""), "written as format 12: $text")
+        assertTrue(text.startsWith("""{"version":13,"""), "written as format 13: $text")
     }
 
     @Test
@@ -262,7 +290,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(call), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":12,"""), "written as format 12: $text")
+        assertTrue(text.startsWith("""{"version":13,"""), "written as format 13: $text")
     }
 
     @Test
@@ -279,7 +307,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(queued, executed), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":12,"""), "written as format 12: $text")
+        assertTrue(text.startsWith("""{"version":13,"""), "written as format 13: $text")
     }
 
     @Test
@@ -301,7 +329,7 @@ class FileSentTransfersTest {
 
         assertEquals(calls, stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":12,"""), "written as format 12: $text")
+        assertTrue(text.startsWith("""{"version":13,"""), "written as format 13: $text")
         assertTrue(""""change":"remove","member":"${bob.hex}","previous":"${alice.hex}"""" in text, text)
     }
 
@@ -354,7 +382,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(skipped), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":12,"""), "written as format 12: $text")
+        assertTrue(text.startsWith("""{"version":13,"""), "written as format 13: $text")
     }
 
     @Test

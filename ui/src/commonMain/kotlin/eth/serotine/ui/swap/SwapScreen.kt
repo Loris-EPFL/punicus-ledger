@@ -156,6 +156,7 @@ fun SwapRoute(
             onSellChange = viewModel::onSellChange,
             onBuyChange = viewModel::onBuyChange,
             onAmountChange = viewModel::onAmountChange,
+            onBuyAmountChange = viewModel::onBuyAmountChange,
             onMax = viewModel::onMax,
             onToleranceChange = viewModel::onToleranceChange,
             onFeeChange = viewModel::onFeeChange,
@@ -181,6 +182,7 @@ fun SwapRoute(
             onSellChange = viewModel::onSellChange,
             onBuyChange = viewModel::onBuyChange,
             onAmountChange = viewModel::onAmountChange,
+            onBuyAmountChange = viewModel::onBuyAmountChange,
             onMax = viewModel::onMax,
             onToleranceChange = viewModel::onToleranceChange,
             onFeeChange = viewModel::onFeeChange,
@@ -234,6 +236,7 @@ fun SwapScreen(
     onOpenOrder: (uid: String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onBuyAmountChange: (String) -> Unit = {},
 ) {
     val review = state as? Signable
     // As on Send: back from a review is to the compose step, until bytes may be out there, and
@@ -309,6 +312,7 @@ fun SwapScreen(
                     onReview,
                     onOpenTransfer,
                     onOpenOrder,
+                    onBuyAmountChange,
                 )
                 is SwapUiState.ApprovalPending -> ReviewColumn {
                     Text(state.title, style = MaterialTheme.typography.titleLarge)
@@ -381,15 +385,6 @@ fun SwapScreen(
                 is SwapUiState.CowReview -> ReviewColumn {
                     state.step?.let { StepLabel(it) }
                     if (simple) SimpleCowContent(state) else CowContent(state)
-                    if (state.uniswapGivesMore) {
-                        OutlinedButton(
-                            onClick = onSwapOnUniswap,
-                            enabled = state.idle,
-                            modifier = Modifier.testTag(SWAP_UNISWAP_INSTEAD_TAG),
-                        ) {
-                            Text("Swap on Uniswap instead")
-                        }
-                    }
                     ReviewFooter(
                         state,
                         when {
@@ -452,6 +447,7 @@ private fun ComposeContent(
     onReview: () -> Unit,
     onOpenTransfer: (hash: String) -> Unit,
     onOpenOrder: (uid: String) -> Unit,
+    onBuyAmountChange: (String) -> Unit,
 ) {
     val form = state.form
     val cow = state.venue.chosen == SwapVenue.COW
@@ -465,13 +461,22 @@ private fun ComposeContent(
         VenueChoice(state.venue, enabled = !form.quoting, onVenueChange)
         Note(
             if (cow) {
-                "Through CoW's servers, which learn this swap. CoW's estimate is shown beside the verified " +
-                    "Uniswap quote, and the order never signs less than that quote, less its fee and the tolerance."
+                "Through CoW's servers, which learn this swap and its amounts while you compose it. CoW's estimate " +
+                    "is not checked on chain: the order signs it, less your tolerance (plus it, for a buy)."
             } else {
                 "Verified on chain: Uniswap's pools, read through the light client. Nothing goes to a server."
             },
         )
-        SwapFormFields(form, onSellChange, onBuyChange, onAmountChange, onMax, onToleranceChange, onReview = onReview)
+        SwapFormFields(
+            form,
+            onSellChange,
+            onBuyChange,
+            onAmountChange,
+            onMax,
+            onToleranceChange,
+            onReview = onReview,
+            onBuyAmountChange = onBuyAmountChange,
+        )
         Heading("Fee")
         FeeChoice(state.fee, enabled = !form.quoting, onFeeChange)
         Note(
@@ -549,24 +554,16 @@ private fun VenueChoice(venue: VenueItem, enabled: Boolean, onVenueChange: (Swap
 }
 
 /**
- * The order on CoW: what it sells, CoW's estimate beside the verified Uniswap net, the minimum it
- * signs and until when, and what CoW learns.
+ * The order on CoW: what it sells, CoW's estimate, the minimum it signs (that estimate less the
+ * tolerance) and until when, and what CoW learns.
  */
 @Composable
 private fun CowContent(state: SwapUiState.CowReview) {
     Heading("You sell")
     AmountLine(state.sell.icon, state.sell.symbol, state.sold)
     Heading("CoW's estimate, not verified")
-    AmountLine(state.buy.icon, state.buy.symbol, state.estimate)
+    AmountLine(state.estimateAsset.icon, state.estimateAsset.symbol, state.estimate)
     Note(state.estimateNote)
-    Heading("Uniswap, verified")
-    AmountLine(state.buy.icon, state.buy.symbol, state.uniswapNet)
-    Note(state.uniswapNote)
-    Text(
-        state.comparison,
-        color = if (state.uniswapGivesMore) MaterialTheme.colorScheme.error else Color.Unspecified,
-        style = MaterialTheme.typography.bodyMedium,
-    )
     Heading("You receive")
     SelectionContainer {
         Text(state.minimum, Modifier.testTag(SWAP_MINIMUM_TAG), style = MaterialTheme.typography.titleMedium)
@@ -796,7 +793,7 @@ private fun SimpleApprovalContent(state: SwapUiState.ApprovalReview) {
 @Composable
 private fun SimpleSwapContent(state: SwapUiState.SwapReview) {
     AmountLine(state.sell.icon, state.sell.symbol, state.sold)
-    Text("for at least", style = MaterialTheme.typography.labelMedium)
+    Text(state.receiveLead, style = MaterialTheme.typography.labelMedium)
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         TokenIcon(state.buy.icon, state.buy.symbol, size = 40.dp)
         SelectionContainer {
@@ -831,13 +828,14 @@ private fun SimpleSwapContent(state: SwapUiState.SwapReview) {
 
 /**
  * The order on CoW in simple mode (docs/simple-ui.md, W4): what it sells for at least what, CoW's
- * estimate marked as not checked on chain beside the verified Uniswap quote, and what CoW learns
- * (owner ruling, 2026-10-22); the settlement contract, the validity and the balances behind *Details*.
+ * estimate marked as not checked on chain, that the minimum rests on it (owner ruling, 2026-11-23),
+ * and what CoW learns (owner ruling, 2026-10-22); the settlement contract, the validity and the
+ * balances behind *Details*.
  */
 @Composable
 private fun SimpleCowContent(state: SwapUiState.CowReview) {
     AmountLine(state.sell.icon, state.sell.symbol, state.sold)
-    Text("for at least", style = MaterialTheme.typography.labelMedium)
+    Text(state.receiveLead, style = MaterialTheme.typography.labelMedium)
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         TokenIcon(state.buy.icon, state.buy.symbol, size = 40.dp)
         SelectionContainer {
@@ -845,13 +843,11 @@ private fun SimpleCowContent(state: SwapUiState.CowReview) {
         }
     }
     ReviewLine("CoW expects, not checked on chain", state.estimate)
-    ReviewLine("Uniswap, checked on chain", state.uniswapNet)
     Text(
-        state.comparison,
-        color = if (state.uniswapGivesMore) MaterialTheme.colorScheme.error else Color.Unspecified,
+        state.simpleBasis,
         style = MaterialTheme.typography.bodyMedium,
     )
-    Checked("Checked on chain: the minimum is never below what Uniswap gives, less the gas and your tolerance")
+    Checked(state.simpleChecked)
     Text(
         "No network fee from this account: CoW takes it out of the trade.",
         style = MaterialTheme.typography.bodyMedium,
@@ -863,7 +859,6 @@ private fun SimpleCowContent(state: SwapUiState.CowReview) {
     Note(state.disclosure)
     Details {
         Note(state.estimateNote)
-        Note(state.uniswapNote)
         Note(state.minimumNote)
         Note(state.validUntil)
         Heading("Settled by")

@@ -58,11 +58,11 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Safe transaction (simple mode)](#simple-safe-tx) | `simple-safe-tx/` | 15 |
 | [Send (simple mode)](#simple-send) | `simple-send/` | 10 |
 | [Settings (simple mode)](#simple-settings) | `simple-settings/` | 10 |
-| [Swap (simple mode)](#simple-swap) | `simple-swap/` | 11 |
+| [Swap (simple mode)](#simple-swap) | `simple-swap/` | 14 |
 | [Tokens (simple mode)](#simple-tokens) | `simple-tokens/` | 2 |
 | [Transfer status (simple mode)](#simple-transfer-status) | `simple-transfer-status/` | 13 |
 | [Watch address (simple mode)](#simple-watch) | `simple-watch/` | 9 |
-| [Swap](#swap) | `swap/` | 38 |
+| [Swap](#swap) | `swap/` | 41 |
 | [Tokens](#tokens) | `tokens/` | 7 |
 | [Transfer status](#transfer-status) | `transfer-status/` | 37 |
 | [Update required](#update-required) | `update-required/` | 2 |
@@ -1059,15 +1059,18 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="simple-swap"></a>
 ## Swap (simple mode)
 
-`simple-swap/`, 11 states: `compose`, `compose-dark`, `approval`, `approval-dark`, `pending`, `step-two`, `cow`, `reset-first`, `earlier-failed`, `one-step`, `not-sent`
+`simple-swap/`, 14 states: `compose`, `compose-dark`, `compose-buy`, `approval`, `approval-dark`, `pending`, `step-two`, `cow`, `swap-buy`, `cow-buy`, `reset-first`, `earlier-failed`, `one-step`, `not-sent`
 
 <a href="simple-swap/compose.png"><img src="simple-swap/compose.png" width="206" alt="compose"></a>
 <a href="simple-swap/compose-dark.png"><img src="simple-swap/compose-dark.png" width="206" alt="compose-dark"></a>
+<a href="simple-swap/compose-buy.png"><img src="simple-swap/compose-buy.png" width="206" alt="compose-buy"></a>
 <a href="simple-swap/approval.png"><img src="simple-swap/approval.png" width="206" alt="approval"></a>
 <a href="simple-swap/approval-dark.png"><img src="simple-swap/approval-dark.png" width="206" alt="approval-dark"></a>
 <a href="simple-swap/pending.png"><img src="simple-swap/pending.png" width="206" alt="pending"></a>
 <a href="simple-swap/step-two.png"><img src="simple-swap/step-two.png" width="206" alt="step-two"></a>
 <a href="simple-swap/cow.png"><img src="simple-swap/cow.png" width="206" alt="cow"></a>
+<a href="simple-swap/swap-buy.png"><img src="simple-swap/swap-buy.png" width="206" alt="swap-buy"></a>
+<a href="simple-swap/cow-buy.png"><img src="simple-swap/cow-buy.png" width="206" alt="cow-buy"></a>
 <a href="simple-swap/reset-first.png"><img src="simple-swap/reset-first.png" width="206" alt="reset-first"></a>
 <a href="simple-swap/earlier-failed.png"><img src="simple-swap/earlier-failed.png" width="206" alt="earlier-failed"></a>
 <a href="simple-swap/one-step.png"><img src="simple-swap/one-step.png" width="206" alt="one-step"></a>
@@ -1118,7 +1121,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="swap"></a>
 ## Swap
 
-`swap/`, 38 states: `compose-empty`, `compose-empty-dark`, `composed`, `compose-estimate-checking`, `compose-estimate-unavailable`, `compose-high-impact`, `compose-quoting`, `compose-input-errors`, `compose-no-route`, `compose-cow-orders-unreadable`, `compose-on-cow`, `compose-cow-did-not-answer`, `compose-earlier-order-live`, `compose-approval-sent`, `compose-earlier-maybe-sent`, `compose-token-not-found`, `approval`, `approval-reset-first`, `review`, `review-dark`, `review-through-weth-with-biometrics`, `review-wrong-password`, `review-signing`, `review-refreshing`, `review-not-sent`, `cow-review`, `cow-review-dark`, `cow-review-uniswap-gives-more`, `order-placed`, `loading`, `watch-only`, `sent`, `approval-pending`, `review-step-two`, `approval-earlier-failed`, `wrap-review`, `wrap-review-dark`, `unwrap-review`
+`swap/`, 41 states: `compose-empty`, `compose-empty-dark`, `composed`, `compose-estimate-checking`, `compose-estimate-unavailable`, `compose-high-impact`, `compose-quoting`, `compose-input-errors`, `compose-no-route`, `compose-cow-orders-unreadable`, `compose-on-cow`, `compose-buy-exact`, `compose-buy-not-enough`, `compose-cow-did-not-answer`, `compose-earlier-order-live`, `compose-approval-sent`, `compose-earlier-maybe-sent`, `compose-token-not-found`, `approval`, `approval-reset-first`, `review`, `review-dark`, `review-buy`, `review-through-weth-with-biometrics`, `review-wrong-password`, `review-signing`, `review-refreshing`, `review-not-sent`, `cow-review`, `cow-review-dark`, `cow-review-buy`, `order-placed`, `loading`, `watch-only`, `sent`, `approval-pending`, `review-step-two`, `approval-earlier-failed`, `wrap-review`, `wrap-review-dark`, `unwrap-review`
 
 <a href="swap/compose-empty.png"><img src="swap/compose-empty.png" width="206" alt="compose-empty"></a>
 <a href="swap/compose-empty-dark.png"><img src="swap/compose-empty-dark.png" width="206" alt="compose-empty-dark"></a>
@@ -1131,6 +1134,8 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="swap/compose-no-route.png"><img src="swap/compose-no-route.png" width="206" alt="compose-no-route"></a>
 <a href="swap/compose-cow-orders-unreadable.png"><img src="swap/compose-cow-orders-unreadable.png" width="206" alt="compose-cow-orders-unreadable"></a>
 <a href="swap/compose-on-cow.png"><img src="swap/compose-on-cow.png" width="206" alt="compose-on-cow"></a>
+<a href="swap/compose-buy-exact.png"><img src="swap/compose-buy-exact.png" width="206" alt="compose-buy-exact"></a>
+<a href="swap/compose-buy-not-enough.png"><img src="swap/compose-buy-not-enough.png" width="206" alt="compose-buy-not-enough"></a>
 <a href="swap/compose-cow-did-not-answer.png"><img src="swap/compose-cow-did-not-answer.png" width="206" alt="compose-cow-did-not-answer"></a>
 <a href="swap/compose-earlier-order-live.png"><img src="swap/compose-earlier-order-live.png" width="206" alt="compose-earlier-order-live"></a>
 <a href="swap/compose-approval-sent.png"><img src="swap/compose-approval-sent.png" width="206" alt="compose-approval-sent"></a>
@@ -1140,6 +1145,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="swap/approval-reset-first.png"><img src="swap/approval-reset-first.png" width="206" alt="approval-reset-first"></a>
 <a href="swap/review.png"><img src="swap/review.png" width="206" alt="review"></a>
 <a href="swap/review-dark.png"><img src="swap/review-dark.png" width="206" alt="review-dark"></a>
+<a href="swap/review-buy.png"><img src="swap/review-buy.png" width="206" alt="review-buy"></a>
 <a href="swap/review-through-weth-with-biometrics.png"><img src="swap/review-through-weth-with-biometrics.png" width="206" alt="review-through-weth-with-biometrics"></a>
 <a href="swap/review-wrong-password.png"><img src="swap/review-wrong-password.png" width="206" alt="review-wrong-password"></a>
 <a href="swap/review-signing.png"><img src="swap/review-signing.png" width="206" alt="review-signing"></a>
@@ -1147,7 +1153,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="swap/review-not-sent.png"><img src="swap/review-not-sent.png" width="206" alt="review-not-sent"></a>
 <a href="swap/cow-review.png"><img src="swap/cow-review.png" width="206" alt="cow-review"></a>
 <a href="swap/cow-review-dark.png"><img src="swap/cow-review-dark.png" width="206" alt="cow-review-dark"></a>
-<a href="swap/cow-review-uniswap-gives-more.png"><img src="swap/cow-review-uniswap-gives-more.png" width="206" alt="cow-review-uniswap-gives-more"></a>
+<a href="swap/cow-review-buy.png"><img src="swap/cow-review-buy.png" width="206" alt="cow-review-buy"></a>
 <a href="swap/order-placed.png"><img src="swap/order-placed.png" width="206" alt="order-placed"></a>
 <a href="swap/loading.png"><img src="swap/loading.png" width="206" alt="loading"></a>
 <a href="swap/watch-only.png"><img src="swap/watch-only.png" width="206" alt="watch-only"></a>

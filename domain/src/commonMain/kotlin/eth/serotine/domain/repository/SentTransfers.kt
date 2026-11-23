@@ -8,6 +8,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -172,6 +173,13 @@ sealed interface SentAction {
      * sold is the transaction's value, which its cost already holds. [weth] is the pinned WETH9
      * the router unwraps ETH bought from (its `Withdrawal` says how much); null when the swap
      * buys a token, or the record is older than this field.
+     *
+     * [kind] [SwapKind.BUY] is a swap that buys an exact amount (docs/swaps.md, *Buying an exact
+     * amount*): exactly [minimumOut] of [buy] for at most [amountIn] of [sell]. What it may sell,
+     * and so what is held back until it is mined, is that maximum. The record keeps the maximum,
+     * not what the swap took: that is in its receipt's logs, the token's `Transfer` from the
+     * account (for ETH sold, the value less the router's refund). A record older than this field
+     * is a sell.
      */
     data class Swap(
         val router: Address,
@@ -180,6 +188,7 @@ sealed interface SentAction {
         val buy: TransferAsset,
         val minimumOut: UInt256,
         val weth: Address? = null,
+        val kind: SwapKind = SwapKind.SELL,
     ) : SentAction
 
     /**

@@ -81,6 +81,7 @@ import eth.serotine.ui.components.toleranceError
 import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
 import eth.serotine.ui.platform.formatDateTime
+import eth.serotine.ui.components.wrappedSymbol
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
@@ -813,7 +814,7 @@ class SafeSwapViewModel(
         val held = proposal.safe.ownersHeld
         val labels = accounts.associate { it.address to it.label }
         val decoding = decodingTokens(step.request)
-        val route = routeSteps(proposal.route, proposal.pools, sell, buy)
+        val route = routeSteps(proposal.route, proposal.pools, sell, buy, network)
         val transactions = listOfNotNull(proposal.reset, proposal.approval, proposal.swap).map { tx ->
             SafeSwapTransaction(
                 nonce = "Safe nonce ${tx.request.nonce}",
@@ -839,9 +840,11 @@ class SafeSwapViewModel(
             routeNote = if (route.size == 1) {
                 "One Uniswap v3 pool, as the pinned factory lists it, chosen by what it returns."
             } else {
-                "Through WETH: two Uniswap v3 pools, as the pinned factory lists them, chosen by what they return."
+                "Through ${wrappedSymbol(network)}: two Uniswap v3 pools, as the pinned factory lists " +
+                    "them, chosen by what they return."
             } + if (sell.asset == TransferAsset.Native || buy.asset == TransferAsset.Native) {
-                " ETH goes in or out as WETH, which the router wraps or unwraps in the same transaction."
+                " ${network.nativeSymbol} goes in or out as ${wrappedSymbol(network)}, which " +
+                    "the router wraps or unwraps in the same transaction."
             } else {
                 ""
             },
@@ -992,8 +995,8 @@ class SafeSwapViewModel(
         return when (proposing) {
             is SafeSwapProposing.Proposed -> error("a proposal is no refusal")
             SafeSwapProposing.NothingToSwap -> "There is nothing to swap: enter an amount above zero."
-            SafeSwapProposing.NotASwap -> notASwapText(sell, buy)
-            SafeSwapProposing.NoRoute -> noRouteText(sell, buy)
+            SafeSwapProposing.NotASwap -> notASwapText(sell, buy, network)
+            SafeSwapProposing.NoRoute -> noRouteText(sell, buy, network)
             is SafeSwapProposing.NoVenue -> noVenueText(proposing.contract, network)
             SafeSwapProposing.TooSmall -> TOO_SMALL
             SafeSwapProposing.InsufficientFunds -> "The Safe holds less ${network.nativeSymbol} than that, once the " +

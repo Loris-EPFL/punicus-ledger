@@ -47,14 +47,16 @@ data class SwarmAction(val reason: String? = null, val turnOn: Boolean = false)
 /**
  * A chequebook kept for the node: its EIP-55 [address]; its [lines] once verified ("Balance 12
  * BZZ", "Free to withdraw 12 BZZ", "Paid out 0 BZZ"), empty otherwise; [warning] where a
- * cheque of it bounced; and [status], where it stands: verified at a block, held as last verified,
- * not read yet, or why it is not available.
+ * cheque of it bounced; [status], where it stands: verified at a block, held as last verified,
+ * not read yet, or why it is not available; and Withdraw ([withdraw]) for one proven the node's,
+ * null otherwise.
  */
 data class ChequebookRow(
     val address: String,
     val lines: List<String>,
     val warning: String?,
     val status: String,
+    val withdraw: SwarmAction? = null,
 )
 
 /**

@@ -508,7 +508,7 @@ class PostageViewModel(
         when {
             next is Step.Awaiting -> awaitApproval(next)
             // What it says (an approval that may have failed) is kept through the quote made again.
-            next is Step.Reviewing && next.hidden && shown -> requote(next, note = next.note)
+            next is Step.Reviewing && next.hidden && shown -> requote(next, note = next.error ?: next.note)
         }
     }
 

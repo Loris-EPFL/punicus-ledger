@@ -31,6 +31,9 @@ object SwarmCalls {
     /** `topUp(bytes32 _batchId, uint256 _topupAmountPerChunk)`: [perChunk] more for each chunk of [id]. */
     fun topUp(id: BatchId, perChunk: UInt256): ByteArray = TOP_UP + id.bytes() + perChunk.toBytes32()
 
+    /** A chequebook's `withdraw(uint256 amount)`: [amount] of its xBZZ to its issuer. */
+    fun withdraw(amount: UInt256): ByteArray = WITHDRAW + amount.toBytes32()
+
     /** `increaseDepth(bytes32 _batchId, uint8 _newDepth)`: [id] diluted to [depth]. */
     fun increaseDepth(id: BatchId, depth: Int): ByteArray {
         require(depth in 0..PostageBatch.MAX_DEPTH) { "a depth is a uint8" }
@@ -78,6 +81,7 @@ object SwarmCalls {
 
     internal val CREATE_BATCH = AbiWords.selector("createBatch(address,uint256,uint8,uint8,bytes32,bool)")
     internal val TOP_UP = AbiWords.selector("topUp(bytes32,uint256)")
+    internal val WITHDRAW = AbiWords.selector("withdraw(uint256)")
     internal val INCREASE_DEPTH = AbiWords.selector("increaseDepth(bytes32,uint8)")
 
     private fun BatchId.bytes(): ByteArray = hex.hexToBytes()

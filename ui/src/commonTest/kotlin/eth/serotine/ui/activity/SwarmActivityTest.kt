@@ -61,4 +61,15 @@ class SwarmActivityTest {
             rows(node).row(entry(node, SentAction.BatchDilution(stamp, id, 23)), emptyMap()).title,
         )
     }
+
+    @Test
+    fun aWithdrawalSaysHowMuchAndFromWhichChequebook() {
+        val chequebook = Address.of("0x614f90324e7ac11a08c29f3313de9f4c7e047b77")
+        val row = rows(node).row(
+            entry(node, SentAction.ChequebookWithdrawal(bzz, chequebook, UInt256.of(10_000_000_000_000_000))),
+            emptyMap(),
+        )
+        assertEquals("Withdrew 1 BZZ", row.title)
+        assertEquals(true, row.detail.startsWith("From chequebook "))
+    }
 }

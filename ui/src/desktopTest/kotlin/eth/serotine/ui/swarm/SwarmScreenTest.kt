@@ -29,6 +29,7 @@ class SwarmScreenTest {
                 listOf("Balance 1.2 BZZ"),
                 SwarmTexts.BOUNCED,
                 "Verified at block 1",
+                withdraw = SwarmAction(),
             ),
         ),
         chequebookNote = null,
@@ -63,6 +64,7 @@ class SwarmScreenTest {
                     onBuy = { events += "buy" },
                     onTopUp = { events += "top up $it" },
                     onDilute = { events += "dilute $it" },
+                    onWithdraw = { events += "withdraw $it" },
                 ),
             )
         }
@@ -134,5 +136,12 @@ class SwarmScreenTest {
         rule.onNodeWithTag("$SWARM_DILUTE_TAG-0x" + "ab".repeat(32)).performClick()
         rule.onNodeWithText(SwarmTexts.NODE_KEY_NOT_HELD).assertIsDisplayed()
         assertEquals(2, events.size)
+    }
+
+    @Test
+    fun withdrawOpensItsForm() {
+        show(ready)
+        rule.onNodeWithTag("$SWARM_WITHDRAW_TAG-0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359").performClick()
+        assertEquals(listOf("withdraw 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359"), events)
     }
 }

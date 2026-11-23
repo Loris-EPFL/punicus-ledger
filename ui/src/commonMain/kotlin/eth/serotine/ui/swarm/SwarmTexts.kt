@@ -147,6 +147,11 @@ internal object SwarmTexts {
             "here. Create or import one, and send it xBZZ and xDAI."
     const val NODE_KEY_NOT_HELD =
         "Only the batch's owner may dilute it, and this node's key is not on this device: its own key signs it."
+    const val NODE_KEY_NOT_WITHDRAWING =
+        "Only the chequebook's issuer may withdraw from it, and this node's key is not on this device."
+    const val NOT_VERIFIED =
+        "It is not verified as this node's right now: once the light client has read it, this can be done."
+    const val NOTHING_FREE = "Nothing is free to withdraw from this chequebook now."
     const val EXPIRED_ACTION = "This batch has expired: the postage contract takes no top-up or dilution of it. " +
         "Buy a new one."
 

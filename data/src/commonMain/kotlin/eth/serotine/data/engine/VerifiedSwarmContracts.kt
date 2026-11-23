@@ -111,6 +111,28 @@ class VerifiedSwarmContracts internal constructor(
         return chequebooks.observe(node to chequebook).map { it.toSwarmReading() }
     }
 
+    override suspend fun chequebook(
+        network: Network,
+        node: Address,
+        chequebook: Address,
+    ): SwarmReading<ChequebookFinding> {
+        if (network != served) return SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        val pinned = pins ?: return SwarmReading.NotPinned
+        val verified = chain ?: return SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        return withContext(dispatcher) {
+            try {
+                whyUnreadable(verified.snapshot())?.let { return@withContext SwarmReading.Unavailable(it) }
+                // Read fresh, as a poll of observeChequebook reads it, never a reading kept.
+                readChequebook(verified, pinned, node, chequebook)?.toSwarmReading()
+                    ?: SwarmReading.Unavailable(ReadUnavailable.UNPROVEN)
+            } catch (e: Throwable) {
+                // A cancellation of this call ends it; anything else is an engine failure, as in ProvenReads.
+                currentCoroutineContext().ensureActive()
+                SwarmReading.Unavailable(ReadUnavailable.UNPROVEN)
+            }
+        }
+    }
+
     override fun observeBatch(network: Network, node: Address, id: BatchId): Flow<SwarmReading<BatchFinding>> {
         if (network != served) return flowOf(SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE))
         if (pins == null) return flowOf(SwarmReading.NotPinned)

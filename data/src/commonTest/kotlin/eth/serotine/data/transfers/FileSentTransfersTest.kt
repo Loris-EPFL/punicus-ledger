@@ -370,6 +370,13 @@ class FileSentTransfersTest {
             ),
             transfer(10).copy(action = SentAction.BatchTopUp(bzz, stamp, bob, id, 22, UInt256.of(1_000))),
             transfer(11).copy(action = SentAction.BatchDilution(stamp, id, 23)),
+            transfer(12).copy(
+                action = SentAction.ChequebookWithdrawal(
+                    bzz,
+                    Address.of("0x614f90324e7ac11a08c29f3313de9f4c7e047b77"),
+                    UInt256.of(10_000_000_000_000_000),
+                ),
+            ),
         )
         val recorder = record()
         calls.forEach { recorder.record(it) }

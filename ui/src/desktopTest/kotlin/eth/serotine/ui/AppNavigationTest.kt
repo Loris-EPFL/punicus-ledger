@@ -1573,6 +1573,13 @@ private object NoSwarm : eth.serotine.domain.repository.SwarmContracts {
 
     override fun deployment(network: eth.serotine.domain.model.Network) = null
 
+    override suspend fun chequebook(
+        network: eth.serotine.domain.model.Network,
+        node: eth.serotine.domain.model.Address,
+        chequebook: eth.serotine.domain.model.Address,
+    ): eth.serotine.domain.repository.SwarmReading<eth.serotine.domain.repository.ChequebookFinding> =
+        eth.serotine.domain.repository.SwarmReading.NotPinned
+
     override suspend fun postage(
         network: eth.serotine.domain.model.Network,
         node: eth.serotine.domain.model.Address?,

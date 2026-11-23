@@ -375,6 +375,12 @@ internal class ActivityRows(
             }
             is SentAction.BatchDilution ->
                 Triple("Diluted batch ${batchShort(action.id)} to depth ${action.depth}", action.stamp, "At")
+            // The xBZZ comes to the node, which sent it: the row says how much, from which chequebook.
+            is SentAction.ChequebookWithdrawal -> Triple(
+                "Withdrew ${amount(action.amount, TransferAsset.Erc20Token(action.token))}",
+                action.chequebook,
+                "From chequebook",
+            )
         }
         val (status, state) = statusOf(entry)
         return ActivityRow(

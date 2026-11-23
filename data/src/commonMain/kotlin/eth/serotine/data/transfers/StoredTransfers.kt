@@ -43,8 +43,8 @@ private const val SKIP = "skip"
  * token approval ([approval]), a swap ([swap]), a wrap or unwrap ([wrap]), a CoW order's
  * cancellation on chain ([cancellation]), a dApp's transaction ([dappCall]) or a Gnosis Pay
  * account's transfer or member change queued or executed through its Delay ([delay]), or a Swarm
- * node's postage batch bought, topped up or diluted ([postage], format 13) — exactly one of the ten,
- * else the file is damaged.
+ * node's postage batch bought, topped up or diluted ([postage], format 13), or xBZZ withdrawn from a
+ * Swarm node's chequebook ([chequebook], format 13) — exactly one of the eleven, else the file is damaged.
  */
 @Serializable
 internal class StoredTransfer(
@@ -63,6 +63,7 @@ internal class StoredTransfer(
     val dappCall: StoredDappCall? = null,
     val delay: StoredDelayCall? = null,
     val postage: StoredPostageCall? = null,
+    val chequebook: StoredChequebookCall? = null,
     val maxCost: String,
     val sentAt: Long,
     val maybeSent: Boolean = false,
@@ -80,7 +81,8 @@ internal class StoredTransfer(
     )
 
     private fun action(): SentAction {
-        val kinds = listOfNotNull(deployment, safe, approval, swap, wrap, cancellation, dappCall, delay, postage)
+        val kinds =
+            listOfNotNull(deployment, safe, approval, swap, wrap, cancellation, dappCall, delay, postage, chequebook)
         require(kinds.size <= 1) { "more than one kind of transaction" }
         val transferFields = to != null || token != null || amount != null
         require(kinds.isEmpty() || !transferFields) { "a transfer and another kind at once" }
@@ -93,6 +95,7 @@ internal class StoredTransfer(
         dappCall?.let { return it.toAction() }
         delay?.let { return it.toAction() }
         postage?.let { return it.toAction() }
+        chequebook?.let { return it.toAction() }
         return SentAction.Transfer(
             to = Address.of(requireNotNull(to) { "a transfer without a recipient" }),
             asset = token?.let { TransferAsset.Erc20Token(it.toToken()) } ?: TransferAsset.Native,
@@ -319,6 +322,7 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
             is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap, is SentAction.CowCancellation,
             is SentAction.DappCall, is SentAction.DelayQueue, is SentAction.DelayExecution,
             is SentAction.DelaySkip, is SentAction.BatchPurchase, is SentAction.BatchTopUp, is SentAction.BatchDilution,
+            is SentAction.ChequebookWithdrawal,
             -> null
         },
         delay = when (action) {
@@ -372,6 +376,9 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
             )
             is SentAction.BatchDilution -> StoredPostageCall(DILUTION, action.stamp.hex, action.id.hex, action.depth)
             else -> null
+        },
+        chequebook = (action as? SentAction.ChequebookWithdrawal)?.let {
+            StoredChequebookCall(WITHDRAW, it.chequebook.hex, it.amount.toDecimal(), stored(it.token))
         },
         cancellation = (action as? SentAction.CowCancellation)?.let {
             StoredCowCancellation(it.settlement.hex, it.uid.hex)
@@ -442,6 +449,24 @@ internal class StoredPostageCall(
     }
 }
 
+/**
+ * xBZZ withdrawn from a Swarm node's chequebook (format 13, docs/swarm.md): [kind] `withdraw`, the
+ * chequebook at [chequebook], the [amount] and the [token] it pays out, xBZZ.
+ */
+@Serializable
+internal class StoredChequebookCall(
+    val kind: String,
+    val chequebook: String,
+    val amount: String,
+    val token: StoredToken,
+) {
+    fun toAction(): SentAction {
+        require(kind == WITHDRAW) { "a chequebook call of no known kind" }
+        return SentAction.ChequebookWithdrawal(token.toToken(), Address.of(chequebook), UInt256.of(amount))
+    }
+}
+
+private const val WITHDRAW = "withdraw"
 private const val PURCHASE = "purchase"
 private const val TOP_UP = "top-up"
 private const val DILUTION = "dilution"

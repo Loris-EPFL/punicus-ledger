@@ -43,8 +43,9 @@ import kotlinx.serialization.json.JsonElement
  * Pay accounts' Delay calls, format 11 their Delays' skips of expired entries (a Delay call of the
  * kind "skip", whose recipient is the Delay and whose amount is nothing), and format 12 the changes
  * of a Delay's members (owner ruling, 2026-11-18), format 13 a Swarm node's postage batches bought,
- * topped up or diluted (docs/swarm.md). A file of an earlier format reads as it is and is written as
- * 13 at its next change, which a build that reads only an earlier one then leaves alone.
+ * topped up or diluted, and its chequebook's withdrawals (docs/swarm.md). A file of an earlier format
+ * reads as it is and is written as 13 at its next change, which a build that reads only an earlier
+ * one then leaves alone.
  */
 class FileSentTransfers(
     path: String,

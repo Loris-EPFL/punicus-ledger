@@ -232,6 +232,14 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
 
         override fun deployment(network: Network): SwarmDeployment? = of(network)?.swarmContracts?.deployment(network)
 
+        override suspend fun chequebook(
+            network: Network,
+            node: Address,
+            chequebook: Address,
+        ): SwarmReading<ChequebookFinding> =
+            of(network)?.swarmContracts?.chequebook(network, node, chequebook)
+                ?: SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE)
+
         override suspend fun postage(network: Network, node: Address?, id: BatchId?): PostageReading =
             of(network)?.swarmContracts?.postage(network, node, id)
                 ?: PostageReading.Unavailable(ReadUnavailable.NO_ENGINE)

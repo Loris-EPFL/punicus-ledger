@@ -146,6 +146,32 @@ class VerifiedSwarmContractsTest {
     }
 
     @Test
+    fun aChequebookIsReadFreshForAWithdrawal() = runTest {
+        theNodesChequebook()
+        val balance = UInt256.of(12_000_000_000_000_000)
+        val contracts = contracts()
+        assertEquals(
+            SwarmReading.Verified(
+                ChequebookFinding.Node(Chequebook(chequebook, node, balance, balance, UInt256.of(0), bounced = false)),
+                7,
+            ),
+            contracts.chequebook(Network.GNOSIS, node, chequebook),
+        )
+        // Read again at each ask: a cash-out since is seen at once, never a reading kept.
+        answer(chequebook, VerifiedSwarmContracts.LIQUID_BALANCE, word("0"))
+        val again = assertIs<ChequebookFinding.Node>(
+            assertIs<SwarmReading.Verified<ChequebookFinding>>(contracts.chequebook(Network.GNOSIS, node, chequebook))
+                .finding,
+        )
+        assertEquals(UInt256.of(0), again.chequebook.liquidBalance)
+        assertEquals(
+            SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE),
+            contracts.chequebook(Network.ETHEREUM, node, chequebook),
+        )
+        assertEquals(SwarmReading.NotPinned, contracts(pinned = null).chequebook(Network.GNOSIS, node, chequebook))
+    }
+
+    @Test
     fun anotherIssuersChequebookIsNotTheNodes() = runTest {
         theNodesChequebook(issuer = buyer)
         assertEquals(

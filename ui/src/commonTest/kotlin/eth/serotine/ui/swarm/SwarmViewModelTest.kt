@@ -142,6 +142,13 @@ class SwarmViewModelTest {
 
         override fun deployment(network: Network) = null
 
+        override suspend fun chequebook(
+            network: eth.serotine.domain.model.Network,
+            node: eth.serotine.domain.model.Address,
+            chequebook: eth.serotine.domain.model.Address,
+        ): eth.serotine.domain.repository.SwarmReading<eth.serotine.domain.repository.ChequebookFinding> =
+            eth.serotine.domain.repository.SwarmReading.NotPinned
+
         override suspend fun postage(network: Network, node: Address?, id: BatchId?) =
             eth.serotine.domain.repository.PostageReading.NotPinned
     }
@@ -215,6 +222,26 @@ class SwarmViewModelTest {
         runCurrent()
         assertEquals(SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true), viewModel.ready.buy)
         assertEquals(SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true), viewModel.ready.batches.single().dilute)
+    }
+
+    @Test
+    fun withdrawIsTheNodesOwnKeysAndTakesSomethingFree() = runTest {
+        kept.value = SwarmCandidateList.Loaded(listOf(chequebookAddress), emptyList())
+        val viewModel = viewModel()
+        runCurrent()
+        assertEquals(
+            SwarmAction(SwarmTexts.NODE_KEY_NOT_WITHDRAWING),
+            viewModel.ready.chequebooks.single().withdraw,
+        )
+        accounts.setCustody(bee.id, AccountCustody.InKeyStore)
+        runCurrent()
+        assertEquals(SwarmAction(), viewModel.ready.chequebooks.single().withdraw)
+        networks.setEnabled(Network.GNOSIS, false)
+        runCurrent()
+        assertEquals(
+            SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true),
+            viewModel.ready.chequebooks.single().withdraw,
+        )
     }
 
     @Test

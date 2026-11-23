@@ -29,6 +29,16 @@ interface SwarmContracts {
     fun observeChequebook(network: Network, node: Address, chequebook: Address): Flow<SwarmReading<ChequebookFinding>>
 
     /**
+     * What the contract at [chequebook] is to the node at [node] on [network], as [observeChequebook]
+     * finds it, read fresh, never from a reading kept before: what a withdrawal is quoted, and checked
+     * before it is signed, on (docs/swarm.md, *Withdraw from the chequebook*). All of it at one block.
+     * Blocks on the engine, bounded by it; never throws. A [network] no adapter serves here is
+     * refused ([ReadUnavailable.NO_ENGINE]); one that pins no Swarm contracts answers
+     * [SwarmReading.NotPinned].
+     */
+    suspend fun chequebook(network: Network, node: Address, chequebook: Address): SwarmReading<ChequebookFinding>
+
+    /**
      * What the batch [id] is to the node at [node] on [network] (docs/swarm.md, *A batch is
      * proven*), as the pinned PostageStamp's `batches(id)`, `remainingBalance(id)` and
      * `lastPrice()` answer at one block, its code proven first; [node] is applied, never ignored:

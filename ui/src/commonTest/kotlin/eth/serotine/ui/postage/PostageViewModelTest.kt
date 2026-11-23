@@ -103,6 +103,13 @@ class PostageViewModelTest {
             flowOf(SwarmReading.NotPinned)
         override fun observeBatch(network: Network, node: Address, id: BatchId) = flowOf(batch)
         override fun deployment(network: Network) = SwarmDeployment(bzz, stamp)
+        override suspend fun chequebook(
+            network: eth.serotine.domain.model.Network,
+            node: eth.serotine.domain.model.Address,
+            chequebook: eth.serotine.domain.model.Address,
+        ): eth.serotine.domain.repository.SwarmReading<eth.serotine.domain.repository.ChequebookFinding> =
+            eth.serotine.domain.repository.SwarmReading.NotPinned
+
         override suspend fun postage(network: Network, node: Address?, id: BatchId?): PostageReading =
             PostageReading.Read(
                 PostageState(false, price, minimum),

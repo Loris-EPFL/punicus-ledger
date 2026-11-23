@@ -121,6 +121,7 @@ import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveAmountsHidden
+import eth.serotine.domain.usecase.ObserveChequebook
 import eth.serotine.domain.usecase.ObserveCowOrder
 import eth.serotine.domain.usecase.ObserveCowOrderLife
 import eth.serotine.domain.usecase.ObserveDappConnections
@@ -178,6 +179,7 @@ import eth.serotine.domain.usecase.QueueTransfer
 import eth.serotine.domain.usecase.QuoteBatchDilution
 import eth.serotine.domain.usecase.QuoteBatchPurchase
 import eth.serotine.domain.usecase.QuoteBatchTopUp
+import eth.serotine.domain.usecase.QuoteChequebookWithdrawal
 import eth.serotine.domain.usecase.QuoteCowCancellation
 import eth.serotine.domain.usecase.QuoteCowSwap
 import eth.serotine.domain.usecase.QuoteDappTransaction
@@ -210,6 +212,7 @@ import eth.serotine.domain.usecase.RestorePerAppAddress
 import eth.serotine.domain.usecase.RouteRanking
 import eth.serotine.domain.usecase.SendBatchApproval
 import eth.serotine.domain.usecase.SendBatchCall
+import eth.serotine.domain.usecase.SendChequebookWithdrawal
 import eth.serotine.domain.usecase.SendCowCancellation
 import eth.serotine.domain.usecase.SendDappTransaction
 import eth.serotine.domain.usecase.SendDelayCall
@@ -285,6 +288,7 @@ import eth.serotine.ui.tokens.TokensViewModel
 import eth.serotine.ui.transferstatus.TransferStatusViewModel
 import eth.serotine.ui.update.UpdateRequiredViewModel
 import eth.serotine.ui.watch.WatchViewModel
+import eth.serotine.ui.withdraw.WithdrawViewModel
 
 /**
  * The composition root's contract: everything the shared UI needs, handed in as the
@@ -579,6 +583,17 @@ class AppGraph(
             SendBatchCall(signer, broadcaster, sentTransfers, transactionInputs, swarmCandidates, swarmContracts),
             DescribeKeyStore(keys),
         )
+
+    /** The withdrawal from the Swarm node [node]'s chequebook at [chequebook] (docs/swarm.md). */
+    fun withdrawViewModel(node: AccountId, chequebook: Address): WithdrawViewModel = WithdrawViewModel(
+        node,
+        chequebook,
+        ObserveAccount(accounts),
+        ObserveChequebook(swarmContracts),
+        QuoteChequebookWithdrawal(swarmContracts, transactionInputs, nativeBalances, sentTransfers, outbox),
+        SendChequebookWithdrawal(signer, broadcaster, sentTransfers, transactionInputs, swarmContracts),
+        DescribeKeyStore(keys),
+    )
 
     /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it. */
     fun gnosisPayViewModel(safe: AccountId): GnosisPayViewModel = GnosisPayViewModel(

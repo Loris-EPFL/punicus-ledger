@@ -16,6 +16,7 @@ private val chequebook = ChequebookRow(
     lines = listOf("Balance 1.2 BZZ", "Free to withdraw 1.2 BZZ", "Paid out 0.35 BZZ"),
     warning = null,
     status = "Verified at block 43,000,512",
+    withdraw = SwarmAction(),
 )
 
 private val batch = BatchRow(
@@ -87,14 +88,14 @@ private fun SwarmHeldPreview() = SwarmPreview(
     node.copy(
         chequebooks = listOf(chequebook.copy(status = SwarmTexts.verified(43_000_512, held = true))),
         batches = listOf(
-            // Not proven the node's yet, or another's: no batch action.
+            // Not read yet: greyed out, saying so; another owner's: no batch action.
             batch.copy(
                 capacity = null,
                 timeLeft = null,
                 immutable = false,
                 status = SwarmTexts.NOT_READ,
-                topUp = null,
-                dilute = null,
+                topUp = SwarmAction(SwarmTexts.NOT_VERIFIED),
+                dilute = SwarmAction(SwarmTexts.NOT_VERIFIED),
             ),
             batch.copy(
                 id = "0x" + "0f".repeat(32),
@@ -143,7 +144,11 @@ private fun SwarmAddRefusedPreview() = SwarmPreview(
 private fun SwarmNetworkOffPreview() = SwarmPreview(
     node.copy(
         chequebooks = listOf(
-            chequebook.copy(lines = emptyList(), status = SwarmTexts.unavailable(ReadUnavailable.NETWORK_OFF)),
+            chequebook.copy(
+                lines = emptyList(),
+                status = SwarmTexts.unavailable(ReadUnavailable.NETWORK_OFF),
+                withdraw = SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true),
+            ),
         ),
         batches = emptyList(),
         batchNote = SwarmTexts.NO_BATCH,

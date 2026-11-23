@@ -3,22 +3,15 @@ package eth.serotine.domain.usecase
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.Erc20
-import eth.serotine.domain.model.FeeTier
 import eth.serotine.domain.model.GPv2Settlement
 import eth.serotine.domain.model.GPv2Signing
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.model.PoolKey
-import eth.serotine.domain.model.QuoterV2
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SlippageTolerance
-import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
-import eth.serotine.domain.model.UniswapV3Deployment
-import eth.serotine.domain.model.UniswapV3Factory
-import eth.serotine.domain.model.UniswapV3Pool
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.model.toHex
 import eth.serotine.domain.repository.CowOrderEnd
@@ -46,9 +39,7 @@ import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TransactionInputs
-import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.Unlock
-import eth.serotine.domain.repository.VenueReading
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -63,22 +54,11 @@ class CowSwapsTest {
     private val wethToken = Token(weth, "WETH", "Wrapped Ether", 18, icon = null)
     private val usdc = TransferAsset.Erc20Token(usdcToken)
     private val wethAsset = TransferAsset.Erc20Token(wethToken)
-    private val uniswap = UniswapV3Deployment(
-        factory = Address.of("0x" + "fa".repeat(20)),
-        quoterV2 = Address.of("0x" + "0e".repeat(20)),
-        swapRouter02 = Address.of("0x" + "50".repeat(20)),
-        weth9 = weth,
-    )
     private val hundredUsdc = UInt256.of(100_000_000)
     private val headTime = 1_792_419_000L
     private val finalized = FinalizedBlock(number = 100, timestamp = headTime - 240)
 
-    // Uniswap quotes 0.05 WETH, at 100 000 gas; at 10 gwei + 1 gwei that is 0.0011 WETH of fee.
-    private val uniswapOut = UInt256.of("50000000000000000")
-    private val net = UInt256.of("48900000000000000")
-    private val floor = UInt256.of("48655500000000000")
-
-    private val pools = Pools()
+    // No Uniswap venue at all: a CoW order reads none (owner ruling, 2026-11-23).
     private val inputs = Inputs()
     private val tokens = FakeTokenBalances()
     private val sent = MemorySentTransfers()
@@ -87,11 +67,9 @@ class CowSwapsTest {
     private val orders = MemoryCowOrders()
     private val cowChain = FakeCowChain()
     private val cowApi = FakeCowApi()
-    private val findRoute = FindUniswapRoute(pools, inputs)
     private val quoteCow = QuoteCowSwap(
         cowChain,
         cowApi,
-        findRoute,
         inputs,
         tokens,
         sent,
@@ -106,7 +84,6 @@ class CowSwapsTest {
     init {
         tokens.of(account, usdcToken.address).value = TokenBalanceReading.Verified(TokenUnits.of("500000000"), 120)
         light.status.value = LightClientStatus.Synced(headBlock = 120, headTimestamp = headTime, finalized = finalized)
-        pool(uniswapOut)
         allow(hundredUsdc)
         val separator = GPv2Signing.domainSeparator(Network.SEPOLIA.chainId, COW_SEPOLIA.settlement).toHex()
         cowChain.answers[COW_SEPOLIA.settlement to GPv2Settlement.domainSeparator().toHex()] =
@@ -115,17 +92,6 @@ class CowSwapsTest {
 
     private fun word(value: UInt256) = value.toBytes32().toHex()
     private fun word(address: Address) = "00".repeat(12) + address.hex.drop(2)
-
-    /** One USDC/WETH pool at 0.3 %, quoting [out] for a hundred USDC at 100 000 gas. */
-    private fun pool(out: UInt256) {
-        val key = PoolKey.of(usdcToken.address, weth, FeeTier.MEDIUM)
-        val address = Address.of("0x" + "30".repeat(20))
-        pools.answers[uniswap.factory to UniswapV3Factory.getPool(key).toHex()] = word(address)
-        pools.answers[address to UniswapV3Pool.liquidity().toHex()] = word(UInt256.of(1_000))
-        val route = SwapRoute.direct(usdcToken.address, weth, FeeTier.MEDIUM)
-        pools.answers[uniswap.quoterV2 to QuoterV2.quote(route, hundredUsdc).toHex()] =
-            word(out) + "00".repeat(64) + word(UInt256.of(100_000))
-    }
 
     private fun allow(amount: UInt256) {
         inputs.runs[usdcToken.address to Erc20.allowanceData(account, COW_SEPOLIA.vaultRelayer).toHex()] = word(amount)
@@ -138,13 +104,8 @@ class CowSwapsTest {
         cowApi.quote = CowQuoteReading.Quoted(UInt256.of("51000000000000000"), UInt256.of(300_000))
 
         val quote = assertIs<CowSwapQuoting.Quoted>(quoteUsdcForWeth()).quote
-        assertEquals(uniswapOut, quote.uniswapOut)
-        assertEquals(UInt256.of("1100000000000000"), quote.uniswapFeeOut)
-        assertEquals(net, quote.uniswapNet)
-        assertEquals(floor, quote.floor)
-        // CoW's 0.051 less 0.5 %, above the floor: the order keeps its whole tolerance.
+        // CoW's 0.051 less 0.5 %.
         assertEquals(UInt256.of("50745000000000000"), quote.minimumOut)
-        assertEquals(false, quote.belowNet)
         val order = quote.order
         assertEquals(CowOrder(usdcToken.address, weth, account, hundredUsdc, quote.minimumOut, headTime + 300), order)
         assertEquals(order.uid(Network.SEPOLIA.chainId, COW_SEPOLIA.settlement, account), quote.uid)
@@ -156,12 +117,21 @@ class CowSwapsTest {
     }
 
     @Test
-    fun anEstimateBelowTheUniswapNetIsHeldToTheFloor() = runTest {
+    fun theMinimumIsCowsEstimateLessTheToleranceAndNothingElse() = runTest {
+        // No other venue is read: whatever CoW estimates, the minimum is that less the tolerance.
         cowApi.quote = CowQuoteReading.Quoted(UInt256.of("48000000000000000"), UInt256.ZERO)
-
         val quote = assertIs<CowSwapQuoting.Quoted>(quoteUsdcForWeth()).quote
-        assertEquals(floor, quote.minimumOut)
-        assertTrue(quote.belowNet)
+        assertEquals(UInt256.of("47760000000000000"), quote.minimumOut)
+        assertEquals(UInt256.of("48000000000000000"), quote.estimate)
+    }
+
+    @Test
+    fun theWrappedCurrencySoldForTheCurrencyIsAnUnwrapNeverAnOrder() = runTest {
+        // Told by CoW's own pin of the wrapped currency, not by Uniswap's.
+        tokens.of(account, weth).value = TokenBalanceReading.Verified(TokenUnits.of("1000000000000000000"), 120)
+        val quoting = quoteCow(account, wethAsset, TransferAsset.Native, hundredUsdc, SlippageTolerance.DEFAULT)
+        assertEquals(CowSwapQuoting.NotASwap, quoting)
+        assertTrue(cowApi.quotes.isEmpty())
     }
 
     @Test
@@ -177,12 +147,6 @@ class CowSwapsTest {
             CowSwapQuoting.NotOffered(CowNotOffered.SELLS_ETHER),
             quoteCow(account, TransferAsset.Native, usdc, hundredUsdc, SlippageTolerance.DEFAULT),
         )
-        // No pool for the pair: no floor.
-        pools.answers.clear()
-        assertEquals(CowSwapQuoting.NotOffered(CowNotOffered.NO_ROUTE), quoteUsdcForWeth())
-        // A route whose fee takes all it returns.
-        pool(UInt256.of("1000000000000000"))
-        assertEquals(CowSwapQuoting.NotOffered(CowNotOffered.FEE_ABOVE_PROCEEDS), quoteUsdcForWeth())
         // A device whose light client dates no finalized block: no order's end could be proven.
         light.datesFinalizedBlocks = false
         assertEquals(CowSwapQuoting.NotOffered(CowNotOffered.NOT_ON_THIS_DEVICE), quoteUsdcForWeth())
@@ -281,7 +245,6 @@ class CowSwapsTest {
             "too little" to {
                 tokens.of(account, usdcToken.address).value = TokenBalanceReading.Verified(TokenUnits.of("1"), 120)
             },
-            "no floor's venue" to { pools.venue = VenueReading.CodeMismatch(uniswap.quoterV2) },
             "no allowance" to { allow(UInt256.ZERO) },
             "another domain" to {
                 cowChain.answers[COW_SEPOLIA.settlement to GPv2Settlement.domainSeparator().toHex()] =
@@ -348,18 +311,9 @@ class CowSwapsTest {
 
     @Test
     fun aMinimumThatRoundsToNothingIsNotSigned() = runTest {
-        // A net of one wei: its floor, and CoW's estimate of one wei, round down to nothing.
-        pool(UInt256.of("1100000000000001"))
+        // CoW's estimate of one wei rounds down to nothing.
         cowApi.quote = CowQuoteReading.Quoted(UInt256.ONE, UInt256.ZERO)
         assertEquals(CowSwapQuoting.TooSmall, quoteUsdcForWeth())
-    }
-
-    @Test
-    fun anUnverifiedUniswapVenueIsSaidAsSuch() = runTest {
-        pools.venue = VenueReading.CodeMismatch(uniswap.quoterV2)
-        assertEquals(CowSwapQuoting.NoFloorVenue(uniswap.quoterV2), quoteUsdcForWeth())
-        pools.venue = VenueReading.NotPinned
-        assertEquals(CowSwapQuoting.NoFloorVenue(null), quoteUsdcForWeth())
     }
 
     @Test
@@ -370,7 +324,6 @@ class CowSwapsTest {
         val quoting = QuoteCowSwap(
             cowChain,
             cowApi,
-            findRoute,
             inputs,
             tokens,
             sent,
@@ -430,7 +383,7 @@ class CowSwapsTest {
 
     private val recovery = FakeRecovery()
     private val signer = FakeSigner(recovery)
-    private val place = PlaceCowOrder(findRoute, signer, orders, cowApi, light)
+    private val place = PlaceCowOrder(signer, orders, cowApi, light)
     private val unlock = Unlock.WithPassword(WalletPassword("made up"))
 
     private fun recordOf(quote: CowSwapQuote) = CowOrderRecord(
@@ -469,16 +422,6 @@ class CowSwapsTest {
     }
 
     @Test
-    fun aFloorRisenSinceTheQuoteIsNotSigned() = runTest {
-        cowApi.quote = CowQuoteReading.Quoted(UInt256.of("48000000000000000"), UInt256.ZERO)
-        val quote = assertIs<CowSwapQuoting.Quoted>(quoteUsdcForWeth()).quote
-        pool(UInt256.of("60000000000000000"))
-        assertEquals(CowOrderPlacing.FloorRose, place(quote, unlock))
-        assertTrue(signer.asked.isEmpty())
-        assertTrue(orders.orders.value.isEmpty())
-    }
-
-    @Test
     fun aRefusedSignatureLeavesNothing() = runTest {
         val quote = assertIs<CowSwapQuoting.Quoted>(quoteUsdcForWeth()).quote
         signer.answer = Signing.WrongPassword
@@ -497,14 +440,6 @@ class CowSwapsTest {
     }
 
     @Test
-    fun aFloorThatCannotBeQuotedAgainSignsNothing() = runTest {
-        val quote = assertIs<CowSwapQuoting.Quoted>(quoteUsdcForWeth()).quote
-        pools.unavailable = true
-        assertEquals(CowOrderPlacing.FloorUnavailable(ReadUnavailable.UNPROVEN), place(quote, unlock))
-        assertTrue(signer.asked.isEmpty())
-    }
-
-    @Test
     fun aQuoteOverAMinuteOldByTheHeadIsNotSigned() = runTest {
         val quote = assertIs<CowSwapQuoting.Quoted>(quoteUsdcForWeth()).quote
         light.status.value = LightClientStatus.Synced(126, headTime + QUOTE_MAX_AGE_SECONDS + 12, finalized)
@@ -519,22 +454,6 @@ class CowSwapsTest {
         assertIs<CowOrderPlacing.Placed>(place(first, unlock))
         assertEquals(CowOrderPlacing.EarlierOrderLive(first.uid), place(second, unlock))
         assertEquals(1, cowApi.placed.size)
-    }
-
-    /** Uniswap's pools as the test lists them; a pair not listed has no pool; [unavailable]: no answer. */
-    private inner class Pools : UniswapV3Chain {
-        val answers = mutableMapOf<Pair<Address, String>, String>()
-        var venue: VenueReading = VenueReading.Verified(uniswap)
-        var unavailable = false
-
-        override suspend fun venue(network: Network): VenueReading = venue
-
-        override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation {
-            if (unavailable) return Simulation.Unavailable(ReadUnavailable.UNPROVEN)
-            answers[to to data.toHex()]?.let { return Simulation.Succeeded(it, 120) }
-            if (to == uniswap.factory) return Simulation.Succeeded("00".repeat(32), 120)
-            return Simulation.Reverted(120)
-        }
     }
 
     /** Nonce 7, 10 gwei and 1 gwei tips; a run answers [runs] or one word of 1. */

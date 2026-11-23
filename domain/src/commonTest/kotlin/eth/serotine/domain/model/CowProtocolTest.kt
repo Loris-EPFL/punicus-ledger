@@ -44,10 +44,15 @@ class CowProtocolTest {
 
     @Test
     fun theDomainSeparatorIsTheSettlementsOwn() {
-        // Mainnet's, as CoW publishes it; Sepolia's, recomputed with cast.
+        // Mainnet's, as CoW publishes it and its settlement returns; Gnosis Chain's, as its settlement
+        // returns it (read 2026-11-23); Sepolia's, recomputed with cast.
         assertEquals(
             "c078f884a2676e1345748b1feace7b0abee5d00ecadb6e574dcdd109a63e8943",
-            GPv2Signing.domainSeparator(1, settlement).toHex(),
+            GPv2Signing.domainSeparator(Network.ETHEREUM.chainId, settlement).toHex(),
+        )
+        assertEquals(
+            "8f05589c4b810bc2f706854508d66d447cd971f8354a4bb0b3471ceb0a466bc7",
+            GPv2Signing.domainSeparator(Network.GNOSIS.chainId, settlement).toHex(),
         )
         assertEquals(
             "daee378bd0eb30ddf479272accf91761e697bc00e067a268f95f1d2732ed230b",

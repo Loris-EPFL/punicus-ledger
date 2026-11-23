@@ -138,12 +138,9 @@ private val cow = SwapUiState.CowReview(
     buy = link,
     estimate = "about 7.26 LINK",
     estimateNote = "CoW's own estimate, net of the network fee it takes out of the trade. Not verified.",
-    uniswapNet = "7.18 LINK",
-    uniswapNote = "Uniswap's verified quote at block 23,614,077 less its expected network fee.",
-    comparison = "By CoW's estimate, CoW gives about 0.08 LINK more than Uniswap. Only the minimum is signed.",
-    uniswapGivesMore = false,
-    minimum = "at least 7.20 LINK",
-    minimumNote = "CoW's estimate less the 0.5 % tolerance, never below the Uniswap net less it.",
+    minimum = "at least 7.22 LINK",
+    minimumNote = "CoW's estimate less the 0.5 % tolerance. The estimate is CoW's word, not checked on chain, so " +
+        "the minimum rests on it.",
     validUntil = "Until 27 Oct 2026, 14:37: the verified head's time and 30 minutes.",
     settlement = SpenderItem("CoW's settlement contract", "0x9008D19f58AAbD9eD0D60971565AA8510560ab41"),
     balances = listOf(

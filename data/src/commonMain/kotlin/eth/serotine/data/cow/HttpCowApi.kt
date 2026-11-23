@@ -223,9 +223,13 @@ class HttpCowApi internal constructor(
     }
 }
 
-/** CoW's order API on [network], pinned: none for a network CoW is not offered on. */
+/**
+ * CoW's order API on [network], pinned: none for a network CoW is not offered on. Gnosis Chain's is
+ * under the name CoW gives it, `xdai` (docs.cow.fi, *API*).
+ */
 internal fun baseUrlOf(network: Network): String? = when (network) {
-    Network.ETHEREUM, Network.GNOSIS -> null
+    Network.ETHEREUM -> "https://api.cow.fi/mainnet/api/v1"
+    Network.GNOSIS -> "https://api.cow.fi/xdai/api/v1"
     Network.SEPOLIA -> "https://api.cow.fi/sepolia/api/v1"
 }
 

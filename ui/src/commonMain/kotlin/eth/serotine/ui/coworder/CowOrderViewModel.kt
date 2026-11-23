@@ -50,6 +50,7 @@ import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.figureText
+import eth.serotine.ui.components.finalityWaitText
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
@@ -517,8 +518,8 @@ class CowOrderViewModel(
                 "Not proven yet: it may fill until $until. Its end is read from this account's verified logs, " +
                     "never from CoW."
             } else {
-                "Its validity passed at $until. Whether it filled is proven once a finalized block is past it, a " +
-                    "quarter of an hour or so, from this account's verified logs."
+                "Its validity passed at $until. Whether it filled is proven once a finalized block is past it, " +
+                    "${finalityWaitText(network)} or so, from this account's verified logs."
             }
             is CowOrderEnd.Filled -> OrderState.FILLED to "Filled in block ${grouped(proven.block)}: it bought " +
                 "${buy(proven.trade.buyAmount)}, as the settlement's trade in this account's verified logs says."

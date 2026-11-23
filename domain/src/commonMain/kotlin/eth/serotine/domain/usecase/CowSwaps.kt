@@ -62,14 +62,9 @@ const val QUOTE_MAX_AGE_SECONDS: Long = 60
  * paid to [from], on [deployment]; [digest] is what [from] signs and [uid] the order's UID.
  *
  * - [estimate] is CoW's own estimate of what the order buys, net of [cowFee] (of the sold token)
- *   that CoW takes out of the trade: not verified.
- * - [uniswapOut] is the verified Uniswap quote for the same amount, at [quoteBlock], and
- *   [uniswapFeeOut] that swap's expected network fee in the bought token (null: it could not be
- *   had, and the net is the quote itself, the stricter floor); [uniswapNet] is the quote less it.
- * - [floor] is the Uniswap net less [tolerance]; the order's minimum is CoW's estimate less the
- *   tolerance and never below the floor ([CowMinimum]). [belowNet]: CoW's estimate is below the
- *   Uniswap net, so by CoW's own account Uniswap gives more, and an order signed at the floor
- *   may well not fill.
+ *   that CoW takes out of the trade: not verified. The order's minimum is that estimate less
+ *   [tolerance] ([CowMinimum]): it rests on CoW's word, and no other venue is read for it (owner
+ *   ruling, 2026-11-23).
  * - The sold token's verified balance [sellBefore] (at [tokenBalanceBlock]), what this wallet's
  *   own transactions not mined yet still move of it ([pendingSell]) and what is left after the
  *   order ([sellAfter]).
@@ -92,11 +87,6 @@ data class CowSwapQuote internal constructor(
     val uid: CowOrderUid,
     val estimate: UInt256,
     val cowFee: UInt256,
-    val uniswapOut: UInt256,
-    val uniswapFeeOut: UInt256?,
-    val uniswapNet: UInt256,
-    val floor: UInt256,
-    val quoteBlock: Long?,
     val sellBefore: UInt256,
     val pendingSell: UInt256,
     val sellAfter: UInt256,
@@ -104,10 +94,6 @@ data class CowSwapQuote internal constructor(
     val headTimestamp: Long,
     val rangeStart: Long,
 ) {
-    /** CoW's estimate is below the Uniswap net: by CoW's own account, Uniswap gives more. */
-    val belowNet: Boolean
-        get() = estimate < uniswapNet
-
     /** The least the order buys, as signed. */
     val minimumOut: UInt256
         get() = order.buyAmount
@@ -116,22 +102,21 @@ data class CowSwapQuote internal constructor(
 /**
  * Quotes a CoW swap from an account this wallet holds (docs/swaps.md, *CoW Protocol*), the venue
  * the user chose (*The user's choice of venue*). Everything that can refuse it on verified state
- * is read first, side by side; the verified Uniswap quote then sets the floor; and only then is
- * CoW's API asked, so that a swap refused here never reaches CoW (CLAUDE.md, *Data sources*: CoW
- * learns only the swaps sent to it). The order is built here, never taken from CoW, and its
- * domain separator is checked against the settlement contract's own before it is offered.
+ * is read first, side by side, and only then is CoW's API asked, so that a swap refused here never
+ * reaches CoW (CLAUDE.md, *Data sources*: CoW learns only the swaps sent to it). The order is built
+ * here, never taken from CoW, and its domain separator is checked against the settlement
+ * contract's own before it is offered. Its minimum is CoW's estimate less the tolerance: no other
+ * venue is quoted for it (owner ruling, 2026-11-23).
  *
- * CoW is not offered ([CowSwapQuoting.NotOffered]) for native ether sold, a pair with no Uniswap
- * route, a fee that takes all the Uniswap route returns (no floor stands), or an account whose
- * history the log index follows only from after the block finalized now (its order's end could
- * not be proven). One CoW order per sold token is live at a time: two would draw on the one
+ * CoW is not offered ([CowSwapQuoting.NotOffered]) for the network's own currency sold, or an
+ * account whose history the log index follows only from after the block finalized now (its
+ * order's end could not be proven). One CoW order per sold token is live at a time: two would draw on the one
  * allowance of the vault relayer. What this wallet's own transactions not mined yet move of the
  * token is not the order's to sell. On [network] only. [clock] is in unix seconds.
  */
 class QuoteCowSwap(
     private val cowChain: CowChain,
     private val cowApi: CowApi,
-    private val findRoute: FindUniswapRoute,
     private val inputs: TransactionInputs,
     private val tokenBalances: TokenBalances,
     private val sentTransfers: SentTransfers,
@@ -175,6 +160,10 @@ class QuoteCowSwap(
             CowVenueReading.NotPinned -> return@cancellingReads CowSwapQuoting.NoVenue(contract = null)
             is CowVenueReading.CodeMismatch -> return@cancellingReads CowSwapQuoting.NoVenue(venue.contract)
             is CowVenueReading.Unavailable -> return@cancellingReads CowSwapQuoting.Unavailable(venue.reason)
+        }
+        // The wrapped currency sold for the currency itself is an unwrap, one for one, never an order.
+        if (buy == TransferAsset.Native && soldToken.address == deployment.wrappedNative) {
+            return@cancellingReads CowSwapQuoting.NotASwap
         }
 
         val synced = head.await() as? LightClientStatus.Synced ?: return@cancellingReads CowSwapQuoting.Syncing
@@ -221,22 +210,6 @@ class QuoteCowSwap(
         val sellAvailable = sellBefore.minusOrNull(pendingSell)?.takeIf { it >= amountIn }
             ?: return@cancellingReads CowSwapQuoting.InsufficientToken
 
-        // The floor, from verified state alone, before CoW is asked anything.
-        val finding = findRoute(network, sell, buy, amountIn, RouteRanking.NET_OF_FEES, withFee = true)
-        val found = when (finding) {
-            is RouteFinding.Found -> finding
-            RouteFinding.NotASwap -> return@cancellingReads CowSwapQuoting.NotASwap
-            RouteFinding.NoRoute -> return@cancellingReads CowSwapQuoting.NotOffered(CowNotOffered.NO_ROUTE)
-            // The venue that sets the floor is not verified: said as such, not as a missing route.
-            RouteFinding.NotPinned -> return@cancellingReads CowSwapQuoting.NoFloorVenue(contract = null)
-            is RouteFinding.CodeMismatch -> return@cancellingReads CowSwapQuoting.NoFloorVenue(finding.contract)
-            is RouteFinding.Unavailable ->
-                return@cancellingReads CowSwapQuoting.Unavailable(finding.reason, QuoteFigure.ROUTE)
-        }
-        val net = CowMinimum.uniswapNet(found.quote.amountOut, found.feeOut ?: UInt256.ZERO)
-            ?: return@cancellingReads CowSwapQuoting.NotOffered(CowNotOffered.FEE_ABOVE_PROCEEDS)
-        val floor = CowMinimum.floor(net, tolerance)
-
         val allowance = when (val read = readAllowance(network, inputs, from, soldToken, deployment.vaultRelayer)) {
             is AllowanceRead.Read -> read.allowance
             AllowanceRead.NotAToken -> return@cancellingReads CowSwapQuoting.NotAToken
@@ -260,7 +233,7 @@ class QuoteCowSwap(
             is CowQuoteReading.Refused -> return@cancellingReads CowSwapQuoting.CowRefused(quoted.why, quoted.errorType)
             is CowQuoteReading.Unavailable -> return@cancellingReads CowSwapQuoting.CowNoAnswer(quoted.why)
         }
-        val buyAmount = CowMinimum.buyAmount(estimate, floor, tolerance)
+        val buyAmount = CowMinimum.buyAmount(estimate, tolerance)
         if (buyAmount.isZero) return@cancellingReads CowSwapQuoting.TooSmall
         val order = CowOrder(
             sellToken = soldToken.address,
@@ -285,11 +258,6 @@ class QuoteCowSwap(
                 uid = CowOrderUid.of(digest, from, validTo),
                 estimate = estimate,
                 cowFee = cowFee,
-                uniswapOut = found.quote.amountOut,
-                uniswapFeeOut = found.feeOut,
-                uniswapNet = net,
-                floor = floor,
-                quoteBlock = found.blockNumber,
                 sellBefore = sellBefore,
                 pendingSell = pendingSell,
                 sellAfter = sellAvailable - amountIn,
@@ -350,14 +318,8 @@ enum class CowNotOffered {
      */
     NOT_ON_THIS_DEVICE,
 
-    /** Native ether is sold: that takes CoW's ETH-flow contract, not pinned yet. */
+    /** The network's own currency is sold: that takes CoW's ETH-flow contract, not pinned yet. */
     SELLS_ETHER,
-
-    /** No Uniswap route for the pair or the amount: no verified floor stands (decision 1). */
-    NO_ROUTE,
-
-    /** The Uniswap route's fee takes all it returns: no floor stands. */
-    FEE_ABOVE_PROCEEDS,
 
     /**
      * The log index follows the account only from after the block finalized now (an account added
@@ -380,13 +342,6 @@ sealed interface CowSwapQuoting {
 
     /** CoW is not offered for this swap, for [why]; Uniswap may be. */
     data class NotOffered(val why: CowNotOffered) : CowSwapQuoting
-
-    /**
-     * The Uniswap venue whose verified quote sets the floor is not verified: none is pinned
-     * ([contract] null), or the code at [contract] is not its pin. No floor stands, so CoW is not
-     * offered either.
-     */
-    data class NoFloorVenue(val contract: Address?) : CowSwapQuoting
 
     /** Where the account's history starts cannot be read: whether its order could be proven is not known. */
     data object HistoryUnreadable : CowSwapQuoting
@@ -442,16 +397,13 @@ sealed interface CowSwapQuoting {
 }
 
 /**
- * Signs and places a quoted CoW order (docs/swaps.md, *An order, step by step*): the Uniswap floor
- * quoted again first (an order whose floor has risen above the minimum shown is not signed), the
- * digest signed by the account's key ([Signer]), the order recorded as attempted before anything
- * is sent ([CowOrders]), and only then handed to CoW. An order that could not be recorded is not
- * sent, and its signature goes with it: no POST was attempted, so nothing can fill it. Once
- * recorded, whatever CoW answers, the order is live until the chain proves its end
- * ([ProveCowOrderEnds]).
+ * Signs and places a quoted CoW order (docs/swaps.md, *An order, step by step*): the digest signed
+ * by the account's key ([Signer]), the order recorded as attempted before anything is sent
+ * ([CowOrders]), and only then handed to CoW. An order that could not be recorded is not sent, and
+ * its signature goes with it: no POST was attempted, so nothing can fill it. Once recorded,
+ * whatever CoW answers, the order is live until the chain proves its end ([ProveCowOrderEnds]).
  */
 class PlaceCowOrder(
-    private val findRoute: FindUniswapRoute,
     private val signer: Signer,
     private val cowOrders: CowOrders,
     private val cowApi: CowApi,
@@ -473,16 +425,6 @@ class PlaceCowOrder(
                 ?.let { return CowOrderPlacing.EarlierOrderLive(it.uid) }
             CowOrderList.Unreadable -> return CowOrderPlacing.OrdersUnreadable
         }
-        val again = with(quote) { findRoute(network, sell, buy, amountIn, RouteRanking.NET_OF_FEES, withFee = true) }
-        val floor = when (again) {
-            is RouteFinding.Found -> CowMinimum.uniswapNet(again.quote.amountOut, again.feeOut ?: UInt256.ZERO)
-                ?.let { CowMinimum.floor(it, quote.tolerance) }
-                ?: return CowOrderPlacing.FloorRose
-            is RouteFinding.Unavailable -> return CowOrderPlacing.FloorUnavailable(again.reason)
-            // The route that set the floor is gone: the minimum shown stands on nothing verified now.
-            else -> return CowOrderPlacing.FloorRose
-        }
-        if (floor > quote.minimumOut) return CowOrderPlacing.FloorRose
         val signature = when (val signed = signer.sign(quote.from, quote.digest, unlock)) {
             is Signing.Signed -> signed.signature
             else -> return CowOrderPlacing.NotSigned(signed)
@@ -518,9 +460,6 @@ sealed interface CowOrderPlacing {
      */
     data class Placed(val record: CowOrderRecord) : CowOrderPlacing
 
-    /** The Uniswap floor, quoted again, is above the minimum shown, or no longer stands: quote again. */
-    data object FloorRose : CowOrderPlacing
-
     /** The quote is over a minute old by the verified head's clock, or the head's time is not known: quote again. */
     data object QuoteStale : CowOrderPlacing
 
@@ -529,9 +468,6 @@ sealed interface CowOrderPlacing {
 
     /** The record of signed orders cannot be read: no order is known not to be live. */
     data object OrdersUnreadable : CowOrderPlacing
-
-    /** The Uniswap floor could not be quoted again right now ([reason]): nothing was signed. */
-    data class FloorUnavailable(val reason: ReadUnavailable) : CowOrderPlacing
 
     /** Not signed, for the reason [signing] gives: nothing left the device. */
     data class NotSigned(val signing: Signing) : CowOrderPlacing

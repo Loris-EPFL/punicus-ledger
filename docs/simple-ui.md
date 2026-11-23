@@ -325,13 +325,15 @@ change what it trusts.
   LINK, at least"), and CoW's estimate marked "CoW's estimate, not checked
   on chain". Step 1, allow CoW Protocol to use 100 USDC. Step 2, "Sign the
   order: no network fee, CoW's fee is in the price, it fills within 30 min
-  or expires". "Checked on chain: the minimum is never below what Uniswap
-  gives, less the gas and your tolerance". What CoW's servers see: the
+  or expires". Since the owner ruling of 2026-11-23, no Uniswap figure:
+  "The minimum is CoW's estimate less your tolerance. CoW's estimate is not
+  checked on chain", and "Checked on chain: the settlement contract refuses
+  any fill below the minimum". What CoW's servers see: the
   order, the address and the IP address, and that Uniswap keeps it on the
   chain alone (owner ruling, 2026-10-22). Details. "Confirm step 1 of 2".
   As built in part 6 (#194), and open for the owner to decide: step 1 is the
   same approval review as W2's, naming CoW's vault relayer. The signed
-  minimum, CoW's estimate and the check against Uniswap come on step 2's
+  minimum and CoW's estimate come on step 2's
   review, the order's, quoted once a block has the approval.
 
 A swap whose allowance already suffices has one step: its review is W2

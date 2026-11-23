@@ -1,5 +1,6 @@
 package eth.serotine.ui.accountdetail
 
+import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.repository.SafeDraftBasis
 import eth.serotine.domain.repository.HeldSafeSignature
 import eth.serotine.domain.model.Account
@@ -77,6 +78,7 @@ import eth.serotine.domain.usecase.AddNft
 import eth.serotine.domain.usecase.ObserveNfts
 import eth.serotine.domain.usecase.RemoveAddedNft
 import eth.serotine.domain.usecase.UnlinkPerAppAlias
+import eth.serotine.ui.FakeCowChain
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeFeeds
@@ -194,6 +196,9 @@ class AccountDetailViewModelTest {
             error("not used by these tests")
     }
 
+    /** CoW as the account's network pins it: none, unless a test pins one. */
+    private val cow = FakeCowChain()
+
     private val freshness = FakeFreshness()
 
     /** The outbox: the Safe signatures held in lenient mode, which a Safe's queue lists too. */
@@ -221,7 +226,7 @@ class AccountDetailViewModelTest {
         ObserveEnabledNetworks(networks),
         SetNetworkEnabled(networks),
         upgradeWarnings(networks, accounts, upgradeReports, upgradeStatus),
-        HasSwapVenue(uniswap),
+        HasSwapVenue(uniswap, cow),
         RefreshNetworkData(freshness),
         ObserveNetworkLive(freshness),
         ObserveLightClient(lightClient),
@@ -517,6 +522,21 @@ class AccountDetailViewModelTest {
             ready.swapReason,
         )
         assertEquals(true, ready.canSend)
+    }
+
+    @Test
+    fun cowPinnedAloneOffersSwap() = runTest {
+        // CoW stands without Uniswap (owner ruling, 2026-11-23).
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        venuePinned = false
+        cow.venue = CowVenueReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        val viewModel = viewModel()
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val ready = viewModel.uiState.value as AccountDetailUiState.Ready
+        assertEquals(true, ready.canSwap)
+        assertEquals(null, ready.swapReason)
     }
 
     @Test
@@ -1205,7 +1225,7 @@ class AccountDetailViewModelTest {
             ObserveEnabledNetworks(networks),
             SetNetworkEnabled(networks),
             upgradeWarnings(networks, accounts),
-            HasSwapVenue(uniswap),
+            HasSwapVenue(uniswap, cow),
             RefreshNetworkData(freshness),
             ObserveNetworkLive(freshness),
             ObserveLightClient(lightClient),

@@ -19,6 +19,7 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenTransfers
 import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.DelayTransferPlan
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.CowOrderEnd
@@ -426,6 +427,45 @@ class AccountActivityTest {
         assertEquals("On CoW · 0x9008…ab41", shown.detail)
         assertEquals(ActivityKey(live.uid.hex, cowOrder = true), shown.opens)
         assertEquals("Not filled by block 9,412,200", rows[3].status)
+    }
+
+    @Test
+    fun aBuyOrderNamesWhatItBuysAndItsBoundUnlessItFilled() = runTest {
+        // Buys exactly 0.0159 ETH for at most 40 USDC.
+        fun buy(signedAt: Long) = order(signedAt).let {
+            val order = it.order.copy(kind = SwapKind.BUY)
+            it.copy(order = order, uid = order.uid(Network.SEPOLIA.chainId, settlement, alice.address))
+        }
+        val trade = CowTrade(
+            alice.address,
+            usdc.address,
+            CowOrder.NATIVE_BUY_TOKEN,
+            UInt256.of(39_000_000),
+            UInt256.of("15900000000000000"),
+            UInt256.ZERO,
+            buy(400).uid,
+        )
+        cowOrders.orders.value = listOf(
+            buy(400).copy(end = CowOrderEnd.Filled(trade, 9_412_300, "0x" + "f2".repeat(32))),
+            buy(350),
+            buy(300).copy(end = CowOrderEnd.Unfilled(9_412_200, cancelled = true)),
+            buy(250).copy(end = CowOrderEnd.Unfilled(9_412_100, cancelled = false)),
+            buy(200).copy(end = CowOrderEnd.NotProvable),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
+
+        assertEquals(
+            listOf(
+                // A fill sold what its trade says, not the bound.
+                "Swapped 39 USDC for 0.0159 ETH on CoW",
+                "CoW order: 0.0159 ETH for at most 40 USDC",
+                "CoW order cancelled: 0.0159 ETH for at most 40 USDC",
+                "CoW order not filled: 0.0159 ETH for at most 40 USDC",
+                "CoW order: 0.0159 ETH for at most 40 USDC",
+            ),
+            rows.map { it.title },
+        )
     }
 
     @Test

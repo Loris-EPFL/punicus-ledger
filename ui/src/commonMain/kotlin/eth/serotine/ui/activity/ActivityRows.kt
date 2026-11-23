@@ -428,6 +428,9 @@ internal class ActivityRows(
         // A filled order sold what its trade says: a buy's maximum is only its bound.
         val sold = (order.end as? CowOrderEnd.Filled)?.trade?.sellAmount ?: order.order.sellAmount
         val sells = amount(sold, order.sell)
+        // What an order that did not fill offered: a sell its exact amount, a buy what it buys for at most its bound
+        // (the bound alone would read as an amount the user never typed).
+        val offered = if (buys) "${amount(order.order.buyAmount, order.buy)} for at most $sells" else sells
         val simple = when (val end = order.end) {
             is CowOrderEnd.Filled -> "Filled"
             is CowOrderEnd.Unfilled -> if (end.cancelled) "Cancelled" else "Not filled: it expired"
@@ -451,12 +454,12 @@ internal class ActivityRows(
             is CowOrderEnd.Unfilled -> {
                 val block = grouped(end.endBlock)
                 if (end.cancelled) {
-                    Triple("CoW order cancelled: $sells", "Cancelled in block $block", ActivityState.DONE)
+                    Triple("CoW order cancelled: $offered", "Cancelled in block $block", ActivityState.DONE)
                 } else {
-                    Triple("CoW order not filled: $sells", "Not filled by block $block", ActivityState.DONE)
+                    Triple("CoW order not filled: $offered", "Not filled by block $block", ActivityState.DONE)
                 }
             }
-            CowOrderEnd.NotProvable -> Triple("CoW order: $sells", "Its end cannot be proven", ActivityState.UNKNOWN)
+            CowOrderEnd.NotProvable -> Triple("CoW order: $offered", "Its end cannot be proven", ActivityState.UNKNOWN)
         }
         return ActivityRow(
             key = order.uid.hex,

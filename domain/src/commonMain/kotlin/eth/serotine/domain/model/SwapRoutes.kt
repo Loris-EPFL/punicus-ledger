@@ -66,6 +66,24 @@ object SwapRoutes {
     }
 
     /**
+     * The cost of [costs] that sells the least to buy an exact amount (docs/swaps.md, *Buying an
+     * exact amount*); on a tie, the one through fewer pools, then the earlier. Null when there are
+     * none. Ranked gross: the amount the swap takes, its network fee aside.
+     */
+    fun cheapest(costs: List<RouteCost>): RouteCost? {
+        var best: RouteCost? = null
+        for (cost in costs) {
+            val current = best
+            if (current == null || cost.amountIn < current.amountIn ||
+                (cost.amountIn == current.amountIn && cost.route.pools < current.route.pools)
+            ) {
+                best = cost
+            }
+        }
+        return best
+    }
+
+    /**
      * The tier of [tokenA] and [tokenB]'s pool with the most of [liquidity] in range (on a tie,
      * the lower fee), or null when none of their pools has any.
      */

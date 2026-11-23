@@ -6,6 +6,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PoolKey
 import eth.serotine.domain.model.QuoterV2
 import eth.serotine.domain.model.RouteQuote
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
@@ -86,6 +87,8 @@ class FindUniswapRouteTest {
         assertEquals(2, found.quotedRoutes)
         assertEquals(deployment, found.deployment)
         assertEquals(42L, found.blockNumber)
+        assertEquals(SwapKind.SELL, found.kind)
+        assertEquals(amount, found.amountIn, "a sell's amount is the one asked for")
     }
 
     @Test
@@ -233,6 +236,48 @@ class FindUniswapRouteTest {
         assertEquals(RouteFinding.NotASwap, find(Network.SEPOLIA, usdcAsset, usdcAsset, amount))
         assertEquals(0, chain.calls)
         assertFailsWith<IllegalArgumentException> { find(Network.SEPOLIA, usdcAsset, linkAsset, UInt256.ZERO) }
+    }
+
+    /** QuoterV2's exact-output answer for buying [amountOut] along [route]: it takes [amountIn]. */
+    private fun cost(route: SwapRoute, amountOut: UInt256, amountIn: Long, gas: Long) = chain.answer(
+        deployment.quoterV2,
+        QuoterV2.quoteToBuy(route, amountOut),
+        if (route.isDirect) {
+            UInt256.of(amountIn).toBytes32().toHex() + "00".repeat(64) + UInt256.of(gas).toBytes32().toHex()
+        } else {
+            listOf(amountIn, 0x80, 0xe0, gas, 2, 0, 0, 2, 0, 0).joinToString("") { UInt256.of(it).toBytes32().toHex() }
+        },
+    )
+
+    @Test
+    fun aBuyTakesTheRouteThatSellsTheLeastAndSaysWhatItTakes() = runTest {
+        pool(PoolKey.of(usdc, link, FeeTier.LOW), 10, tag = 0x05)
+        val medium = pool(PoolKey.of(usdc, link, FeeTier.MEDIUM), 10, tag = 0x30)
+        pool(PoolKey.of(usdc, link, FeeTier.HIGH), 10, tag = 0x99)
+        val bought = UInt256.of(5_000)
+        cost(SwapRoute.direct(usdc, link, FeeTier.LOW), bought, amountIn = 1_010, gas = 100_000)
+        cost(SwapRoute.direct(usdc, link, FeeTier.MEDIUM), bought, amountIn = 1_000, gas = 100_000)
+        // The 1 % pool cannot deliver the amount: its quote reverts, and the route is dropped.
+        chain.block = 42
+
+        val found = assertIs<RouteFinding.Found>(find.buying(Network.SEPOLIA, usdcAsset, linkAsset, bought))
+        assertEquals(SwapKind.BUY, found.kind)
+        assertEquals(RouteQuote(SwapRoute.direct(usdc, link, FeeTier.MEDIUM), bought, 100_000), found.quote)
+        assertEquals(UInt256.of(1_000), found.amountIn)
+        assertEquals(listOf(medium), found.pools)
+        assertEquals(2, found.quotedRoutes)
+        assertEquals(false, found.netOfFees, "a buy ranks gross")
+        assertEquals(42L, found.blockNumber)
+    }
+
+    @Test
+    fun aBuyNoPoolCanDeliverHasNoRouteAndOneOfTheSameTokenIsNoSwap() = runTest {
+        pool(PoolKey.of(usdc, link, FeeTier.MEDIUM), 10, tag = 0x30)
+        assertEquals(RouteFinding.NoRoute, find.buying(Network.SEPOLIA, usdcAsset, linkAsset, UInt256.of(5_000)))
+        assertEquals(RouteFinding.NotASwap, find.buying(Network.SEPOLIA, usdcAsset, usdcAsset, UInt256.ONE))
+        chain.venue = VenueReading.NotPinned
+        assertEquals(RouteFinding.NotPinned, find.buying(Network.SEPOLIA, usdcAsset, linkAsset, UInt256.ONE))
+        assertFailsWith<IllegalArgumentException> { find.buying(Network.SEPOLIA, usdcAsset, linkAsset, UInt256.ZERO) }
     }
 
     /** Verified calls a test answers per contract and call data; anything else reverts. */

@@ -668,8 +668,17 @@ class SendBatchCall(
         // Read fresh, never the reading the quote was made on.
         when (val reading = contracts.postage(quote.network, before.owner, before.id)) {
             is PostageReading.Read -> {
-                val depth = (reading.batch as? BatchFinding.Node)?.batch?.depth
-                BatchSending.BatchChanged.takeUnless { depth == before.depth && !reading.state.paused }
+                val now = (reading.batch as? BatchFinding.Node)?.batch
+                // Run out since (still listed, its depth unchanged), or below the minimum after the call
+                // at the price now: the call would revert, its fee paid.
+                val left = when (val call = quote.call) {
+                    is BatchCall.TopUp -> now?.remainingPerChunk?.plusOrNull(call.perChunk)
+                    is BatchCall.Dilution ->
+                        now?.let { SwarmCalls.remainingAfterDilution(it.remainingPerChunk, it.depth, call.depth) }
+                    is BatchCall.Purchase -> null
+                }
+                val holds = now != null && !now.expired && left != null && left >= reading.state.minimumPerChunk
+                BatchSending.BatchChanged.takeUnless { now?.depth == before.depth && !reading.state.paused && holds }
             }
             PostageReading.BzzChanged -> BatchSending.BatchChanged
             PostageReading.NotPinned -> BatchSending.NotChecked(ReadUnavailable.NO_ENGINE)

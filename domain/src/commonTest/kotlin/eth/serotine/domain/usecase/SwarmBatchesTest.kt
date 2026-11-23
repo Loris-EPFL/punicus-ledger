@@ -389,4 +389,21 @@ class SwarmBatchesTest {
         )
         assertEquals(BatchQuoting.Refused(BatchRefusal.InsufficientBzz(total)), buy())
     }
+
+    @Test
+    fun aTopUpIsNotSignedOnceTheBatchRanOutMeanwhile() = runTest {
+        allowance = UInt256.of(Long.MAX_VALUE)
+        val quote = assertIs<BatchQuoting.Quoted>(
+            QuoteBatchTopUp(quoter)(payer, node, id, UInt256.of(1_000), FeeLevel.NORMAL),
+        ).quote
+        // Still listed at its depth, but nothing left per chunk: topUp would revert.
+        batch = SwarmReading.Verified(
+            BatchFinding.Node(PostageBatch(id, node, 22, 16, false, UInt256.ZERO, UInt256.of(207_062))),
+            101,
+        )
+        val signer = FakeSigner(FakeRecovery())
+        val send = SendBatchCall(signer, FakeBroadcaster(), sent, inputs, candidates, contracts) { 1_000 }
+        assertEquals(BatchSending.BatchChanged, send(quote, Unlock.WithBiometrics("test")))
+        assertTrue(signer.asked.isEmpty())
+    }
 }

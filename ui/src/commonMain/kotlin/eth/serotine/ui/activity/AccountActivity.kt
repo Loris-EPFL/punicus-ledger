@@ -6,6 +6,7 @@ import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.SwapKind
+import eth.serotine.domain.model.SwarmCalls
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -358,6 +359,19 @@ class AccountActivity(
             }
             is SentAction.Unwrap -> if (to == account && from == action.weth.address) {
                 TransferAsset.Native to action.amount
+            } else {
+                return false
+            }
+            // A batch bought or topped up from here: the PostageStamp's pull of its total, exactly.
+            is SentAction.BatchPurchase -> if (from == account && to == action.stamp) {
+                val total = SwarmCalls.total(action.perChunk, action.depth) ?: return false
+                TransferAsset.Erc20Token(action.token) to total
+            } else {
+                return false
+            }
+            is SentAction.BatchTopUp -> if (from == account && to == action.stamp) {
+                val total = SwarmCalls.total(action.perChunk, action.depth) ?: return false
+                TransferAsset.Erc20Token(action.token) to total
             } else {
                 return false
             }

@@ -39,10 +39,12 @@ import eth.serotine.domain.usecase.SendBatchCall
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeBroadcaster
+import eth.serotine.ui.FakeCowChain
 import eth.serotine.ui.FakeKeys
 import eth.serotine.ui.FakeSigner
 import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTransactionInputs
+import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemoryOutbox
 import eth.serotine.ui.MemorySentTransfers
 import eth.serotine.ui.components.STALE_QUOTE
@@ -166,6 +168,14 @@ class PostageViewModelTest {
 
     private val clock = TestTimeSource()
 
+    private val lightClient = object : eth.serotine.domain.repository.LightClient {
+        override val datesFinalizedBlocks = true
+        override fun observeStatus(network: Network) =
+            flowOf<eth.serotine.domain.repository.LightClientStatus>(
+                eth.serotine.domain.repository.LightClientStatus.Synced(100, null, finalized = null),
+            )
+    }
+
     private fun TestScope.viewModel(action: PostageAction, vararg accounts: Account): PostageViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val held = FakeAccounts(*accounts)
@@ -177,9 +187,9 @@ class PostageViewModelTest {
             ObserveAccounts(held),
             ObservePostageBatch(contracts),
             ObserveSwarmNodes(candidates),
-            QuoteBatchPurchase(contracts, inputs, native, tokens, sent, outbox),
-            QuoteBatchTopUp(contracts, inputs, native, tokens, sent, outbox),
-            QuoteBatchDilution(contracts, inputs, native, tokens, sent, outbox),
+            QuoteBatchPurchase(contracts, inputs, native, tokens, sent, outbox, MemoryCowOrders(), FakeCowChain(), lightClient),
+            QuoteBatchTopUp(contracts, inputs, native, tokens, sent, outbox, MemoryCowOrders(), FakeCowChain(), lightClient),
+            QuoteBatchDilution(contracts, inputs, native, tokens, sent, outbox, MemoryCowOrders(), FakeCowChain(), lightClient),
             SendBatchApproval(signer, broadcaster, sent, inputs, contracts),
             SendBatchCall(signer, broadcaster, sent, inputs, candidates, contracts),
             DescribeKeyStore(FakeKeys()),

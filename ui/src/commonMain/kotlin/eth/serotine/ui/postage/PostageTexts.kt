@@ -199,7 +199,7 @@ internal object PostageTexts {
         BatchRefusal.NothingToAdd -> "A top-up adds something: say how many days."
         BatchRefusal.NoPrice -> "The postage contract's price is zero, so no time can be worked out from it."
         is BatchRefusal.InsufficientBzz -> "The account chosen does not hold ${bzz(refusal.total)} to pay with, " +
-            "beside what its transactions not mined yet still move."
+            "beside what its transactions not mined yet still move and its CoW orders may still take."
         is BatchRefusal.Unavailable -> "Not quoted: " + SwarmTexts.unavailable(refusal.reason)
         is BatchRefusal.ApprovalNotQuoted -> approvalRefused(refusal.quoting)
         is BatchRefusal.NotQuoted -> callRefusalText(refusal.refusal, network)
@@ -214,7 +214,7 @@ internal object PostageTexts {
         ApprovalQuoting.Syncing -> "Waiting for the light client to sync before the approval can be quoted."
         is ApprovalQuoting.Unavailable -> "The approval is not quoted: " + SwarmTexts.unavailable(quoting.reason)
         is ApprovalQuoting.EarlierMaybeSent -> EARLIER_MAYBE_SENT
-        is ApprovalQuoting.EarlierSwapPending -> PULL_PENDING
+        is ApprovalQuoting.EarlierSwapPending -> SWAP_PENDING
         is ApprovalQuoting.ApprovalPending -> APPROVAL_ON_ITS_WAY
         is ApprovalQuoting.Quoted, is ApprovalQuoting.AlreadyAllowed -> QUOTE_FAILED
     }
@@ -225,6 +225,8 @@ internal object PostageTexts {
     const val PULL_PENDING =
         "An earlier purchase or top-up from this account is on its way and would take the allowance this one " +
             "counts on. Wait until a block has it."
+    const val SWAP_PENDING =
+        "An earlier swap from this account that sells xBZZ is on its way. Wait until a block has it."
     const val APPROVAL_ON_ITS_WAY = "An approval of xBZZ from this account is on its way."
     const val AWAITING = "Approval sent. Waiting for a block to have it, then the batch is shown for you to sign."
     const val AWAIT_TIMED_OUT =

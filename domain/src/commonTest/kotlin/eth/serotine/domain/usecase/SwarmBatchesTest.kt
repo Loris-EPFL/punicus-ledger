@@ -108,7 +108,11 @@ class SwarmBatchesTest {
         const val ALLOWANCE = "dd62ed3e"
     }
 
-    private val quoter = BatchQuoter(contracts, inputs, native, tokens, sent, Outbox.None) { 1_000 }
+    private val cowOrders = MemoryCowOrders()
+    private val cowChain = FakeCowChain()
+    private val lightClient = FakeLightClient()
+    private val quoter =
+        BatchQuoter(contracts, inputs, native, tokens, sent, Outbox.None, cowOrders, cowChain, lightClient) { 1_000 }
 
     private suspend fun buy(perChunk: UInt256 = minimum, depth: Int = 22) =
         QuoteBatchPurchase(quoter) { nonce }(payer, node, depth, perChunk, immutable = true, FeeLevel.NORMAL)
@@ -352,5 +356,37 @@ class SwarmBatchesTest {
         postage = PostageReading.BzzChanged
         assertEquals(BatchSending.BatchChanged, send(quote, Unlock.WithBiometrics("test")))
         assertTrue(signer.asked.isEmpty())
+    }
+
+    @Test
+    fun whatALiveCowOrderSellingXbzzMayTakeIsNotTheBatchsToPay() = runTest {
+        val total = SwarmCalls.total(minimum, 22)!!
+        tokens.of(payer, bzz.address).value = TokenBalanceReading.Verified(TokenUnits.of(total.toDecimal()), 100)
+        assertIs<BatchQuoting.NeedsApproval>(buy())
+        // The payer's order selling xBZZ, live: what it may still take is not the batch's to pay with.
+        val order = eth.serotine.domain.model.CowOrder(
+            bzz.address,
+            eth.serotine.domain.model.CowOrder.NATIVE_BUY_TOKEN,
+            payer,
+            UInt256.of(1),
+            UInt256.ONE,
+            validTo = 2_000_000_000,
+        )
+        val settlement = Address.of("0x9008d19f58aabd9ed0d60971565aa8510560ab41")
+        cowOrders.orders.value = listOf(
+            eth.serotine.domain.repository.CowOrderRecord(
+                account = payer,
+                network = Network.GNOSIS,
+                settlement = settlement,
+                order = order,
+                uid = order.uid(Network.GNOSIS.chainId, settlement, payer),
+                signature = eth.serotine.domain.model.Signature("0".repeat(63) + "1", "0".repeat(63) + "1", 0),
+                sell = eth.serotine.domain.model.TransferAsset.Erc20Token(bzz),
+                buy = eth.serotine.domain.model.TransferAsset.Native,
+                signedAt = 900,
+                rangeStart = 90,
+            ),
+        )
+        assertEquals(BatchQuoting.Refused(BatchRefusal.InsufficientBzz(total)), buy())
     }
 }

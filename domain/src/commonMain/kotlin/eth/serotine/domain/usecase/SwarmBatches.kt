@@ -13,7 +13,12 @@ import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CowChain
+import eth.serotine.domain.repository.CowOrderList
+import eth.serotine.domain.repository.CowOrders
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.domain.repository.LightClient
+import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NonceReading
 import eth.serotine.domain.repository.Outbox
@@ -249,7 +254,8 @@ sealed interface BatchRefusal {
 
     /**
      * The payer holds less xBZZ than the total ([total]) beside what its own transactions not mined
-     * yet still move of it: nothing is approved for a purchase or a top-up it cannot pay.
+     * yet still move of it and what its live CoW orders selling xBZZ may still take: nothing is
+     * approved for a purchase or a top-up it cannot pay.
      */
     data class InsufficientBzz(val total: UInt256) : BatchRefusal
 
@@ -278,6 +284,9 @@ internal class BatchQuoter(
     private val tokenBalances: TokenBalances,
     private val sentTransfers: SentTransfers,
     private val outbox: Outbox,
+    private val cowOrders: CowOrders,
+    private val cowChain: CowChain,
+    private val lightClient: LightClient,
     private val clock: () -> Long,
 ) {
     val network = SWARM_NETWORK
@@ -353,7 +362,14 @@ internal class BatchQuoter(
             }
             val moving = unmined.mapNotNull { it.tokenAmount(pinned.bzz.address) }.sumOrNull()
                 ?: return BatchQuoting.Refused(BatchRefusal.InsufficientBzz(total))
-            if ((held.minusOrNull(moving) ?: UInt256.ZERO) < total) {
+            // What the payer's live CoW orders selling xBZZ may still take is not this call's either,
+            // as Send holds it back (docs/swaps.md): the order could not fill, or the call would revert.
+            val orders = (cowOrders.observe().first() as? CowOrderList.Loaded)?.orders.orEmpty()
+            val finalized = (lightClient.observeStatus(network).first() as? LightClientStatus.Synced)?.finalized
+            val ordered = orders.holding(network, from, pinned.bzz.address, finalized, cowChain)
+                ?: return BatchQuoting.Refused(BatchRefusal.InsufficientBzz(total))
+            val left = held.minusOrNull(moving)?.minusOrNull(ordered) ?: UInt256.ZERO
+            if (left < total) {
                 return BatchQuoting.Refused(BatchRefusal.InsufficientBzz(total))
             }
             when (val approval = approvals(from, pinned.bzz, pinned.postageStamp, total, level)) {
@@ -401,9 +417,23 @@ class QuoteBatchPurchase internal constructor(
         tokenBalances: TokenBalances,
         sentTransfers: SentTransfers,
         outbox: Outbox,
+        cowOrders: CowOrders,
+        cowChain: CowChain,
+        lightClient: LightClient,
         clock: () -> Long = ::epochSecondsNow,
     ) : this(
-        BatchQuoter(contracts, inputs, nativeBalances, tokenBalances, sentTransfers, outbox, clock),
+        BatchQuoter(
+            contracts,
+            inputs,
+            nativeBalances,
+            tokenBalances,
+            sentTransfers,
+            outbox,
+            cowOrders,
+            cowChain,
+            lightClient,
+            clock,
+        ),
         { Random.nextBytes(32) },
     )
 
@@ -459,8 +489,24 @@ class QuoteBatchTopUp internal constructor(private val quoter: BatchQuoter) {
         tokenBalances: TokenBalances,
         sentTransfers: SentTransfers,
         outbox: Outbox,
+        cowOrders: CowOrders,
+        cowChain: CowChain,
+        lightClient: LightClient,
         clock: () -> Long = ::epochSecondsNow,
-    ) : this(BatchQuoter(contracts, inputs, nativeBalances, tokenBalances, sentTransfers, outbox, clock))
+    ) : this(
+        BatchQuoter(
+            contracts,
+            inputs,
+            nativeBalances,
+            tokenBalances,
+            sentTransfers,
+            outbox,
+            cowOrders,
+            cowChain,
+            lightClient,
+            clock,
+        ),
+    )
 
     suspend operator fun invoke(
         payer: Address,
@@ -513,8 +559,24 @@ class QuoteBatchDilution internal constructor(private val quoter: BatchQuoter) {
         tokenBalances: TokenBalances,
         sentTransfers: SentTransfers,
         outbox: Outbox,
+        cowOrders: CowOrders,
+        cowChain: CowChain,
+        lightClient: LightClient,
         clock: () -> Long = ::epochSecondsNow,
-    ) : this(BatchQuoter(contracts, inputs, nativeBalances, tokenBalances, sentTransfers, outbox, clock))
+    ) : this(
+        BatchQuoter(
+            contracts,
+            inputs,
+            nativeBalances,
+            tokenBalances,
+            sentTransfers,
+            outbox,
+            cowOrders,
+            cowChain,
+            lightClient,
+            clock,
+        ),
+    )
 
     suspend operator fun invoke(node: Address, id: BatchId, depth: Int, level: FeeLevel): BatchQuoting {
         val prepared = when (val read = quoter.prepare(node, id)) {

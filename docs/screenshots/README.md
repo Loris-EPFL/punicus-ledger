@@ -70,7 +70,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Update required](#update-required) | `update-required/` | 2 |
 | [Watch address](#watch) | `watch/` | 26 |
 | [Widget setup](#widget-pair) | `widget-pair/` | 9 |
-| [Withdraw from the chequebook](#withdraw) | `withdraw/` | 12 |
+| [Withdraw from the chequebook](#withdraw) | `withdraw/` | 13 |
 
 <a name="account-detail"></a>
 ## Account detail
@@ -1283,7 +1283,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="withdraw"></a>
 ## Withdraw from the chequebook
 
-`withdraw/`, 12 states: `form`, `form-dark`, `refused`, `quoting`, `review`, `requoted`, `not-sent`, `wrong-password`, `checking`, `signing`, `loading`, `no-key`
+`withdraw/`, 13 states: `form`, `form-dark`, `refused`, `quoting`, `review`, `requoted`, `not-sent`, `wrong-password`, `checking`, `signing`, `not-verified`, `loading`, `no-key`
 
 <a href="withdraw/form.png"><img src="withdraw/form.png" width="206" alt="form"></a>
 <a href="withdraw/form-dark.png"><img src="withdraw/form-dark.png" width="206" alt="form-dark"></a>
@@ -1295,5 +1295,6 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="withdraw/wrong-password.png"><img src="withdraw/wrong-password.png" width="206" alt="wrong-password"></a>
 <a href="withdraw/checking.png"><img src="withdraw/checking.png" width="206" alt="checking"></a>
 <a href="withdraw/signing.png"><img src="withdraw/signing.png" width="206" alt="signing"></a>
+<a href="withdraw/not-verified.png"><img src="withdraw/not-verified.png" width="206" alt="not-verified"></a>
 <a href="withdraw/loading.png"><img src="withdraw/loading.png" width="206" alt="loading"></a>
 <a href="withdraw/no-key.png"><img src="withdraw/no-key.png" width="206" alt="no-key"></a>

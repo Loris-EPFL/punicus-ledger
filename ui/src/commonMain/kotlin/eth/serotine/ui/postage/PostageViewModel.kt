@@ -675,7 +675,8 @@ class PostageViewModel(
                     else -> {
                         val next = after(form, asked, quoting, at, position = 2, unlock = null, note = null)
                         // The form keeps the approval's status: what it was waiting for.
-                        val kept = (next as? Step.Composing)?.let { Step.Composing(it.form.copy(pending = awaiting.hash)) }
+                        val kept = (next as? Step.Composing)
+                            ?.let { Step.Composing(it.form.copy(pending = awaiting.hash)) }
                         landed(kept ?: next)
                         return@launch
                     }

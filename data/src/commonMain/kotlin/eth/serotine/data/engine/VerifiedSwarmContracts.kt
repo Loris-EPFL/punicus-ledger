@@ -149,21 +149,29 @@ class VerifiedSwarmContracts internal constructor(
             CodeCheck.Matches -> Unit
         }
         // The implementation the proxy delegates to, as its EIP-1967 slot names it now: read every time.
-        val slot = chain.storageAt(pins.bzz, EIP1967_IMPLEMENTATION) ?: return unproven
-        val word = slot.removePrefix("0x").lowercase().padStart(64, '0')
-        val implementation = addressOf(word) ?: return unproven
+        val implementation = implementationOf(chain, pins) ?: return unproven
         if (implementation != pins.bzzImplementation) return PostageReading.BzzChanged
         when (codeCheck(chain, implementation, pins.bzzImplementationCodeHash)) {
             null -> return unproven
             is CodeCheck.Differs -> return PostageReading.BzzChanged
             CodeCheck.Matches -> Unit
         }
-        return when (val read = readAtOneBlock(chain) { calls -> postageAt(calls, pins.postageStamp) }) {
+        val read = readAtOneBlock(chain) { calls -> postageAt(calls, pins.postageStamp) }
+        // The slot read again after the state: an upgrade between the two reads never passes unseen.
+        val after = implementationOf(chain, pins) ?: return unproven
+        if (after != implementation) return PostageReading.BzzChanged
+        return when (read) {
             null -> unproven
             is EngineReading.Proven -> PostageReading.Read(read.value, read.blockNumber)
             is EngineReading.Unavailable -> PostageReading.Unavailable(read.reason)
             EngineReading.Syncing, is EngineReading.LastKnown -> unproven
         }
+    }
+
+    /** The implementation xBZZ's proxy names in its EIP-1967 slot now; null when it could not be read verified. */
+    private fun implementationOf(chain: VerifiedChain, pins: PinnedSwarm): Address? {
+        val slot = chain.storageAt(pins.bzz, EIP1967_IMPLEMENTATION) ?: return null
+        return addressOf(slot.removePrefix("0x").lowercase().padStart(64, '0'))
     }
 
     /** The PostageStamp's `paused()`, `lastPrice()` and `minimumInitialBalancePerChunk()` at one block. */

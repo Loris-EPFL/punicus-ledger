@@ -181,7 +181,9 @@ class SwarmBatchesTest {
     fun aPurchaseSentKeepsItsBatchForTheNode() = runTest {
         allowance = UInt256.of(Long.MAX_VALUE)
         val quote = assertIs<BatchQuoting.Quoted>(buy()).quote
-        val send = SendBatchCall(FakeSigner(FakeRecovery()), FakeBroadcaster(), sent, inputs, candidates) { 1_000 }
+        val send = SendBatchCall(FakeSigner(FakeRecovery()), FakeBroadcaster(), sent, inputs, candidates, contracts) {
+            1_000
+        }
         val sending = assertIs<BatchSending.Sending>(send(quote, Unlock.WithBiometrics("test")))
         assertIs<TransferSending.Sent>(sending.sending)
         val batch: SwarmCandidate = SwarmCandidate.Batch(BatchId.of(payer, nonce))
@@ -191,12 +193,44 @@ class SwarmBatchesTest {
     }
 
     @Test
+    fun anotherPurchaseWaitsForOneOnItsWay() = runTest {
+        allowance = UInt256.of(Long.MAX_VALUE)
+        val first = assertIs<BatchQuoting.Quoted>(buy()).quote
+        val signer = FakeSigner(FakeRecovery())
+        val send = SendBatchCall(signer, FakeBroadcaster(), sent, inputs, candidates, contracts) { 1_000 }
+        send(first, Unlock.WithBiometrics("t"))
+        // Not mined yet: it pulls on the allowance a second one would count on.
+        val hash = sent.transfers.value.single().hash
+        assertEquals(BatchQuoting.EarlierPullPending(hash), buy())
+        assertEquals(
+            BatchQuoting.EarlierPullPending(hash),
+            QuoteBatchTopUp(quoter)(payer, node, id, UInt256.of(1_000), FeeLevel.NORMAL),
+        )
+    }
+
+    @Test
+    fun aTopUpIsNotSignedOnceTheBatchWasDilutedMeanwhile() = runTest {
+        allowance = UInt256.of(Long.MAX_VALUE)
+        val quoting = QuoteBatchTopUp(quoter)(payer, node, id, UInt256.of(1_000), FeeLevel.NORMAL)
+        val quote = assertIs<BatchQuoting.Quoted>(quoting).quote
+        // The node's Bee diluted the batch to 23: the top-up would pull twice what was approved.
+        batch = SwarmReading.Verified(
+            BatchFinding.Node(PostageBatch(id, node, 23, 16, false, UInt256.of(4_000_000_000), UInt256.of(207_062))),
+            101,
+        )
+        val signer = FakeSigner(FakeRecovery())
+        val send = SendBatchCall(signer, FakeBroadcaster(), sent, inputs, candidates, contracts) { 1_000 }
+        assertEquals(BatchSending.BatchChanged, send(quote, Unlock.WithBiometrics("test")))
+        assertTrue(signer.asked.isEmpty())
+    }
+
+    @Test
     fun nothingIsSignedOnceAnotherTransactionTookTheNonce() = runTest {
         val quote = assertIs<BatchQuoting.Quoted>(QuoteBatchDilution(quoter)(node, id, 23, FeeLevel.NORMAL)).quote
         // A Bee node signing with the same key mined a transaction meanwhile.
         inputs.mined = quote.quote.transaction.nonce + 1
         val signer = FakeSigner(FakeRecovery())
-        val send = SendBatchCall(signer, FakeBroadcaster(), sent, inputs, candidates) { 1_000 }
+        val send = SendBatchCall(signer, FakeBroadcaster(), sent, inputs, candidates, contracts) { 1_000 }
         assertEquals(BatchSending.NonceTaken, send(quote, Unlock.WithBiometrics("test")))
         assertTrue(signer.asked.isEmpty())
         assertTrue(sent.transfers.value.isEmpty())

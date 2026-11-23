@@ -3,12 +3,14 @@ package eth.serotine.domain.usecase
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PostageBatch
 import eth.serotine.domain.model.PostageState
 import eth.serotine.domain.model.SwarmCalls
 import eth.serotine.domain.model.SwarmDeployment
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BatchFinding
+import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.NativeBalances
@@ -17,6 +19,7 @@ import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.PostageReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransfers
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.SwarmCandidate
@@ -26,7 +29,9 @@ import eth.serotine.domain.repository.SwarmReading
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.Unlock
 import kotlin.random.Random
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 
 // A Swarm node's postage batches bought, topped up and diluted here (docs/swarm.md, *The four
 // actions*; owner's decisions, 2026-11-23). Each is a transaction from an EOA whose key is held
@@ -94,7 +99,7 @@ sealed interface BatchCall {
  */
 @ConsistentCopyVisibility
 data class BatchQuote internal constructor(
-    val network: eth.serotine.domain.model.Network,
+    val network: Network,
     val call: BatchCall,
     val quote: CallQuote,
     val postage: PostageState,
@@ -117,6 +122,12 @@ sealed interface BatchQuoting {
 
     /** An approval of the PostageStamp from here ([hash]) is on its way, not mined yet: the call waits for it. */
     data class ApprovalPending(val hash: String) : BatchQuoting
+
+    /**
+     * A purchase or a top-up from here ([hash]) is on its way, not mined yet: it pulls xBZZ on the
+     * allowance this one would count on, so this one waits for it rather than revert after it.
+     */
+    data class EarlierPullPending(val hash: String) : BatchQuoting
 
     /** Not quoted: [refusal]. */
     data class Refused(val refusal: BatchRefusal) : BatchQuoting
@@ -159,6 +170,13 @@ sealed interface BatchRefusal {
 
     /** The sender's transaction was not quoted: [refusal]. */
     data class NotQuoted(val refusal: CallRefusal) : BatchRefusal
+}
+
+/** Whether this transaction pulls xBZZ through the PostageStamp at [stamp]: a purchase or a top-up there. */
+private fun SentTransfer.pullsXbzz(stamp: Address): Boolean = when (val action = action) {
+    is SentAction.BatchPurchase -> action.stamp == stamp
+    is SentAction.BatchTopUp -> action.stamp == stamp
+    else -> false
 }
 
 /** What is quoted for a batch: the pins, the PostageStamp's state and, where one is, the batch. */
@@ -220,6 +238,12 @@ internal class BatchQuoter(
         batch: PostageBatch? = null,
     ): BatchQuoting {
         if (!total.isZero) {
+            // An earlier pull of xBZZ from here, not mined yet, would take the allowance this one counts on.
+            when (val unmined = unminedOf(network, sentTransfers, inputs, from, clock)) {
+                is Unmined.Read -> unmined.transfers.lastOrNull { it.pullsXbzz(pinned.postageStamp) }
+                    ?.let { return BatchQuoting.EarlierPullPending(it.hash) }
+                is Unmined.Unavailable -> return BatchQuoting.Refused(BatchRefusal.Unavailable(unmined.reason))
+            }
             when (val approval = approvals(from, pinned.bzz, pinned.postageStamp, total, level)) {
                 is ApprovalQuoting.AlreadyAllowed -> Unit
                 is ApprovalQuoting.Quoted -> return BatchQuoting.NeedsApproval(approval.quote, total)
@@ -381,15 +405,23 @@ sealed interface BatchSending {
 
     /** The account's count of mined transactions could not be verified right now ([reason]): nothing is signed. */
     data class NotChecked(val reason: ReadUnavailable) : BatchSending
+
+    /**
+     * Not signed: the batch's depth is not the one the quote rests on any more (the node's Bee diluted
+     * it meanwhile), so a top-up would pull more than was approved, or a dilution would revert. The
+     * review is made again.
+     */
+    data object BatchChanged : BatchSending
 }
 
 /**
  * Signs a reviewed [BatchQuote]'s transaction with the sender's key as [unlock] opens it, and hands
  * it to the network, recorded as the batch call it is. Before it signs, the sender's verified count
  * of mined transactions is read again: one past the quote's nonce means a transaction not sent from
- * here took it, and nothing is signed (docs/swarm.md, *A key that Bee also uses*). A purchase sent
- * keeps its batch's id for the node ([SwarmCandidates.add], the user's own), so that it is found
- * once mined. [clock] is in unix seconds.
+ * here took it, and nothing is signed (docs/swarm.md, *A key that Bee also uses*). A top-up or a
+ * dilution is signed only while the batch's depth is still the one quoted. A purchase sent keeps
+ * its batch's id for the node ([SwarmCandidates.add], the user's own: bought by the user's tap), so
+ * that it is found once mined. [clock] is in unix seconds.
  */
 class SendBatchCall(
     private val signer: Signer,
@@ -397,10 +429,12 @@ class SendBatchCall(
     private val sentTransfers: SentTransfers,
     private val inputs: TransactionInputs,
     private val candidates: SwarmCandidates,
+    private val contracts: SwarmContracts,
     private val clock: () -> Long = ::epochSecondsNow,
 ) {
     suspend operator fun invoke(quote: BatchQuote, unlock: Unlock): BatchSending {
         val from = quote.quote.from
+        quote.batch?.let { before -> stillAsQuoted(quote, before)?.let { return it } }
         when (val mined = inputs.minedNonce(quote.network, from)) {
             is NonceReading.Read -> if (mined.nonce > quote.quote.transaction.nonce) return BatchSending.NonceTaken
             is NonceReading.Unavailable -> return BatchSending.NotChecked(mined.reason)
@@ -409,13 +443,31 @@ class SendBatchCall(
         val sending = signAndSend(signer, broadcaster, sentTransfers, quote.network, quote.quote, action, clock, unlock)
         val call = quote.call
         if (call is BatchCall.Purchase && sending.reachedTheNetwork) {
-            candidates.add(AccountId(quote.network, call.owner), SwarmCandidate.Batch(call.id), byHand = true)
+            // Kept however the caller goes on: the batch was sent, and is found by its id once mined.
+            withContext(NonCancellable) {
+                candidates.add(AccountId(quote.network, call.owner), SwarmCandidate.Batch(call.id), byHand = true)
+            }
         }
         return BatchSending.Sending(sending)
     }
 
+    /**
+     * Null while the batch is as [before] was in its depth, read fresh; otherwise why nothing is
+     * signed. A top-up pulls its amount times `2^depth` at the depth it is mined at.
+     */
+    private suspend fun stillAsQuoted(quote: BatchQuote, before: PostageBatch): BatchSending? =
+        when (val reading = contracts.observeBatch(quote.network, before.owner, before.id).first()) {
+            is SwarmReading.Verified -> {
+                val depth = (reading.finding as? BatchFinding.Node)?.batch?.depth
+                BatchSending.BatchChanged.takeUnless { depth == before.depth }
+            }
+            SwarmReading.Syncing -> BatchSending.NotChecked(ReadUnavailable.SYNCING)
+            SwarmReading.NotPinned -> BatchSending.NotChecked(ReadUnavailable.NO_ENGINE)
+            is SwarmReading.Unavailable -> BatchSending.NotChecked(reading.reason)
+        }
+
     /** Whether a peer took it, or may have: a purchase on its way is kept, so that its batch is found. */
     private val TransferSending.reachedTheNetwork: Boolean
         get() = this is TransferSending.Sent ||
-            (this is TransferSending.NotSent && broadcast is eth.serotine.domain.repository.Broadcast.Unavailable)
+            (this is TransferSending.NotSent && broadcast is Broadcast.Unavailable)
 }

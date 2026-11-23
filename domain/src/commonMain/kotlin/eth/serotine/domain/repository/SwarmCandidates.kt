@@ -27,9 +27,10 @@ interface SwarmCandidates {
 
     /**
      * Adds [candidate] to [node]'s; [SwarmCandidateChange.ALREADY_PRESENT] when it is there already.
-     * Added [byHand], it is taken off those the user removed. Found ([byHand] false: in the log
-     * index, or bought here), one the user removed is refused ([SwarmCandidateChange.DISMISSED]) and
-     * stays removed, checked in the same change as the write. Never throws.
+     * Added [byHand] (the user's own: typed in, or a batch bought by the user's tap), it is taken
+     * off those the user removed. Found ([byHand] false: in the log index), one the user removed is
+     * refused ([SwarmCandidateChange.DISMISSED]) and stays removed, checked in the same change as the
+     * write. Never throws.
      */
     suspend fun add(node: AccountId, candidate: SwarmCandidate, byHand: Boolean): SwarmCandidateChange
 

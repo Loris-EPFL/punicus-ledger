@@ -63,7 +63,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Transfer status (simple mode)](#simple-transfer-status) | `simple-transfer-status/` | 13 |
 | [Watch address (simple mode)](#simple-watch) | `simple-watch/` | 9 |
 | [Swap](#swap) | `swap/` | 38 |
-| [Swarm node](#swarm) | `swarm/` | 10 |
+| [Swarm node](#swarm) | `swarm/` | 12 |
 | [Tokens](#tokens) | `tokens/` | 7 |
 | [Transfer status](#transfer-status) | `transfer-status/` | 37 |
 | [Update required](#update-required) | `update-required/` | 2 |
@@ -1131,7 +1131,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="swarm"></a>
 ## Swarm node
 
-`swarm/`, 10 states: `node`, `node-dark`, `empty`, `bounced-expired`, `held`, `add-chequebook`, `add-checking`, `add-refused`, `loading`, `unavailable`
+`swarm/`, 12 states: `node`, `node-dark`, `empty`, `bounced-expired`, `held`, `add-chequebook`, `add-checking`, `add-refused`, `network-off`, `not-removed`, `loading`, `unavailable`
 
 <a href="swarm/node.png"><img src="swarm/node.png" width="206" alt="node"></a>
 <a href="swarm/node-dark.png"><img src="swarm/node-dark.png" width="206" alt="node-dark"></a>
@@ -1141,6 +1141,8 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="swarm/add-chequebook.png"><img src="swarm/add-chequebook.png" width="206" alt="add-chequebook"></a>
 <a href="swarm/add-checking.png"><img src="swarm/add-checking.png" width="206" alt="add-checking"></a>
 <a href="swarm/add-refused.png"><img src="swarm/add-refused.png" width="206" alt="add-refused"></a>
+<a href="swarm/network-off.png"><img src="swarm/network-off.png" width="206" alt="network-off"></a>
+<a href="swarm/not-removed.png"><img src="swarm/not-removed.png" width="206" alt="not-removed"></a>
 <a href="swarm/loading.png"><img src="swarm/loading.png" width="206" alt="loading"></a>
 <a href="swarm/unavailable.png"><img src="swarm/unavailable.png" width="206" alt="unavailable"></a>
 

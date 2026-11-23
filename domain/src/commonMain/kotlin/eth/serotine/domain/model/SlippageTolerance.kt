@@ -28,6 +28,18 @@ value class SlippageTolerance private constructor(val basisPoints: Int) {
         return whole * UInt256.of(kept.toLong()) + UInt256.of(rest.toLong() * kept / WHOLE)
     }
 
+    /**
+     * The most a swap quoted at [quote] may take: `quote × (10 000 + basisPoints) / 10 000`, rounded
+     * up, exactly; null when it does not fit a uint256 (docs/swaps.md, *Buying an exact amount*).
+     */
+    fun maximumOf(quote: UInt256): UInt256? {
+        val grown = WHOLE + basisPoints
+        val (whole, rest) = quote.divRem(WHOLE)
+        // ⌈quote × grown / 10 000⌉ = whole × grown + ⌈rest × grown / 10 000⌉, with rest < 10 000.
+        val part = (rest.toLong() * grown + WHOLE - 1) / WHOLE
+        return whole.timesOrNull(UInt256.of(grown.toLong()))?.plusOrNull(UInt256.of(part))
+    }
+
     /** The tolerance as a percentage with two decimals, as the user types it ("0.5" is 50). */
     val percent: String
         get() = UInt256.of(basisPoints.toLong()).formatUnits(PERCENT_DECIMALS)

@@ -1231,7 +1231,11 @@ class SwapViewModelTest {
      * answering [quote].
      */
     private fun cowReady(
-        quote: CowQuoteReading = CowQuoteReading.Quoted(UInt256.of("16100000000000000"), UInt256.ONE),
+        quote: CowQuoteReading = CowQuoteReading.Quoted(
+            UInt256.of(40_000_000),
+            UInt256.of("16100000000000000"),
+            UInt256.ONE,
+        ),
     ) {
         swapVenue.choice.value = VenueChoice.Chosen(SwapVenue.COW)
         cowChain.venue = CowVenueReading.Verified(cow)
@@ -1314,7 +1318,7 @@ class SwapViewModelTest {
     @Test
     fun cowsMinimumIsItsEstimateLessTheToleranceWhateverUniswapQuotes() = runTest {
         // An estimate well below what Uniswap would give: no Uniswap figure enters a CoW order.
-        cowReady(CowQuoteReading.Quoted(UInt256.of("12000000000000000"), UInt256.ONE))
+        cowReady(CowQuoteReading.Quoted(UInt256.of(40_000_000), UInt256.of("12000000000000000"), UInt256.ONE))
         val review = assertIs<SwapUiState.CowReview>(reviewed().uiState.value)
 
         assertEquals("at least 0.01194 ETH", review.minimum)

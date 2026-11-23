@@ -5,6 +5,7 @@ import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.CowTrade
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -52,9 +53,13 @@ class FileCowOrdersTest {
         }
     }
 
-    private fun record(validTo: Long = 1_792_670_000, buysEther: Boolean = true): CowOrderRecord {
+    private fun record(
+        validTo: Long = 1_792_670_000,
+        buysEther: Boolean = true,
+        kind: SwapKind = SwapKind.SELL,
+    ): CowOrderRecord {
         val buyToken = if (buysEther) CowOrder.NATIVE_BUY_TOKEN else Address.of("0x" + "77".repeat(20))
-        val order = CowOrder(usdc.address, buyToken, account, UInt256.of(100_000_000), UInt256.of(5), validTo)
+        val order = CowOrder(usdc.address, buyToken, account, UInt256.of(100_000_000), UInt256.of(5), validTo, kind)
         val buy = if (buysEther) {
             TransferAsset.Native
         } else {
@@ -181,7 +186,7 @@ class FileCowOrdersTest {
         orders().record(kept)
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
         // A field in the file and one in the entry, as a newer build of the same format might write them.
-        val newer = text.replace("{\"version\":1,", "{\"version\":1,\"written\":\"later\",")
+        val newer = text.replace("{\"version\":2,", "{\"version\":2,\"written\":\"later\",")
             .replace("\"rangeStart\":", "\"tip\":{\"bps\":5},\"rangeStart\":")
         assertTrue(newer != text && "\"tip\"" in newer && "\"written\"" in newer, newer)
         SystemFileSystem.sink(file).buffered().use { it.writeString(newer) }
@@ -191,9 +196,31 @@ class FileCowOrdersTest {
     }
 
     @Test
+    fun aBuyOrderIsKeptAsABuyAndAFormatOneEntryReadsAsASell() = runTest {
+        val buy = record(buysEther = false, kind = SwapKind.BUY)
+        orders().record(buy)
+        assertEquals(listOf(buy), stored())
+        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
+        assertTrue("\"kind\":\"buy\"" in text, text)
+
+    }
+
+    @Test
+    fun aFormatOneEntryWithNoKindIsASell() = runTest {
+        val sell = record()
+        orders().record(sell)
+        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
+        // A sell is stored with no kind, as format 1 stored every order.
+        assertFalse("\"kind\":\"sell\"" in text, text)
+        SystemFileSystem.sink(file).buffered().use { it.writeString(text.replace("{\"version\":2,", "{\"version\":1,")) }
+
+        assertEquals(listOf(sell), stored())
+    }
+
+    @Test
     fun aNewerFormatIsUnreadable() = runTest {
         SystemFileSystem.createDirectories(directory)
-        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":2,"orders":[]}""") }
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":3,"orders":[]}""") }
         assertEquals(CowOrderList.Unreadable, orders().observe().first())
         assertFalse(orders().record(record()))
     }

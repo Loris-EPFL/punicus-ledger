@@ -22,10 +22,17 @@ interface SwarmCandidates {
      */
     fun observeNodes(network: Network): Flow<Map<AccountId, SwarmCandidateList.Loaded>?>
 
-    /** Adds [candidate] to [node]'s; [SwarmCandidateChange.ALREADY_PRESENT] when it is there already. Never throws. */
+    /**
+     * Adds [candidate] to [node]'s, and takes it off those the user removed;
+     * [SwarmCandidateChange.ALREADY_PRESENT] when it is there already. Never throws.
+     */
     suspend fun add(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange
 
-    /** Takes [candidate] out of [node]'s; [SwarmCandidateChange.NOT_FOUND] when it is not there. Never throws. */
+    /**
+     * Takes [candidate] out of [node]'s and remembers that the user removed it, so that what finds
+     * candidates in the log index does not add it back ([SwarmCandidateList.Loaded.dismissed]);
+     * [SwarmCandidateChange.NOT_FOUND] when it is not there. Never throws.
+     */
     suspend fun remove(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange
 }
 
@@ -41,14 +48,20 @@ sealed interface SwarmCandidate {
 /** What [SwarmCandidates.observe] emits. */
 sealed interface SwarmCandidateList {
     /**
-     * The node's [chequebooks] and [batches], each in the order added; [setAside] once the stored
-     * candidates were damaged and set aside, so these started over.
+     * The node's [chequebooks] and [batches], each in the order added; the candidates the user
+     * removed ([dismissed]), never added back but by hand; [setAside] once the stored candidates
+     * were damaged and set aside, so these started over.
      */
     data class Loaded(
         val chequebooks: List<Address>,
         val batches: List<BatchId>,
         val setAside: Boolean = false,
-    ) : SwarmCandidateList
+        val dismissed: Set<SwarmCandidate> = emptySet(),
+    ) : SwarmCandidateList {
+        /** Whether anything is kept: a dismissed candidate alone makes no node. */
+        val keepsAny: Boolean
+            get() = chequebooks.isNotEmpty() || batches.isNotEmpty()
+    }
 
     /** The stored candidates exist but cannot be read; nothing can be changed until they can. */
     data object Unreadable : SwarmCandidateList

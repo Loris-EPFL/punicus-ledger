@@ -154,7 +154,7 @@ review finding, whatever it saves.
   `FollowSafeDeployments`, which lists the Safes this wallet deployed
   whatever screen is open (docs/wallet-ux.md, screen 15), and
   `FollowSwarmLogs`, which finds Swarm nodes' chequebooks and batches in the
-  Gnosis Chain log index (docs/swarm.md). On Android both run
+  Gnosis Chain log index (docs/swarm.md). On Android they run
   while the application holds the engine; on the desktop, while `main()`
   runs; on iOS, while the app is in the foreground. Lenient mode's
   `FollowOutbox`, which checks and sends what is queued and checks the Safe

@@ -35,8 +35,14 @@ class FileSwarmCandidates(
     dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : SwarmCandidates {
 
-    /** One node's candidates, each list in the order added. */
-    private data class Kept(val chequebooks: List<Address> = emptyList(), val batches: List<BatchId> = emptyList())
+    /** One node's candidates, each list in the order added, and those the user removed. */
+    private data class Kept(
+        val chequebooks: List<Address> = emptyList(),
+        val batches: List<BatchId> = emptyList(),
+        val dismissed: Set<SwarmCandidate> = emptySet(),
+    ) {
+        fun loaded(setAside: Boolean = false) = SwarmCandidateList.Loaded(chequebooks, batches, setAside, dismissed)
+    }
 
     private val file = VersionedJsonFile(
         path,
@@ -56,6 +62,8 @@ class FileSwarmCandidates(
                         node.address.hex,
                         kept.chequebooks.map { it.hex },
                         kept.batches.map { it.hex },
+                        kept.dismissed.filterIsInstance<SwarmCandidate.ChequebookAt>().map { it.address.hex },
+                        kept.dismissed.filterIsInstance<SwarmCandidate.Batch>().map { it.id.hex },
                     )
                 },
             ).let { JSON.encodeToString(StoredCandidates.serializer(), it) }
@@ -66,8 +74,7 @@ class FileSwarmCandidates(
     override fun observe(node: AccountId): Flow<SwarmCandidateList> = file.observe().map { read ->
         when (read) {
             is VersionedJsonFile.Read.Loaded -> {
-                val kept = read.value[node] ?: Kept()
-                SwarmCandidateList.Loaded(kept.chequebooks, kept.batches, setAside = read.damagedSetAside)
+                (read.value[node] ?: Kept()).loaded(setAside = read.damagedSetAside)
             }
             is VersionedJsonFile.Read.Unreadable -> SwarmCandidateList.Unreadable
         }
@@ -77,7 +84,7 @@ class FileSwarmCandidates(
         file.observe().map { read ->
             when (read) {
                 is VersionedJsonFile.Read.Loaded -> read.value.filterKeys { it.network == network }
-                    .mapValues { (_, kept) -> SwarmCandidateList.Loaded(kept.chequebooks, kept.batches) }
+                    .mapValues { (_, kept) -> kept.loaded() }
                 is VersionedJsonFile.Read.Unreadable -> null
             }
         }.distinctUntilChanged()
@@ -85,13 +92,14 @@ class FileSwarmCandidates(
     override suspend fun add(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange =
         file.change(SwarmCandidateChange.NOT_SAVED) { all ->
             val kept = all[node] ?: Kept()
+            // Added again, by hand: no longer one the user removed.
             val next = when (candidate) {
                 is SwarmCandidate.ChequebookAt ->
                     if (candidate.address in kept.chequebooks) null
                     else kept.copy(chequebooks = kept.chequebooks + candidate.address)
                 is SwarmCandidate.Batch ->
                     if (candidate.id in kept.batches) null else kept.copy(batches = kept.batches + candidate.id)
-            }
+            }?.let { it.copy(dismissed = it.dismissed - candidate) }
             if (next == null) {
                 Decision(SwarmCandidateChange.ALREADY_PRESENT)
             } else {
@@ -107,9 +115,8 @@ class FileSwarmCandidates(
                     kept.copy(chequebooks = kept.chequebooks - candidate.address).takeIf { it != kept }
                 is SwarmCandidate.Batch -> kept.copy(batches = kept.batches - candidate.id).takeIf { it != kept }
             } ?: return@change Decision(SwarmCandidateChange.NOT_FOUND)
-            // A node with nothing left leaves the file: no address is kept without a reason.
-            val rest = if (next.chequebooks.isEmpty() && next.batches.isEmpty()) all - node else all + (node to next)
-            Decision(SwarmCandidateChange.CHANGED, rest)
+            // Remembered as the user's removal, so that the log index does not bring it back.
+            Decision(SwarmCandidateChange.CHANGED, all + (node to next.copy(dismissed = next.dismissed + candidate)))
         }
 
     /** The file's layout: [version] first, then each node with its candidates. */
@@ -122,6 +129,9 @@ class FileSwarmCandidates(
         val address: String,
         val chequebooks: List<String> = emptyList(),
         val batches: List<String> = emptyList(),
+        /** The candidates the user removed, which the log index does not add back. */
+        val dismissedChequebooks: List<String> = emptyList(),
+        val dismissedBatches: List<String> = emptyList(),
     ) {
         /**
          * Throws on anything [Address] or [BatchId] would not accept: the whole file is then
@@ -129,8 +139,10 @@ class FileSwarmCandidates(
          */
         fun toKept(): Pair<AccountId, Kept>? {
             val network = Network.ofChainId(chain) ?: return null
+            val dismissed = dismissedChequebooks.map { SwarmCandidate.ChequebookAt(Address.of(it)) } +
+                dismissedBatches.map { SwarmCandidate.Batch(BatchId.of(it)) }
             return AccountId(network, Address.of(address)) to
-                Kept(chequebooks.map(Address::of).distinct(), batches.map(BatchId::of).distinct())
+                Kept(chequebooks.map(Address::of).distinct(), batches.map(BatchId::of).distinct(), dismissed.toSet())
         }
     }
 

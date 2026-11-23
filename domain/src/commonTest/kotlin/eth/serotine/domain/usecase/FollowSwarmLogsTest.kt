@@ -20,6 +20,7 @@ import eth.serotine.domain.repository.LogCoverageReading
 import eth.serotine.domain.repository.LogQuery
 import eth.serotine.domain.repository.LogWatchKey
 import eth.serotine.domain.repository.LogsReading
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.SwarmCandidate
 import eth.serotine.domain.repository.SwarmCandidateChange
@@ -66,30 +67,36 @@ class FollowSwarmLogsTest {
 
         override suspend fun add(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange {
             val list = kept.value[node] ?: SwarmCandidateList.Loaded(emptyList(), emptyList())
-            kept.value = kept.value + (
-                node to when (candidate) {
-                    is SwarmCandidate.ChequebookAt -> list.copy(chequebooks = list.chequebooks + candidate.address)
-                    is SwarmCandidate.Batch -> list.copy(batches = list.batches + candidate.id)
-                }
-                )
+            val next = when (candidate) {
+                is SwarmCandidate.ChequebookAt -> list.copy(chequebooks = list.chequebooks + candidate.address)
+                is SwarmCandidate.Batch -> list.copy(batches = list.batches + candidate.id)
+            }
+            kept.value = kept.value + (node to next)
             return SwarmCandidateChange.CHANGED
         }
 
         override suspend fun remove(node: AccountId, candidate: SwarmCandidate) = SwarmCandidateChange.NOT_FOUND
     }
 
+    /** Proofs that cannot be had yet: each answers unverified, once. */
+    private val unverifiedOnce = mutableSetOf<Address>()
+
     /** Only [chequebook] is a chequebook, the node's; only [batch] is a batch, owned by [bee]. */
     private val contracts = object : SwarmContracts {
         override fun observeChequebook(network: Network, node: Address, chequebook: Address) = flowOf(
-            SwarmReading.Verified(
-                if (chequebook == this@FollowSwarmLogsTest.chequebook && node == bee.address) {
-                    val one = UInt256.of(1)
-                    ChequebookFinding.Node(Chequebook(chequebook, node, one, one, UInt256.of(0), bounced = false))
-                } else {
-                    ChequebookFinding.NotAChequebook
-                },
-                7,
-            ),
+            if (unverifiedOnce.remove(chequebook)) {
+                SwarmReading.Unavailable(ReadUnavailable.UNPROVEN)
+            } else {
+                SwarmReading.Verified(
+                    if (chequebook == this@FollowSwarmLogsTest.chequebook && node == bee.address) {
+                        val one = UInt256.of(1)
+                        ChequebookFinding.Node(Chequebook(chequebook, node, one, one, UInt256.of(0), bounced = false))
+                    } else {
+                        ChequebookFinding.NotAChequebook
+                    },
+                    7,
+                )
+            },
         ).also { proven += node to chequebook }
 
         override fun observeBatch(network: Network, node: Address, id: BatchId) = flowOf(
@@ -265,6 +272,88 @@ class FollowSwarmLogsTest {
         runCurrent()
         assertTrue(index.queries.isEmpty(), "a Safe is no Swarm node")
         assertTrue(proven.isEmpty())
+    }
+
+    @Test
+    fun aCandidateThatCouldNotBeVerifiedIsTriedAgainNextRound() = runTest {
+        coverage(LogWatchKey.Mention(bee.address) to LogCoverage(100, 100L..200L))
+        index.answer = { query ->
+            LogsReading.Logs(if (query.fromBlock == 100L) listOf(transfer(bee.address, chequebook)) else emptyList())
+        }
+        unverifiedOnce += chequebook
+        follow()
+        lightClient.status.value = synced
+        runCurrent()
+        assertEquals(null, kept.value[bee.id], "nothing kept on an unverified reading")
+
+        coverage(LogWatchKey.Mention(bee.address) to LogCoverage(100, 100L..201L))
+        runCurrent()
+        assertEquals(listOf(chequebook), kept.value[bee.id]?.chequebooks)
+    }
+
+    @Test
+    fun aCandidateTheUserRemovedIsNotAddedBack() = runTest {
+        val removed = setOf<SwarmCandidate>(SwarmCandidate.ChequebookAt(chequebook))
+        kept.value = mapOf(bee.id to SwarmCandidateList.Loaded(emptyList(), emptyList(), dismissed = removed))
+        coverage(LogWatchKey.Mention(bee.address) to LogCoverage(100, 100L..200L))
+        index.answer = { LogsReading.Logs(listOf(transfer(bee.address, chequebook))) }
+        follow()
+        lightClient.status.value = synced
+        runCurrent()
+        assertTrue(proven.isEmpty())
+        assertEquals(emptyList(), kept.value[bee.id]?.chequebooks)
+        assertTrue(index.watched.isEmpty(), "a removal alone makes no Swarm node")
+    }
+
+    @Test
+    fun manyRecipientsAreAllTriedOverRoundsTheNewestFirst() = runTest {
+        // The chequebook was funded first, then 20 others were paid: more than a round proves.
+        val others = (1..20).map { Address.of("0x" + it.toString(16).padStart(2, '0').repeat(20)) }
+        coverage(LogWatchKey.Mention(bee.address) to LogCoverage(100, 100L..200L))
+        index.answer = { query ->
+            LogsReading.Logs(
+                if (query.fromBlock == 100L) {
+                    listOf(transfer(bee.address, chequebook, block = 101)) +
+                        others.mapIndexed { i, to -> transfer(bee.address, to, block = 110L + i) }
+                } else {
+                    emptyList()
+                },
+            )
+        }
+        follow()
+        lightClient.status.value = synced
+        runCurrent()
+        assertEquals(FollowSwarmLogs.MAX_PROOFS_PER_ROUND, proven.size)
+        assertEquals(bee.address to others.last(), proven.first(), "the newest first")
+        assertEquals(null, kept.value[bee.id])
+
+        coverage(LogWatchKey.Mention(bee.address) to LogCoverage(100, 100L..201L))
+        runCurrent()
+        assertEquals(listOf(chequebook), kept.value[bee.id]?.chequebooks, "the oldest is reached in the next round")
+    }
+
+    @Test
+    fun anAccountAddedAgainWithANewStartIsReadAgain() = runTest {
+        coverage(LogWatchKey.Mention(bee.address) to LogCoverage(100, 100L..200L))
+        index.answer = { LogsReading.Logs(emptyList()) }
+        follow()
+        lightClient.status.value = synced
+        runCurrent()
+
+        accounts.accounts.value = emptyList()
+        runCurrent()
+        accounts.accounts.value = listOf(bee)
+        coverage(LogWatchKey.Mention(bee.address) to LogCoverage(500, 500L..600L))
+        index.answer = { query ->
+            val logs = if (query.fromBlock == 500L) listOf(transfer(bee.address, chequebook, block = 550)) else emptyList()
+            LogsReading.Logs(logs)
+        }
+        runCurrent()
+        assertEquals(
+            LogQuery(LogWatchKey.Mention(bee.address), 500, 600, listOf(FollowSwarmLogs.TRANSFER), 1),
+            index.queries.last(),
+        )
+        assertEquals(listOf(chequebook), kept.value[bee.id]?.chequebooks)
     }
 
     @Test

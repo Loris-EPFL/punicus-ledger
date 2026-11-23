@@ -120,10 +120,12 @@ So:
     one.
   - The emitter watch costs the walk the receipts of the blocks whose bloom
     flags the PostageStamp: every batch bought, topped up or diluted on
-    Swarm, and each round's price update, about a hundred blocks a day. It tells the serving peer that this device follows the
-    PostageStamp, as any watched contract does (*An account's history*). It
-    is configured while a Swarm node is in the wallet, and dropped with the
-    last one.
+    Swarm, and each round's price update, about a hundred blocks a day. It
+    tells the serving peer that this device follows the PostageStamp, as any
+    watched contract does (*An account's history*). It is configured while a
+    Swarm node is in the wallet, and dropped with the last one.
+  - Each candidate found is proven as one added by hand is, at most 16 a
+    round, the newest first, the rest in later rounds.
   - The index covers an account from the block it was added at
     (`.claude/rules/data-sources.md`, *An account's history*), so a node
     added after its chequebook and its batches were made has nothing to
@@ -134,6 +136,9 @@ So:
 - **Added by hand.** A chequebook by its address, a batch by its id: Bee's
   API and its dashboard show both. Kept once proven; refused, saying why,
   when not.
+- **Removed by hand.** A candidate the user removes is remembered as
+  removed, and the log index never adds it back; adding it by hand again
+  keeps it again.
 
 The candidates are kept per node in an app-private file: public data, not
 key material. Punicus never calls a Bee node's API, nor any other Swarm

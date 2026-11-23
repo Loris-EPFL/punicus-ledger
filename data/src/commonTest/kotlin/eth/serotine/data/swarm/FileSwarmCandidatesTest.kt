@@ -21,7 +21,6 @@ import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
-import kotlinx.io.readString
 import kotlinx.io.writeString
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -70,14 +69,20 @@ class FileSwarmCandidatesTest {
     }
 
     @Test
-    fun aRemovedCandidateIsGoneAndANodeWithNoneLeavesTheFile() = runTest {
+    fun aRemovedCandidateIsRememberedAsRemovedUntilItIsAddedAgain() = runTest {
         val store = candidates()
         store.add(node, SwarmCandidate.Batch(batch))
         assertEquals(SwarmCandidateChange.NOT_FOUND, store.remove(node, SwarmCandidate.ChequebookAt(chequebook)))
         assertEquals(SwarmCandidateChange.CHANGED, store.remove(node, SwarmCandidate.Batch(batch)))
         assertEquals(SwarmCandidateChange.NOT_FOUND, store.remove(node, SwarmCandidate.Batch(batch)))
-        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(node.address.hex.removePrefix("0x").lowercase() !in text.lowercase(), text)
+        val removed =
+            SwarmCandidateList.Loaded(emptyList(), emptyList(), dismissed = setOf(SwarmCandidate.Batch(batch)))
+        // Across a restart too: the log index must not bring it back.
+        assertEquals(removed, candidates().observe(node).first())
+        assertTrue(!removed.keepsAny, "a removal alone makes no node")
+
+        assertEquals(SwarmCandidateChange.CHANGED, store.add(node, SwarmCandidate.Batch(batch)))
+        assertEquals(SwarmCandidateList.Loaded(emptyList(), listOf(batch)), candidates().observe(node).first())
     }
 
     @Test

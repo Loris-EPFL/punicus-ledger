@@ -45,19 +45,31 @@ internal object WithdrawTexts {
         "Withdraws" to bzz(quote.amount),
         "To" to "$node, ${Eip55.format(quote.quote.from)}: the node's own address, always",
         "Chequebook" to Eip55.format(quote.chequebook.address),
-        "Free to withdraw" to bzz(quote.chequebook.liquidBalance),
+        "Free to withdraw" to if (quote.free == quote.chequebook.liquidBalance) {
+            bzz(quote.free)
+        } else {
+            "${bzz(quote.free)}, beside an earlier withdrawal from here not in a block yet"
+        },
         "Fee" to "${exactAmount(quote.quote.maxFee, NATIVE_DECIMALS, network.nativeSymbol)} at most, normal fees",
         "Read at" to "Chequebook at block ${grouped(quote.readAt)}, fees at block ${grouped(quote.quote.feeBlock)}",
     )
 
     fun refused(refusal: WithdrawalRefusal): String = when (refusal) {
         WithdrawalRefusal.NotPinned -> "No chequebook contracts are pinned on Gnosis Chain in this release."
+        WithdrawalRefusal.BzzChanged ->
+            "xBZZ's contract was upgraded since this release pinned it, and a withdrawal runs its code, so nothing " +
+                "is withdrawn until an update pins the new one."
         is WithdrawalRefusal.NotTheNodes -> when (val finding = refusal.finding) {
             is ChequebookFinding.OthersIssuer -> SwarmTexts.othersChequebook(Eip55.format(finding.issuer))
             else -> SwarmTexts.NO_LONGER_A_CHEQUEBOOK
         }
         WithdrawalRefusal.NothingToWithdraw -> "A withdrawal takes something: say how much."
-        is WithdrawalRefusal.MoreThanFree -> "At most ${bzz(refusal.free)} is free to withdraw now."
+        is WithdrawalRefusal.MoreThanFree -> if (refusal.heldBack.isZero) {
+            "At most ${bzz(refusal.free)} is free to withdraw now."
+        } else {
+            "An earlier withdrawal from here, not in a block yet, takes ${bzz(refusal.heldBack)} of what the " +
+                "chequebook shows as free: at most ${bzz(refusal.free)} is free to withdraw now."
+        }
         is WithdrawalRefusal.Unavailable -> "Not quoted: " + SwarmTexts.unavailable(refusal.reason)
         is WithdrawalRefusal.NotQuoted -> callRefusalText(refusal.refusal, network)
     }

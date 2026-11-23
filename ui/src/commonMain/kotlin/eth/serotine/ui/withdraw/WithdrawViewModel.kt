@@ -23,6 +23,7 @@ import eth.serotine.domain.usecase.SendChequebookWithdrawal
 import eth.serotine.domain.usecase.TransferSending
 import eth.serotine.domain.usecase.WithdrawalQuote
 import eth.serotine.domain.usecase.WithdrawalQuoting
+import eth.serotine.domain.usecase.WithdrawalRefusal
 import eth.serotine.domain.usecase.WithdrawalSending
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.PROMPT_TOO_LATE
@@ -68,7 +69,12 @@ class WithdrawViewModel(
 ) : ViewModel() {
 
     private sealed interface Step {
-        data class Composing(val amount: String = "", val error: String? = null, val quoting: Boolean = false) : Step
+        data class Composing(
+            val amount: String = "",
+            val error: String? = null,
+            val quoting: Boolean = false,
+            val pending: String? = null,
+        ) : Step
 
         data class Reviewing(
             val amount: String,
@@ -97,8 +103,11 @@ class WithdrawViewModel(
 
     private val lookup = observeAccount(node)
 
-    private val reading: Flow<SwarmReading<ChequebookFinding>?> =
-        observeChequebook(node.address, chequebook).onStart { emit(SwarmReading.Syncing) }
+    /** Null until the first reading: not read yet, which is no syncing. */
+    private val reading: Flow<SwarmReading<ChequebookFinding>?> = run {
+        val read: Flow<SwarmReading<ChequebookFinding>?> = observeChequebook(node.address, chequebook)
+        read.onStart { emit(null) }
+    }
 
     /** The screen's state. */
     val uiState: StateFlow<WithdrawUiState> = combine(lookup, reading, step) { found, reading, at ->
@@ -132,7 +141,8 @@ class WithdrawViewModel(
                 is ChequebookFinding.OthersIssuer -> listOf(SwarmTexts.othersChequebook(Eip55.format(finding.issuer)))
                 ChequebookFinding.NotAChequebook -> listOf(SwarmTexts.NO_LONGER_A_CHEQUEBOOK)
             }
-            null, SwarmReading.Syncing -> listOf(SwarmTexts.NOT_READ)
+            null -> listOf(SwarmTexts.NOT_READ)
+            SwarmReading.Syncing -> listOf(SwarmTexts.SYNCING)
             SwarmReading.NotPinned -> listOf(WithdrawTexts.NOT_SWARM)
             is SwarmReading.Unavailable -> listOf(SwarmTexts.unavailable(reading.reason))
         }
@@ -147,6 +157,7 @@ class WithdrawViewModel(
                     all = book?.liquidBalance?.takeUnless { it.isZero }?.formatUnits(WithdrawTexts.BZZ_DECIMALS),
                     error = step.error,
                     quoting = step.quoting,
+                    pending = step.pending,
                 )
                 is Step.Reviewing -> WithdrawStep.Review(
                     lines = WithdrawTexts.lines(step.quote, account.label),
@@ -203,14 +214,21 @@ class WithdrawViewModel(
             note = note,
             hidden = hides != at.second || !shown,
         )
-        is WithdrawalQuoting.Refused -> Step.Composing(amount, WithdrawTexts.refused(quoting.refusal))
+        is WithdrawalQuoting.Refused ->
+            Step.Composing(amount, WithdrawTexts.refused(quoting.refusal), pending = pendingOf(quoting.refusal))
         null -> Step.Composing(amount, WithdrawTexts.QUOTE_FAILED)
     }
+
+    /** The earlier withdrawal on its way that [refusal] names, for its status. */
+    private fun pendingOf(refusal: WithdrawalRefusal): String? = (refusal as? WithdrawalRefusal.MoreThanFree)?.pending
+
+    /** What a review made again because the screen was hidden says: why the last try sent nothing, first. */
+    private fun carried(review: Step.Reviewing): String? = review.error ?: review.unlock.error ?: review.note
 
     private fun landed(next: Step) {
         step.value = next
         // Why the last try sent nothing outlives the quote made again: it is said as its note.
-        if (next is Step.Reviewing && next.hidden && shown) requote(next, next.error ?: next.note)
+        if (next is Step.Reviewing && next.hidden && shown) requote(next, carried(next))
     }
 
     fun onPasswordChange(text: String) {
@@ -234,7 +252,7 @@ class WithdrawViewModel(
 
     private fun requoted(review: Step.Reviewing): Boolean {
         if (review.hidden) {
-            requote(review, review.note)
+            requote(review, carried(review))
             return true
         }
         if (review.quotedAt.elapsedNow() <= QUOTE_MAX_AGE) return false
@@ -298,6 +316,21 @@ class WithdrawViewModel(
         sentHash.value = hash
     }
 
+    private val openedHash = MutableStateFlow<String?>(null)
+
+    /** An earlier withdrawal on its way whose status is opened over this screen; null otherwise. */
+    val opened: StateFlow<String?> = openedHash
+
+    /** Opens the status of the earlier withdrawal [hash] on its way, over this screen. */
+    fun openPending(hash: String) {
+        openedHash.value = hash
+    }
+
+    /** The status of an earlier withdrawal was opened. */
+    fun onOpenedShown() {
+        openedHash.value = null
+    }
+
     /** The status of the withdrawal sent was opened. */
     fun onSentShown() {
         sentHash.value = null
@@ -326,7 +359,7 @@ class WithdrawViewModel(
     fun onShown() {
         shown = true
         val review = step.value as? Step.Reviewing ?: return
-        if (review.hidden && !review.signing && !review.requoting) requote(review, review.note)
+        if (review.hidden && !review.signing && !review.requoting) requote(review, carried(review))
     }
 
     private suspend fun unlockStep(): UnlockStep =

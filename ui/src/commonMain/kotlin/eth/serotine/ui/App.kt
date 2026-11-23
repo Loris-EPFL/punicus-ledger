@@ -989,6 +989,8 @@ private fun Destinations(
                             popUpTo(WITHDRAW_ROUTE) { inclusive = true }
                         }
                     },
+                    // An earlier withdrawal on its way: its status over this screen.
+                    onOpen = { hash -> navController.openTransfer(account.network, hash) },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(WITHDRAW_ROUTE, inclusive = true) }

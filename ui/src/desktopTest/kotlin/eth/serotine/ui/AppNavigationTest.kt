@@ -1577,8 +1577,8 @@ private object NoSwarm : eth.serotine.domain.repository.SwarmContracts {
         network: eth.serotine.domain.model.Network,
         node: eth.serotine.domain.model.Address,
         chequebook: eth.serotine.domain.model.Address,
-    ): eth.serotine.domain.repository.SwarmReading<eth.serotine.domain.repository.ChequebookFinding> =
-        eth.serotine.domain.repository.SwarmReading.NotPinned
+    ): eth.serotine.domain.repository.ChequebookReading =
+        eth.serotine.domain.repository.ChequebookReading.NotPinned
 
     override suspend fun postage(
         network: eth.serotine.domain.model.Network,

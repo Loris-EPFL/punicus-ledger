@@ -18,6 +18,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -55,6 +56,9 @@ const val WITHDRAW_AMOUNT_TAG = "withdraw-amount"
 /** Test tag of All, which fills in what is free to withdraw, for UI tests. */
 const val WITHDRAW_ALL_TAG = "withdraw-all"
 
+/** Test tag of the earlier withdrawal's status, for UI tests. */
+const val WITHDRAW_PENDING_TAG = "withdraw-pending"
+
 /** Test tag of Review, for UI tests. */
 const val WITHDRAW_REVIEW_TAG = "withdraw-review"
 
@@ -82,12 +86,21 @@ fun WithdrawRoute(
     onGone: () -> Unit,
     onSent: (hash: String) -> Unit,
     modifier: Modifier = Modifier,
+    onOpen: (hash: String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
     val item by lightClient.collectAsStateWithLifecycle()
     val sent by viewModel.sent.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
     val done by rememberUpdatedState(onSent)
+    val opened by viewModel.opened.collectAsStateWithLifecycle()
+    val open by rememberUpdatedState(onOpen)
+    LaunchedEffect(opened) {
+        opened?.let {
+            viewModel.onOpenedShown()
+            open(it)
+        }
+    }
     LaunchedEffect(state is WithdrawUiState.Gone) {
         if (state is WithdrawUiState.Gone) gone()
     }
@@ -111,6 +124,7 @@ fun WithdrawRoute(
             onPasswordChange = viewModel::onPasswordChange,
             onSign = viewModel::sign,
             onSignWithBiometrics = viewModel::signWithBiometrics,
+            onOpenPending = viewModel::openPending,
         ),
         modifier = modifier,
         lightClient = item.takeIf { LocalInterfaceMode.current == InterfaceMode.DETAILED },
@@ -125,6 +139,7 @@ data class WithdrawActions(
     val onPasswordChange: (String) -> Unit = {},
     val onSign: () -> Unit = {},
     val onSignWithBiometrics: () -> Unit = {},
+    val onOpenPending: (String) -> Unit = {},
 )
 
 /**
@@ -211,6 +226,12 @@ private fun Compose(step: WithdrawStep.Compose, actions: WithdrawActions) {
         ) { Text("All that is free: $all BZZ") }
     }
     step.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    step.pending?.let { hash ->
+        OutlinedButton(
+            onClick = { actions.onOpenPending(hash) },
+            modifier = Modifier.fillMaxWidth().testTag(WITHDRAW_PENDING_TAG),
+        ) { Text("Open the earlier withdrawal") }
+    }
     Button(
         onClick = actions.onReview,
         enabled = !step.quoting,

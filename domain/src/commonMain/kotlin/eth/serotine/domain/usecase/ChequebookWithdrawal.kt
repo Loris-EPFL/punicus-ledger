@@ -8,6 +8,7 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.ChequebookFinding
+import eth.serotine.domain.repository.ChequebookReading
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NonceReading
@@ -30,8 +31,9 @@ import kotlinx.coroutines.flow.first
 
 /**
  * A withdrawal quoted for review: [amount] of [token] (xBZZ) from the node's [chequebook] as read
- * fresh at block [readAt], and the [quote] of the node's transaction. Only this file makes one:
- * what is signed is its [quote]'s transaction.
+ * fresh at block [readAt], of [free] it may take now (its liquid balance less what the node's
+ * withdrawals on their way still take), and the [quote] of the node's transaction. Only this file
+ * makes one: what is signed is its [quote]'s transaction.
  */
 @ConsistentCopyVisibility
 data class WithdrawalQuote internal constructor(
@@ -39,6 +41,7 @@ data class WithdrawalQuote internal constructor(
     val token: Token,
     val chequebook: Chequebook,
     val amount: UInt256,
+    val free: UInt256,
     val readAt: Long,
     val quote: CallQuote,
 ) {
@@ -61,14 +64,25 @@ sealed interface WithdrawalRefusal {
     /** No Swarm contracts are pinned on Gnosis Chain in this release. */
     data object NotPinned : WithdrawalRefusal
 
+    /**
+     * xBZZ's proxy, or the implementation it names, is not the pinned one any more: the withdrawal
+     * runs xBZZ's code, so nothing is withdrawn until a release pins the new one.
+     */
+    data object BzzChanged : WithdrawalRefusal
+
     /** The contract is not the node's chequebook: [finding] says what it is. */
     data class NotTheNodes(val finding: ChequebookFinding) : WithdrawalRefusal
 
     /** A withdrawal of nothing: it would move nothing and cost a fee. */
     data object NothingToWithdraw : WithdrawalRefusal
 
-    /** More than the chequebook's liquid balance, [free], which is all it lets the issuer take. */
-    data class MoreThanFree(val free: UInt256) : WithdrawalRefusal
+    /**
+     * More than is [free]: the chequebook's liquid balance, which is all it lets the issuer take, less
+     * [heldBack], what the node's withdrawals sent from here and not mined yet still take of it, the
+     * latest of them [pending] (its hash; null when none is on its way).
+     */
+    data class MoreThanFree(val free: UInt256, val heldBack: UInt256 = UInt256.ZERO, val pending: String? = null) :
+        WithdrawalRefusal
 
     /** No verified answer can be had right now, for [reason]. */
     data class Unavailable(val reason: ReadUnavailable) : WithdrawalRefusal
@@ -108,11 +122,14 @@ class QuoteChequebookWithdrawal(
             is Read.Node -> read.chequebook to read.blockNumber
             is Read.Refused -> return WithdrawalQuoting.Refused(read.refusal)
         }
-        val free = when (val left = freeOf(book, network, sentTransfers, inputs, node, clock)) {
-            is Free.Read -> left.amount
-            is Free.Unavailable -> return WithdrawalQuoting.Refused(WithdrawalRefusal.Unavailable(left.reason))
+        val left = when (val read = freeOf(book, network, sentTransfers, inputs, node, clock)) {
+            is Free.Read -> read
+            is Free.Unavailable -> return WithdrawalQuoting.Refused(WithdrawalRefusal.Unavailable(read.reason))
         }
-        if (amount > free) return WithdrawalQuoting.Refused(WithdrawalRefusal.MoreThanFree(free))
+        val free = left.amount
+        if (amount > free) {
+            return WithdrawalQuoting.Refused(WithdrawalRefusal.MoreThanFree(free, left.heldBack, left.pending))
+        }
         val native = when (val balance = NativeRead.of(nativeBalances.observeBalance(network, node).first())) {
             is NativeRead.Before -> balance
             is NativeRead.NotRead -> return WithdrawalQuoting.Refused(WithdrawalRefusal.NotQuoted(balance.refusal))
@@ -120,7 +137,7 @@ class QuoteChequebookWithdrawal(
         val data = SwarmCalls.withdraw(amount)
         return when (val quoted = quoter.quote(node, chequebook, UInt256.ZERO, data, level, native)) {
             is CallQuoting.Quoted ->
-                WithdrawalQuoting.Quoted(WithdrawalQuote(network, pinned.bzz, book, amount, block, quoted.quote))
+                WithdrawalQuoting.Quoted(WithdrawalQuote(network, pinned.bzz, book, amount, free, block, quoted.quote))
             is CallQuoting.Refused -> WithdrawalQuoting.Refused(WithdrawalRefusal.NotQuoted(quoted.refusal))
         }
     }
@@ -190,7 +207,7 @@ class SendChequebookWithdrawal(
 
 /** What is free to withdraw from a chequebook now, or why that cannot be told. */
 private sealed interface Free {
-    data class Read(val amount: UInt256) : Free
+    data class Read(val amount: UInt256, val heldBack: UInt256, val pending: String?) : Free
     data class Unavailable(val reason: ReadUnavailable) : Free
 }
 
@@ -210,10 +227,16 @@ private suspend fun freeOf(
         is Unmined.Read -> read.transfers
         is Unmined.Unavailable -> return Free.Unavailable(read.reason)
     }
-    var pending = UInt256.ZERO
-    unmined.mapNotNull { (it.action as? SentAction.ChequebookWithdrawal)?.takeIf { w -> w.chequebook == book.address } }
-        .forEach { pending = pending.plusOrNull(it.amount) ?: return Free.Read(UInt256.ZERO) }
-    return Free.Read(book.liquidBalance.minusOrNull(pending) ?: UInt256.ZERO)
+    val withdrawals = unmined.filter {
+        (it.action as? SentAction.ChequebookWithdrawal)?.chequebook == book.address
+    }
+    var heldBack = UInt256.ZERO
+    withdrawals.forEach { transfer ->
+        val amount = (transfer.action as SentAction.ChequebookWithdrawal).amount
+        heldBack = heldBack.plusOrNull(amount) ?: book.liquidBalance
+    }
+    val free = book.liquidBalance.minusOrNull(heldBack) ?: UInt256.ZERO
+    return Free.Read(free, heldBack, withdrawals.lastOrNull()?.hash)
 }
 
 /** A chequebook read fresh for a withdrawal: the node's, or why not. */
@@ -228,13 +251,13 @@ private suspend fun nodesChequebook(
     node: Address,
     chequebook: Address,
 ): Read = when (val reading = contracts.chequebook(network, node, chequebook)) {
-    is SwarmReading.Verified -> when (val finding = reading.finding) {
+    is ChequebookReading.Read -> when (val finding = reading.finding) {
         is ChequebookFinding.Node -> Read.Node(finding.chequebook, reading.blockNumber)
         else -> Read.Refused(WithdrawalRefusal.NotTheNodes(finding))
     }
-    SwarmReading.NotPinned -> Read.Refused(WithdrawalRefusal.NotPinned)
-    SwarmReading.Syncing -> Read.Refused(WithdrawalRefusal.Unavailable(ReadUnavailable.SYNCING))
-    is SwarmReading.Unavailable -> Read.Refused(WithdrawalRefusal.Unavailable(reading.reason))
+    ChequebookReading.BzzChanged -> Read.Refused(WithdrawalRefusal.BzzChanged)
+    ChequebookReading.NotPinned -> Read.Refused(WithdrawalRefusal.NotPinned)
+    is ChequebookReading.Unavailable -> Read.Refused(WithdrawalRefusal.Unavailable(reading.reason))
 }
 
 /**

@@ -342,6 +342,12 @@ class AccountActivity(
             } else {
                 return false
             }
+            // A withdrawal from the node's chequebook: the xBZZ it pays the node, which sent it, exactly.
+            is SentAction.ChequebookWithdrawal -> if (to == account && from == action.chequebook) {
+                TransferAsset.Erc20Token(action.token) to action.amount
+            } else {
+                return false
+            }
             // A Gnosis Pay transfer executed from here: the Safe's own transfer to its recipient.
             is SentAction.DelayExecution -> {
                 val executed = action.transfer ?: return false

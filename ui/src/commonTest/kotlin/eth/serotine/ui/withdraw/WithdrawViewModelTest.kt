@@ -14,6 +14,8 @@ import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.ChequebookFinding
+import eth.serotine.domain.repository.ChequebookReading
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.PostageReading
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SwarmContracts
@@ -77,9 +79,26 @@ class WithdrawViewModelTest {
         100,
     )
 
+    /** Whether the light client is still syncing, as the polled reading says. */
+    private var syncing = false
+
+    /** While set, a fresh read of the chequebook waits for it. */
+    private var gate: CompletableDeferred<Unit>? = null
+
+    /** Whether a fresh read of the chequebook finds no proof. */
+    private var unreadable = false
+
     private val contracts = object : SwarmContracts {
-        override fun observeChequebook(network: Network, node: Address, chequebook: Address) = flowOf(reading())
-        override suspend fun chequebook(network: Network, node: Address, chequebook: Address) = reading()
+        override fun observeChequebook(network: Network, node: Address, chequebook: Address) =
+            flowOf(if (syncing) SwarmReading.Syncing else reading())
+        override suspend fun chequebook(network: Network, node: Address, chequebook: Address): ChequebookReading {
+            gate?.await()
+            return if (unreadable) {
+                ChequebookReading.Unavailable(ReadUnavailable.SYNCING)
+            } else {
+                ChequebookReading.Read((reading() as SwarmReading.Verified).finding, 100)
+            }
+        }
         override fun observeBatch(network: Network, node: Address, id: BatchId): Flow<SwarmReading<BatchFinding>> =
             flowOf(SwarmReading.NotPinned)
         override fun deployment(network: Network) = SwarmDeployment(bzz, Address.of("0x" + "45".repeat(20)))
@@ -207,5 +226,39 @@ class WithdrawViewModelTest {
         val viewModel = viewModel()
         runCurrent()
         assertEquals(WithdrawUiState.Unavailable(WithdrawTexts.NODE_KEY_NOT_HELD), viewModel.uiState.value)
+    }
+
+    @Test
+    fun whyASendFailedWhileHiddenIsSaidOnceShownAgain() = runTest {
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.onAmount("1")
+        viewModel.review()
+        runCurrent()
+        viewModel.onPasswordChange("pw")
+        // The check before signing waits, the screen goes away, and the check finds no proof.
+        val wait = CompletableDeferred<Unit>()
+        gate = wait
+        unreadable = true
+        viewModel.sign()
+        runCurrent()
+        viewModel.onHidden()
+        wait.complete(Unit)
+        gate = null
+        runCurrent()
+        unreadable = false
+        viewModel.onShown()
+        runCurrent()
+        val review = assertIs<WithdrawStep.Review>(viewModel.ready.step)
+        assertEquals(WithdrawTexts.notChecked(ReadUnavailable.SYNCING), review.note)
+        assertTrue(signer.asked.isEmpty())
+    }
+
+    @Test
+    fun syncingIsSaidAsSuchNotAsNotReadYet() = runTest {
+        syncing = true
+        val viewModel = viewModel()
+        runCurrent()
+        assertEquals(listOf(eth.serotine.ui.swarm.SwarmTexts.SYNCING), viewModel.ready.lines)
     }
 }

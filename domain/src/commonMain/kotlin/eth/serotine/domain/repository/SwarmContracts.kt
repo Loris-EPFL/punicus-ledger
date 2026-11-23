@@ -32,11 +32,12 @@ interface SwarmContracts {
      * What the contract at [chequebook] is to the node at [node] on [network], as [observeChequebook]
      * finds it, read fresh, never from a reading kept before: what a withdrawal is quoted, and checked
      * before it is signed, on (docs/swarm.md, *Withdraw from the chequebook*). All of it at one block.
-     * Blocks on the engine, bounded by it; never throws. A [network] no adapter serves here is
-     * refused ([ReadUnavailable.NO_ENGINE]); one that pins no Swarm contracts answers
-     * [SwarmReading.NotPinned].
+     * xBZZ's proxy and the implementation its EIP-1967 slot names are proven the pinned ones first,
+     * the slot read again after, since the withdrawal runs xBZZ's code: another implementation is
+     * [ChequebookReading.BzzChanged]. Blocks on the engine, bounded by it; never throws. A [network]
+     * no adapter serves here is refused ([ReadUnavailable.NO_ENGINE]).
      */
-    suspend fun chequebook(network: Network, node: Address, chequebook: Address): SwarmReading<ChequebookFinding>
+    suspend fun chequebook(network: Network, node: Address, chequebook: Address): ChequebookReading
 
     /**
      * What the batch [id] is to the node at [node] on [network] (docs/swarm.md, *A batch is
@@ -87,6 +88,22 @@ sealed interface PostageReading {
 
     /** No verified answer can be had right now, for [reason]. */
     data class Unavailable(val reason: ReadUnavailable) : PostageReading
+}
+
+/** One answer of [SwarmContracts.chequebook]. */
+sealed interface ChequebookReading {
+
+    /** [finding], verified at block [blockNumber]. */
+    data class Read(val finding: ChequebookFinding, val blockNumber: Long) : ChequebookReading
+
+    /** xBZZ's proxy, or the implementation it names, is not the pinned one any more: nothing is withdrawn. */
+    data object BzzChanged : ChequebookReading
+
+    /** No Swarm contracts are pinned on the network asked about. */
+    data object NotPinned : ChequebookReading
+
+    /** No verified answer can be had right now, for [reason]. */
+    data class Unavailable(val reason: ReadUnavailable) : ChequebookReading
 }
 
 /** One answer of [SwarmContracts]. */

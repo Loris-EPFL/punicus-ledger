@@ -13,6 +13,7 @@ import eth.serotine.domain.model.toHex
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.ChequebookFinding
+import eth.serotine.domain.repository.ChequebookReading
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.PostageReading
@@ -49,9 +50,21 @@ class ChequebookWithdrawalTest {
         )
     }
 
+    /** Whether xBZZ is found upgraded past its pin. */
+    private var bzzChanged = false
+
     private val contracts = object : SwarmContracts {
         override fun observeChequebook(network: Network, node: Address, chequebook: Address) = flowOf(finding())
-        override suspend fun chequebook(network: Network, node: Address, chequebook: Address) = finding()
+        override suspend fun chequebook(network: Network, node: Address, chequebook: Address): ChequebookReading =
+            if (bzzChanged) {
+                ChequebookReading.BzzChanged
+            } else {
+                when (val read = finding()) {
+                    is SwarmReading.Verified -> ChequebookReading.Read(read.finding, read.blockNumber)
+                    is SwarmReading.Unavailable -> ChequebookReading.Unavailable(read.reason)
+                    else -> ChequebookReading.NotPinned
+                }
+            }
         override fun observeBatch(network: Network, node: Address, id: BatchId): Flow<SwarmReading<BatchFinding>> =
             flowOf(SwarmReading.NotPinned)
         override fun deployment(network: Network) = SwarmDeployment(bzz, stamp)
@@ -128,9 +141,29 @@ class ChequebookWithdrawalTest {
         val send = SendChequebookWithdrawal(signer, FakeBroadcaster(), sent, inputs, contracts) { 1_000 }
         assertIs<WithdrawalSending.Sending>(send(first, Unlock.WithBiometrics("test")))
         // Not mined yet: the chequebook still shows it all liquid, and none of it is free for a second one.
-        assertEquals(WithdrawalQuoting.Refused(WithdrawalRefusal.MoreThanFree(UInt256.ZERO)), withdraw(UInt256.of(1)))
+        assertEquals(
+            WithdrawalQuoting.Refused(
+                WithdrawalRefusal.MoreThanFree(
+                    UInt256.ZERO,
+                    heldBack = liquid,
+                    pending = sent.transfers.value.single().hash,
+                ),
+            ),
+            withdraw(UInt256.of(1)),
+        )
         // Mined: the record no longer holds it back.
         inputs.mined = first.quote.transaction.nonce + 1
         assertIs<WithdrawalQuoting.Quoted>(withdraw(UInt256.of(1)))
+    }
+
+    @Test
+    fun nothingIsWithdrawnOnceXbzzIsNotThePinnedOne() = runTest {
+        val quoted = assertIs<WithdrawalQuoting.Quoted>(withdraw(UInt256.of(1))).quote
+        bzzChanged = true
+        assertEquals(WithdrawalQuoting.Refused(WithdrawalRefusal.BzzChanged), withdraw(UInt256.of(1)))
+        val signer = FakeSigner(FakeRecovery())
+        val send = SendChequebookWithdrawal(signer, FakeBroadcaster(), sent, inputs, contracts) { 1_000 }
+        assertEquals(WithdrawalSending.Changed, send(quoted, Unlock.WithBiometrics("test")))
+        assertTrue(signer.asked.isEmpty())
     }
 }

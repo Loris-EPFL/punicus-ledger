@@ -34,14 +34,16 @@ sealed interface WithdrawStep {
 
     /**
      * The form: the [amount] typed, in BZZ, [all] what is free to withdraw as typed into it by All
-     * (null while it is not verified), [error] why the last Review quoted nothing, and [quoting] while
-     * it is quoted.
+     * (null while it is not verified, or nothing is), [error] why the last Review quoted nothing,
+     * [quoting] while it is quoted, and [pending], the hash of an earlier withdrawal from here on its
+     * way that holds this one back, offered as its status.
      */
     data class Compose(
         val amount: String,
         val all: String?,
         val error: String? = null,
         val quoting: Boolean = false,
+        val pending: String? = null,
     ) : WithdrawStep
 
     /**

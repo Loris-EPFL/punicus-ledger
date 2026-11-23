@@ -508,9 +508,12 @@ class PostageViewModel(
         when {
             next is Step.Awaiting -> awaitApproval(next)
             // What it says (an approval that may have failed) is kept through the quote made again.
-            next is Step.Reviewing && next.hidden && shown -> requote(next, note = next.error ?: next.note)
+            next is Step.Reviewing && next.hidden && shown -> requote(next, note = carried(next))
         }
     }
+
+    /** What a review made again because the screen was hidden says: why the last try sent nothing, first. */
+    private fun carried(review: Step.Reviewing): String? = review.error ?: review.unlock.error ?: review.note
 
     fun onPasswordChange(text: String) {
         val review = step.value as? Step.Reviewing ?: return
@@ -539,7 +542,7 @@ class PostageViewModel(
     /** Whether [review]'s quote is too old to sign, or was made before the screen was hidden: made again instead. */
     private fun requoted(review: Step.Reviewing): Boolean {
         if (review.hidden) {
-            requote(review, note = review.note)
+            requote(review, note = carried(review))
             return true
         }
         if (review.quotedAt.elapsedNow() <= QUOTE_MAX_AGE) return false
@@ -731,7 +734,7 @@ class PostageViewModel(
     fun onShown() {
         shown = true
         val review = step.value as? Step.Reviewing ?: return
-        if (review.hidden && !review.signing && !review.requoting) requote(review, note = review.note)
+        if (review.hidden && !review.signing && !review.requoting) requote(review, note = carried(review))
     }
 
     private suspend fun unlockStep(): UnlockStep =

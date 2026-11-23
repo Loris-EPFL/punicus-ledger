@@ -14,6 +14,7 @@ import eth.serotine.domain.model.SwarmDeployment
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.ChequebookFinding
+import eth.serotine.domain.repository.ChequebookReading
 import eth.serotine.domain.repository.PostageReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SwarmContracts
@@ -115,20 +116,34 @@ class VerifiedSwarmContracts internal constructor(
         network: Network,
         node: Address,
         chequebook: Address,
-    ): SwarmReading<ChequebookFinding> {
-        if (network != served) return SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE)
-        val pinned = pins ?: return SwarmReading.NotPinned
-        val verified = chain ?: return SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE)
+    ): ChequebookReading {
+        if (network != served) return ChequebookReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        val pinned = pins ?: return ChequebookReading.NotPinned
+        val verified = chain ?: return ChequebookReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        val unproven = ChequebookReading.Unavailable(ReadUnavailable.UNPROVEN)
         return withContext(dispatcher) {
             try {
-                whyUnreadable(verified.snapshot())?.let { return@withContext SwarmReading.Unavailable(it) }
+                whyUnreadable(verified.snapshot())?.let { return@withContext ChequebookReading.Unavailable(it) }
+                // The withdrawal runs xBZZ's code: proven the pinned one first, its slot read again after.
+                val implementation = when (val bzz = proveBzz(verified, pinned)) {
+                    is BzzProof.Pinned -> bzz.implementation
+                    BzzProof.Changed -> return@withContext ChequebookReading.BzzChanged
+                    BzzProof.Unproven -> return@withContext unproven
+                }
                 // Read fresh, as a poll of observeChequebook reads it, never a reading kept.
-                readChequebook(verified, pinned, node, chequebook)?.toSwarmReading()
-                    ?: SwarmReading.Unavailable(ReadUnavailable.UNPROVEN)
+                val read = readChequebook(verified, pinned, node, chequebook)
+                val after = implementationOf(verified, pinned) ?: return@withContext unproven
+                if (after != implementation) return@withContext ChequebookReading.BzzChanged
+                when (read) {
+                    null -> unproven
+                    is EngineReading.Proven -> ChequebookReading.Read(read.value, read.blockNumber)
+                    is EngineReading.Unavailable -> ChequebookReading.Unavailable(read.reason)
+                    EngineReading.Syncing, is EngineReading.LastKnown -> unproven
+                }
             } catch (e: Throwable) {
                 // A cancellation of this call ends it; anything else is an engine failure, as in ProvenReads.
                 currentCoroutineContext().ensureActive()
-                SwarmReading.Unavailable(ReadUnavailable.UNPROVEN)
+                unproven
             }
         }
     }
@@ -173,18 +188,10 @@ class VerifiedSwarmContracts internal constructor(
     ): PostageReading {
         val unproven = PostageReading.Unavailable(ReadUnavailable.UNPROVEN)
         if (codeCheck(chain, pins.postageStamp, pins.postageStampCodeHash) != CodeCheck.Matches) return unproven
-        when (codeCheck(chain, pins.bzz, pins.bzzProxyCodeHash)) {
-            null -> return unproven
-            is CodeCheck.Differs -> return PostageReading.BzzChanged
-            CodeCheck.Matches -> Unit
-        }
-        // The implementation the proxy delegates to, as its EIP-1967 slot names it now: read every time.
-        val implementation = implementationOf(chain, pins) ?: return unproven
-        if (implementation != pins.bzzImplementation) return PostageReading.BzzChanged
-        when (codeCheck(chain, implementation, pins.bzzImplementationCodeHash)) {
-            null -> return unproven
-            is CodeCheck.Differs -> return PostageReading.BzzChanged
-            CodeCheck.Matches -> Unit
+        val implementation = when (val bzz = proveBzz(chain, pins)) {
+            is BzzProof.Pinned -> bzz.implementation
+            BzzProof.Changed -> return PostageReading.BzzChanged
+            BzzProof.Unproven -> return unproven
         }
         val read = readAtOneBlock(chain) { calls ->
             val state = postageAt(calls, pins.postageStamp) ?: return@readAtOneBlock null
@@ -202,6 +209,37 @@ class VerifiedSwarmContracts internal constructor(
             is EngineReading.Proven -> PostageReading.Read(read.value.first, read.blockNumber, read.value.second)
             is EngineReading.Unavailable -> PostageReading.Unavailable(read.reason)
             EngineReading.Syncing, is EngineReading.LastKnown -> unproven
+        }
+    }
+
+    /** What [proveBzz] found of xBZZ. */
+    private sealed interface BzzProof {
+        /** The pinned proxy, naming the pinned [implementation], whose code is the pinned one. */
+        data class Pinned(val implementation: Address) : BzzProof
+
+        /** Another proxy code, or another implementation, or other code there. */
+        data object Changed : BzzProof
+
+        /** Not proven either way this time. */
+        data object Unproven : BzzProof
+    }
+
+    /**
+     * xBZZ's proxy code, and the implementation its EIP-1967 slot names now, read every time, and
+     * that implementation's code, each held to its pin.
+     */
+    private suspend fun proveBzz(chain: VerifiedChain, pins: PinnedSwarm): BzzProof {
+        when (codeCheck(chain, pins.bzz, pins.bzzProxyCodeHash)) {
+            null -> return BzzProof.Unproven
+            is CodeCheck.Differs -> return BzzProof.Changed
+            CodeCheck.Matches -> Unit
+        }
+        val implementation = implementationOf(chain, pins) ?: return BzzProof.Unproven
+        if (implementation != pins.bzzImplementation) return BzzProof.Changed
+        return when (codeCheck(chain, implementation, pins.bzzImplementationCodeHash)) {
+            null -> BzzProof.Unproven
+            is CodeCheck.Differs -> BzzProof.Changed
+            CodeCheck.Matches -> BzzProof.Pinned(implementation)
         }
     }
 

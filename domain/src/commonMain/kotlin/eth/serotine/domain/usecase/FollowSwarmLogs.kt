@@ -182,7 +182,9 @@ class FollowSwarmLogs(
         for (account in eoas) {
             val queue = pending[account.id] ?: continue
             val kept = nodes[account.id]
-            for ((candidate, block) in queue.entries.toList().asReversed()) {
+            // Copied as pairs first: a map's entry is a live view on Kotlin/Native, and the queue
+            // changes below.
+            for ((candidate, block) in queue.map { (key, value) -> key to value }.asReversed()) {
                 if (kept != null && (candidate in kept.dismissed || kept.holds(candidate))) {
                     queue.remove(candidate)
                     continue

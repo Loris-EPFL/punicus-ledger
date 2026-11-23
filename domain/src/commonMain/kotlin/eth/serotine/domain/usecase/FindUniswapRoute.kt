@@ -6,7 +6,9 @@ import eth.serotine.domain.model.PoolKey
 import eth.serotine.domain.model.PoolSlot0
 import eth.serotine.domain.model.PriceImpact
 import eth.serotine.domain.model.QuoterV2
+import eth.serotine.domain.model.RouteCost
 import eth.serotine.domain.model.RouteQuote
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.SwapRoutes
 import eth.serotine.domain.model.TransferAsset
@@ -101,6 +103,73 @@ class FindUniswapRoute(
         }
     }
 
+    /**
+     * The route on [network] that sells the least of [sell] to buy exactly [amountOut] (not zero)
+     * of [buy] (docs/swaps.md, *Buying an exact amount*), from the same candidates as a sell's,
+     * each quoted by QuoterV2's exact-output functions ([QuoterV2.quoteToBuy]) and ranked by
+     * [SwapRoutes.cheapest], gross. The finding's [RouteFinding.Found.quote] returns [amountOut]
+     * itself, and its [RouteFinding.Found.amountIn] is what the route takes. A quote that reverts
+     * drops its route (its pools cannot deliver the amount).
+     */
+    suspend fun buying(network: Network, sell: TransferAsset, buy: TransferAsset, amountOut: UInt256): RouteFinding {
+        require(!amountOut.isZero) { "a swap buys something" }
+        val deployment = when (val venue = chain.venue(network)) {
+            is VenueReading.Verified -> venue.deployment
+            VenueReading.NotPinned -> return RouteFinding.NotPinned
+            is VenueReading.CodeMismatch -> return RouteFinding.CodeMismatch(venue.contract)
+            is VenueReading.Unavailable -> return RouteFinding.Unavailable(venue.reason)
+        }
+        if (!sell.swapsWith(buy, deployment)) return RouteFinding.NotASwap
+        val tokenIn = sell.tokenOn(deployment)
+        val tokenOut = buy.tokenOn(deployment)
+        val toRead = SwapRoutes.poolsToRead(tokenIn, tokenOut, deployment.weth9)
+        val pools = when (val read = readPools(network, deployment, toRead)) {
+            is PoolsRead.Read -> read.pools
+            is PoolsRead.Unavailable -> return RouteFinding.Unavailable(read.reason)
+        }
+        val liquidity = pools.mapValues { it.value.liquidity }
+        val candidates = SwapRoutes.candidates(tokenIn, tokenOut, deployment.weth9, liquidity)
+        if (candidates.isEmpty()) return RouteFinding.NoRoute
+        val (quoted, prices) = coroutineScope {
+            val spot = candidates.flatMap { it.poolKeys }.distinct().associateWith { key ->
+                async { slot0(network, pools.getValue(key).address) }
+            }
+            val costs = candidates.map { async { cost(network, deployment, it, amountOut) } }.awaitAll()
+            costs to spot.mapValues { it.value.await() }
+        }
+        quoted.firstNotNullOfOrNull { (it as? Costed.Unavailable)?.reason }
+            ?.let { return RouteFinding.Unavailable(it) }
+        val costs = quoted.filterIsInstance<Costed.Read>()
+        val best = SwapRoutes.cheapest(costs.map { it.cost }) ?: return RouteFinding.NoRoute
+        val blockNumber = costs.first { it.cost == best }.blockNumber
+        return RouteFinding.Found(
+            deployment = deployment,
+            quote = RouteQuote(best.route, amountOut, best.gasEstimate),
+            pools = best.route.poolKeys.map { pools.getValue(it).address },
+            quotedRoutes = costs.size,
+            netOfFees = false,
+            blockNumber = blockNumber,
+            spotOut = spotOut(best.route, best.amountIn, best.route.poolKeys.map { prices[it] }, blockNumber),
+            kind = SwapKind.BUY,
+            amountIn = best.amountIn,
+        )
+    }
+
+    private suspend fun cost(
+        network: Network,
+        deployment: UniswapV3Deployment,
+        route: SwapRoute,
+        amountOut: UInt256,
+    ): Costed =
+        when (val answer = chain.call(network, deployment.quoterV2, QuoterV2.quoteToBuy(route, amountOut))) {
+            is Simulation.Succeeded -> QuoterV2.costOf(route, answer.returnHex)
+                ?.let { Costed.Read(it, answer.blockNumber) }
+                ?: Costed.Unavailable(ReadUnavailable.UNPROVEN)
+            is Simulation.Reverted -> Costed.Reverted
+            Simulation.Refused -> Costed.Unavailable(ReadUnavailable.REFUSED)
+            is Simulation.Unavailable -> Costed.Unavailable(answer.reason)
+        }
+
     private suspend fun find(
         network: Network,
         deployment: UniswapV3Deployment,
@@ -148,6 +217,7 @@ class FindUniswapRoute(
             netOfFees = ranking == RouteRanking.NET_OF_FEES && (costs != null || quotes.size == 1),
             blockNumber = blockNumber,
             spotOut = spotOut(best.route, amountIn, best.route.poolKeys.map { prices[it] }, blockNumber),
+            amountIn = amountIn,
         )
     }
 
@@ -272,6 +342,12 @@ class FindUniswapRoute(
         data class Unavailable(val reason: ReadUnavailable) : Quoted
     }
 
+    private sealed interface Costed {
+        data class Read(val cost: RouteCost, val blockNumber: Long?) : Costed
+        data object Reverted : Costed
+        data class Unavailable(val reason: ReadUnavailable) : Costed
+    }
+
     private companion object {
         val UNPROVEN_POOL = PoolRead.Unavailable(ReadUnavailable.UNPROVEN)
     }
@@ -287,6 +363,11 @@ sealed interface RouteFinding {
      * [blockNumber] (null: not said). [spotOut] is what the route returns at its pools' spot
      * prices, less their fees, the price impact's measure, each read at [blockNumber]; null when
      * a pool's `slot0` could not be read at that block.
+     *
+     * [kind] says which amount is exact. A sell's [amountIn] is the amount it was asked for; a
+     * buy's ([FindUniswapRoute.buying]) is what the route takes, by QuoterV2's verified quote, and
+     * its [quote]'s amount out is the amount bought. [spotOut] is then what [amountIn] returns at
+     * the spot prices.
      */
     data class Found(
         val deployment: UniswapV3Deployment,
@@ -296,6 +377,8 @@ sealed interface RouteFinding {
         val netOfFees: Boolean,
         val blockNumber: Long?,
         val spotOut: UInt256? = null,
+        val kind: SwapKind = SwapKind.SELL,
+        val amountIn: UInt256,
     ) : RouteFinding
 
     /** The two assets are one token on Uniswap: the same one, or ETH and WETH, a wrap. */

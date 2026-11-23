@@ -60,4 +60,18 @@ class SlippageToleranceTest {
             SlippageTolerance.DEFAULT.minimumOf(max),
         )
     }
+
+    @Test
+    fun theMaximumIsTheQuotePlusTheToleranceRoundedUp() {
+        val half = SlippageTolerance.DEFAULT
+        assertEquals(UInt256.of(1_005), half.maximumOf(UInt256.of(1_000)))
+        // 1.005 and 0.0050…: rounded up, never down, so the maximum never falls below the quote's own.
+        assertEquals(UInt256.of(2), half.maximumOf(UInt256.ONE))
+        // 10 001 × 1.005 = 10 051.005.
+        assertEquals(UInt256.of(10_052), half.maximumOf(UInt256.of(10_001)))
+        assertEquals(UInt256.ZERO, half.maximumOf(UInt256.ZERO))
+        assertEquals(UInt256.of(1_050), SlippageTolerance.ofBasisPoints(500)!!.maximumOf(UInt256.of(1_000)))
+        // A quote past 2^256 / 1.005 leaves 256 bits.
+        assertNull(half.maximumOf(UInt256.MAX))
+    }
 }

@@ -117,4 +117,15 @@ class SwapRoutesTest {
         assertEquals(zero, SwapRoutes.best(listOf(small, zero, smaller)) { UInt256.of(30) })
         assertNull(SwapRoutes.best(emptyList()) { UInt256.ZERO })
     }
+
+    @Test
+    fun aBuyTakesTheRouteThatSellsTheLeastAndOnATieTheOneThroughFewerPools() {
+        val direct = SwapRoute.direct(usdc, link, FeeTier.MEDIUM)
+        val hop = SwapRoute.via(usdc, FeeTier.LOW, weth, FeeTier.MEDIUM, link)
+        val cheaperHop = RouteCost(hop, UInt256.of(990), gasEstimate = 200)
+        assertEquals(cheaperHop, SwapRoutes.cheapest(listOf(RouteCost(direct, UInt256.of(1_000), 100), cheaperHop)))
+        val tie = RouteCost(direct, UInt256.of(990), 100)
+        assertEquals(tie, SwapRoutes.cheapest(listOf(cheaperHop, tie)), "fewer pools on a tie")
+        assertNull(SwapRoutes.cheapest(emptyList()))
+    }
 }

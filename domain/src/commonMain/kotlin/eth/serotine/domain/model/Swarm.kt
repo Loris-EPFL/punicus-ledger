@@ -16,7 +16,10 @@ value class BatchId private constructor(val hex: String) {
     companion object {
         private val SHAPE = Regex("^[0-9a-f]{64}$")
 
-        /** [text] (with or without `0x`, any case, spaces around it) as a batch id, or null when it is not 32 bytes of hex. */
+        /**
+         * [text] (with or without `0x`, any case, spaces around it) as a batch id, or null when it
+         * is not 32 bytes of hex.
+         */
         fun parse(text: String): BatchId? =
             text.trim().lowercase().removePrefix("0x").takeIf(SHAPE::matches)?.let(::BatchId)
 
@@ -53,7 +56,9 @@ data class PostageBatch(
     val lastPrice: UInt256,
 ) {
     init {
-        require(depth in 0..MAX_DEPTH && bucketDepth in 0..depth) { "a batch's depths are a uint8 each, the bucket's the lower" }
+        require(depth in 0..MAX_DEPTH && bucketDepth in 0..depth) {
+            "a batch's depths are a uint8 each, the bucket's the lower"
+        }
     }
 
     /** Whether the batch has run out: no balance is left per chunk. */

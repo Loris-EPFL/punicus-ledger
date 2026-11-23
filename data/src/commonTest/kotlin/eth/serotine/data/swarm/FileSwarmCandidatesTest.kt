@@ -72,8 +72,12 @@ class FileSwarmCandidatesTest {
     @Test
     fun aDamagedFileIsSetAsideAndSaysSo() = runTest {
         SystemFileSystem.createDirectories(directory)
-        SystemFileSystem.sink(file).buffered().use { it.writeString("{\"version\":1,\"nodes\":[{\"chain\":100,\"address\":\"nope\"}]}") }
-        assertEquals(SwarmCandidateList.Loaded(emptyList(), emptyList(), setAside = true), candidates().observe(node).first())
+        val damaged = "{\"version\":1,\"nodes\":[{\"chain\":100,\"address\":\"nope\"}]}"
+        SystemFileSystem.sink(file).buffered().use { it.writeString(damaged) }
+        assertEquals(
+            SwarmCandidateList.Loaded(emptyList(), emptyList(), setAside = true),
+            candidates().observe(node).first(),
+        )
     }
 
     @Test

@@ -1,6 +1,8 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountId
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Network
@@ -25,19 +27,24 @@ import kotlinx.coroutines.flow.map
 /** The one network Bee's contracts are pinned on (docs/swarm.md, *The contracts*). */
 internal val SWARM_NETWORK = Network.GNOSIS
 
+/** Whether [account] can be a Swarm node: an EOA on [SWARM_NETWORK] (docs/swarm.md, *Recognition*). */
+internal fun canBeSwarmNode(account: Account): Boolean =
+    account.network == SWARM_NETWORK && account.kind == AccountKind.EOA
+
 /**
  * A Swarm node as the wallet sees it: every candidate kept for it (docs/swarm.md, *Where the
  * candidates come from*), each with what the light client proves it to be (docs/swarm.md,
- * *Recognition*). Off Gnosis Chain an account is no Swarm node, and nothing is read.
+ * *Recognition*). An account that is no EOA on Gnosis Chain is no Swarm node, and nothing is read.
  */
 class ObserveSwarmNode(
     private val candidates: SwarmCandidates,
     private val contracts: SwarmContracts,
 ) {
-    /** [node]'s Swarm reading, re-emitted as its candidates or their proofs change. Never fails. */
+    /** [account]'s Swarm reading, re-emitted as its candidates or their proofs change. Never fails. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    operator fun invoke(node: AccountId): Flow<SwarmNodeReading> {
-        if (node.network != SWARM_NETWORK) return flowOf(SwarmNodeReading.NotOnThisNetwork)
+    operator fun invoke(account: Account): Flow<SwarmNodeReading> {
+        if (!canBeSwarmNode(account)) return flowOf(SwarmNodeReading.NotASwarmAccount)
+        val node = account.id
         return candidates.observe(node).flatMapLatest { list ->
             when (list) {
                 SwarmCandidateList.Unreadable -> flowOf(SwarmNodeReading.Unreadable)
@@ -69,8 +76,8 @@ data class SwarmItem<K, T>(val key: K, val reading: SwarmReading<T>)
 /** One answer of [ObserveSwarmNode]. */
 sealed interface SwarmNodeReading {
 
-    /** The account is on a network where Bee's contracts are not pinned: no Swarm node there. */
-    data object NotOnThisNetwork : SwarmNodeReading
+    /** The account is no EOA on Gnosis Chain, where Bee's contracts are pinned: it is no Swarm node. */
+    data object NotASwarmAccount : SwarmNodeReading
 
     /** The candidates kept for the node cannot be read. */
     data object Unreadable : SwarmNodeReading
@@ -103,12 +110,14 @@ class AddSwarmCandidate(
     private val candidates: SwarmCandidates,
     private val contracts: SwarmContracts,
 ) {
-    /** Reads [candidate] for [node] and keeps it when it is the node's. Never throws. */
-    suspend operator fun invoke(node: AccountId, candidate: SwarmCandidate): SwarmAddOutcome {
-        if (node.network != SWARM_NETWORK) return SwarmAddOutcome.NotOnThisNetwork
+    /** Reads [candidate] for [account] and keeps it when it is the node's. Never throws. */
+    suspend operator fun invoke(account: Account, candidate: SwarmCandidate): SwarmAddOutcome {
+        if (!canBeSwarmNode(account)) return SwarmAddOutcome.NotASwarmAccount
+        val node = account.id
         val refusal = when (candidate) {
-            is SwarmCandidate.ChequebookAt ->
-                when (val reading = contracts.observeChequebook(node.network, node.address, candidate.address).first()) {
+            is SwarmCandidate.ChequebookAt -> {
+                val reading = contracts.observeChequebook(node.network, node.address, candidate.address).first()
+                when (reading) {
                     is SwarmReading.Verified -> when (val finding = reading.finding) {
                         ChequebookFinding.NotAChequebook -> SwarmAddOutcome.NotAChequebook
                         is ChequebookFinding.OthersIssuer -> SwarmAddOutcome.OthersChequebook(finding.issuer)
@@ -116,8 +125,10 @@ class AddSwarmCandidate(
                     }
                     else -> unread(reading)
                 }
-            is SwarmCandidate.Batch ->
-                when (val reading = contracts.observeBatch(node.network, node.address, candidate.id).first()) {
+            }
+            is SwarmCandidate.Batch -> {
+                val reading = contracts.observeBatch(node.network, node.address, candidate.id).first()
+                when (reading) {
                     is SwarmReading.Verified -> when (val finding = reading.finding) {
                         BatchFinding.Gone -> SwarmAddOutcome.NoSuchBatch
                         is BatchFinding.OthersOwner -> SwarmAddOutcome.OthersBatch(finding.owner)
@@ -125,6 +136,7 @@ class AddSwarmCandidate(
                     }
                     else -> unread(reading)
                 }
+            }
         }
         if (refusal != null) return refusal
         return when (candidates.add(node, candidate)) {
@@ -136,7 +148,7 @@ class AddSwarmCandidate(
 
     private fun unread(reading: SwarmReading<*>): SwarmAddOutcome = when (reading) {
         SwarmReading.Syncing -> SwarmAddOutcome.NotVerified(ReadUnavailable.SYNCING)
-        SwarmReading.NotPinned -> SwarmAddOutcome.NotOnThisNetwork
+        SwarmReading.NotPinned -> SwarmAddOutcome.NotASwarmAccount
         is SwarmReading.Unavailable -> SwarmAddOutcome.NotVerified(reading.reason)
         is SwarmReading.Verified -> error("a verified reading is no refusal")
     }
@@ -150,8 +162,8 @@ sealed interface SwarmAddOutcome {
     /** Proven the node's, and kept already. */
     data object AlreadyAdded : SwarmAddOutcome
 
-    /** The account is on a network where Bee's contracts are not pinned. */
-    data object NotOnThisNetwork : SwarmAddOutcome
+    /** The account is no EOA on Gnosis Chain, where Bee's contracts are pinned. */
+    data object NotASwarmAccount : SwarmAddOutcome
 
     /** The address is no chequebook of Bee's pinned factory. */
     data object NotAChequebook : SwarmAddOutcome

@@ -220,8 +220,9 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
             network: Network,
             node: Address,
             chequebook: Address,
-        ): Flow<SwarmReading<ChequebookFinding>> = of(network)?.swarmContracts?.observeChequebook(network, node, chequebook)
-            ?: flowOf(SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE))
+        ): Flow<SwarmReading<ChequebookFinding>> =
+            of(network)?.swarmContracts?.observeChequebook(network, node, chequebook)
+                ?: flowOf(SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE))
 
         override fun observeBatch(network: Network, node: Address, id: BatchId): Flow<SwarmReading<BatchFinding>> =
             of(network)?.swarmContracts?.observeBatch(network, node, id)

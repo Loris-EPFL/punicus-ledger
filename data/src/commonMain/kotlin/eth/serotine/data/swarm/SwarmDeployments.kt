@@ -22,7 +22,10 @@ internal class PinnedSwarm(
     /** The chequebook factory (SimpleSwapFactory), whose `deployedContracts` proves a chequebook its own. */
     val chequebookFactory: Address,
     val chequebookFactoryCodeHash: String,
-    /** The hash of a chequebook's code: the factory's EIP-1167 proxy of its master copy. */
+    /** The chequebook master copy (ERC20SimpleSwap), whose code every chequebook runs, and its code's hash. */
+    val chequebookMaster: Address,
+    val chequebookMasterCodeHash: String,
+    /** The hash of a chequebook's code: the factory's EIP-1167 proxy of [chequebookMaster]. */
     val chequebookCodeHash: String,
 )
 
@@ -59,6 +62,8 @@ internal object SwarmDeployments {
         postageStampCodeHash = "d9078a1ac32fa871bdb11be9d933a1b94e5081882565c5c6dd8a1b1cd3057145",
         chequebookFactory = Address.of("0xc2d5a532cf69aa9a1378737d8ccdef884b6e7420"),
         chequebookFactoryCodeHash = "892333f95702916f17b7244e64a91ff89b0e789e208d681e7d7833b909b17065",
+        chequebookMaster = Address.of("0x3b6a7f0bdb6663007f95dbd7fddef815f7596715"),
+        chequebookMasterCodeHash = "3e3e840e87dc578cf44143cc2924f91886cecc0b71a58e6f368b6029b7c17960",
         chequebookCodeHash = "81d3de06cadb0970fc653f24cef4689243f9a3d702236370ecf4613673048145",
     )
 }

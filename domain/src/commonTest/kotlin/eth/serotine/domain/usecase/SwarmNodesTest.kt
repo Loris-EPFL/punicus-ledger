@@ -1,6 +1,9 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Chequebook
@@ -30,12 +33,13 @@ import kotlinx.coroutines.test.runTest
 class SwarmNodesTest {
 
     private val nodeAddress = Address.of("0x" + "0b".repeat(20))
-    private val node = AccountId(Network.GNOSIS, nodeAddress)
+    private val node = watched(Network.GNOSIS, nodeAddress)
     private val other = Address.of("0x" + "0c".repeat(20))
     private val chequebookAddress = Address.of("0x" + "cb".repeat(20))
     private val batchId = BatchId.of("ab".repeat(32))
 
-    private val chequebook = Chequebook(chequebookAddress, nodeAddress, UInt256.of(10), UInt256.of(10), UInt256.of(0), false)
+    private val chequebook =
+        Chequebook(chequebookAddress, nodeAddress, UInt256.of(10), UInt256.of(10), UInt256.of(0), bounced = false)
     private val batch = PostageBatch(batchId, nodeAddress, 22, 16, false, UInt256.of(100), UInt256.of(10))
 
     /** What each chequebook and batch reads as; the node's own by default. */
@@ -44,9 +48,10 @@ class SwarmNodesTest {
     private val nodesAsked = mutableListOf<Address>()
 
     private val contracts = object : SwarmContracts {
-        override fun observeChequebook(network: Network, node: Address, chequebook: Address) =
-            flowOf(chequebookReadings[chequebook] ?: SwarmReading.Verified(ChequebookFinding.Node(this@SwarmNodesTest.chequebook), 7))
-                .also { nodesAsked += node }
+        override fun observeChequebook(network: Network, node: Address, chequebook: Address) = flowOf(
+            chequebookReadings[chequebook]
+                ?: SwarmReading.Verified(ChequebookFinding.Node(this@SwarmNodesTest.chequebook), 7),
+        ).also { nodesAsked += node }
 
         override fun observeBatch(network: Network, node: Address, id: BatchId) =
             flowOf(batchReadings[id] ?: SwarmReading.Verified(BatchFinding.Node(batch), 7)).also { nodesAsked += node }
@@ -70,11 +75,18 @@ class SwarmNodesTest {
     private val observe = ObserveSwarmNode(candidates, contracts)
     private val add = AddSwarmCandidate(candidates, contracts)
 
+    private fun watched(network: Network, address: Address, kind: AccountKind = AccountKind.EOA) =
+        Account(network, address, kind, "Bee", AccountCustody.Watched)
+
     @Test
-    fun offGnosisChainNothingIsRead() = runTest {
-        assertEquals(SwarmNodeReading.NotOnThisNetwork, observe(AccountId(Network.ETHEREUM, nodeAddress)).first())
-        assertEquals(SwarmCandidateList.Loaded(emptyList(), emptyList()), stored.value)
+    fun offGnosisChainOrForASafeNothingIsRead() = runTest {
+        assertEquals(SwarmNodeReading.NotASwarmAccount, observe(watched(Network.ETHEREUM, nodeAddress)).first())
+        // A batch may name a Safe as its owner, but a Swarm node is an EOA (docs/swarm.md, *Recognition*).
+        val safe = watched(Network.GNOSIS, nodeAddress, AccountKind.SAFE)
+        assertEquals(SwarmNodeReading.NotASwarmAccount, observe(safe).first())
+        assertEquals(SwarmAddOutcome.NotASwarmAccount, add(safe, SwarmCandidate.Batch(batchId)))
         assertTrue(nodesAsked.isEmpty())
+        assertTrue(added.isEmpty())
     }
 
     @Test
@@ -133,7 +145,10 @@ class SwarmNodesTest {
         assertEquals(SwarmAddOutcome.NotVerified(ReadUnavailable.SYNCING), add(node, SwarmCandidate.Batch(batchId)))
         batchReadings[batchId] = SwarmReading.Unavailable(ReadUnavailable.REFUSED)
         assertEquals(SwarmAddOutcome.NotVerified(ReadUnavailable.REFUSED), add(node, SwarmCandidate.Batch(batchId)))
-        assertEquals(SwarmAddOutcome.NotOnThisNetwork, add(AccountId(Network.SEPOLIA, nodeAddress), SwarmCandidate.Batch(batchId)))
+        assertEquals(
+            SwarmAddOutcome.NotASwarmAccount,
+            add(watched(Network.SEPOLIA, nodeAddress), SwarmCandidate.Batch(batchId)),
+        )
         assertTrue(added.isEmpty())
     }
 

@@ -31,7 +31,7 @@ import kotlinx.coroutines.sync.withLock
  * contracts pinned for [served] ([pins], [SwarmDeployments]).
  *
  * - **A chequebook**: its code, proven by [VerifiedChain.proveCode], must hash to the pinned
- *   chequebook proxy, and the pinned factory's code to its pin. Then, at one block
+ *   chequebook proxy, and the pinned factory's and master copy's code to their pins. Then, at one block
  *   ([OneBlockCalls]): the factory's `deployedContracts(chequebook)` must be true and the
  *   chequebook's `token()` xBZZ, or it is [ChequebookFinding.NotAChequebook]; its `issuer()`
  *   must be the node asked about, or it is [ChequebookFinding.OthersIssuer]; then its
@@ -122,8 +122,12 @@ class VerifiedSwarmContracts internal constructor(
             is CodeCheck.Differs -> return EngineReading.Proven(ChequebookFinding.NotAChequebook, check.blockNumber)
             CodeCheck.Matches -> Unit
         }
-        // A factory that is not the pinned one proves nothing: Swarm is unavailable, never wrong.
-        if (codeCheck(chain, pins.chequebookFactory, pins.chequebookFactoryCodeHash) != CodeCheck.Matches) return null
+        // A factory or a master copy that is not the pinned one proves nothing: unavailable, never wrong.
+        // The chequebook's getters run the master copy's code, which its proxy delegates to.
+        val factory = codeCheck(chain, pins.chequebookFactory, pins.chequebookFactoryCodeHash)
+        if (factory != CodeCheck.Matches) return null
+        val master = codeCheck(chain, pins.chequebookMaster, pins.chequebookMasterCodeHash)
+        if (master != CodeCheck.Matches) return null
         return readAtOneBlock(chain) { calls -> chequebookAt(calls, pins, node, chequebook) }
     }
 
@@ -212,7 +216,10 @@ class VerifiedSwarmContracts internal constructor(
         fun deployedContracts(contract: Address): ByteArray =
             ("c70242ad" + "0".repeat(24) + contract.hex.removePrefix("0x").lowercase()).fromHex()
 
-        /** The PostageStamp's `batches(bytes32)`: owner, depth, bucket depth, immutable, normalised balance, last update. */
+        /**
+         * The PostageStamp's `batches(bytes32)`: owner, depth, bucket depth, immutable, normalised
+         * balance and last update.
+         */
         fun batches(id: BatchId): ByteArray = ("c81e25ab" + id.hex).fromHex()
 
         /** The PostageStamp's `remainingBalance(bytes32)`: the batch's balance left per chunk. */

@@ -15,10 +15,10 @@ interface SwarmCandidates {
     /** [node]'s candidates, re-emitted on each change, or why they cannot be read. Never throws. */
     fun observe(node: AccountId): Flow<SwarmCandidateList>
 
-    /** Adds [candidate] to [node]'s; [SwarmCandidateChange.AlreadyPresent] when it is there already. Never throws. */
+    /** Adds [candidate] to [node]'s; [SwarmCandidateChange.ALREADY_PRESENT] when it is there already. Never throws. */
     suspend fun add(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange
 
-    /** Takes [candidate] out of [node]'s; [SwarmCandidateChange.NotFound] when it is not there. Never throws. */
+    /** Takes [candidate] out of [node]'s; [SwarmCandidateChange.NOT_FOUND] when it is not there. Never throws. */
     suspend fun remove(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange
 }
 

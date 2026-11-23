@@ -34,6 +34,7 @@ class VerifiedSwarmContractsTest {
     private val gnosis = checkNotNull(SwarmDeployments.of(Network.GNOSIS))
     private val stampCode = "6001600055"
     private val factoryCode = "6002600055"
+    private val masterCode = "6004600055"
     private val pins = PinnedSwarm(
         bzz = gnosis.bzz,
         bzzProxyCodeHash = gnosis.bzzProxyCodeHash,
@@ -43,6 +44,8 @@ class VerifiedSwarmContractsTest {
         postageStampCodeHash = codeHash(stampCode),
         chequebookFactory = gnosis.chequebookFactory,
         chequebookFactoryCodeHash = codeHash(factoryCode),
+        chequebookMaster = gnosis.chequebookMaster,
+        chequebookMasterCodeHash = codeHash(masterCode),
         chequebookCodeHash = gnosis.chequebookCodeHash,
     )
 
@@ -83,7 +86,9 @@ class VerifiedSwarmContractsTest {
         fake.snapshot = running(head = 7)
         fake.codes[chequebook] = ProvenCode(proxy, blockNumber = 7)
         fake.codes[pins.chequebookFactory] = ProvenCode(factoryCode, blockNumber = 7)
-        answer(pins.chequebookFactory, VerifiedSwarmContracts.deployedContracts(chequebook), word(if (deployed) "1" else "0"))
+        fake.codes[pins.chequebookMaster] = ProvenCode(masterCode, blockNumber = 7)
+        val deployedAnswer = word(if (deployed) "1" else "0")
+        answer(pins.chequebookFactory, VerifiedSwarmContracts.deployedContracts(chequebook), deployedAnswer)
         answer(chequebook, VerifiedSwarmContracts.TOKEN, word(pins.bzz.hex))
         answer(chequebook, VerifiedSwarmContracts.ISSUER, word(issuer.hex))
         answer(chequebook, VerifiedSwarmContracts.BALANCE, word("2aa1efb94e0000"))
@@ -167,12 +172,30 @@ class VerifiedSwarmContractsTest {
     }
 
     @Test
+    fun aMasterCopyOtherThanThePinnedOneProvesNothing() = runTest {
+        theNodesChequebook()
+        fake.codes[pins.chequebookMaster] = ProvenCode("6003600055", blockNumber = 7)
+        assertEquals(
+            SwarmReading.Unavailable(ReadUnavailable.UNPROVEN),
+            contracts().observeChequebook(Network.GNOSIS, node, chequebook).first(),
+        )
+    }
+
+    @Test
     fun theNodesBatchIsReadWithThePriceAtTheSameBlock() = runTest {
         theBatch()
         assertEquals(
             SwarmReading.Verified(
                 BatchFinding.Node(
-                    PostageBatch(batch, buyer, 22, 16, immutable = true, UInt256.of(5_730_943_641), UInt256.of(206_979)),
+                    PostageBatch(
+                        batch,
+                        buyer,
+                        depth = 22,
+                        bucketDepth = 16,
+                        immutable = true,
+                        remainingPerChunk = UInt256.of(5_730_943_641),
+                        lastPrice = UInt256.of(206_979),
+                    ),
                 ),
                 7,
             ),
@@ -188,7 +211,10 @@ class VerifiedSwarmContractsTest {
             contracts().observeBatch(Network.GNOSIS, node, batch).first(),
         )
         theBatch(owner = Address.of("0x" + "0".repeat(40)))
-        assertEquals(SwarmReading.Verified(BatchFinding.Gone, 7), contracts().observeBatch(Network.GNOSIS, buyer, batch).first())
+        assertEquals(
+            SwarmReading.Verified(BatchFinding.Gone, 7),
+            contracts().observeBatch(Network.GNOSIS, buyer, batch).first(),
+        )
     }
 
     @Test

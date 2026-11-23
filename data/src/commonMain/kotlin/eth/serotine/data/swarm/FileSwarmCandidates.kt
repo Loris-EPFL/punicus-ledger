@@ -83,7 +83,11 @@ class FileSwarmCandidates(
                 is SwarmCandidate.Batch ->
                     if (candidate.id in kept.batches) null else kept.copy(batches = kept.batches + candidate.id)
             }
-            if (next == null) Decision(SwarmCandidateChange.ALREADY_PRESENT) else Decision(SwarmCandidateChange.CHANGED, all + (node to next))
+            if (next == null) {
+                Decision(SwarmCandidateChange.ALREADY_PRESENT)
+            } else {
+                Decision(SwarmCandidateChange.CHANGED, all + (node to next))
+            }
         }
 
     override suspend fun remove(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange =

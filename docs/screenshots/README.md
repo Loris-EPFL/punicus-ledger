@@ -58,7 +58,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Safe transaction (simple mode)](#simple-safe-tx) | `simple-safe-tx/` | 15 |
 | [Send (simple mode)](#simple-send) | `simple-send/` | 10 |
 | [Settings (simple mode)](#simple-settings) | `simple-settings/` | 10 |
-| [Swap (simple mode)](#simple-swap) | `simple-swap/` | 12 |
+| [Swap (simple mode)](#simple-swap) | `simple-swap/` | 14 |
 | [Tokens (simple mode)](#simple-tokens) | `simple-tokens/` | 2 |
 | [Transfer status (simple mode)](#simple-transfer-status) | `simple-transfer-status/` | 13 |
 | [Watch address (simple mode)](#simple-watch) | `simple-watch/` | 9 |
@@ -1026,7 +1026,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="simple-swap"></a>
 ## Swap (simple mode)
 
-`simple-swap/`, 12 states: `compose`, `compose-dark`, `compose-buy`, `approval`, `approval-dark`, `pending`, `step-two`, `cow`, `reset-first`, `earlier-failed`, `one-step`, `not-sent`
+`simple-swap/`, 14 states: `compose`, `compose-dark`, `compose-buy`, `approval`, `approval-dark`, `pending`, `step-two`, `cow`, `swap-buy`, `cow-buy`, `reset-first`, `earlier-failed`, `one-step`, `not-sent`
 
 <a href="simple-swap/compose.png"><img src="simple-swap/compose.png" width="206" alt="compose"></a>
 <a href="simple-swap/compose-dark.png"><img src="simple-swap/compose-dark.png" width="206" alt="compose-dark"></a>
@@ -1036,6 +1036,8 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="simple-swap/pending.png"><img src="simple-swap/pending.png" width="206" alt="pending"></a>
 <a href="simple-swap/step-two.png"><img src="simple-swap/step-two.png" width="206" alt="step-two"></a>
 <a href="simple-swap/cow.png"><img src="simple-swap/cow.png" width="206" alt="cow"></a>
+<a href="simple-swap/swap-buy.png"><img src="simple-swap/swap-buy.png" width="206" alt="swap-buy"></a>
+<a href="simple-swap/cow-buy.png"><img src="simple-swap/cow-buy.png" width="206" alt="cow-buy"></a>
 <a href="simple-swap/reset-first.png"><img src="simple-swap/reset-first.png" width="206" alt="reset-first"></a>
 <a href="simple-swap/earlier-failed.png"><img src="simple-swap/earlier-failed.png" width="206" alt="earlier-failed"></a>
 <a href="simple-swap/one-step.png"><img src="simple-swap/one-step.png" width="206" alt="one-step"></a>

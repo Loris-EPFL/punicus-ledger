@@ -21,7 +21,6 @@ import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
-import kotlinx.io.readString
 import kotlinx.io.writeString
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -46,9 +45,10 @@ class FileSwarmCandidatesTest {
     @Test
     fun candidatesSurviveARestartPerNode() = runTest {
         val first = candidates()
-        assertEquals(SwarmCandidateChange.CHANGED, first.add(node, SwarmCandidate.ChequebookAt(chequebook)))
-        assertEquals(SwarmCandidateChange.ALREADY_PRESENT, first.add(node, SwarmCandidate.ChequebookAt(chequebook)))
-        assertEquals(SwarmCandidateChange.CHANGED, first.add(node, SwarmCandidate.Batch(batch)))
+        val atChequebook = SwarmCandidate.ChequebookAt(chequebook)
+        assertEquals(SwarmCandidateChange.CHANGED, first.add(node, atChequebook, byHand = true))
+        assertEquals(SwarmCandidateChange.ALREADY_PRESENT, first.add(node, atChequebook, byHand = true))
+        assertEquals(SwarmCandidateChange.CHANGED, first.add(node, SwarmCandidate.Batch(batch), byHand = true))
 
         assertEquals(SwarmCandidateList.Loaded(listOf(chequebook), listOf(batch)), candidates().observe(node).first())
         // The same address on another network is another account, with nothing kept.
@@ -59,14 +59,31 @@ class FileSwarmCandidatesTest {
     }
 
     @Test
-    fun aRemovedCandidateIsGoneAndANodeWithNoneLeavesTheFile() = runTest {
+    fun theNodesOfANetworkAreListedWithTheirCandidates() = runTest {
         val store = candidates()
-        store.add(node, SwarmCandidate.Batch(batch))
+        store.add(node, SwarmCandidate.Batch(batch), byHand = true)
+        store.add(node.copy(network = Network.ETHEREUM), SwarmCandidate.ChequebookAt(chequebook), byHand = true)
+        assertEquals(
+            mapOf(node to SwarmCandidateList.Loaded(emptyList(), listOf(batch))),
+            store.observeNodes(Network.GNOSIS).first(),
+        )
+    }
+
+    @Test
+    fun aRemovedCandidateIsRememberedAsRemovedUntilItIsAddedAgain() = runTest {
+        val store = candidates()
+        store.add(node, SwarmCandidate.Batch(batch), byHand = true)
         assertEquals(SwarmCandidateChange.NOT_FOUND, store.remove(node, SwarmCandidate.ChequebookAt(chequebook)))
         assertEquals(SwarmCandidateChange.CHANGED, store.remove(node, SwarmCandidate.Batch(batch)))
         assertEquals(SwarmCandidateChange.NOT_FOUND, store.remove(node, SwarmCandidate.Batch(batch)))
-        val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(node.address.hex.removePrefix("0x").lowercase() !in text.lowercase(), text)
+        val removed =
+            SwarmCandidateList.Loaded(emptyList(), emptyList(), dismissed = setOf(SwarmCandidate.Batch(batch)))
+        // Across a restart too: the log index must not bring it back.
+        assertEquals(removed, candidates().observe(node).first())
+        assertTrue(!removed.keepsAny, "a removal alone makes no node")
+
+        assertEquals(SwarmCandidateChange.CHANGED, store.add(node, SwarmCandidate.Batch(batch), byHand = true))
+        assertEquals(SwarmCandidateList.Loaded(emptyList(), listOf(batch)), candidates().observe(node).first())
     }
 
     @Test
@@ -78,6 +95,29 @@ class FileSwarmCandidatesTest {
             SwarmCandidateList.Loaded(emptyList(), emptyList(), setAside = true),
             candidates().observe(node).first(),
         )
+    }
+
+    @Test
+    fun aFoundCandidateNeverUndoesTheUsersRemoval() = runTest {
+        val store = candidates()
+        store.add(node, SwarmCandidate.Batch(batch), byHand = true)
+        store.remove(node, SwarmCandidate.Batch(batch))
+        assertEquals(SwarmCandidateChange.DISMISSED, store.add(node, SwarmCandidate.Batch(batch), byHand = false))
+        // Listed with its removal alone, which is what the log index's follower checks against.
+        val removed =
+            SwarmCandidateList.Loaded(emptyList(), emptyList(), dismissed = setOf(SwarmCandidate.Batch(batch)))
+        assertEquals(mapOf(node to removed), store.observeNodes(Network.GNOSIS).first())
+        assertEquals(SwarmCandidateChange.CHANGED, store.add(node, SwarmCandidate.Batch(batch), byHand = true))
+    }
+
+    @Test
+    fun aForgottenNodeLeavesNothingBehind() = runTest {
+        val store = candidates()
+        store.add(node, SwarmCandidate.Batch(batch), byHand = true)
+        store.remove(node, SwarmCandidate.Batch(batch))
+        assertEquals(SwarmCandidateChange.CHANGED, store.forget(node))
+        assertEquals(SwarmCandidateChange.NOT_FOUND, store.forget(node))
+        assertEquals(emptyMap(), candidates().observeNodes(Network.GNOSIS).first())
     }
 
     @Test
@@ -104,6 +144,6 @@ class FileSwarmCandidatesTest {
         SystemFileSystem.createDirectories(directory)
         SystemFileSystem.sink(file).buffered().use { it.writeString("{\"version\":2,\"nodes\":[]}") }
         assertEquals(SwarmCandidateList.Unreadable, candidates().observe(node).first())
-        assertEquals(SwarmCandidateChange.NOT_SAVED, candidates().add(node, SwarmCandidate.Batch(batch)))
+        assertEquals(SwarmCandidateChange.NOT_SAVED, candidates().add(node, SwarmCandidate.Batch(batch), byHand = true))
     }
 }

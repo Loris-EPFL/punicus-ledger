@@ -8,6 +8,7 @@ import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Chequebook
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PostageBatch
+import eth.serotine.domain.model.SwarmDeployment
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.ChequebookFinding
@@ -358,6 +359,13 @@ class VerifiedSwarmContractsTest {
             SwarmReading.Unavailable(ReadUnavailable.REFUSED),
             contracts().observeBatch(Network.GNOSIS, buyer, batch).first(),
         )
+    }
+
+    @Test
+    fun theDeploymentIsThePinnedOnesOfTheNetworkServed() = runTest {
+        assertEquals(SwarmDeployment(pins.bzz, pins.postageStamp), contracts().deployment(Network.GNOSIS))
+        assertEquals(null, contracts().deployment(Network.ETHEREUM))
+        assertEquals(null, contracts(Network.ETHEREUM, pinned = null).deployment(Network.ETHEREUM))
     }
 
     @Test

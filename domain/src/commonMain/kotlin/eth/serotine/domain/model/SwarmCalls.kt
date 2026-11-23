@@ -37,6 +37,16 @@ object SwarmCalls {
         return INCREASE_DEPTH + id.bytes() + AbiWords.word(depth.toLong())
     }
 
+    /**
+     * Seconds [perChunk] lasts a chunk at [lastPrice] per block, at Gnosis Chain's
+     * [PostageBatch.BLOCK_SECONDS] a block, rounded down to a whole block, as Bee's `estimateBatchTTL`
+     * works it out; null when the price is zero (no time can be told) or it does not fit a Long.
+     */
+    fun secondsFor(perChunk: UInt256, lastPrice: UInt256): Long? {
+        val blocks = perChunk.mulDivOrNull(UInt256.of(1), lastPrice) ?: return null
+        return blocks.timesOrNull(UInt256.of(PostageBatch.BLOCK_SECONDS))?.toLongOrNull()
+    }
+
     /** What [perChunk] for every one of a batch's `2^depth` chunks costs in all; null when it does not fit. */
     fun total(perChunk: UInt256, depth: Int): UInt256? {
         var total = perChunk

@@ -40,6 +40,8 @@ class SwarmScreenTest {
                 "About 41 days left at the current price",
                 immutable = true,
                 status = "Verified at block 1",
+                topUp = SwarmAction(),
+                dilute = SwarmAction(SwarmTexts.NODE_KEY_NOT_HELD),
             ),
         ),
         batchNote = null,
@@ -58,6 +60,9 @@ class SwarmScreenTest {
                     onRemoveBatch = { events += "remove batch $it" },
                     onCopy = { events += "copy $it" },
                     onTurnOn = { events += "turn on" },
+                    onBuy = { events += "buy" },
+                    onTopUp = { events += "top up $it" },
+                    onDilute = { events += "dilute $it" },
                 ),
             )
         }
@@ -117,5 +122,17 @@ class SwarmScreenTest {
     fun noneFoundSaysHowToAddOne() {
         show(ready.copy(chequebooks = emptyList(), chequebookNote = SwarmTexts.NO_CHEQUEBOOK))
         rule.onNodeWithText(SwarmTexts.NO_CHEQUEBOOK).assertIsDisplayed()
+    }
+
+    @Test
+    fun aBatchActionOpensItsFormOrSaysWhatIsMissing() {
+        show(ready)
+        rule.onNodeWithTag(SWARM_BUY_TAG).performClick()
+        rule.onNodeWithTag("$SWARM_TOP_UP_TAG-0x" + "ab".repeat(32)).performClick()
+        assertEquals(listOf("buy", "top up 0x" + "ab".repeat(32)), events)
+        // Greyed out: a tap says why, and opens nothing.
+        rule.onNodeWithTag("$SWARM_DILUTE_TAG-0x" + "ab".repeat(32)).performClick()
+        rule.onNodeWithText(SwarmTexts.NODE_KEY_NOT_HELD).assertIsDisplayed()
+        assertEquals(2, events.size)
     }
 }

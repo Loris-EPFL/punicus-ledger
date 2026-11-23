@@ -25,6 +25,8 @@ private val batch = BatchRow(
     timeLeft = "About 41 days left at the current price",
     immutable = true,
     status = "Verified at block 43,000,512",
+    topUp = SwarmAction(),
+    dilute = SwarmAction(SwarmTexts.NODE_KEY_NOT_HELD),
 )
 
 private val node = SwarmUiState.Ready(

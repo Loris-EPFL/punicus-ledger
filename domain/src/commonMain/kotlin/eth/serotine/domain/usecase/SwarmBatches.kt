@@ -33,6 +33,7 @@ import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.Unlock
 import kotlin.random.Random
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
@@ -118,7 +119,67 @@ data class BatchQuote internal constructor(
     val postageBlock: Long,
     val total: UInt256,
     val batch: PostageBatch? = null,
-)
+) {
+    /**
+     * Seconds the call's xBZZ buys each chunk at the quoted `lastPrice()`: a purchase's time to live,
+     * or the time a top-up adds; null for a dilution, and where no time can be told (a zero price).
+     */
+    val secondsBought: Long?
+        get() = when (call) {
+            is BatchCall.Purchase -> SwarmCalls.secondsFor(call.perChunk, postage.lastPrice)
+            is BatchCall.TopUp -> SwarmCalls.secondsFor(call.perChunk, postage.lastPrice)
+            is BatchCall.Dilution -> null
+        }
+
+    /**
+     * Seconds the batch has left once the call is mined, at the quoted price: a purchase's time to
+     * live; a top-up's time left plus what it adds; a dilution's time left halved for each step.
+     * Null where no time can be told.
+     */
+    val secondsLeftAfter: Long?
+        get() = when (call) {
+            is BatchCall.Purchase -> secondsBought
+            is BatchCall.TopUp -> batch?.remainingPerChunk?.plusOrNull(call.perChunk)
+                ?.let { SwarmCalls.secondsFor(it, postage.lastPrice) }
+            is BatchCall.Dilution -> batch?.let {
+                val left = SwarmCalls.remainingAfterDilution(it.remainingPerChunk, call.from, call.depth)
+                SwarmCalls.secondsFor(left, postage.lastPrice)
+            }
+        }
+}
+
+/**
+ * How much a purchase or a top-up puts in for each chunk: [PerChunk], an amount of PLUR, or
+ * [Lasting], a time, worked out at the PostageStamp's `lastPrice()` read with the quote, at the
+ * same block, rounded up to a whole block ([SwarmCalls.perChunkFor]).
+ */
+sealed interface ChunkFunding {
+    /** [plur] for each chunk. */
+    data class PerChunk(val plur: UInt256) : ChunkFunding
+
+    /** Enough for each chunk to last [seconds] at the current price. */
+    data class Lasting(val seconds: Long) : ChunkFunding {
+        init {
+            require(seconds > 0) { "a time to last is more than nothing" }
+        }
+    }
+}
+
+/** [funding] in PLUR per chunk at [lastPrice]; null when it does not fit. */
+private fun perChunkOf(funding: ChunkFunding, lastPrice: UInt256): UInt256? = when (funding) {
+    is ChunkFunding.PerChunk -> funding.plur
+    is ChunkFunding.Lasting -> SwarmCalls.perChunkFor(funding.seconds, lastPrice)
+}
+
+/** The refusal of a balance per chunk below [minimum] at [lastPrice]: it names the shortest time allowed. */
+private fun belowMinimum(minimum: UInt256, lastPrice: UInt256): BatchQuoting.Refused {
+    // Rounded up to a whole block: the time named is one that reaches the minimum.
+    val seconds = SwarmCalls.secondsFor(minimum, lastPrice)?.let { down ->
+        val reaches = SwarmCalls.perChunkFor(down, lastPrice)?.let { it >= minimum } ?: true
+        if (reaches) down else down + PostageBatch.BLOCK_SECONDS
+    }
+    return BatchQuoting.Refused(BatchRefusal.BelowMinimum(minimum, seconds))
+}
 
 /** What a batch quote gives. */
 sealed interface BatchQuoting {
@@ -128,9 +189,12 @@ sealed interface BatchQuoting {
 
     /**
      * The PostageStamp's allowance over the payer's xBZZ falls short of the total: [approval], for
-     * exactly the total, is signed first, and the call is quoted again once it is mined.
+     * exactly the total, is signed first, and the call is quoted again once it is mined, with the
+     * same [perChunk] ([ChunkFunding.PerChunk]): a time worked out again at a price moved since
+     * would ask for more than was approved.
      */
-    data class NeedsApproval(val approval: TokenApprovalQuote, val total: UInt256) : BatchQuoting
+    data class NeedsApproval(val approval: TokenApprovalQuote, val total: UInt256, val perChunk: UInt256) :
+        BatchQuoting
 
     /** An approval of the PostageStamp from here ([hash]) is on its way, not mined yet: the call waits for it. */
     data class ApprovalPending(val hash: String) : BatchQuoting
@@ -162,8 +226,14 @@ sealed interface BatchRefusal {
      */
     data object DepthNotOffered : BatchRefusal
 
-    /** The balance per chunk the batch would keep falls below the contract's minimum, [minimumPerChunk] (a day's). */
-    data class BelowMinimum(val minimumPerChunk: UInt256) : BatchRefusal
+    /**
+     * The balance per chunk the batch would keep falls below the contract's minimum, [minimumPerChunk]
+     * (a day's), which lasts [minimumSeconds] at the current price (null where no time can be told).
+     */
+    data class BelowMinimum(val minimumPerChunk: UInt256, val minimumSeconds: Long? = null) : BatchRefusal
+
+    /** A time was asked for, and the PostageStamp's price is zero: no amount can be worked out from it. */
+    data object NoPrice : BatchRefusal
 
     /** The batch is not the node's: [finding] says what it is. */
     data class NotTheNodes(val finding: BatchFinding) : BatchRefusal
@@ -288,7 +358,14 @@ internal class BatchQuoter(
             }
             when (val approval = approvals(from, pinned.bzz, pinned.postageStamp, total, level)) {
                 is ApprovalQuoting.AlreadyAllowed -> Unit
-                is ApprovalQuoting.Quoted -> return BatchQuoting.NeedsApproval(approval.quote, total)
+                is ApprovalQuoting.Quoted -> {
+                    val perChunk = when (call) {
+                        is BatchCall.Purchase -> call.perChunk
+                        is BatchCall.TopUp -> call.perChunk
+                        is BatchCall.Dilution -> error("a dilution pulls no xBZZ")
+                    }
+                    return BatchQuoting.NeedsApproval(approval.quote, total, perChunk)
+                }
                 is ApprovalQuoting.ApprovalPending -> return BatchQuoting.ApprovalPending(approval.hash)
                 else -> return BatchQuoting.Refused(BatchRefusal.ApprovalNotQuoted(approval))
             }
@@ -337,6 +414,16 @@ class QuoteBatchPurchase internal constructor(
         perChunk: UInt256,
         immutable: Boolean,
         level: FeeLevel,
+    ): BatchQuoting = invoke(buyer, owner, depth, ChunkFunding.PerChunk(perChunk), immutable, level)
+
+    /** As above, with the amount per chunk given as [funding]: an amount, or a time at the current price. */
+    suspend operator fun invoke(
+        buyer: Address,
+        owner: Address,
+        depth: Int,
+        funding: ChunkFunding,
+        immutable: Boolean,
+        level: FeeLevel,
     ): BatchQuoting {
         if (depth !in SwarmCalls.MIN_DEPTH..SwarmCalls.MAX_DEPTH) {
             return BatchQuoting.Refused(BatchRefusal.DepthNotOffered)
@@ -346,9 +433,10 @@ class QuoteBatchPurchase internal constructor(
             is BatchQuoter.Prepared.Refused -> return BatchQuoting.Refused(read.refusal)
         }
         val (pinned, postage) = prepared.pinned to prepared.postage
-        if (perChunk < postage.state.minimumPerChunk) {
-            return BatchQuoting.Refused(BatchRefusal.BelowMinimum(postage.state.minimumPerChunk))
-        }
+        val price = postage.state.lastPrice
+        if (funding is ChunkFunding.Lasting && price.isZero) return BatchQuoting.Refused(BatchRefusal.NoPrice)
+        val perChunk = perChunkOf(funding, price) ?: return BatchQuoting.Refused(BatchRefusal.TooMuch)
+        if (perChunk < postage.state.minimumPerChunk) return belowMinimum(postage.state.minimumPerChunk, price)
         val total = SwarmCalls.total(perChunk, depth) ?: return BatchQuoting.Refused(BatchRefusal.TooMuch)
         val call =
             BatchCall.Purchase(pinned.bzz, pinned.postageStamp, buyer, owner, depth, perChunk, immutable, nonce())
@@ -380,18 +468,30 @@ class QuoteBatchTopUp internal constructor(private val quoter: BatchQuoter) {
         id: BatchId,
         perChunk: UInt256,
         level: FeeLevel,
+    ): BatchQuoting = invoke(payer, node, id, ChunkFunding.PerChunk(perChunk), level)
+
+    /** As above, with what is added per chunk given as [funding]: an amount, or a time at the current price. */
+    suspend operator fun invoke(
+        payer: Address,
+        node: Address,
+        id: BatchId,
+        funding: ChunkFunding,
+        level: FeeLevel,
     ): BatchQuoting {
-        if (perChunk.isZero) return BatchQuoting.Refused(BatchRefusal.NothingToAdd)
+        if ((funding as? ChunkFunding.PerChunk)?.plur?.isZero == true) {
+            return BatchQuoting.Refused(BatchRefusal.NothingToAdd)
+        }
         val prepared = when (val read = quoter.prepare(node, id)) {
             is BatchQuoter.Prepared.Ready -> read
             is BatchQuoter.Prepared.Refused -> return BatchQuoting.Refused(read.refusal)
         }
         val (pinned, postage) = prepared.pinned to prepared.postage
+        val price = postage.state.lastPrice
+        if (funding is ChunkFunding.Lasting && price.isZero) return BatchQuoting.Refused(BatchRefusal.NoPrice)
+        val perChunk = perChunkOf(funding, price) ?: return BatchQuoting.Refused(BatchRefusal.TooMuch)
         val batch = checkNotNull(prepared.batch)
         val after = batch.remainingPerChunk.plusOrNull(perChunk) ?: return BatchQuoting.Refused(BatchRefusal.TooMuch)
-        if (after < postage.state.minimumPerChunk) {
-            return BatchQuoting.Refused(BatchRefusal.BelowMinimum(postage.state.minimumPerChunk))
-        }
+        if (after < postage.state.minimumPerChunk) return belowMinimum(postage.state.minimumPerChunk, price)
         val total = SwarmCalls.total(perChunk, batch.depth) ?: return BatchQuoting.Refused(BatchRefusal.TooMuch)
         val call = BatchCall.TopUp(pinned.bzz, pinned.postageStamp, node, id, batch.depth, perChunk)
         return quoter.quote(payer, call, SwarmCalls.topUp(id, perChunk), total, pinned, postage, level, batch)
@@ -428,7 +528,7 @@ class QuoteBatchDilution internal constructor(private val quoter: BatchQuoter) {
         }
         val left = SwarmCalls.remainingAfterDilution(batch.remainingPerChunk, batch.depth, depth)
         if (left < postage.state.minimumPerChunk) {
-            return BatchQuoting.Refused(BatchRefusal.BelowMinimum(postage.state.minimumPerChunk))
+            return belowMinimum(postage.state.minimumPerChunk, postage.state.lastPrice)
         }
         val call = BatchCall.Dilution(pinned.postageStamp, id, batch.depth, depth)
         val data = SwarmCalls.increaseDepth(id, depth)
@@ -516,4 +616,54 @@ class SendBatchCall(
     private val TransferSending.reachedTheNetwork: Boolean
         get() = this is TransferSending.Sent ||
             (this is TransferSending.NotSent && broadcast is Broadcast.Unavailable)
+}
+
+/**
+ * Signs the reviewed approval a purchase or a top-up needs first ([BatchQuoting.NeedsApproval]) and
+ * hands it to the network, as [SendTokenApproval] does, after the same checks as [SendBatchCall]:
+ * xBZZ proven unchanged and the PostageStamp not paused, read fresh ([BatchSending.BatchChanged]
+ * otherwise); and the payer's verified count of mined transactions read again, and one past the quote's nonce
+ * means a transaction not sent from here took it (a Bee node signing with the same key,
+ * docs/swarm.md, *A key that Bee also uses*), so nothing is signed. Only approvals of xBZZ to the
+ * pinned PostageStamp on Gnosis Chain are signed here. [clock] is in unix seconds.
+ */
+class SendBatchApproval(
+    private val signer: Signer,
+    private val broadcaster: Broadcaster,
+    private val sentTransfers: SentTransfers,
+    private val inputs: TransactionInputs,
+    private val contracts: SwarmContracts,
+    private val clock: () -> Long = ::epochSecondsNow,
+) {
+    suspend operator fun invoke(quote: TokenApprovalQuote, unlock: Unlock): BatchSending {
+        val pinned = contracts.deployment(SWARM_NETWORK)
+        require(
+            quote.network == SWARM_NETWORK && pinned != null && quote.token == pinned.bzz &&
+                quote.spender == pinned.postageStamp,
+        ) { "only xBZZ's approval of the pinned PostageStamp is a batch's" }
+        // Read fresh: xBZZ's code and implementation proven the pinned ones, the PostageStamp not paused.
+        when (val reading = contracts.postage(quote.network)) {
+            is PostageReading.Read -> if (reading.state.paused) return BatchSending.BatchChanged
+            PostageReading.BzzChanged -> return BatchSending.BatchChanged
+            PostageReading.NotPinned -> return BatchSending.NotChecked(ReadUnavailable.NO_ENGINE)
+            is PostageReading.Unavailable -> return BatchSending.NotChecked(reading.reason)
+        }
+        when (val mined = inputs.minedNonce(quote.network, quote.from)) {
+            is NonceReading.Read -> if (mined.nonce > quote.transaction.nonce) return BatchSending.NonceTaken
+            is NonceReading.Unavailable -> return BatchSending.NotChecked(mined.reason)
+        }
+        val action = SentAction.TokenApproval(quote.token, quote.spender, quote.amount)
+        return BatchSending.Sending(
+            signAndSend(signer, broadcaster, sentTransfers, quote.network, quote.call, action, clock, unlock),
+        )
+    }
+}
+
+/**
+ * The node at `node`'s batch `id` on Gnosis Chain, as [SwarmContracts.observeBatch] proves it: what a
+ * top-up's or a dilution's form is filled in on. A quote reads it fresh again, never this reading.
+ */
+class ObservePostageBatch(private val contracts: SwarmContracts) {
+    operator fun invoke(node: Address, id: BatchId): Flow<SwarmReading<BatchFinding>> =
+        contracts.observeBatch(SWARM_NETWORK, node, id)
 }

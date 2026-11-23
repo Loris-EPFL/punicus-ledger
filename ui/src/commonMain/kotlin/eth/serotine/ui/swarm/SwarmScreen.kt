@@ -2,6 +2,8 @@ package eth.serotine.ui.swarm
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -54,6 +57,18 @@ import kotlinx.coroutines.flow.StateFlow
 
 private const val ADD_CHEQUEBOOK = "Add chequebook"
 private const val ADD_BATCH = "Add a batch by id"
+private const val BUY = "Buy a batch"
+private const val TOP_UP = "Top up"
+private const val DILUTE = "Dilute"
+
+/** Test tag of Buy a batch, for UI tests. */
+const val SWARM_BUY_TAG = "swarm-buy"
+
+/** Test tag of a batch's Top up, suffixed with its id, for UI tests. */
+const val SWARM_TOP_UP_TAG = "swarm-top-up"
+
+/** Test tag of a batch's Dilute, suffixed with its id, for UI tests. */
+const val SWARM_DILUTE_TAG = "swarm-dilute"
 
 /** Test tag of a chequebook's row, for UI tests. */
 const val SWARM_CHEQUEBOOK_TAG = "swarm-chequebook"
@@ -69,8 +84,9 @@ const val SWARM_ADD_CONFIRM_TAG = "swarm-add-confirm"
 
 /**
  * Binds [SwarmScreen] to its ViewModel: an account that leaves the wallet ends the screen through
- * [onGone]. [lightClient] is Gnosis Chain's: the strip above the screen in Detailed view, the sync
- * line in simple mode.
+ * [onGone]; Buy a batch opens its form through [onBuy], a batch's Top up and Dilute (by its id,
+ * `0x` and 64 hex digits) through [onTopUp] and [onDilute]. [lightClient] is Gnosis Chain's: the
+ * strip above the screen in Detailed view, the sync line in simple mode.
  */
 @Composable
 fun SwarmRoute(
@@ -79,6 +95,9 @@ fun SwarmRoute(
     onBack: () -> Unit,
     onGone: () -> Unit,
     modifier: Modifier = Modifier,
+    onBuy: () -> Unit = {},
+    onTopUp: (String) -> Unit = {},
+    onDilute: (String) -> Unit = {},
 ) {
     // Main.immediate: as on the other screens that take typing, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
@@ -100,6 +119,9 @@ fun SwarmRoute(
             onRemoveBatch = viewModel::removeBatch,
             onCopy = copy,
             onTurnOn = viewModel::turnOnNetwork,
+            onBuy = onBuy,
+            onTopUp = onTopUp,
+            onDilute = onDilute,
         ),
         modifier = modifier,
         lightClient = item.takeIf { LocalInterfaceMode.current == InterfaceMode.DETAILED },
@@ -117,6 +139,9 @@ data class SwarmActions(
     val onRemoveBatch: (String) -> Unit = {},
     val onCopy: (String) -> Unit = {},
     val onTurnOn: () -> Unit = {},
+    val onBuy: () -> Unit = {},
+    val onTopUp: (String) -> Unit = {},
+    val onDilute: (String) -> Unit = {},
 )
 
 /**
@@ -171,6 +196,7 @@ fun SwarmScreen(
     (state as? SwarmUiState.Ready)?.adding?.let { form -> AddDialog(form, actions) }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Ready(state: SwarmUiState.Ready, actions: SwarmActions) {
     var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
@@ -181,6 +207,15 @@ private fun Ready(state: SwarmUiState.Ready, actions: SwarmActions) {
             actions.onStartAdd(kind)
         } else {
             unavailable = networkOffNotice(title, reason, "Gnosis Chain", actions.onTurnOn)
+        }
+    }
+    // A batch action: done, or its reason said, with Turn on where the network is off.
+    val act: (String, SwarmAction, () -> Unit) -> Unit = { title, action, go ->
+        val reason = action.reason
+        when {
+            reason == null -> go()
+            action.turnOn -> unavailable = networkOffNotice(title, reason, "Gnosis Chain", actions.onTurnOn)
+            else -> unavailable = UnavailableNotice(title, reason)
         }
     }
     unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
@@ -224,7 +259,23 @@ private fun Ready(state: SwarmUiState.Ready, actions: SwarmActions) {
                 if (row.immutable) Text("Immutable")
                 row.timeLeft?.let { Text(it) }
                 Text(row.status, style = MaterialTheme.typography.bodySmall)
-                Row {
+                FlowRow {
+                    row.topUp?.let { topUp ->
+                        TextButton(
+                            onClick = { act("Top up the batch", topUp) { actions.onTopUp(row.id) } },
+                            modifier = Modifier.unavailable(topUp.reason != null)
+                                .testTag("$SWARM_TOP_UP_TAG-${row.id}"),
+                            colors = textColors(topUp.reason != null),
+                        ) { Text(TOP_UP) }
+                    }
+                    row.dilute?.let { dilute ->
+                        TextButton(
+                            onClick = { act("Dilute the batch", dilute) { actions.onDilute(row.id) } },
+                            modifier = Modifier.unavailable(dilute.reason != null)
+                                .testTag("$SWARM_DILUTE_TAG-${row.id}"),
+                            colors = textColors(dilute.reason != null),
+                        ) { Text(DILUTE) }
+                    }
                     TextButton(onClick = { actions.onCopy(row.id) }) { Text("Copy id") }
                     TextButton(onClick = { actions.onRemoveBatch(row.id) }) { Text("Remove") }
                 }
@@ -232,11 +283,18 @@ private fun Ready(state: SwarmUiState.Ready, actions: SwarmActions) {
         }
     }
     state.batchNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-    OutlinedButton(
-        onClick = { add(AddKind.BATCH, ADD_BATCH) },
-        modifier = Modifier.unavailable(state.addReason != null),
-        colors = addColors(state.addReason != null),
-    ) { Text(ADD_BATCH) }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(
+            onClick = { act(BUY, state.buy, actions.onBuy) },
+            modifier = Modifier.unavailable(state.buy.reason != null).testTag(SWARM_BUY_TAG),
+            colors = buttonColors(state.buy.reason != null),
+        ) { Text(BUY) }
+        OutlinedButton(
+            onClick = { add(AddKind.BATCH, ADD_BATCH) },
+            modifier = Modifier.unavailable(state.addReason != null),
+            colors = addColors(state.addReason != null),
+        ) { Text(ADD_BATCH) }
+    }
 }
 
 @Composable
@@ -299,6 +357,27 @@ private fun addColors(unavailable: Boolean): ButtonColors =
         ButtonDefaults.outlinedButtonColors(contentColor = Unavailable.contentColor())
     } else {
         ButtonDefaults.outlinedButtonColors()
+    }
+
+/** A filled button's colours, greyed out while it stays tappable when [unavailable]. */
+@Composable
+private fun buttonColors(unavailable: Boolean): ButtonColors =
+    if (unavailable) {
+        ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = Unavailable.contentColor(),
+        )
+    } else {
+        ButtonDefaults.buttonColors()
+    }
+
+/** A text button's colours, greyed out while it stays tappable when [unavailable]. */
+@Composable
+private fun textColors(unavailable: Boolean): ButtonColors =
+    if (unavailable) {
+        ButtonDefaults.textButtonColors(contentColor = Unavailable.contentColor())
+    } else {
+        ButtonDefaults.textButtonColors()
     }
 
 @Composable

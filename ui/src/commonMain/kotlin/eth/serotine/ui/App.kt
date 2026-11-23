@@ -38,6 +38,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
@@ -83,6 +84,8 @@ import eth.serotine.ui.pairdapp.PairDappRoute
 import eth.serotine.ui.perapp.PerAppRoute
 import eth.serotine.ui.platform.LocalScreenCaptureDebugSwitch
 import eth.serotine.ui.platform.ScreenCaptureWarnings
+import eth.serotine.ui.postage.PostageAction
+import eth.serotine.ui.postage.PostageRoute
 import eth.serotine.ui.receive.ReceiveRoute
 import eth.serotine.ui.removeaccount.RemoveAccountRoute
 import eth.serotine.ui.renameaccount.RenameAccountRoute
@@ -961,9 +964,46 @@ private fun Destinations(
                     lightClient = lightClient.item(account.network),
                     onBack = { navController.popBackStack(SWARM_ROUTE, inclusive = true) },
                     onGone = { navController.popBackStack(SWARM_ROUTE, inclusive = true) },
+                    onBuy = { navController.postage(account, PostageAction.BUY) },
+                    onTopUp = { id -> navController.postage(account, PostageAction.TOP_UP, id) },
+                    onDilute = { id -> navController.postage(account, PostageAction.DILUTE, id) },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SWARM_ROUTE, inclusive = true) }
+            }
+        }
+        composable(
+            POSTAGE_ROUTE,
+            arguments = listOf(
+                navArgument(BATCH) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            val account = entry.account()
+            val action = entry.savedStateHandle.get<String>(POSTAGE_ACTION)
+                ?.let { name -> PostageAction.entries.firstOrNull { it.name == name } }
+            val batch = entry.savedStateHandle.get<String>(BATCH)?.removePrefix("0x")?.let(BatchId::parse)
+            // A purchase names no batch; a top-up or a dilution names its own.
+            if (account != null && action != null && (action == PostageAction.BUY) == (batch == null)) {
+                PostageRoute(
+                    viewModel = viewModel { graph.postageViewModel(account, action, batch) },
+                    lightClient = lightClient.item(account.network),
+                    onBack = { navController.popBackStack(POSTAGE_ROUTE, inclusive = true) },
+                    onGone = { navController.popBackStack(POSTAGE_ROUTE, inclusive = true) },
+                    // Sent: its status in this screen's place, which back returns from to the node.
+                    onSent = { sent ->
+                        navController.navigate(transferRoute(account.network, sent)) {
+                            popUpTo(POSTAGE_ROUTE) { inclusive = true }
+                        }
+                    },
+                    // A transaction on its way that holds this one back: its status over this screen.
+                    onOpen = { hash -> navController.openTransfer(account.network, hash) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(POSTAGE_ROUTE, inclusive = true) }
             }
         }
         composable(SAFE_IMPORT_ROUTE) { entry ->
@@ -1333,6 +1373,16 @@ private fun NavController.swarm(node: AccountId) {
 }
 
 /**
+ * Opens the postage screen of [node] for [action], of the batch [batch] (`0x` and 64 hex digits) for a
+ * top-up or a dilution; a second tap while it opens does nothing.
+ */
+private fun NavController.postage(node: AccountId, action: PostageAction, batch: String? = null) {
+    if (currentDestination?.route == POSTAGE_ROUTE) return
+    val id = batch?.let { "?$BATCH=${it.lowercase()}" }.orEmpty()
+    navigate("${Destination.SWARM}/${node.route}/${Destination.POSTAGE}/${action.name}$id")
+}
+
+/**
  * Opens the Gnosis Pay account [safe]'s screen (docs/gnosis-pay.md), once; at the step [start] names
  * when the Safe's settings ask for a change of the Delay's members (owner ruling, 2026-11-18).
  */
@@ -1462,6 +1512,7 @@ private object Destination {
     const val SAFE_SETTINGS = "settings"
     const val GNOSIS_PAY = "gnosis-pay"
     const val SWARM = "swarm"
+    const val POSTAGE = "postage"
     const val UPDATE_REQUIRED = "update-required"
     const val COW_ORDER = "cow-order"
 }
@@ -1553,6 +1604,14 @@ private val ACCOUNT_ROUTE = accountRoute(Destination.ACCOUNT)
 
 /** A Swarm node's chequebook and postage batches (docs/swarm.md). */
 private val SWARM_ROUTE = accountRoute(Destination.SWARM)
+
+/** The postage screen's arguments: what it does ([PostageAction]'s name), and of which batch. */
+private const val POSTAGE_ACTION = "action"
+private const val BATCH = "batch"
+
+/** A postage batch bought, topped up or diluted for a Swarm node (docs/swarm.md, *The four actions*). */
+private const val POSTAGE_ROUTE =
+    "${Destination.SWARM}/{$CHAIN}/{$ADDRESS}/${Destination.POSTAGE}/{$POSTAGE_ACTION}?$BATCH={$BATCH}"
 
 /** The detail of a row of an account's Activity: a transaction by its hash, an event by its log too. */
 private const val ACTIVITY_DETAIL_ROUTE =

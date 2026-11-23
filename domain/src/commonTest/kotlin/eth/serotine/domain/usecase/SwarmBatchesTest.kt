@@ -124,6 +124,7 @@ class SwarmBatchesTest {
         val quoting = buy()
         val needs = assertIs<BatchQuoting.NeedsApproval>(quoting, quoting.toString())
         assertEquals(SwarmCalls.total(minimum, 22), needs.approval.amount)
+        assertEquals(minimum, needs.perChunk)
         assertEquals(stamp, needs.approval.spender)
         assertEquals(bzz.address, needs.approval.token.address)
     }
@@ -131,7 +132,8 @@ class SwarmBatchesTest {
     @Test
     fun aPurchaseIsRefusedWhatThePostageStampWouldRefuse() = runTest {
         assertEquals(BatchQuoting.Refused(BatchRefusal.DepthNotOffered), buy(depth = 16))
-        assertEquals(BatchQuoting.Refused(BatchRefusal.BelowMinimum(minimum)), buy(perChunk = UInt256.of(1)))
+        // The minimum is 17,280 blocks at the price: a day.
+        assertEquals(BatchQuoting.Refused(BatchRefusal.BelowMinimum(minimum, 86_400)), buy(perChunk = UInt256.of(1)))
         postage = PostageReading.Read(PostageState(true, UInt256.of(207_062), minimum), 100)
         assertEquals(BatchQuoting.Refused(BatchRefusal.Paused), buy())
         postage = PostageReading.BzzChanged
@@ -175,7 +177,10 @@ class SwarmBatchesTest {
         assertEquals(node, quote.quote.from)
         assertTrue(inputs.simulated.none { it.second == bzz.address }, "no allowance is read for a dilution")
         // Halved twice: 2,000,000,000, below it.
-        assertEquals(BatchQuoting.Refused(BatchRefusal.BelowMinimum(minimum)), dilute(node, id, 24, FeeLevel.NORMAL))
+        assertEquals(
+            BatchQuoting.Refused(BatchRefusal.BelowMinimum(minimum, 86_400)),
+            dilute(node, id, 24, FeeLevel.NORMAL),
+        )
         assertEquals(BatchQuoting.Refused(BatchRefusal.DepthNotOffered), dilute(node, id, 22, FeeLevel.NORMAL))
     }
 
@@ -268,5 +273,64 @@ class SwarmBatchesTest {
         assertEquals(BatchSending.NonceTaken, send(quote, Unlock.WithBiometrics("test")))
         assertTrue(signer.asked.isEmpty())
         assertTrue(sent.transfers.value.isEmpty())
+    }
+
+    @Test
+    fun aTimeIsBoughtAtThePriceReadWithTheQuote() = runTest {
+        allowance = UInt256.of(Long.MAX_VALUE)
+        val purchase = QuoteBatchPurchase(quoter) { nonce }
+        val twoDays = ChunkFunding.Lasting(2 * 86_400)
+        val quote = assertIs<BatchQuoting.Quoted>(purchase(payer, node, 22, twoDays, false, FeeLevel.NORMAL)).quote
+        assertEquals(UInt256.of(34_560L * 207_062), (quote.call as BatchCall.Purchase).perChunk)
+        assertEquals(2 * 86_400L, quote.secondsBought)
+        assertEquals(2 * 86_400L, quote.secondsLeftAfter)
+        // An hour is below the contract's minimum, which names the shortest time it takes.
+        assertEquals(
+            BatchQuoting.Refused(BatchRefusal.BelowMinimum(minimum, 86_400)),
+            purchase(payer, node, 22, ChunkFunding.Lasting(3_600), false, FeeLevel.NORMAL),
+        )
+        postage = PostageReading.Read(PostageState(false, UInt256.ZERO, minimum), 100)
+        assertEquals(
+            BatchQuoting.Refused(BatchRefusal.NoPrice),
+            purchase(payer, node, 22, twoDays, false, FeeLevel.NORMAL),
+        )
+    }
+
+    @Test
+    fun aReviewSaysTheTimeLeftAfterATopUpAndADilution() = runTest {
+        allowance = UInt256.of(Long.MAX_VALUE)
+        val day = ChunkFunding.Lasting(86_400)
+        val topUp = assertIs<BatchQuoting.Quoted>(QuoteBatchTopUp(quoter)(payer, node, id, day, FeeLevel.NORMAL)).quote
+        assertEquals(86_400L, topUp.secondsBought)
+        // 8,000,000,000 PLUR left is 38,635 blocks at the price; a day adds 17,280.
+        assertEquals((38_635L + 17_280) * 5, topUp.secondsLeftAfter)
+        val dilution = assertIs<BatchQuoting.Quoted>(QuoteBatchDilution(quoter)(node, id, 23, FeeLevel.NORMAL)).quote
+        assertEquals(null, dilution.secondsBought)
+        // Halved: 4,000,000,000 PLUR is 19,317 blocks.
+        assertEquals(19_317L * 5, dilution.secondsLeftAfter)
+    }
+
+    @Test
+    fun anApprovalIsNotSignedOnceAnotherTransactionTookTheNonce() = runTest {
+        val approval = assertIs<BatchQuoting.NeedsApproval>(buy()).approval
+        val signer = FakeSigner(FakeRecovery())
+        val send = SendBatchApproval(signer, FakeBroadcaster(), sent, inputs, contracts) { 1_000 }
+        inputs.mined = approval.transaction.nonce + 1
+        assertEquals(BatchSending.NonceTaken, send(approval, Unlock.WithBiometrics("test")))
+        assertTrue(signer.asked.isEmpty())
+        // Paused, or xBZZ upgraded, since the quote: nothing is approved.
+        inputs.mined = approval.transaction.nonce
+        postage = PostageReading.Read(PostageState(true, UInt256.of(207_062), minimum), 100)
+        assertEquals(BatchSending.BatchChanged, send(approval, Unlock.WithBiometrics("test")))
+        postage = PostageReading.BzzChanged
+        assertEquals(BatchSending.BatchChanged, send(approval, Unlock.WithBiometrics("test")))
+        assertTrue(signer.asked.isEmpty())
+        postage = PostageReading.Read(PostageState(false, UInt256.of(207_062), minimum), 100)
+        inputs.mined = approval.transaction.nonce
+        assertIs<BatchSending.Sending>(send(approval, Unlock.WithBiometrics("test")))
+        assertEquals(
+            SentAction.TokenApproval(bzz, stamp, SwarmCalls.total(minimum, 22)!!),
+            sent.transfers.value.single().action,
+        )
     }
 }

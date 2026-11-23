@@ -139,6 +139,14 @@ internal object SwarmTexts {
         SwarmAddOutcome.NotSaved -> "It is this node's, but it could not be saved."
     }
 
+    const val NO_PAYER =
+        "No account of this wallet on Gnosis Chain has its key on this device, so nothing can be paid from " +
+            "here. Create or import one, and send it xBZZ and xDAI."
+    const val NODE_KEY_NOT_HELD =
+        "Only the batch's owner may dilute it, and this node's key is not on this device: its own key signs it."
+    const val EXPIRED_ACTION = "This batch has expired: the postage contract takes no top-up or dilution of it. " +
+        "Buy a new one."
+
     const val NOT_AN_ADDRESS = "Not an address: 0x and 40 hex digits."
     const val CHECKSUM = "This address's checksum does not match: check it was copied in full."
     const val NOT_A_BATCH_ID = "Not a batch id: 64 hex digits, with or without 0x."

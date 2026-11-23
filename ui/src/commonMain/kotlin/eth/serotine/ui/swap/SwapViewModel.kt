@@ -150,13 +150,16 @@ import kotlinx.coroutines.withContext
 /**
  * The Swap screen's ViewModel (docs/swaps.md; screens 22 and 23): a swap from [from] on [network],
  * composed — the venue, the asset sold ([sell], the token asked for, null for the network's
- * currency), the asset bought, the amount in the sold asset's units, the slippage tolerance and
- * the fee level — then quoted for review and signed.
+ * currency), the asset bought, the amount sold or the amount bought (the one typed last is exact:
+ * docs/swaps.md, *Buying an exact amount*), the slippage tolerance and the fee level — then quoted
+ * for review and signed.
  *
- * - **While composing**, once the pair and the amount are set, what the swap would return and its rate
- *   are shown from a verified Uniswap quote ([EstimateSwap]; docs/swaps.md, *The compose step's
- *   estimate*): asked for [ESTIMATE_DELAY] after the last edit, and again every [ESTIMATE_REFRESH]
- *   while nothing changes. Display only: the review quotes everything again.
+ * - **While composing**, once the pair and the amount are set, what the swap would return or cost,
+ *   and its rate, are shown: on Uniswap from a verified quote ([EstimateSwap]), on CoW from CoW's
+ *   own estimate, not verified ([EstimateCowSwap]; owner ruling, 2026-11-23); docs/swaps.md, *The
+ *   compose step's estimate*. Asked for [ESTIMATE_DELAY] after the last edit, and again every
+ *   [ESTIMATE_REFRESH] while nothing changes. Display only: the review quotes everything again. A
+ *   buy whose most it may sell is more than the balance is said there, and Review stays greyed out.
  * - **The venue** is the user's to choose (*The user's choice of venue*): it starts at the one last
  *   chosen ([ObserveSwapVenue]), Uniswap the first time, and a choice is kept for the next swap
  *   ([ChooseSwapVenue]). CoW is greyed out where it is not offered, and a tap says why. When CoW
@@ -164,9 +167,9 @@ import kotlinx.coroutines.withContext
  *   itself.
  * - **On Uniswap**, the swap is quoted from verified state ([QuoteSwap]) and signed and broadcast
  *   ([SendSwap]).
- * - **On CoW**, it is quoted ([QuoteCowSwap]: CoW's estimate beside the verified Uniswap net) and
- *   its order signed and handed to CoW ([PlaceCowOrder]). CoW is asked only once the user chose
- *   it and asked for the review (CLAUDE.md, *Data sources*).
+ * - **On CoW**, it is quoted ([QuoteCowSwap]: CoW's estimate, less or plus the tolerance) and its
+ *   order signed and handed to CoW ([PlaceCowOrder]). CoW is asked only while the user has CoW
+ *   chosen: for the estimate and for the review (CLAUDE.md, *Data sources*).
  * - **ETH for WETH, or back,** is no swap but a wrap (docs/swaps.md, *Wrapping ETH*), on neither
  *   venue: WETH9's own `deposit` or `withdraw`, one for one, quoted ([QuoteWrap]) and signed and
  *   broadcast ([SendWrap]). It is asked for first, for every pair of ETH and a token, so that

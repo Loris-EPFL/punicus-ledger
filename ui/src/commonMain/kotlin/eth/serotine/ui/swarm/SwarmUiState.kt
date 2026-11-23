@@ -38,7 +38,7 @@ sealed interface SwarmUiState {
 
 /**
  * A chequebook kept for the node: its EIP-55 [address]; its [lines] once verified ("Balance 12
- * xBZZ", "Free to withdraw 12 xBZZ", "Paid out 0 xBZZ"), empty otherwise; [warning] where a
+ * BZZ", "Free to withdraw 12 BZZ", "Paid out 0 BZZ"), empty otherwise; [warning] where a
  * cheque of it bounced; and [status], where it stands: verified at a block, held as last verified,
  * not read yet, or why it is not available.
  */

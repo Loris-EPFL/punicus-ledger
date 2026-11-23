@@ -1888,25 +1888,26 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
 - **Postage batches:** each with its id (shortened, copyable), its depth and
   capacity ("Depth 22 · 7.73 GB of 17.18 GB theoretical"), "Immutable"
   where it is, and its time to live at the current price ("About 41 days
-  left at the current price"), or "Expired".
+  left at the current price"), or "Expired". The capacity is Swarm's
+  published effective figure, with the theoretical one beside it called
+  theoretical (docs/swarm.md, *What the Swarm screen shows*). **Top up** on
+  each; **Dilute** on each, greyed out unless the node's key is held here.
+  Both are greyed out on an expired batch, a tap saying to buy a new one.
+  **Buy a batch** and **Add a batch by id** under the list.
 - **Each chequebook and batch** has **Remove**, which is remembered: the
   log index never adds it back, and adding it by hand keeps it again. One
   not read yet says "Checking on chain…"; one that is not the node's says
   whose it is; one whose reading did not answer says why, or, held as last
-  verified, names its block and says it may have changed since.
+  verified, names its block and says it may have changed since. A removal
+  that could not be saved says so.
 - **Adding by hand** is a dialog: the address (checked against its EIP-55
   checksum) or the batch id, as Bee shows it. **Add** reads it on chain;
   kept, the dialog closes; refused, it says why ("This batch is owned by
   0x…, not this node.", "It could not be verified right now, so nothing was
   kept."). With Gnosis Chain off, Add is greyed out, a tap saying that
-  nothing can be checked on chain, with **Turn on Gnosis Chain**. A
-  removal that could not be saved says so. Withdraw, Top up, Dilute and Buy a batch come with their parts
-  (docs/swarm.md, *Delivery*). **Top up** on each; **Dilute** on each, greyed out unless the
-  node's key is held here. Both are greyed out on an expired batch, a tap
-  saying to buy a new one. The capacity is Swarm's published effective
-  figure, with the theoretical one beside it called theoretical
-  (docs/swarm.md, *What the Swarm screen shows*). **Buy a batch** and **Add a batch by id** under
-  the list.
+  nothing can be checked on chain, with **Turn on Gnosis Chain**.
+- Withdraw, Top up, Dilute and Buy a batch come with their parts
+  (docs/swarm.md, *Delivery*).
 - **Buy a batch** is a form: the account that pays (any EOA whose key is
   held here on Gnosis Chain, with its xBZZ), the depth with its capacity, the time to live, and
   "Immutable". It says the total in xBZZ before Review. Its review is two
@@ -1925,7 +1926,8 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
 - Signed by the node's own key, each review warns: "This is the node's own
   key. If Bee is running, stop it before you send: Bee signs with the same
   key, and one of the two transactions can replace the other."
-- Every figure names its block (Detailed view) or its age (simple mode). A
+- Every figure names its block: the screen is the same in simple mode for
+  now, block numbers included. A
   reading that could not be verified at the latest block stays as last
   verified, for an hour at most (owner's decisions, 2026-11-17), said as
   such, and nothing is quoted on it.

@@ -302,9 +302,12 @@ class AccountDetailViewModel(
         .distinctUntilChangedBy { it?.id to it?.kind }
         .flatMapLatest { found ->
             if (found == null || observeSwarmNode == null) {
-                flowOf(null)
+                flowOf(SwarmRow(null, offered = false))
             } else {
-                observeSwarmNode(found).map(::swarmEntry).onStart { emit(null) }
+                // Whether it can be a Swarm node is the use case's to say (an EOA on Gnosis Chain), never spelled here.
+                observeSwarmNode(found)
+                    .map { SwarmRow(swarmEntry(it), offered = it != SwarmNodeReading.NotASwarmAccount) }
+                    .onStart { emit(SwarmRow(null, offered = false)) }
             }
         }
 
@@ -538,11 +541,9 @@ class AccountDetailViewModel(
                     state
                 }
             }
-            .combine(swarm) { state, entry ->
+            .combine(swarm) { state, row ->
                 if (state is AccountDetailUiState.Ready) {
-                    val offers = observeSwarmNode != null && state.kind == AccountKind.EOA &&
-                        account.network == Network.GNOSIS
-                    state.copy(swarm = entry, offersSwarm = offers)
+                    state.copy(swarm = row.text, offersSwarm = row.offered)
                 } else {
                     state
                 }
@@ -1170,6 +1171,9 @@ internal const val GNOSIS_PAY_PLACEHOLDER_LABEL = "Placeholder: no key controls 
  * here controls it through its Delay ([controlled]; owner's request, 2026-11-17).
  */
 internal data class GnosisPayEntry(val text: String, val controlled: Boolean)
+
+/** A Swarm node's row on its account's screen: its [text] (null: none), and whether the menu [offered] its screen. */
+internal data class SwarmRow(val text: String?, val offered: Boolean)
 
 /**
  * What a Swarm node's row says, from [reading]: its proven chequebooks and batches counted; null

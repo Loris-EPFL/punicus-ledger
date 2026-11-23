@@ -26,7 +26,7 @@ class SwarmScreenTest {
         chequebooks = listOf(
             ChequebookRow(
                 "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
-                listOf("Balance 1.2 xBZZ"),
+                listOf("Balance 1.2 BZZ"),
                 SwarmTexts.BOUNCED,
                 "Verified at block 1",
             ),
@@ -66,7 +66,7 @@ class SwarmScreenTest {
     @Test
     fun theChequebookAndTheBatchesAreShownWithWhatTheyHold() {
         show(ready)
-        rule.onNodeWithText("Balance 1.2 xBZZ").assertIsDisplayed()
+        rule.onNodeWithText("Balance 1.2 BZZ").assertIsDisplayed()
         rule.onNodeWithText(SwarmTexts.BOUNCED).assertIsDisplayed()
         rule.onNodeWithText("Depth 22 · 7.73 GB of 17.18 GB theoretical").assertIsDisplayed()
         rule.onNodeWithText("Immutable").assertIsDisplayed()

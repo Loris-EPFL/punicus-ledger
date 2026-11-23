@@ -13,7 +13,7 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 
 private val chequebook = ChequebookRow(
     address = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
-    lines = listOf("Balance 1.2 xBZZ", "Free to withdraw 1.2 xBZZ", "Paid out 0.35 xBZZ"),
+    lines = listOf("Balance 1.2 BZZ", "Free to withdraw 1.2 BZZ", "Paid out 0.35 BZZ"),
     warning = null,
     status = "Verified at block 43,000,512",
 )
@@ -131,6 +131,19 @@ private fun SwarmNetworkOffPreview() = SwarmPreview(
     ),
 )
 
+/** The candidates kept for the node were damaged and set aside: said above the lists. */
+@Preview
+@Composable
+private fun SwarmSetAsidePreview() = SwarmPreview(
+    node.copy(
+        chequebooks = emptyList(),
+        chequebookNote = SwarmTexts.NO_CHEQUEBOOK,
+        batches = emptyList(),
+        batchNote = SwarmTexts.NO_BATCH,
+        note = SwarmTexts.SET_ASIDE,
+    ),
+)
+
 /** A removal that could not be saved, said above the lists. */
 @Preview
 @Composable
@@ -156,6 +169,7 @@ internal val swarmScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("add-refused") { SwarmAddRefusedPreview() },
     ScreenPreview("network-off") { SwarmNetworkOffPreview() },
     ScreenPreview("not-removed") { SwarmNotRemovedPreview() },
+    ScreenPreview("set-aside") { SwarmSetAsidePreview() },
     ScreenPreview("loading") { SwarmLoadingPreview() },
     ScreenPreview("unavailable") { SwarmUnavailablePreview() },
 )

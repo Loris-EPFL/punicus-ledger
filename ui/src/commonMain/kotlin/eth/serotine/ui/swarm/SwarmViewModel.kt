@@ -94,7 +94,12 @@ class SwarmViewModel(
                 )
             }
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SwarmUiState.Loading)
+    }.stateIn(
+        viewModelScope,
+        // A screen back after the timeout must not show an old reading as current: no replay then.
+        SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
+        SwarmUiState.Loading,
+    )
 
     /** Opens the form that adds a [kind] by hand. */
     fun startAdd(kind: AddKind) {

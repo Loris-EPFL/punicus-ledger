@@ -17,8 +17,8 @@ internal object SwarmTexts {
     /** xBZZ's decimals: its smallest unit, PLUR, is 10^-16 xBZZ. */
     private const val BZZ_DECIMALS = 16
 
-    /** An amount of PLUR, in xBZZ. */
-    fun bzz(plur: UInt256): String = formatUnits(plur.toDecimal(), BZZ_DECIMALS, "xBZZ")
+    /** An amount of PLUR, in BZZ: the token's own `symbol()`, as the account's screen lists it. */
+    fun bzz(plur: UInt256): String = formatUnits(plur.toDecimal(), BZZ_DECIMALS, "BZZ")
 
     /**
      * Swarm's published effective volume per batch depth, for unencrypted data without erasure

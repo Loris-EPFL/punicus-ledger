@@ -172,7 +172,7 @@ class SwarmViewModelTest {
         assertEquals("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", ready.address)
         val chequebook = ready.chequebooks.single()
         assertEquals("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359", chequebook.address)
-        assertEquals(listOf("Balance 1.2 xBZZ", "Free to withdraw 1 xBZZ", "Paid out 0 xBZZ"), chequebook.lines)
+        assertEquals(listOf("Balance 1.2 BZZ", "Free to withdraw 1 BZZ", "Paid out 0 BZZ"), chequebook.lines)
         assertEquals(SwarmTexts.BOUNCED, chequebook.warning)
         assertEquals("Verified at block 43,000,512", chequebook.status)
         val batch = ready.batches.single()
@@ -180,6 +180,14 @@ class SwarmViewModelTest {
         // 27,688 blocks of 5 s: a day and a half.
         assertEquals("About 38 hours left at the current price", batch.timeLeft)
         assertNull(ready.chequebookNote)
+    }
+
+    @Test
+    fun candidatesSetAsideSaySo() = runTest {
+        kept.value = SwarmCandidateList.Loaded(emptyList(), emptyList(), setAside = true)
+        val viewModel = viewModel()
+        runCurrent()
+        assertEquals(SwarmTexts.SET_ASIDE, viewModel.ready.note)
     }
 
     @Test

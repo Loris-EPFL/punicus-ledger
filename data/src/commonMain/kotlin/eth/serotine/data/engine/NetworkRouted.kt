@@ -49,6 +49,7 @@ import eth.serotine.domain.repository.NftContracts
 import eth.serotine.domain.repository.NftHolding
 import eth.serotine.domain.repository.NonceReading
 import eth.serotine.domain.repository.PastReading
+import eth.serotine.domain.repository.PostageReading
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.PriceHistory
 import eth.serotine.domain.repository.PrimaryName
@@ -230,6 +231,9 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
                 ?: flowOf(SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE))
 
         override fun deployment(network: Network): SwarmDeployment? = of(network)?.swarmContracts?.deployment(network)
+
+        override suspend fun postage(network: Network): PostageReading =
+            of(network)?.swarmContracts?.postage(network) ?: PostageReading.Unavailable(ReadUnavailable.NO_ENGINE)
     }
 
     val uniswap: UniswapV3Chain = object : UniswapV3Chain {

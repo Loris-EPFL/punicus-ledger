@@ -17,6 +17,7 @@ import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.LightClientRun
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.MetadataReading
+import eth.serotine.domain.repository.PostageReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SwarmReading
 import eth.serotine.domain.repository.VenueReading
@@ -179,6 +180,18 @@ class MyotisHostGnosisTest {
             }
             println("[${at()}] the PostageStamp: $batchReading")
             assertIs<SwarmReading.Verified<BatchFinding>>(batchReading)
+
+            // The PostageStamp's state, read fresh: proves xBZZ's proxy and implementation pins, and
+            // that paused(), lastPrice() and minimumInitialBalancePerChunk() answer at one block.
+            val postage = withTimeout(5.minutes) {
+                var reading: PostageReading
+                do {
+                    reading = node.swarmContracts.postage(gnosis)
+                } while (reading is PostageReading.Unavailable && reading.reason == ReadUnavailable.UNPROVEN)
+                reading
+            }
+            println("[${at()}] the PostageStamp's state: $postage")
+            assertIs<PostageReading.Read>(postage)
         } finally {
             progress.cancel()
             node.shutdown()

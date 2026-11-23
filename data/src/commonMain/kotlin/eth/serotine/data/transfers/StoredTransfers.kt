@@ -2,6 +2,7 @@ package eth.serotine.data.transfers
 
 import eth.serotine.data.safe.WireRequest
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.DelayCall
 import eth.serotine.domain.model.DelayMemberChange
@@ -13,9 +14,9 @@ import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
-import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.DappRequestId
 import eth.serotine.domain.repository.DappSessionId
+import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import kotlinx.serialization.Serializable
@@ -41,8 +42,9 @@ private const val SKIP = "skip"
  * Safe transaction's approval or execution ([safe]), a Safe's deployment ([deployment]), a
  * token approval ([approval]), a swap ([swap]), a wrap or unwrap ([wrap]), a CoW order's
  * cancellation on chain ([cancellation]), a dApp's transaction ([dappCall]) or a Gnosis Pay
- * account's transfer or member change queued or executed through its Delay ([delay]) — exactly one of the nine, else
- * the file is damaged.
+ * account's transfer or member change queued or executed through its Delay ([delay]), or a Swarm
+ * node's postage batch bought, topped up or diluted ([postage], format 13) — exactly one of the ten,
+ * else the file is damaged.
  */
 @Serializable
 internal class StoredTransfer(
@@ -60,6 +62,7 @@ internal class StoredTransfer(
     val cancellation: StoredCowCancellation? = null,
     val dappCall: StoredDappCall? = null,
     val delay: StoredDelayCall? = null,
+    val postage: StoredPostageCall? = null,
     val maxCost: String,
     val sentAt: Long,
     val maybeSent: Boolean = false,
@@ -77,7 +80,7 @@ internal class StoredTransfer(
     )
 
     private fun action(): SentAction {
-        val kinds = listOfNotNull(deployment, safe, approval, swap, wrap, cancellation, dappCall, delay)
+        val kinds = listOfNotNull(deployment, safe, approval, swap, wrap, cancellation, dappCall, delay, postage)
         require(kinds.size <= 1) { "more than one kind of transaction" }
         val transferFields = to != null || token != null || amount != null
         require(kinds.isEmpty() || !transferFields) { "a transfer and another kind at once" }
@@ -89,6 +92,7 @@ internal class StoredTransfer(
         cancellation?.let { return it.toAction() }
         dappCall?.let { return it.toAction() }
         delay?.let { return it.toAction() }
+        postage?.let { return it.toAction() }
         return SentAction.Transfer(
             to = Address.of(requireNotNull(to) { "a transfer without a recipient" }),
             asset = token?.let { TransferAsset.Erc20Token(it.toToken()) } ?: TransferAsset.Native,
@@ -314,7 +318,7 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
             is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
             is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap, is SentAction.CowCancellation,
             is SentAction.DappCall, is SentAction.DelayQueue, is SentAction.DelayExecution,
-            is SentAction.DelaySkip,
+            is SentAction.DelaySkip, is SentAction.BatchPurchase, is SentAction.BatchTopUp, is SentAction.BatchDilution,
             -> null
         },
         delay = when (action) {
@@ -346,6 +350,26 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
             is SentAction.Unwrap -> StoredWrap(UNWRAP, stored(action.weth), action.amount.toDecimal())
             else -> null
         },
+        postage = when (action) {
+            is SentAction.BatchPurchase -> StoredPostageCall(
+                PURCHASE,
+                action.stamp.hex,
+                action.id.hex,
+                action.depth,
+                perChunk = action.perChunk.toDecimal(),
+                owner = action.owner.hex,
+                immutable = action.immutable,
+            )
+            is SentAction.BatchTopUp -> StoredPostageCall(
+                TOP_UP,
+                action.stamp.hex,
+                action.id.hex,
+                action.depth,
+                perChunk = action.perChunk.toDecimal(),
+            )
+            is SentAction.BatchDilution -> StoredPostageCall(DILUTION, action.stamp.hex, action.id.hex, action.depth)
+            else -> null
+        },
         cancellation = (action as? SentAction.CowCancellation)?.let {
             StoredCowCancellation(it.settlement.hex, it.uid.hex)
         },
@@ -365,6 +389,52 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
         chain = transfer.network.chainId,
     )
 }
+
+/**
+ * A Swarm node's postage batch call (format 13, docs/swarm.md): bought ([kind] `purchase`, with
+ * its [owner], [perChunk] and [immutable]), topped up (`top-up`, with [perChunk]) or diluted
+ * (`dilution`), of the batch [id] at the PostageStamp [stamp], at [depth] (the new one for a
+ * dilution). A field its kind does not have, or one it lacks, makes the entry damaged.
+ */
+@Serializable
+internal class StoredPostageCall(
+    val kind: String,
+    val stamp: String,
+    val id: String,
+    val depth: Int,
+    val perChunk: String? = null,
+    val owner: String? = null,
+    val immutable: Boolean? = null,
+) {
+    fun toAction(): SentAction {
+        val stamp = Address.of(stamp)
+        val id = BatchId.of(id)
+        return when (kind) {
+            PURCHASE -> SentAction.BatchPurchase(
+                stamp,
+                Address.of(requireNotNull(owner) { "a purchase without its owner" }),
+                id,
+                depth,
+                UInt256.of(requireNotNull(perChunk) { "a purchase without its amount" }),
+                requireNotNull(immutable) { "a purchase without whether it is immutable" },
+            )
+            TOP_UP -> {
+                require(owner == null && immutable == null) { "a top-up with a purchase's fields" }
+                val amount = requireNotNull(perChunk) { "a top-up without its amount" }
+                SentAction.BatchTopUp(stamp, id, depth, UInt256.of(amount))
+            }
+            DILUTION -> {
+                require(owner == null && immutable == null && perChunk == null) { "a dilution with an amount" }
+                SentAction.BatchDilution(stamp, id, depth)
+            }
+            else -> throw IllegalArgumentException("a postage call of no known kind")
+        }
+    }
+}
+
+private const val PURCHASE = "purchase"
+private const val TOP_UP = "top-up"
+private const val DILUTION = "dilution"
 
 /** A Safe transaction's call of [kind] as stored, its [request] in the form a signing request travels in. */
 private fun safeCall(kind: String, request: SigningRequest) = StoredSafeCall(kind, WireRequest.of(request))

@@ -257,7 +257,7 @@ class FollowSwarmLogs(
     ): List<Sent> {
         val key = LogWatchKey.Mention(account.address)
         return newLogs(key, coverage[key], listOf(TRANSFER), position = 1)
-            .filter { it.log.address == deployment.bzz && it.log.topics.size == 3 }
+            .filter { it.log.address == deployment.bzz.address && it.log.topics.size == 3 }
             .mapNotNull { log ->
                 topicAddress(log.log.topics[2])
                     ?.takeIf { it != account.address }

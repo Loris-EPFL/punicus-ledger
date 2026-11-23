@@ -3,15 +3,18 @@ package eth.serotine.data.engine
 import eth.serotine.data.keys.fromHex
 import eth.serotine.data.swarm.PinnedSwarm
 import eth.serotine.data.swarm.SwarmDeployments
+import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Chequebook
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PostageBatch
+import eth.serotine.domain.model.PostageState
 import eth.serotine.domain.model.SwarmDeployment
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.ChequebookFinding
+import eth.serotine.domain.repository.PostageReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SwarmContracts
 import eth.serotine.domain.repository.SwarmReading
@@ -26,6 +29,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import org.kotlincrypto.hash.sha3.Keccak256
 
 /**
  * [SwarmContracts] over a verified light client (docs/swarm.md, *Recognition*), against Bee's
@@ -52,8 +57,8 @@ import kotlinx.coroutines.sync.withLock
  */
 class VerifiedSwarmContracts internal constructor(
     private val served: Network,
-    chain: VerifiedChain?,
-    dispatcher: CoroutineDispatcher,
+    private val chain: VerifiedChain?,
+    private val dispatcher: CoroutineDispatcher,
     pollInterval: Duration,
     private val pins: PinnedSwarm? = SwarmDeployments.of(served),
 ) : SwarmContracts {
@@ -109,8 +114,65 @@ class VerifiedSwarmContracts internal constructor(
         return batches.observe(node to id).map { it.toSwarmReading() }
     }
 
-    override fun deployment(network: Network): SwarmDeployment? =
-        pins?.takeIf { network == served }?.let { SwarmDeployment(it.bzz, it.postageStamp) }
+    /** xBZZ as the built-in token list has it: its symbol and decimals checked when it is listed. */
+    private val bzz = pins?.let { pinned -> BuiltInTokens.of(served).firstOrNull { it.address == pinned.bzz } }
+
+    override fun deployment(network: Network): SwarmDeployment? {
+        if (network != served) return null
+        val pinned = pins ?: return null
+        return bzz?.let { SwarmDeployment(it, pinned.postageStamp) }
+    }
+
+    override suspend fun postage(network: Network): PostageReading {
+        if (network != served) return PostageReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        val pinned = pins ?: return PostageReading.NotPinned
+        val verified = chain ?: return PostageReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        return withContext(dispatcher) {
+            try {
+                whyUnreadable(verified.snapshot())?.let { return@withContext PostageReading.Unavailable(it) }
+                readPostage(verified, pinned)
+            } catch (e: Throwable) {
+                // A cancellation of this call ends it; anything else is an engine failure, as in ProvenReads.
+                currentCoroutineContext().ensureActive()
+                PostageReading.Unavailable(ReadUnavailable.UNPROVEN)
+            }
+        }
+    }
+
+    /** The PostageStamp's state, its code and xBZZ's proven first. */
+    private suspend fun readPostage(chain: VerifiedChain, pins: PinnedSwarm): PostageReading {
+        val unproven = PostageReading.Unavailable(ReadUnavailable.UNPROVEN)
+        if (codeCheck(chain, pins.postageStamp, pins.postageStampCodeHash) != CodeCheck.Matches) return unproven
+        when (codeCheck(chain, pins.bzz, pins.bzzProxyCodeHash)) {
+            null -> return unproven
+            is CodeCheck.Differs -> return PostageReading.BzzChanged
+            CodeCheck.Matches -> Unit
+        }
+        // The implementation the proxy delegates to, as its EIP-1967 slot names it now: read every time.
+        val slot = chain.storageAt(pins.bzz, EIP1967_IMPLEMENTATION) ?: return unproven
+        val word = slot.removePrefix("0x").lowercase().padStart(64, '0')
+        val implementation = addressOf(word) ?: return unproven
+        if (implementation != pins.bzzImplementation) return PostageReading.BzzChanged
+        when (codeCheck(chain, implementation, pins.bzzImplementationCodeHash)) {
+            null -> return unproven
+            is CodeCheck.Differs -> return PostageReading.BzzChanged
+            CodeCheck.Matches -> Unit
+        }
+        return when (val read = readAtOneBlock(chain) { calls -> postageAt(calls, pins.postageStamp) }) {
+            null -> unproven
+            is EngineReading.Proven -> PostageReading.Read(read.value, read.blockNumber)
+            is EngineReading.Unavailable -> PostageReading.Unavailable(read.reason)
+            EngineReading.Syncing, is EngineReading.LastKnown -> unproven
+        }
+    }
+
+    /** The PostageStamp's `paused()`, `lastPrice()` and `minimumInitialBalancePerChunk()` at one block. */
+    private fun postageAt(calls: OneBlockCalls, stamp: Address): PostageState? {
+        val paused = calls.bool(stamp, PAUSED) ?: return null
+        val price = calls.uint(stamp, LAST_PRICE) ?: return null
+        val minimum = calls.uint(stamp, MINIMUM_PER_CHUNK) ?: return null
+        return PostageState(paused, price, minimum)
+    }
 
     /**
      * Whether the code at [address], proven, hashes to [pin]; null when it could not be proven. A
@@ -233,6 +295,13 @@ class VerifiedSwarmContracts internal constructor(
 
         // The PostageStamp's (storage-incentives, PostageStamp).
         val LAST_PRICE: ByteArray = "053f14da".fromHex()
+        val PAUSED: ByteArray = "5c975abb".fromHex()
+        val MINIMUM_PER_CHUNK: ByteArray =
+            Keccak256().digest("minimumInitialBalancePerChunk()".encodeToByteArray()).copyOf(4)
+
+        /** EIP-1967's implementation slot: `keccak256("eip1967.proxy.implementation") - 1`. */
+        val EIP1967_IMPLEMENTATION: ByteArray =
+            "360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc".fromHex()
 
         /** The factory's `deployedContracts(address)`: whether it deployed [contract]. */
         fun deployedContracts(contract: Address): ByteArray =

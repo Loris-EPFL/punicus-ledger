@@ -5,6 +5,7 @@ import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Chequebook
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PostageBatch
+import eth.serotine.domain.model.PostageState
 import eth.serotine.domain.model.SwarmDeployment
 import kotlinx.coroutines.flow.Flow
 
@@ -43,6 +44,36 @@ interface SwarmContracts {
      * [observeBatch] before it counts.
      */
     fun deployment(network: Network): SwarmDeployment?
+
+    /**
+     * The pinned PostageStamp's state on [network], read fresh, never from a reading kept before:
+     * what a purchase, a top-up or a dilution is quoted on (docs/swarm.md, *The four actions*). Its
+     * code is proven the pinned one first, and so are xBZZ's proxy and the implementation its
+     * EIP-1967 slot names, since every purchase and top-up approves xBZZ: another implementation is
+     * [PostageReading.BzzChanged], and nothing is quoted. Its `paused()`, `lastPrice()` and
+     * `minimumInitialBalancePerChunk()` answer at one block. Blocks on the engine, bounded by it;
+     * never throws. A [network] no adapter serves here is refused ([ReadUnavailable.NO_ENGINE]).
+     */
+    suspend fun postage(network: Network): PostageReading
+}
+
+/** One answer of [SwarmContracts.postage]. */
+sealed interface PostageReading {
+
+    /** [state], verified at block [blockNumber]. */
+    data class Read(val state: PostageState, val blockNumber: Long) : PostageReading
+
+    /**
+     * xBZZ's proxy, or the implementation it names, is not the pinned one any more: the bridge
+     * upgraded it, and nothing is approved until a release pins the new one.
+     */
+    data object BzzChanged : PostageReading
+
+    /** No Swarm contracts are pinned on the network asked about. */
+    data object NotPinned : PostageReading
+
+    /** No verified answer can be had right now, for [reason]. */
+    data class Unavailable(val reason: ReadUnavailable) : PostageReading
 }
 
 /** One answer of [SwarmContracts]. */

@@ -1,6 +1,7 @@
 package eth.serotine.ui.activity
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.DelayCall
 import eth.serotine.domain.model.DelayMemberChange
 import eth.serotine.domain.model.DelayTransfer
@@ -300,6 +301,9 @@ internal class ActivityRows(
     /** [count] owners, as a sentence says it: "1 owner", "2 owners". */
     fun owners(count: Long): String = if (count == 1L) "1 owner" else "$count owners"
 
+    /** A batch id as the Swarm screen shortens it: "0xa1b2c3d4…c3d4". */
+    private fun batchShort(id: BatchId): String = "0x" + id.hex.take(8) + "…" + id.hex.takeLast(4)
+
     /** A 32-byte hash as screens shorten it, as they do an address: "0xab12…cd34". */
     fun shortHash(hash: String): String = shortAddress(hash)
 
@@ -354,6 +358,17 @@ internal class ActivityRows(
             } else {
                 Triple("Skipped expired entries of the Delay", transfer.account, "Paid by")
             }
+            // A Swarm node's postage batch (docs/swarm.md, *History*): seen from the node, who paid.
+            is SentAction.BatchPurchase -> if (transfer.account == address && action.owner != address) {
+                Triple("Bought a postage batch", action.owner, "For")
+            } else if (transfer.account == address) {
+                Triple("Bought a postage batch", action.stamp, "At")
+            } else {
+                Triple("Postage batch bought", transfer.account, "Paid by")
+            }
+            is SentAction.BatchTopUp -> Triple("Topped up batch ${batchShort(action.id)}", action.stamp, "At")
+            is SentAction.BatchDilution ->
+                Triple("Diluted batch ${batchShort(action.id)} to depth ${action.depth}", action.stamp, "At")
         }
         val (status, state) = statusOf(entry)
         return ActivityRow(

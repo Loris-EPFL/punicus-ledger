@@ -8,10 +8,12 @@ import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Chequebook
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PostageBatch
+import eth.serotine.domain.model.PostageState
 import eth.serotine.domain.model.SwarmDeployment
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.ChequebookFinding
+import eth.serotine.domain.repository.PostageReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SwarmReading
 import kotlin.test.Test
@@ -38,11 +40,13 @@ class VerifiedSwarmContractsTest {
     private val stampCode = "6001600055"
     private val factoryCode = "6002600055"
     private val masterCode = "6004600055"
+    private val bzzProxyCode = "6005600055"
+    private val bzzImplementationCode = "6006600055"
     private val pins = PinnedSwarm(
         bzz = gnosis.bzz,
-        bzzProxyCodeHash = gnosis.bzzProxyCodeHash,
+        bzzProxyCodeHash = codeHash(bzzProxyCode),
         bzzImplementation = gnosis.bzzImplementation,
-        bzzImplementationCodeHash = gnosis.bzzImplementationCodeHash,
+        bzzImplementationCodeHash = codeHash(bzzImplementationCode),
         postageStamp = gnosis.postageStamp,
         postageStampCodeHash = codeHash(stampCode),
         chequebookFactory = gnosis.chequebookFactory,
@@ -361,9 +365,51 @@ class VerifiedSwarmContractsTest {
         )
     }
 
+    /** The PostageStamp, xBZZ's proxy and the implementation its EIP-1967 slot names, as pinned. */
+    private fun thePostageStamp(paused: Boolean = false, implementation: Address = pins.bzzImplementation) {
+        fake.snapshot = running(head = 7)
+        fake.codes[pins.postageStamp] = ProvenCode(stampCode, blockNumber = 7)
+        fake.codes[pins.bzz] = ProvenCode(bzzProxyCode, blockNumber = 7)
+        fake.codes[implementation] = ProvenCode(bzzImplementationCode, blockNumber = 7)
+        fake.storage[pins.bzz to VerifiedSwarmContracts.EIP1967_IMPLEMENTATION.toHex()] = word(implementation.hex)
+        answer(pins.postageStamp, VerifiedSwarmContracts.PAUSED, word(if (paused) "1" else "0"))
+        answer(pins.postageStamp, VerifiedSwarmContracts.LAST_PRICE, word("328d6"))
+        answer(pins.postageStamp, VerifiedSwarmContracts.MINIMUM_PER_CHUNK, word("d544f200"))
+    }
+
+    @Test
+    fun thePostageStampsStateIsReadFreshAtOneBlock() = runTest {
+        // minimumInitialBalancePerChunk()'s selector is proven on the real chain by MyotisHostGnosisTest.
+        thePostageStamp()
+        assertEquals(
+            PostageReading.Read(PostageState(false, UInt256.of(207_062), UInt256.of(3_578_065_408)), 7),
+            contracts().postage(Network.GNOSIS),
+        )
+        thePostageStamp(paused = true)
+        assertEquals(true, (contracts().postage(Network.GNOSIS) as PostageReading.Read).state.paused)
+    }
+
+    @Test
+    fun anotherXbzzImplementationApprovesNothing() = runTest {
+        thePostageStamp(implementation = Address.of("0x" + "99".repeat(20)))
+        assertEquals(PostageReading.BzzChanged, contracts().postage(Network.GNOSIS))
+        thePostageStamp()
+        fake.codes[pins.bzz] = ProvenCode("6007600055", blockNumber = 7)
+        assertEquals(PostageReading.BzzChanged, contracts().postage(Network.GNOSIS))
+    }
+
+    @Test
+    fun thePostageStampOfAnotherNetworkIsRefused() = runTest {
+        assertEquals(PostageReading.Unavailable(ReadUnavailable.NO_ENGINE), contracts().postage(Network.ETHEREUM))
+        assertEquals(PostageReading.NotPinned, contracts(Network.ETHEREUM, pinned = null).postage(Network.ETHEREUM))
+    }
+
     @Test
     fun theDeploymentIsThePinnedOnesOfTheNetworkServed() = runTest {
-        assertEquals(SwarmDeployment(pins.bzz, pins.postageStamp), contracts().deployment(Network.GNOSIS))
+        val deployment = contracts().deployment(Network.GNOSIS)
+        assertEquals(pins.bzz, deployment?.bzz?.address)
+        assertEquals("BZZ" to 16, deployment?.bzz?.let { it.symbol to it.decimals })
+        assertEquals(pins.postageStamp, deployment?.postageStamp)
         assertEquals(null, contracts().deployment(Network.ETHEREUM))
         assertEquals(null, contracts(Network.ETHEREUM, pinned = null).deployment(Network.ETHEREUM))
     }

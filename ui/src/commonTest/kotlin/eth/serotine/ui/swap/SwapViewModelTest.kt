@@ -1178,7 +1178,8 @@ class SwapViewModelTest {
         val form = viewModel.compose
         assertTrue("block 9,412,118" in form.error.orEmpty(), form.error)
         assertEquals(
-            "The swap reverts, or returns less than its minimum, as checked on chain. Nothing was signed.",
+            "The swap reverts, returns less than its minimum, or takes more than its maximum, as checked on chain. " +
+                "Nothing was signed.",
             form.simpleError,
         )
     }

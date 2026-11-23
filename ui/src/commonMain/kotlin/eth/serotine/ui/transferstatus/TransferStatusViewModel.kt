@@ -527,9 +527,11 @@ class TransferStatusViewModel(
                 progress is TransactionProgress.Unavailable -> unavailable(progress.reason)
                 failed && transfer?.action is SentAction.Transfer ->
                     "It failed: the transfer reverted in its block, so nothing was moved. Its fee is paid all the same."
-                failed && transfer?.action is SentAction.Swap ->
+                failed && transfer?.action is SentAction.Swap -> {
+                    val bound = if ((transfer.action as SentAction.Swap).kind == SwapKind.BUY) "maximum" else "minimum"
                     "It failed: the swap reverted in its block, so nothing was swapped: the price moved past its " +
-                        "minimum, or its deadline passed. Its fee is paid all the same."
+                        "$bound, or its deadline passed. Its fee is paid all the same."
+                }
                 failed && (transfer?.action is SentAction.Wrap || transfer?.action is SentAction.Unwrap) ->
                     "It failed: the ${transfer?.let(::whatOf)} reverted in its block, so nothing was moved. Its fee " +
                         "is paid all the same."

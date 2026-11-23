@@ -151,7 +151,8 @@ holds too little; exactly the amount bought, at most an amount sold.)
     amount sold plus CoW's fee, not verified, as every CoW figure.
 - **Too little is said before the review.** Once the estimate is in, the
   compose step compares the maximum with the account's balance of the token
-  sold (and, for the network's own currency, room for the fee): "Not enough
+  sold; the network fee, for the network's own currency sold, is the
+  review's to check: "Not enough
   XDAI: this buy may take up to 41.2 XDAI, and the account holds 30". Review
   stays refused until it is met; the review checks it again on verified
   state.

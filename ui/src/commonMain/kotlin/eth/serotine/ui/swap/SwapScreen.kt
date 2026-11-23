@@ -462,7 +462,7 @@ private fun ComposeContent(
         Note(
             if (cow) {
                 "Through CoW's servers, which learn this swap and its amounts while you compose it. CoW's estimate " +
-                    "is not checked on chain: the order signs it, less your tolerance."
+                    "is not checked on chain: the order signs it, less your tolerance (plus it, for a buy)."
             } else {
                 "Verified on chain: Uniswap's pools, read through the light client. Nothing goes to a server."
             },

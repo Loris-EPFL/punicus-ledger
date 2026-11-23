@@ -2008,18 +2008,30 @@ class SwapViewModel(
         is SwapQuoting.NoVenue -> noVenueText(quoting.contract, network)
         SwapQuoting.TooSmall -> TOO_SMALL
         SwapQuoting.InsufficientFunds -> if (request.sell.asset == TransferAsset.Native) {
-            "Not enough ${network.nativeSymbol} for this amount and the most the fee can be: swap less, to leave " +
-                "room for the fee. Transactions not mined yet count too."
+            if (request.kind == SwapKind.BUY) {
+                "Not enough ${network.nativeSymbol} for the most this buy may take, its verified quote and the " +
+                    "tolerance, and the most the fee can be: buy less. Transactions not mined yet count too."
+            } else {
+                "Not enough ${network.nativeSymbol} for this amount and the most the fee can be: swap less, to " +
+                    "leave room for the fee. Transactions not mined yet count too."
+            }
         } else {
             "Not enough ${network.nativeSymbol} for the most the fee can be. Transactions not mined yet count too."
         }
-        SwapQuoting.InsufficientToken -> "This account holds less ${request.sell.symbol} than that, once what its " +
-            "transactions not mined yet and its CoW orders that may still fill can take is set aside."
+        SwapQuoting.InsufficientToken -> if (request.kind == SwapKind.BUY) {
+            "This account holds less ${request.sell.symbol} than the most this buy may take, its verified quote " +
+                "and the tolerance, once what its transactions not mined yet and its CoW orders that may still " +
+                "fill can take is set aside. Buy less."
+        } else {
+            "This account holds less ${request.sell.symbol} than that, once what its transactions not mined yet " +
+                "and its CoW orders that may still fill can take is set aside."
+        }
         SwapQuoting.CowOrdersUnreadable -> ORDERS_UNREADABLE
         is SwapQuoting.Infeasible -> "This swap cannot succeed: ${quoting.detail}"
         is SwapQuoting.Reverts -> {
             val at = quoting.blockNumber?.let { " at block ${grouped(it)}" }.orEmpty()
-            "The swap reverts, or returns less than its minimum, run as a verified call$at. Nothing was signed."
+            "The swap reverts, returns less than its minimum, or takes more than its maximum, run as a verified " +
+                "call$at. Nothing was signed."
         }
         SwapQuoting.NotAToken -> NOT_A_TOKEN
         SwapQuoting.Refused -> "The light client on this device cannot quote this swap."
@@ -2031,7 +2043,8 @@ class SwapViewModel(
     /** [swapRefusal] in simple mode's words, with no block (docs/simple-ui.md); null where it names none. */
     private fun simpleSwapRefusal(quoting: SwapQuoting): String? = when (quoting) {
         is SwapQuoting.Reverts ->
-            "The swap reverts, or returns less than its minimum, as checked on chain. Nothing was signed."
+            "The swap reverts, returns less than its minimum, or takes more than its maximum, as checked on chain. " +
+                "Nothing was signed."
         else -> null
     }
 
@@ -2079,7 +2092,7 @@ class SwapViewModel(
         is CowSwapQuoting.MaximumAboveBalance -> "Not enough ${request.sell.symbol}: by CoW's estimate this buy " +
             "may take up to ${exactAmount(quoting.maximum, request.sell.decimals, request.sell.symbol)}, and the " +
             "account has ${exactAmount(quoting.available, request.sell.decimals, request.sell.symbol)} to " +
-            "spare. Buy less, or sell more of it first."
+            "spare. Buy less, or add ${request.sell.symbol} to the account first."
     }
 
     /** [sell] and [buy], one token: no swap and no wrap. */
@@ -2174,8 +2187,8 @@ class SwapViewModel(
             "nothing was signed. Review again."
         const val NOT_ON_THIS_DEVICE = "CoW Protocol is not offered on this device: its light client cannot date " +
             "a finalized block yet, which proving an order's end needs. Swap on Uniswap."
-        const val NO_LONGER_MET =
-            "Run again just before signing, the swap no longer returned its minimum: it was quoted again. Check it."
+        const val NO_LONGER_MET = "Run again just before signing, the swap no longer met what it is signed for (its " +
+            "minimum, or a buy's maximum): it was quoted again. Check it."
         const val EARLIER_MAYBE_SENT = "An earlier transaction from this account may still be on its way: no peer " +
             "answered when it was broadcast, and no block has it yet. Try it again from its status rather than " +
             "sign a new one, which could pay twice."

@@ -196,7 +196,7 @@ class FileCowOrdersTest {
     }
 
     @Test
-    fun aBuyOrderIsKeptAsABuyAndAFormatOneEntryReadsAsASell() = runTest {
+    fun aBuyOrderIsKeptAsABuy() = runTest {
         val buy = record(buysEther = false, kind = SwapKind.BUY)
         orders().record(buy)
         assertEquals(listOf(buy), stored())

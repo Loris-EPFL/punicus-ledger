@@ -50,6 +50,16 @@ sealed interface ActivityUiState {
  * block alone), and [simpleStatus] how it ended in words ("Confirmed", "Final", "Failed"), null where
  * that is [status] itself: so a copy that changes [status] (a caution, a warning) never leaves an
  * older simple status behind.
+ *
+ * How the list draws it at a glance (owner's request, 2026-11-23): which way it moved value ([direction]: an arrow,
+ * green in, red out), what it moved ([amount], signed and short: "+250 USDC", "−0.5 ETH"; null where nothing is said
+ * to have moved), and [headline], what it did without the amount the [amount] says ("Received USDC"), null where that
+ * is [title]; [unchecked] when what the [amount] says is not proven to have moved (a transaction whose outcome the
+ * engine does not report), which mutes it and its arrow. Rows of a list grouped by day carry their [day]'s heading
+ * ("Today · Monday, November 23, 2026"; for a row dated by its block alone, the day of the rows around it where that
+ * can be told, else that its date is not reported) and its time of day in the user's time zone ([clock]: "3:00 PM";
+ * none for a row dated by its block alone), which the list says in place of [time]; [simpleDay] is the heading in
+ * simple mode's words, null where it is [day].
  */
 data class ActivityRow(
     val key: String,
@@ -62,7 +72,29 @@ data class ActivityRow(
     val opens: ActivityKey,
     val simpleTime: String? = time,
     val simpleStatus: String? = null,
+    val direction: ActivityDirection = ActivityDirection.NONE,
+    val amount: String? = null,
+    val headline: String? = null,
+    val unchecked: Boolean = false,
+    val day: String? = null,
+    val clock: String? = null,
+    val simpleDay: String? = null,
 )
+
+/**
+ * Which way a row moved value, as the account sees it: [IN] to it, [OUT] from it, [NONE] for neither or both (a call,
+ * a swap, a move to itself, a Safe's settings).
+ */
+enum class ActivityDirection {
+    /** Value came in: a green arrow, its amount with "+". */
+    IN,
+
+    /** Value went out: a red arrow, its amount with "−". */
+    OUT,
+
+    /** No value moved one way: no arrow. */
+    NONE,
+}
 
 /**
  * Which row of an account's Activity a detail is of: the transaction [hash] (`0x` and 64 lower-case
@@ -211,7 +243,13 @@ fun ActivityUiState.ordered(order: ActivityOrder): ActivityUiState = when {
  */
 internal fun ActivityUiState.simple(): ActivityUiState = when (this) {
     is ActivityUiState.Shown -> copy(
-        rows = rows.map { it.copy(time = it.simpleTime.orEmpty(), status = it.simpleStatus ?: it.status) },
+        rows = rows.map {
+            it.copy(
+                time = it.simpleTime.orEmpty(),
+                status = it.simpleStatus ?: it.status,
+                day = it.simpleDay ?: it.day,
+            )
+        },
         queued = queued.map { it.copy(time = it.simpleTime.orEmpty(), status = it.simpleStatus ?: it.status) },
         coverage = simpleCoverage,
         index = index?.let { section ->

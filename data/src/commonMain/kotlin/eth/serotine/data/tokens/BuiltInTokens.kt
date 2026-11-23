@@ -62,6 +62,12 @@ import kotlinx.coroutines.flow.flowOf
  * added there. Read on 2026-10-28 at mainnet blocks 26,289,553 to 26,289,569 and at Gnosis
  * blocks 48,982,469 to 48,982,471, each through two public nodes, which agreed, a debugging
  * source only: `symbol()`, `name()` and `decimals()`, each as listed here.
+ *
+ * Added 2026-11-23, on the owner's instruction: Swarm's xBZZ on Gnosis Chain, the official bridge's
+ * deployment of Ethereum's BZZ, listed under the symbol its contract gives, `BZZ` ("BZZ on xDai",
+ * 16 decimals, as the Ethereum token has). No Chainlink feed for it on Gnosis Chain
+ * (`feeds-xdai-mainnet.json`, read the same day), so it has no price. Read on 2026-11-23 at Gnosis
+ * block 49,422,187 through two public nodes, which agreed, a debugging source only.
  */
 object BuiltInTokens {
 
@@ -120,6 +126,8 @@ object BuiltInTokens {
             18,
             icon = "safe",
         ),
+        // Swarm's BZZ, xBZZ to Swarm, bridged from Ethereum over the official bridge; no BZZ feed.
+        Token(Address.of("0xdbf3ea6f5bee45c02255b2c26a16f300502f68da"), "BZZ", "BZZ on xDai", 16, icon = "bzz"),
     )
 
     /** A token priced by the feed of [priceId], its own symbol's unless another is named. */

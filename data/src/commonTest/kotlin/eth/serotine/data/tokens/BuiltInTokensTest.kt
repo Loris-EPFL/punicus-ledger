@@ -60,21 +60,21 @@ class BuiltInTokensTest {
     }
 
     @Test
-    fun theGnosisListIsThePlansCandidatesEachWithAnIconAndPricedOnGnosisChainButSDaiCowAndSafe() {
+    fun theGnosisListIsThePlansCandidatesEachWithAnIconAndPricedOnGnosisChainButSDaiCowSafeAndBzz() {
         val tokens = BuiltInTokens.of(Network.GNOSIS)
 
         assertEquals(tokens.size, tokens.distinctBy { it.address }.size)
         assertTrue(tokens.all { it.icon != null }, "a built-in token has a bundled icon (CLAUDE.md, Data sources)")
         assertEquals(
-            listOf("WXDAI", "USDC", "USDC.e", "USDT", "WETH", "GNO", "EURe", "sDAI", "COW", "SAFE"),
+            listOf("WXDAI", "USDC", "USDC.e", "USDT", "WETH", "GNO", "EURe", "sDAI", "COW", "SAFE", "BZZ"),
             tokens.map { it.symbol },
         )
         val feeds = ChainlinkFeeds.of(Network.GNOSIS)
         assertEquals(feeds.size, feeds.distinctBy { it.priceId }.size, "one Gnosis feed per price id")
         val quotes = feeds.associate { it.priceId to it.quote }
         // Each priced by a feed pinned on Gnosis Chain whose quote is USD; sDAI, a vault share, and the
-        // bridged COW and SAFE, which have no feed there, by none.
-        assertEquals(listOf("sDAI", "COW", "SAFE"), tokens.filter { it.priceId == null }.map { it.symbol })
+        // bridged COW, SAFE and BZZ, which have no feed there, by none.
+        assertEquals(listOf("sDAI", "COW", "SAFE", "BZZ"), tokens.filter { it.priceId == null }.map { it.symbol })
         tokens.mapNotNull { it.priceId }.forEach { assertEquals(PriceId.USD, quotes[it], "${it.id} on Gnosis Chain") }
         // xDAI itself, by DAI / USD's answer pinned under its own id.
         assertEquals(PriceId.USD, quotes[Network.GNOSIS.nativePriceId])

@@ -306,7 +306,9 @@ are unchanged.
   as the same token on another network. Added 2026-10-28, on the owner's
   instruction: Gnosis's GNO also on Ethereum; CoW Protocol's COW and Safe's
   SAFE on Ethereum and, bridged from there, on Gnosis Chain. None of the
-  three is on Sepolia.
+  three is on Sepolia. Added 2026-11-23, on the owner's instruction: Swarm's
+  xBZZ on Gnosis Chain, listed as its contract names it, `BZZ`, with no
+  price (no Chainlink feed there).
 - **Settings → Tokens** groups the list by network. **Add token** asks for
   the network first (N17), then reads the contract on that network.
 - **Multicall3** is pinned per network (its code hash proven on each) before

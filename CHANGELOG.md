@@ -15,6 +15,7 @@ and issues of this repository.
 - Swaps on Gnosis Chain: Uniswap v3's Gnosis deployment, with WXDAI as the
   wrapped xDAI, and CoW Protocol. Uniswap holds little there, so most pairs
   go to CoW. CoW Protocol is offered on Ethereum too.
+- Swarm's xBZZ (`BZZ`) is a built-in token on Gnosis Chain, with no price.
 - Address poisoning protection on Send. A recipient that starts and ends
   like an address you sent to from this device (or one of your accounts) but
   differs in the middle blocks the send, with both addresses shown and the

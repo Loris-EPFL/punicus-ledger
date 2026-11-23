@@ -72,6 +72,7 @@ object TokenIcons {
         "eure" -> eure
         "cow" -> cow
         "safe" -> safe
+        "bzz" -> bzz
         else -> null
     }
 
@@ -391,6 +392,22 @@ object TokenIcons {
                     "4Z",
                 ),
                 fill = SolidColor(Color(0xFFFFFFFF)),
+            )
+            .build()
+    }
+
+    /** `bzz`: Swarm's BZZ, web3icons' branded mark on no disc, as drawn there. */
+    private val bzz: ImageVector by lazy {
+        icon("bzz", 24f)
+            .addPath(
+                addPathNodes(
+                    "M14.8125 4.54125L17.0625 3.28125L19.3124 4.55249V7.08373L17.0625 8.34373L17.0568 8.332" +
+                    "48L14.8125 7.07249V4.54125ZM7.21873 20.7187L3 18.4687V13.9687L7.21873 11.7187L11.4374 " +
+                    "13.9687V18.4687L7.21873 20.7187ZM21 13.9687L16.7812 11.7187L12.5625 13.9687V18.4687L16" +
+                    ".7812 20.7187L21 18.4687V13.9687ZM8.06248 6.22874L11.9943 4.11938L13.6874 4.96874V7.44" +
+                    "936L15.9374 8.90623V10.4419L11.9999 12.5512L8.06248 10.4419V6.22311V6.22874Z",
+                ),
+                fill = SolidColor(Color(0xFFD66700)),
             )
             .build()
     }

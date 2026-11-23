@@ -64,11 +64,13 @@ enum class AddKind { CHEQUEBOOK, BATCH }
 
 /**
  * The form that adds a [kind] by hand: the [text] typed, [checking] while it is read on chain,
- * and [error], why it was not kept.
+ * and [error], why it was not kept. [attempt] tells one form, and one check of it, from another,
+ * so that a check's answer reaches only the form that asked; it is not drawn.
  */
 data class AddForm(
     val kind: AddKind,
     val text: String = "",
     val checking: Boolean = false,
     val error: String? = null,
+    val attempt: Long = 0,
 )

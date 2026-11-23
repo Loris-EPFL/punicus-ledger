@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -54,7 +55,8 @@ class SwarmViewModel(
     @OptIn(ExperimentalCoroutinesApi::class)
     private val reading = lookup
         .map { (it as? AccountLookup.Found)?.account }
-        .distinctUntilChanged()
+        // Only what decides the reading: a rename never restarts it, nor drops a reading held.
+        .distinctUntilChangedBy { it?.id to it?.kind }
         .flatMapLatest { account -> if (account == null) flowOf(null) else observeSwarmNode(account) }
 
     /** The screen's state. */
@@ -73,8 +75,11 @@ class SwarmViewModel(
 
     /** Opens the form that adds a [kind] by hand. */
     fun startAdd(kind: AddKind) {
-        form.value = AddForm(kind)
+        form.value = AddForm(kind, attempt = ++attempts)
     }
+
+    /** Counts each form opened and each check made, so that a check's answer reaches only its own form. */
+    private var attempts = 0L
 
     /** The text typed in the form. */
     fun onAddText(text: String) {
@@ -97,15 +102,24 @@ class SwarmViewModel(
                 return
             }
         }
-        form.value = current.copy(checking = true, error = null)
+        val checking = current.copy(checking = true, error = null, attempt = ++attempts)
+        form.value = checking
         viewModelScope.launch {
-            val error = SwarmTexts.added(addFor(candidate))
-            // Kept: the form closes. Not kept: it stays, saying why.
-            form.update { open -> if (error == null) null else open?.copy(checking = false, error = error) }
+            val outcome = addFor(candidate)
+            val error = if (outcome == null) SwarmTexts.LIST_UNAVAILABLE else SwarmTexts.added(outcome)
+            // Kept: the form closes. Not kept: it stays, saying why. Only the form that asked: one
+            // cancelled meanwhile, or opened anew, is left as it is.
+            form.update { open ->
+                when {
+                    open != checking -> open
+                    error == null -> null
+                    else -> open.copy(checking = false, error = error)
+                }
+            }
         }
     }
 
-    /** Takes the chequebook at [address] (EIP-55), or the batch [id], out of the node's: remembered as removed. */
+    /** Takes the chequebook at [address] (EIP-55) out of the node's: remembered as removed. */
     fun removeChequebook(address: String) {
         val parsed = Address.parse(address) ?: return
         viewModelScope.launch { removeSwarmCandidate(node, SwarmCandidate.ChequebookAt(parsed)) }
@@ -117,10 +131,12 @@ class SwarmViewModel(
         viewModelScope.launch { removeSwarmCandidate(node, SwarmCandidate.Batch(parsed)) }
     }
 
-    private suspend fun addFor(candidate: SwarmCandidate): SwarmAddOutcome {
+    /** What adding [candidate] made of it; null when the account list cannot be read to add it with. */
+    private suspend fun addFor(candidate: SwarmCandidate): SwarmAddOutcome? {
         val account = when (val found = lookupNow()) {
             is AccountLookup.Found -> found.account
-            else -> return SwarmAddOutcome.NotASwarmAccount
+            AccountLookup.ListUnavailable -> return null
+            AccountLookup.NotInList -> return SwarmAddOutcome.NotASwarmAccount
         }
         return addSwarmCandidate(account, candidate, byHand = true)
     }
@@ -172,10 +188,18 @@ class SwarmViewModel(
                     SwarmTexts.BOUNCED.takeIf { finding.chequebook.bounced },
                     SwarmTexts.verified(reading.blockNumber, item.held),
                 )
-                ChequebookFinding.NotAChequebook ->
-                    ChequebookRow(address, emptyList(), null, SwarmTexts.NO_LONGER_A_CHEQUEBOOK)
-                is ChequebookFinding.OthersIssuer ->
-                    ChequebookRow(address, emptyList(), null, SwarmTexts.othersChequebook(Eip55.format(finding.issuer)))
+                ChequebookFinding.NotAChequebook -> ChequebookRow(
+                    address,
+                    emptyList(),
+                    null,
+                    stated(SwarmTexts.NO_LONGER_A_CHEQUEBOOK, reading, item),
+                )
+                is ChequebookFinding.OthersIssuer -> ChequebookRow(
+                    address,
+                    emptyList(),
+                    null,
+                    stated(SwarmTexts.othersChequebook(Eip55.format(finding.issuer)), reading, item),
+                )
             }
             else -> ChequebookRow(address, emptyList(), null, unread(reading))
         }
@@ -195,13 +219,24 @@ class SwarmViewModel(
                     finding.batch.immutable,
                     SwarmTexts.verified(reading.blockNumber, item.held),
                 )
-                BatchFinding.Gone -> BatchRow(id, short, null, null, false, SwarmTexts.GONE)
-                is BatchFinding.OthersOwner ->
-                    BatchRow(id, short, null, null, false, SwarmTexts.othersBatch(Eip55.format(finding.owner)))
+                BatchFinding.Gone ->
+                    BatchRow(id, short, null, null, false, stated(SwarmTexts.GONE, reading, item))
+                is BatchFinding.OthersOwner -> BatchRow(
+                    id,
+                    short,
+                    null,
+                    null,
+                    false,
+                    stated(SwarmTexts.othersBatch(Eip55.format(finding.owner)), reading, item),
+                )
             }
             else -> BatchRow(id, short, null, null, false, unread(reading))
         }
     }
+
+    /** [statement], verified as [reading] was, held as [item] is. */
+    private fun stated(statement: String, reading: SwarmReading.Verified<*>, item: SwarmItem<*, *>): String =
+        SwarmTexts.stated(statement, reading.blockNumber, item.held)
 
     private fun unread(reading: SwarmReading<*>): String = when (reading) {
         SwarmReading.Syncing -> SwarmTexts.SYNCING

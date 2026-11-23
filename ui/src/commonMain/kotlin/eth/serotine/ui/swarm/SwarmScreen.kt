@@ -38,6 +38,7 @@ import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.UnderLightClientStripIfAny
 import eth.serotine.ui.mode.LocalInterfaceMode
+import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag of a chequebook's row, for UI tests. */
@@ -68,6 +69,7 @@ fun SwarmRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val item by lightClient.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
+    val copy = rememberCopyText()
     LaunchedEffect(state is SwarmUiState.Gone) {
         if (state is SwarmUiState.Gone) gone()
     }
@@ -81,6 +83,7 @@ fun SwarmRoute(
             onCancelAdd = viewModel::cancelAdd,
             onRemoveChequebook = viewModel::removeChequebook,
             onRemoveBatch = viewModel::removeBatch,
+            onCopy = copy,
         ),
         modifier = modifier,
         lightClient = item.takeIf { LocalInterfaceMode.current == InterfaceMode.DETAILED },
@@ -96,6 +99,7 @@ data class SwarmActions(
     val onCancelAdd: () -> Unit = {},
     val onRemoveChequebook: (String) -> Unit = {},
     val onRemoveBatch: (String) -> Unit = {},
+    val onCopy: (String) -> Unit = {},
 )
 
 /**
@@ -168,7 +172,10 @@ private fun Ready(state: SwarmUiState.Ready, actions: SwarmActions) {
                 row.lines.forEach { Text(it) }
                 row.warning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text(row.status, style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = { actions.onRemoveChequebook(row.address) }) { Text("Remove") }
+                Row {
+                    TextButton(onClick = { actions.onCopy(row.address) }) { Text("Copy address") }
+                    TextButton(onClick = { actions.onRemoveChequebook(row.address) }) { Text("Remove") }
+                }
             }
         }
     }
@@ -184,7 +191,10 @@ private fun Ready(state: SwarmUiState.Ready, actions: SwarmActions) {
                 if (row.immutable) Text("Immutable")
                 row.timeLeft?.let { Text(it) }
                 Text(row.status, style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = { actions.onRemoveBatch(row.id) }) { Text("Remove") }
+                Row {
+                    TextButton(onClick = { actions.onCopy(row.id) }) { Text("Copy id") }
+                    TextButton(onClick = { actions.onRemoveBatch(row.id) }) { Text("Remove") }
+                }
             }
         }
     }

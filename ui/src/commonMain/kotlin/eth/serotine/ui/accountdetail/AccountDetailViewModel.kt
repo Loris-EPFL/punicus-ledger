@@ -113,6 +113,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -297,7 +298,8 @@ class AccountDetailViewModel(
     /** A Swarm node's row: what it says, or null when the account is none (or not read yet). */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val swarm = lookup.map { (it as? AccountLookup.Found)?.account }
-        .distinctUntilChanged()
+        // Only what decides the reading: a rename never restarts it, nor drops a reading held.
+        .distinctUntilChangedBy { it?.id to it?.kind }
         .flatMapLatest { found ->
             if (found == null || observeSwarmNode == null) {
                 flowOf(null)
@@ -1179,6 +1181,11 @@ internal fun swarmEntry(reading: SwarmNodeReading): String? {
     val chequebooks =
         read.chequebooks.count { (it.reading as? SwarmReading.Verified)?.finding is ChequebookFinding.Node }
     val batches = read.batches.count { (it.reading as? SwarmReading.Verified)?.finding is BatchFinding.Node }
+    val held = (read.chequebooks + read.batches).any { item ->
+        item.held && (item.reading as? SwarmReading.Verified)?.finding.let {
+            it is ChequebookFinding.Node || it is BatchFinding.Node
+        }
+    }
     val parts = listOfNotNull(
         when (chequebooks) {
             0 -> null
@@ -1191,7 +1198,9 @@ internal fun swarmEntry(reading: SwarmNodeReading): String? {
             else -> "$batches postage batches"
         },
     )
-    return "Swarm node: " + parts.joinToString(" and ")
+    val text = "Swarm node: " + parts.joinToString(" and ")
+    // A reading held as last verified is said to be (owner's request, 2026-10-19; decisions, 2026-11-17).
+    return if (held) "$text, as last verified: it may have changed since" else text
 }
 
 /** What a Safe's Owners tab says of it as a Gnosis Pay account; null when it is none, or not read yet. */

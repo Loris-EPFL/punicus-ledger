@@ -174,7 +174,8 @@ its block or its age and says it may have changed since; a verified answer
 that differs, or a reason that stands, replaces it at once. Nothing is
 quoted or signed on a held reading.
 
-- **The node:** its xDAI and xBZZ, as on its own screen.
+- **The node:** its name and address. Its xDAI and xBZZ are on the
+  account's own screen.
 - **The chequebook:** its address, `balance()`, `liquidBalance()` (what is
   not hard-deposited to a peer), `totalPaidOut()`, and `bounced()`: once a
   cheque of it bounced, peers know, and the screen says so.

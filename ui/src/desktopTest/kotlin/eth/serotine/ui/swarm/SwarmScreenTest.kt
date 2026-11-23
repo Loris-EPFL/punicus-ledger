@@ -56,6 +56,7 @@ class SwarmScreenTest {
                     onConfirmAdd = { events += "confirm" },
                     onRemoveChequebook = { events += "remove chequebook $it" },
                     onRemoveBatch = { events += "remove batch $it" },
+                    onCopy = { events += "copy $it" },
                 ),
             )
         }
@@ -78,12 +79,14 @@ class SwarmScreenTest {
         rule.onAllNodesWithText("Remove")[1].performClick()
         rule.onNodeWithText("Add chequebook").performClick()
         rule.onNodeWithText("Add a batch by id").performClick()
+        rule.onNodeWithText("Copy id").performClick()
         assertEquals(
             listOf(
                 "remove chequebook 0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
                 "remove batch 0x" + "ab".repeat(32),
                 "add CHEQUEBOOK",
                 "add BATCH",
+                "copy 0x" + "ab".repeat(32),
             ),
             events,
         )

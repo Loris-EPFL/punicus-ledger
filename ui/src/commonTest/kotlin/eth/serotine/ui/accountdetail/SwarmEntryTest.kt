@@ -43,6 +43,15 @@ class SwarmEntryTest {
     }
 
     @Test
+    fun aHeldReadingIsSaidToBeOne() {
+        val held = batch("ab").copy(held = true)
+        assertEquals(
+            "Swarm node: a postage batch, as last verified: it may have changed since",
+            swarmEntry(SwarmNodeReading.Read(emptyList(), listOf(held))),
+        )
+    }
+
+    @Test
     fun nothingProvenIsNoRow() {
         assertNull(swarmEntry(SwarmNodeReading.Read(emptyList(), listOf(SwarmItem(BatchId.of("ab".repeat(32)), null)))))
         assertNull(swarmEntry(SwarmNodeReading.NotASwarmAccount))

@@ -537,7 +537,6 @@ class AppGraph(
             unlinkPerAppAlias = UnlinkPerAppAlias(perAppAliases),
         )
 
-    /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it. */
     /** The Swarm node screen of [node] (docs/swarm.md). */
     fun swarmViewModel(node: AccountId): SwarmViewModel = SwarmViewModel(
         node,
@@ -547,6 +546,7 @@ class AppGraph(
         RemoveSwarmCandidate(swarmCandidates),
     )
 
+    /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it. */
     fun gnosisPayViewModel(safe: AccountId): GnosisPayViewModel = GnosisPayViewModel(
         safe,
         ObserveAccount(accounts),

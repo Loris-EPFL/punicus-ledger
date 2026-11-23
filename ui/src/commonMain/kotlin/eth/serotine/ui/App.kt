@@ -1326,16 +1326,16 @@ private fun NavController.safeSettings(safe: AccountId) {
     navigate("${Destination.SAFE}/${safe.route}/${Destination.SAFE_SETTINGS}")
 }
 
-/**
- * Opens the Gnosis Pay account [safe]'s screen (docs/gnosis-pay.md), once; at the step [start] names
- * when the Safe's settings ask for a change of the Delay's members (owner ruling, 2026-11-18).
- */
 /** Opens the Swarm node screen of [node] (docs/swarm.md); a second tap while it opens does nothing. */
 private fun NavController.swarm(node: AccountId) {
     if (currentDestination?.route == SWARM_ROUTE) return
     navigate("${Destination.SWARM}/${node.route}")
 }
 
+/**
+ * Opens the Gnosis Pay account [safe]'s screen (docs/gnosis-pay.md), once; at the step [start] names
+ * when the Safe's settings ask for a change of the Delay's members (owner ruling, 2026-11-18).
+ */
 private fun NavController.gnosisPay(safe: AccountId, start: GnosisPayStart? = null) {
     if (currentDestination?.route == GNOSIS_PAY_ROUTE) return
     val members = when (start) {

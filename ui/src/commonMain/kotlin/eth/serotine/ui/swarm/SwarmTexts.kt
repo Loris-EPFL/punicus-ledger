@@ -61,7 +61,8 @@ internal object SwarmTexts {
     /** What a batch has left, at the price its reading was made at (Bee's `estimateBatchTTL`). */
     fun timeLeft(batch: PostageBatch): String {
         if (batch.expired) return "Expired"
-        val seconds = batch.secondsLeft ?: return "Time left unknown: the price is zero"
+        val seconds = batch.secondsLeft
+            ?: return if (batch.lastPrice.isZero) "Time left unknown: the price is zero" else FAR_AHEAD
         val days = seconds / DAY
         return when {
             days >= 2 -> "About ${grouped(days)} days left at the current price"
@@ -77,6 +78,9 @@ internal object SwarmTexts {
     } else {
         "Verified at block ${grouped(block)}"
     }
+
+    /** A [statement] verified at [block], held as last verified ([held]) or current, with where it stands. */
+    fun stated(statement: String, block: Long, held: Boolean): String = "$statement ${verified(block, held)}."
 
     const val NOT_READ = "Checking on chain…"
     const val SYNCING = "Waiting for the light client to sync…"
@@ -131,6 +135,7 @@ internal object SwarmTexts {
     const val CHECKSUM = "This address's checksum does not match: check it was copied in full."
     const val NOT_A_BATCH_ID = "Not a batch id: 64 hex digits, with or without 0x."
 
+    private const val FAR_AHEAD = "Far more than a lifetime left"
     private const val HOUR = 3600L
     private const val DAY = 24 * HOUR
 }

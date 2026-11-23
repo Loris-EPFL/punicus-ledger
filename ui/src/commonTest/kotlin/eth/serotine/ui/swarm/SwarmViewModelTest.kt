@@ -83,6 +83,9 @@ class SwarmViewModelTest {
         override suspend fun forget(node: AccountId) = SwarmCandidateChange.NOT_FOUND
     }
 
+    /** When set, a batch's reading waits for it: a slow proof. */
+    private var slowBatch: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+
     /** What the light client proves the chequebook to be; the node's by default. */
     private var chequebookReading: SwarmReading<ChequebookFinding> = SwarmReading.Verified(
         ChequebookFinding.Node(
@@ -102,7 +105,12 @@ class SwarmViewModelTest {
         override fun observeChequebook(network: Network, node: Address, chequebook: Address) =
             flowOf(chequebookReading)
 
-        override fun observeBatch(network: Network, node: Address, id: BatchId) = flowOf(
+        override fun observeBatch(network: Network, node: Address, id: BatchId) = kotlinx.coroutines.flow.flow {
+            slowBatch?.await()
+            emit(batchReading(id))
+        }
+
+        private fun batchReading(id: BatchId): SwarmReading<BatchFinding> = (
             if (id == batchId) {
                 SwarmReading.Verified(
                     BatchFinding.Node(
@@ -120,7 +128,7 @@ class SwarmViewModelTest {
                 )
             } else {
                 SwarmReading.Verified(BatchFinding.OthersOwner(stranger), 43_000_512)
-            },
+            }
         )
 
         override fun deployment(network: Network) = null
@@ -194,6 +202,23 @@ class SwarmViewModelTest {
         runCurrent()
         assertNull(viewModel.ready.adding, "kept: the form closes")
         assertEquals(listOf(batchId), kept.value.batches)
+    }
+
+    @Test
+    fun aCheckAnsweredAfterItsFormWasCancelledReachesNoOtherForm() = runTest {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        slowBatch = gate
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.startAdd(AddKind.BATCH)
+        viewModel.onAddText("cd".repeat(32))
+        viewModel.confirmAdd()
+        viewModel.cancelAdd()
+        viewModel.startAdd(AddKind.CHEQUEBOOK)
+        gate.complete(Unit)
+        runCurrent()
+        val open = assertIs<AddForm>(viewModel.ready.adding)
+        assertEquals(AddForm(AddKind.CHEQUEBOOK, attempt = open.attempt), open, "the new form, untouched")
     }
 
     @Test

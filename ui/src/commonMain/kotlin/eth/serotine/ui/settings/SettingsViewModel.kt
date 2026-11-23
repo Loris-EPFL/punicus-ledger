@@ -410,6 +410,9 @@ class SettingsViewModel(
                     ?: ": no importer key is pinned in this release yet",
             )
             if (AddressIndexMissing.NO_READER in missing) append(" · This build's engine has no Swarm reader")
+            if (AddressIndexMissing.READER_NOT_KNOWN in missing) {
+                append(" · Waiting for the engine to say whether it reads Swarm")
+            }
             val stored = (choice as? AddressIndexChoice.Chosen)?.importer
             val other = trustsAnotherKey
             when {
@@ -434,6 +437,8 @@ class SettingsViewModel(
                     "read only on the word of an importer whose key a release pins; a key is never typed in here."
                 AddressIndexMissing.NO_READER -> "This build's engine has no Swarm reader, so the index cannot be " +
                     "read here. The history stays the light client's log index."
+                AddressIndexMissing.READER_NOT_KNOWN -> "The engine says whether this build reads Swarm once " +
+                    "Ethereum's light client runs: while Ethereum is on in Networks and one of your accounts is on it."
                 AddressIndexMissing.CHOICE_UNREADABLE -> "Your saved choice cannot be read, so it is taken as off. " +
                     "Punicus keeps trying to read it, and the switch works again once it can."
             }

@@ -1321,7 +1321,7 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
         the network is not served, the checkpoint table's alarm (in the
         error's colour; the rows already shown go, since they rest on the
         table, and so do its coverage and counts: in this part when a read is
-        refused for it; part 4 of the plan brings the alarm itself into the
+        refused for it; part 5 of the plan brings the alarm itself into the
         app, so that they go the moment it is raised), a stale checkpoint, no
         light client, an index signed by another key than the pinned one (its
         rows go too), a request the engine rejected (a bug). Simple mode says

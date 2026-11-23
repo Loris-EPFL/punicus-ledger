@@ -17,6 +17,7 @@ import eth.serotine.domain.repository.AddressIndexSetting
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlin.time.Duration
 
 /**
@@ -41,7 +42,19 @@ internal class FakeAddressIndexHistory(
     /** What [hasReader] answers: a reader, unless a test says this build has none. */
     var reader: Boolean = true
 
-    override suspend fun hasReader(): Boolean = reader
+    private val answered = MutableStateFlow(true)
+
+    /** Whether [hasReader] answers yet: false holds it, as an engine whose Ethereum light client does not run. */
+    var readerAnswered: Boolean
+        get() = answered.value
+        set(value) {
+            answered.value = value
+        }
+
+    override suspend fun hasReader(): Boolean {
+        answered.first { it }
+        return reader
+    }
 
     override suspend fun page(network: Network, address: Address, query: AddressIndexQuery): AddressIndexReading {
         queries += Triple(network, address, query)

@@ -294,6 +294,41 @@ class EngineAddressIndexHistoryTest {
     }
 
     @Test
+    fun anEntryWithNoVerdictThatReadsIsUnavailableAndAVerifiedVerdictWithAContradictionIsNoRow() = runTest {
+        val blockHash = "0x" + "bb".repeat(32)
+        val second = AddressIndexEntry(26_290_000, 2, setOf(AddressIndexRole.TO))
+        val third = AddressIndexEntry(26_280_000, 1, setOf(AddressIndexRole.FROM))
+        chain.check = """[
+            {"block":26300000,"slot":3,"roles":["from","trace"],"state":"sideways"},
+            {"block":26290000,"slot":2,"roles":["to"],"state":"verified","final":true,"blockHash":"$blockHash",
+             "confirmed":["to"],"contradicted":["to"],"unchecked":[],"txHash":"0x${"ab".repeat(32)}",
+             "from":"${alice.hex}","to":"${bob.hex}","value":"0x0","transfer":null}
+        ]"""
+
+        val verdicts = assertIs<AddressIndexCheck.Verdicts>(
+            history().verify(Network.ETHEREUM, alice, listOf(entry, second, third)),
+        ).verdicts
+
+        assertEquals(3, verdicts.size, "one verdict per entry asked")
+        assertIs<AddressIndexVerdict.Unverified>(verdicts.single { it.entry == second }, "a contradiction is no row")
+        for (missing in listOf(entry, third)) {
+            val unavailable = assertIs<AddressIndexVerdict.Unavailable>(verdicts.single { it.entry == missing })
+            assertEquals(EngineAddressIndexHistory.NO_VERDICT_READ, unavailable.reason)
+        }
+    }
+
+    @Test
+    fun theEnginesWordOnItsReaderIsKeptOnceGiven() = runTest {
+        val history = history()
+        assertTrue(history.hasReader())
+
+        // Ethereum turned off: no light client left to ask, and the answer once given still holds.
+        chain.supports = null
+        chain.snapshot = EngineSnapshot.Stopped(off = true)
+        assertTrue(history.hasReader(), "answered at once, without a running light client")
+    }
+
+    @Test
     fun theProtocolsLogOfAnEthTransferIsNoTokensAndAnNftIsReadByItsId() = runTest {
         val blockHash = "0x" + "bb".repeat(32)
         fun verified(slot: Int, transfer: String) = """{"block":26300000,"slot":$slot,"roles":["from"],

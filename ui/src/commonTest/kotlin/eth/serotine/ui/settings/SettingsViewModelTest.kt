@@ -737,6 +737,25 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun untilTheEngineSaysWhetherItReadsSwarmTheRowIsGreyedOutNotLeftOut() = runTest {
+        val index = FakeAddressIndexHistory().apply { readerAnswered.value = false }
+        val viewModel = viewModel(addressIndex = index, pinned = FIXTURE_IMPORTER)
+
+        val waiting = checkNotNull(viewModel.uiState.value.addressIndex) { "the row is there, greyed out (#55)" }
+        assertFalse(waiting.on)
+        assertTrue(waiting.text.contains(" · Waiting for the engine to say whether it reads Swarm"), waiting.text)
+        assertTrue(checkNotNull(waiting.unavailableReason).contains("Ethereum's light client runs"))
+        assertTrue(waiting.turnOff, "the default can be turned off ahead")
+
+        index.readerAnswered.value = true
+        runCurrent()
+
+        val answered = checkNotNull(viewModel.uiState.value.addressIndex)
+        assertTrue(answered.on, "on by default once the engine reads Swarm")
+        assertNull(answered.unavailableReason)
+    }
+
+    @Test
     fun aSwitchOfTheAddressIndexThatCannotBeSavedSaysSo() = runTest {
         val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(), pinned = FIXTURE_IMPORTER)
         addressIndexSetting.failSaves = true

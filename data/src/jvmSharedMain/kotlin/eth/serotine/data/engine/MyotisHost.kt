@@ -57,6 +57,7 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -233,22 +234,47 @@ class MyotisHost private constructor(
 
     /**
      * Lets the engine read the addr1 index of [importer] on the host's Swarm network, or nothing (null). Kept, and
-     * applied on the control thread now if the engine exists, else as soon as the first start creates it. Returns at
-     * once: true, as what is kept is applied.
+     * applied on the control thread: now if the engine exists, else as soon as the first start creates it. Waits until
+     * the control thread got to it: true when the engine took it, or when it is kept for an engine not created yet;
+     * false when the engine refused it, or the host shut down first.
      */
     override suspend fun apply(importer: Address?): Boolean {
         val config = addressHistoryConfigJson(importer, addressIndexSwarm)
         addressHistoryConfig = config
-        onControlThread { (engine as? EngineState.Created)?.engine?.let { applyAddressHistory(it, config) } }
-        return true
+        val applied = CompletableDeferred<Boolean>()
+        try {
+            control.execute {
+                // applyAddressHistory never throws: the answer always comes, so the caller never waits for ever.
+                val state = engine
+                applied.complete(
+                    when {
+                        shutDown -> false
+                        state is EngineState.Created -> applyAddressHistory(state.engine, config)
+                        else -> true
+                    },
+                )
+            }
+        } catch (e: RejectedExecutionException) {
+            // Shut down already: nothing is applied any more.
+            return false
+        }
+        return applied.await()
     }
 
-    /** Hands [config] to [engine]; a refusal is reported, and the engine keeps refusing every read. */
-    private fun applyAddressHistory(engine: MyotisEngine, config: String) {
-        val answer = engine.setAddressHistoryConfigJson(config)
-        if (answer.contains("\"error\"")) {
-            System.err.println("Punicus: the engine refused the address history's settings: $answer")
+    /**
+     * Hands [config] to [engine]: true when the engine took it whole (its `{}`), false when it refused it, said, or
+     * when the call threw (it crosses JNA). Refused, the engine keeps refusing every read, which each read says.
+     */
+    private fun applyAddressHistory(engine: MyotisEngine, config: String): Boolean {
+        val answer = try {
+            engine.setAddressHistoryConfigJson(config)
+        } catch (e: Throwable) {
+            System.err.println("Punicus: the engine could not take the address history's settings: $e")
+            return false
         }
+        val taken = answer.trim() == "{}"
+        if (!taken) System.err.println("Punicus: the engine refused the address history's settings: $answer")
+        return taken
     }
 
     /** Starts [network]'s light client, or stops it ([LightClientRun.IDLE], [LightClientRun.OFF]). Returns at once. */
@@ -447,9 +473,12 @@ class MyotisHost private constructor(
         /** The handle, unwrapped: what [activity] reads (in memory, so neither logged nor shared). */
         private val handleChain = HandleChain()
 
-        /** The handle's address history, unwrapped as [activity]'s is (Ethereum's alone is asked). */
-        val addressChain: AddressHistoryChain
-            get() = handleChain
+        /**
+         * The handle's address history (Ethereum's alone is asked), each page and check written to [apiLog] when there
+         * is one: they are the heaviest requests the app makes (Swarm, archive peers, a check up to about 90 s).
+         */
+        val addressChain: AddressHistoryChain = apiLog?.let { LoggedChain(handleChain, it, history = handleChain) }
+            ?: handleChain
 
         /** The handle, each request written to [apiLog] when there is one, its status reads shared. */
         private val chain: EngineChain = handleChain.let { handle ->

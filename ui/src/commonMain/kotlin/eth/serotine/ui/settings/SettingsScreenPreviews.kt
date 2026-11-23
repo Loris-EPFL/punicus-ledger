@@ -387,6 +387,26 @@ private fun SettingsAddressIndexNoReaderPreview() = SettingsPreview(
     atTheEnd = true,
 )
 
+/**
+ * A key pinned, and an engine that has not said yet whether it reads Swarm (Ethereum's light client not running):
+ * greyed out for that, never left out (owner ruling, #55).
+ */
+@Preview
+@Composable
+private fun SettingsAddressIndexReaderNotKnownPreview() = SettingsPreview(
+    synced.copy(
+        addressIndex = AddressIndexItem(
+            on = false,
+            text = "Off: importer $sampleImporter, pinned in this release · Waiting for the engine to say " +
+                "whether it reads Swarm · On by default once it can be read: Turn off keeps it off",
+            turnOff = true,
+            unavailableReason = "The engine says whether this build reads Swarm once Ethereum's light client runs: " +
+                "while Ethereum is on in Networks and one of your accounts is on it.",
+        ),
+    ),
+    atTheEnd = true,
+)
+
 /** On by default for the key pinned in the release, with an engine that reads Swarm: what a later release may offer. */
 @Preview
 @Composable
@@ -472,6 +492,7 @@ internal val settingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("address-index-no-key") { SettingsAddressIndexNoKeyPreview() },
     ScreenPreview("address-index-no-key-dark") { SettingsAddressIndexNoKeyDarkPreview() },
     ScreenPreview("address-index-no-reader") { SettingsAddressIndexNoReaderPreview() },
+    ScreenPreview("address-index-reader-not-known") { SettingsAddressIndexReaderNotKnownPreview() },
     ScreenPreview("address-index-on") { SettingsAddressIndexOnPreview() },
     ScreenPreview("address-index-turn-off") { SettingsAddressIndexTurnOffPreview() },
     ScreenPreview("address-index-turn-off-dark") { SettingsAddressIndexTurnOffDarkPreview() },

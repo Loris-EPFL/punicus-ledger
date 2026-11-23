@@ -54,6 +54,31 @@ class LoggedChainTest {
     }
 
     @Test
+    fun theAddressHistorysPagesAndChecksAreLoggedItsBuildCheckIsNot() = runTest {
+        val history = object : AddressHistoryChain {
+            override fun snapshot(): EngineSnapshot = EngineSnapshot.Booting
+            override fun supportsAddressHistory(): Boolean? = true
+            override fun addressHistory(address: String, optionsJson: String): String? = "{\"entries\":[]}"
+            override fun verifyAddressHistory(address: String, entriesJson: String): String? =
+                "{\"error\":\"no importer key is set for the address history\",\"code\":-32602}"
+        }
+        val logged = LoggedChain(engine, log, time, history = history)
+
+        assertEquals(true, logged.supportsAddressHistory())
+        assertEquals("{\"entries\":[]}", logged.addressHistory(account.hex, "{}"))
+        logged.verifyAddressHistory(account.hex, "[]")
+
+        assertEquals(
+            listOf(
+                "addressHistoryJson: ok, 0 ms",
+                "verifyAddressHistoryJson: failed ({\"error\":\"no importer key is set for the address history\"," +
+                    "\"code\":-32602}), 0 ms",
+            ),
+            records().map { it.message },
+        )
+    }
+
+    @Test
     fun aRefusalIsAFailureWithItsReasonAndARevertAnAnswer() = runTest {
         engine.transacting.call = CallOutcome.Refused
         chain.callFrom(account, account, "0", byteArrayOf(1))

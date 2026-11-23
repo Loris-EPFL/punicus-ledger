@@ -19,6 +19,7 @@ import eth.serotine.domain.repository.AddressIndexQuery
 import eth.serotine.domain.repository.AddressIndexReading
 import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.ReadUnavailable
+import kotlin.concurrent.Volatile
 import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
@@ -88,7 +89,8 @@ internal interface AddressHistoryChain {
  * The light client's state decides what is asked: none on this device is [AddressIndexRefusal.NoEngine], a network
  * turned off or not started yet is passing, a stale checkpoint is [AddressIndexRefusal.StaleAnchor]. Calls block on
  * the engine (a check up to about 90 s), so they run on [dispatcher]. [hasReader] waits, every [readerPoll], for a
- * running light client to ask, and answers false at once on a device with no engine.
+ * running light client to ask, and answers false at once on a device with no engine; the engine's answer is kept, so
+ * that every later ask is answered at once, whatever the light client does meanwhile.
  */
 class EngineAddressIndexHistory internal constructor(
     private val served: Network,
@@ -97,7 +99,12 @@ class EngineAddressIndexHistory internal constructor(
     private val readerPoll: Duration,
 ) : AddressIndexHistory {
 
+    /** The engine's word on its reader, once it gave one: a build's engine cannot change it within a run. */
+    @Volatile
+    private var reader: Boolean? = null
+
     override suspend fun hasReader(): Boolean {
+        reader?.let { return it }
         val chain = chain ?: return false
         while (true) {
             val known = withContext(dispatcher) {
@@ -108,7 +115,10 @@ class EngineAddressIndexHistory internal constructor(
                     null
                 }
             }
-            if (known != null) return known
+            if (known != null) {
+                reader = known
+                return known
+            }
             if (snapshotOf(chain) == EngineSnapshot.Down) return false
             delay(readerPoll)
         }
@@ -159,11 +169,20 @@ class EngineAddressIndexHistory internal constructor(
             if (reason != null && reason.startsWith(ALARM_PREFIX)) {
                 return AddressIndexCheck.Refused(AddressIndexRefusal.CheckpointAlarm(reason))
             }
-            // A verdict that does not read is no verdict: the caller treats it as unavailable.
+            // A verdict that does not read is no verdict: its entry is answered below as unavailable.
             verdictOf(verdict)
         }
-        return AddressIndexCheck.Verdicts(verdicts)
+        // One verdict per entry asked (the port's rule): an entry with none that reads is unavailable, and says why.
+        val answered = verdicts.filter { verdict -> entries.any { it.isOf(verdict) } }
+        val missing = entries.filter { asked -> answered.none { asked.isOf(it) } }
+        return AddressIndexCheck.Verdicts(
+            answered + missing.map { AddressIndexVerdict.Unavailable(it, NO_VERDICT_READ) },
+        )
     }
+
+    /** Whether [verdict] is this entry's: the same block, slot and roles. */
+    private fun AddressIndexEntry.isOf(verdict: AddressIndexVerdict): Boolean =
+        block == verdict.entry.block && slot == verdict.entry.slot && roles == verdict.entry.roles
 
     /** Why nothing is asked of the engine in [snapshot]'s state; null when it is asked. */
     private fun stateRefusal(snapshot: EngineSnapshot): AddressIndexRefusal? = when (snapshot) {
@@ -211,6 +230,9 @@ class EngineAddressIndexHistory internal constructor(
     private fun malformed(what: String) = AddressIndexRefusal.Rejected("the engine's $what did not read as documented")
 
     internal companion object {
+        /** Why an entry asked is unavailable when the engine's answer holds no verdict of it that reads. */
+        const val NO_VERDICT_READ = "the engine's answer held no verdict of it that read as documented"
+
         /** JSON-RPC's invalid params: the engine's lasting refusal. */
         const val INVALID_PARAMS = -32602
 
@@ -375,6 +397,13 @@ class EngineAddressIndexHistory internal constructor(
             val final = (json["final"] as? JsonPrimitive)?.booleanOrNull ?: return null
             val confirmed = rolesOf(json["confirmed"]) ?: return null
             val unchecked = rolesOf(json["unchecked"]) ?: return null
+            // A verified verdict that also names a contradicted role is no row: it does not read as one.
+            when (val contradicted = json["contradicted"]) {
+                null, JsonNull -> Unit
+                else -> if (rolesOf(contradicted)?.isEmpty() != true) {
+                    return AddressIndexVerdict.Unverified(entry, "the engine's verdict named a contradicted role")
+                }
+            }
             val transaction = if (entry.slot == 0) null else transactionOf(json) ?: return null
             return try {
                 val row = AddressIndexRow(entry, blockHash, final, confirmed, unchecked, transaction)

@@ -65,7 +65,6 @@ import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.KeepTransactionInputs
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.NetworkDemand
-import eth.serotine.domain.usecase.ObserveAddressIndexStatus
 import eth.serotine.domain.usecase.ObserveDebugTab
 import eth.serotine.domain.usecase.ObserveHeavyDownloads
 import eth.serotine.domain.usecase.ObserveSafe
@@ -309,12 +308,12 @@ private fun openWallet(dataDir: File) {
         }
         LaunchedEffect(Unit) {
             // The engine's addr1 reader follows the setting: the pinned key while it is on, none otherwise, so that
-            // nothing is read from Swarm or checked for it while it is off. A failure ends it, never the wallet.
+            // nothing is read from Swarm or checked for it while it is off. Applied from the start, without waiting
+            // for the engine to say whether it reads Swarm. Handing the engine the key does not make it dial out:
+            // its Swarm node starts on the first read (Myotis's addrhist.rs: "the node starts on the first read"),
+            // which an Activity asks, as docs/privacy-policy.md says. A failure ends it, never the wallet.
             try {
-                FollowAddressIndexSetting(
-                    ObserveAddressIndexStatus(node.addressIndex, addressIndexSetting, PinnedAddressIndexImporter.KEY),
-                    node,
-                )()
+                FollowAddressIndexSetting(addressIndexSetting, PinnedAddressIndexImporter.KEY, node)()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

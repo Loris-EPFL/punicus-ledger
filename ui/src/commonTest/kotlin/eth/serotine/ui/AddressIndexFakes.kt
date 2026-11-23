@@ -22,6 +22,7 @@ import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.AddressIndexSetting
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 
 /** A made-up importer key of the addr1 index, a test fixture: no release pins it. */
 internal val FIXTURE_IMPORTER: Address = Address.of("0x" + "1e".repeat(20))
@@ -42,7 +43,13 @@ internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressInde
     }
     val asked = mutableListOf<AddressIndexCursor?>()
 
-    override suspend fun hasReader(): Boolean = reader
+    /** Whether [hasReader] answers yet: false holds it, as an engine whose Ethereum light client does not run. */
+    val readerAnswered = MutableStateFlow(true)
+
+    override suspend fun hasReader(): Boolean {
+        readerAnswered.first { it }
+        return reader
+    }
 
     override suspend fun page(network: Network, address: Address, query: AddressIndexQuery): AddressIndexReading {
         asked += query.cursor

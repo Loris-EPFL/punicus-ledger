@@ -80,7 +80,15 @@ internal object SwarmTexts {
     }
 
     /** A [statement] verified at [block], held as last verified ([held]) or current, with where it stands. */
-    fun stated(statement: String, block: Long, held: Boolean): String = "$statement ${verified(block, held)}."
+    fun stated(statement: String, block: Long, held: Boolean): String =
+        // A held reading's text ends with its own full stop.
+        if (held) "$statement ${verified(block, held = true)}" else "$statement ${verified(block, held = false)}."
+
+    const val NETWORK_OFF =
+        "Gnosis Chain is off in this wallet, so nothing can be checked on chain. Turned on, a chequebook or " +
+            "a batch can be added here."
+    const val NETWORK_NOT_TURNED_ON = "Gnosis Chain could not be turned on: try again in Settings."
+    const val NOT_REMOVED = "It could not be removed: the chequebooks and batches kept could not be saved."
 
     const val NOT_READ = "Checking on chain…"
     const val SYNCING = "Waiting for the light client to sync…"

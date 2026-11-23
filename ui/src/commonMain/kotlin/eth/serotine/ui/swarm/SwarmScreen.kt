@@ -11,6 +11,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonColors
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,7 +28,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -36,10 +41,19 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.Unavailable
+import eth.serotine.ui.components.UnavailableDialog
+import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnderLightClientStripIfAny
+import eth.serotine.ui.components.networkOffNotice
+import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.mode.LocalInterfaceMode
 import eth.serotine.ui.platform.rememberCopyText
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
+
+private const val ADD_CHEQUEBOOK = "Add chequebook"
+private const val ADD_BATCH = "Add a batch by id"
 
 /** Test tag of a chequebook's row, for UI tests. */
 const val SWARM_CHEQUEBOOK_TAG = "swarm-chequebook"
@@ -66,7 +80,8 @@ fun SwarmRoute(
     onGone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Main.immediate: as on the other screens that take typing, an edit reaches its field in the same frame.
+    val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
     val item by lightClient.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
     val copy = rememberCopyText()
@@ -84,6 +99,7 @@ fun SwarmRoute(
             onRemoveChequebook = viewModel::removeChequebook,
             onRemoveBatch = viewModel::removeBatch,
             onCopy = copy,
+            onTurnOn = viewModel::turnOnNetwork,
         ),
         modifier = modifier,
         lightClient = item.takeIf { LocalInterfaceMode.current == InterfaceMode.DETAILED },
@@ -100,6 +116,7 @@ data class SwarmActions(
     val onRemoveChequebook: (String) -> Unit = {},
     val onRemoveBatch: (String) -> Unit = {},
     val onCopy: (String) -> Unit = {},
+    val onTurnOn: () -> Unit = {},
 )
 
 /**
@@ -156,6 +173,18 @@ fun SwarmScreen(
 
 @Composable
 private fun Ready(state: SwarmUiState.Ready, actions: SwarmActions) {
+    var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
+    // A missing prerequisite greys an action out, and a tap says what is missing (owner ruling, 2026-10-18, #55).
+    val add: (AddKind, String) -> Unit = { kind, title ->
+        val reason = state.addReason
+        if (reason == null) {
+            actions.onStartAdd(kind)
+        } else {
+            unavailable = networkOffNotice(title, reason, "Gnosis Chain", actions.onTurnOn)
+        }
+    }
+    unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
+    state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         AccountAvatar(state.address)
         Column {
@@ -180,7 +209,11 @@ private fun Ready(state: SwarmUiState.Ready, actions: SwarmActions) {
         }
     }
     state.chequebookNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-    OutlinedButton(onClick = { actions.onStartAdd(AddKind.CHEQUEBOOK) }) { Text("Add chequebook") }
+    OutlinedButton(
+        onClick = { add(AddKind.CHEQUEBOOK, ADD_CHEQUEBOOK) },
+        modifier = Modifier.unavailable(state.addReason != null),
+        colors = addColors(state.addReason != null),
+    ) { Text(ADD_CHEQUEBOOK) }
 
     Text("Postage batches", style = MaterialTheme.typography.titleMedium)
     state.batches.forEach { row ->
@@ -199,14 +232,18 @@ private fun Ready(state: SwarmUiState.Ready, actions: SwarmActions) {
         }
     }
     state.batchNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-    OutlinedButton(onClick = { actions.onStartAdd(AddKind.BATCH) }) { Text("Add a batch by id") }
+    OutlinedButton(
+        onClick = { add(AddKind.BATCH, ADD_BATCH) },
+        modifier = Modifier.unavailable(state.addReason != null),
+        colors = addColors(state.addReason != null),
+    ) { Text(ADD_BATCH) }
 }
 
 @Composable
 private fun AddDialog(form: AddForm, actions: SwarmActions) {
     val title = when (form.kind) {
-        AddKind.CHEQUEBOOK -> "Add chequebook"
-        AddKind.BATCH -> "Add a batch by id"
+        AddKind.CHEQUEBOOK -> ADD_CHEQUEBOOK
+        AddKind.BATCH -> ADD_BATCH
     }
     AlertDialog(
         onDismissRequest = actions.onCancelAdd,
@@ -254,6 +291,15 @@ private fun AddDialog(form: AddForm, actions: SwarmActions) {
         dismissButton = { TextButton(onClick = actions.onCancelAdd) { Text("Cancel") } },
     )
 }
+
+/** An outlined button's colours, greyed out while it stays tappable when [unavailable]. */
+@Composable
+private fun addColors(unavailable: Boolean): ButtonColors =
+    if (unavailable) {
+        ButtonDefaults.outlinedButtonColors(contentColor = Unavailable.contentColor())
+    } else {
+        ButtonDefaults.outlinedButtonColors()
+    }
 
 @Composable
 private fun Mono(text: String) {

@@ -57,6 +57,7 @@ class SwarmScreenTest {
                     onRemoveChequebook = { events += "remove chequebook $it" },
                     onRemoveBatch = { events += "remove batch $it" },
                     onCopy = { events += "copy $it" },
+                    onTurnOn = { events += "turn on" },
                 ),
             )
         }
@@ -101,6 +102,15 @@ class SwarmScreenTest {
         // The state here is fixed, so the field may report its reset as well: what was typed, then the confirm.
         assertEquals("text 0x12", events.first())
         assertEquals("confirm", events.last())
+    }
+
+    @Test
+    fun aGreyedOutAddSaysWhyAndOffersTurnOn() {
+        show(ready.copy(addReason = SwarmTexts.NETWORK_OFF))
+        rule.onNodeWithText("Add chequebook").performClick()
+        rule.onNodeWithText(SwarmTexts.NETWORK_OFF).assertIsDisplayed()
+        rule.onNodeWithText("Turn on Gnosis Chain").performClick()
+        assertEquals(listOf("turn on"), events, "the form does not open")
     }
 
     @Test

@@ -318,8 +318,9 @@ replaces the bar (Material's expanded window size class):
    proposal of a Safe transaction, 16) · Send from another wallet (7H; an
    EOA whose key is not on this device) · Receive · Copy address · Rename · New
    account from the same phrase (an EOA's; greyed out when watch-only, a tap
-   saying why) · Swarm node… (an EOA on Gnosis Chain; *Swarm nodes* below)
-   · Remove. Removing an account the user
+   saying why) · Remove. The account detail's top-bar menu (4) also offers
+   Swarm node… for an EOA on Gnosis Chain (*Swarm nodes* below). Removing
+   an account the user
    holds a key for says that only its recovery phrase brings it back, and
    asks for a confirmation, not the wallet password (owner ruling,
    2026-10-18, #17). The key store keeps one envelope per account, under its
@@ -1870,7 +1871,8 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
 
 - **On the account's own screen** a **Swarm node** row ("Swarm node: a
   chequebook and 3 postage batches") opens **Swarm node**, a screen of its
-  own. Every EOA on Gnosis Chain has **Swarm node…** in its menu, which
+  own. Every EOA on Gnosis Chain has **Swarm node…** in its account
+  screen's top-bar menu (4), which
   opens the same screen, empty where nothing is proven yet, to add a
   chequebook or a batch by hand. The account list shows nothing new. The
   screen is the same in simple mode and in Detailed view for now.
@@ -1896,7 +1898,9 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
   checksum) or the batch id, as Bee shows it. **Add** reads it on chain;
   kept, the dialog closes; refused, it says why ("This batch is owned by
   0x…, not this node.", "It could not be verified right now, so nothing was
-  kept."). Withdraw, Top up, Dilute and Buy a batch come with their parts
+  kept."). With Gnosis Chain off, Add is greyed out, a tap saying that
+  nothing can be checked on chain, with **Turn on Gnosis Chain**. A
+  removal that could not be saved says so. Withdraw, Top up, Dilute and Buy a batch come with their parts
   (docs/swarm.md, *Delivery*). **Top up** on each; **Dilute** on each, greyed out unless the
   node's key is held here. Both are greyed out on an expired batch, a tap
   saying to buy a new one. The capacity is Swarm's published effective

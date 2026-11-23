@@ -15,15 +15,16 @@ import eth.serotine.domain.repository.SwarmCandidateList
 import eth.serotine.domain.repository.SwarmCandidates
 import eth.serotine.domain.repository.SwarmContracts
 import eth.serotine.domain.repository.SwarmReading
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** The one network Bee's contracts are pinned on (docs/swarm.md, *The contracts*). */
 internal val SWARM_NETWORK = Network.GNOSIS
@@ -41,40 +42,79 @@ class ObserveSwarmNode(
     private val candidates: SwarmCandidates,
     private val contracts: SwarmContracts,
 ) {
-    /** [account]'s Swarm reading, re-emitted as its candidates or their proofs change. Never fails. */
-    @OptIn(ExperimentalCoroutinesApi::class)
+    /**
+     * [account]'s Swarm reading, re-emitted as its candidates or their proofs change. Never fails.
+     * Each candidate's reading, and the hold over it, runs for as long as the candidate is kept: a
+     * change of the list (one added, removed or found) starts the new ones and stops the gone ones
+     * alone, never the others, so a reading held as last verified stands through it.
+     */
     operator fun invoke(account: Account): Flow<SwarmNodeReading> {
         if (!canBeSwarmNode(account)) return flowOf(SwarmNodeReading.NotASwarmAccount)
         val node = account.id
-        return candidates.observe(node).flatMapLatest { list ->
-            when (list) {
-                SwarmCandidateList.Unreadable -> flowOf(SwarmNodeReading.Unreadable)
-                is SwarmCandidateList.Loaded -> read(node, list)
+        return channelFlow {
+            val lock = Mutex()
+            val chequebooks = Tracked<Address, ChequebookFinding>()
+            val batches = Tracked<BatchId, BatchFinding>()
+            var list: SwarmCandidateList.Loaded? = null
+
+            // Called under the lock: the reading as the list orders it, each item as last read.
+            suspend fun publish() {
+                val current = list ?: return
+                send(
+                    SwarmNodeReading.Read(
+                        current.chequebooks.map { chequebooks.items.getValue(it) },
+                        current.batches.map { batches.items.getValue(it) },
+                        setAside = current.setAside,
+                    ),
+                )
+            }
+
+            fun <K, T : Any> follow(tracked: Tracked<K, T>, keys: List<K>, read: (K) -> Flow<SwarmReading<T>>) {
+                (tracked.jobs.keys - keys.toSet()).forEach { gone ->
+                    tracked.jobs.remove(gone)?.cancel()
+                    tracked.items.remove(gone)
+                }
+                keys.filter { it !in tracked.jobs }.forEach { key ->
+                    tracked.items[key] = SwarmItem(key, null)
+                    tracked.jobs[key] = launch {
+                        read(key).holdingVerifiedSwarm().collect { held ->
+                            lock.withLock {
+                                tracked.items[key] = SwarmItem(key, held.value, held = held.held)
+                                publish()
+                            }
+                        }
+                    }
+                }
+            }
+
+            candidates.observe(node).collect { observed ->
+                lock.withLock {
+                    when (observed) {
+                        SwarmCandidateList.Unreadable -> {
+                            follow(chequebooks, emptyList()) { flowOf() }
+                            follow(batches, emptyList()) { flowOf() }
+                            list = null
+                            send(SwarmNodeReading.Unreadable)
+                        }
+                        is SwarmCandidateList.Loaded -> {
+                            follow(chequebooks, observed.chequebooks) {
+                                contracts.observeChequebook(node.network, node.address, it)
+                            }
+                            follow(batches, observed.batches) { contracts.observeBatch(node.network, node.address, it) }
+                            list = observed
+                            publish()
+                        }
+                    }
+                }
             }
         }.distinctUntilChanged()
     }
 
-    private fun read(node: AccountId, list: SwarmCandidateList.Loaded): Flow<SwarmNodeReading> {
-        val chequebooks = list.chequebooks.map { address ->
-            contracts.observeChequebook(node.network, node.address, address)
-                .holdingVerifiedSwarm()
-                .map { SwarmItem(address, it.value, held = it.held) }
-                .onStart { emit(SwarmItem(address, null)) }
-        }
-        val batches = list.batches.map { id ->
-            contracts.observeBatch(node.network, node.address, id)
-                .holdingVerifiedSwarm()
-                .map { SwarmItem(id, it.value, held = it.held) }
-                .onStart { emit(SwarmItem(id, null)) }
-        }
-        return combine(all(chequebooks), all(batches)) { found, bought ->
-            SwarmNodeReading.Read(found, bought, setAside = list.setAside)
-        }
+    /** The candidates of one kind being read: each one's reading job and its item as last read. */
+    private class Tracked<K, T> {
+        val jobs = mutableMapOf<K, Job>()
+        val items = mutableMapOf<K, SwarmItem<K, T>>()
     }
-
-    /** Every flow's latest, in their order; an empty list at once when there are none. */
-    private inline fun <reified T> all(flows: List<Flow<T>>): Flow<List<T>> =
-        if (flows.isEmpty()) flowOf(emptyList()) else combine(flows) { it.toList() }
 }
 
 /**

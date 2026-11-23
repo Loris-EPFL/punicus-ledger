@@ -167,6 +167,26 @@ class SwarmNodesTest {
     }
 
     @Test
+    fun aHeldReadingStandsThroughAChangeOfTheList() = runTest {
+        val readings = MutableStateFlow<SwarmReading<ChequebookFinding>>(
+            SwarmReading.Verified(ChequebookFinding.Node(chequebook), 7),
+        )
+        live = readings
+        stored.value = SwarmCandidateList.Loaded(listOf(chequebookAddress), emptyList())
+        var last: SwarmNodeReading.Read? = null
+        backgroundScope.launch { observe(node).collect { last = it as? SwarmNodeReading.Read } }
+        runCurrent()
+        readings.value = SwarmReading.Unavailable(ReadUnavailable.UNPROVEN)
+        runCurrent()
+        // A batch is added while the chequebook's reads do not answer: the chequebook stays held.
+        stored.value = SwarmCandidateList.Loaded(listOf(chequebookAddress), listOf(batchId))
+        runCurrent()
+        val verified: SwarmReading<ChequebookFinding> = SwarmReading.Verified(ChequebookFinding.Node(chequebook), 7)
+        assertEquals(SwarmItem(chequebookAddress, verified, held = true), last?.chequebooks?.single())
+        assertEquals(batchId, last?.batches?.single()?.key)
+    }
+
+    @Test
     fun unreadableCandidatesSaySo() = runTest {
         stored.value = SwarmCandidateList.Unreadable
         assertEquals(SwarmNodeReading.Unreadable, observe(node).first())

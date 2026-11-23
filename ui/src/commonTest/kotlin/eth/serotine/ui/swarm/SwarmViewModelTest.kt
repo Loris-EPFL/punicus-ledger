@@ -23,7 +23,10 @@ import eth.serotine.domain.usecase.AddSwarmCandidate
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveSwarmNode
 import eth.serotine.domain.usecase.RemoveSwarmCandidate
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.ui.FakeAccounts
+import eth.serotine.ui.MemoryNetworkSettings
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -58,6 +61,10 @@ class SwarmViewModelTest {
     private val batchId = BatchId.of("ab".repeat(32))
 
     private val accounts = FakeAccounts(bee)
+    private val networks = MemoryNetworkSettings(setOf(Network.GNOSIS))
+
+    /** What a removal answers: saved by default. */
+    private var removeSaves = true
     private val kept = MutableStateFlow(SwarmCandidateList.Loaded(emptyList(), emptyList()))
     private val removed = mutableListOf<SwarmCandidate>()
 
@@ -76,6 +83,7 @@ class SwarmViewModelTest {
         }
 
         override suspend fun remove(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange {
+            if (!removeSaves) return SwarmCandidateChange.NOT_SAVED
             removed += candidate
             return SwarmCandidateChange.CHANGED
         }
@@ -145,6 +153,8 @@ class SwarmViewModelTest {
             ObserveSwarmNode(candidates, contracts),
             AddSwarmCandidate(candidates, contracts),
             RemoveSwarmCandidate(candidates),
+            ObserveEnabledNetworks(networks),
+            SetNetworkEnabled(networks),
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
         return viewModel
@@ -219,6 +229,56 @@ class SwarmViewModelTest {
         runCurrent()
         val open = assertIs<AddForm>(viewModel.ready.adding)
         assertEquals(AddForm(AddKind.CHEQUEBOOK, attempt = open.attempt), open, "the new form, untouched")
+    }
+
+    @Test
+    fun aCheckTakenBackKeepsNothing() = runTest {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        slowBatch = gate
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.startAdd(AddKind.BATCH)
+        // The node's own batch: kept, had its check not been taken back.
+        viewModel.onAddText("ab".repeat(32))
+        viewModel.confirmAdd()
+        viewModel.cancelAdd()
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(emptyList(), kept.value.batches)
+    }
+
+    @Test
+    fun addIsGreyedOutWhileGnosisChainIsOffAndTurnOnTurnsItOn() = runTest {
+        networks.on.value = emptySet()
+        val viewModel = viewModel()
+        runCurrent()
+        assertEquals(SwarmTexts.NETWORK_OFF, viewModel.ready.addReason)
+        viewModel.turnOnNetwork()
+        runCurrent()
+        assertNull(viewModel.ready.addReason)
+        assertEquals(setOf(Network.GNOSIS), networks.on.value)
+    }
+
+    @Test
+    fun aRemovalThatCouldNotBeSavedSaysSo() = runTest {
+        removeSaves = false
+        kept.value = SwarmCandidateList.Loaded(listOf(chequebookAddress), emptyList())
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.removeChequebook(viewModel.ready.chequebooks.single().address)
+        runCurrent()
+        assertEquals(SwarmTexts.NOT_REMOVED, viewModel.ready.message)
+    }
+
+    @Test
+    fun aHeldRowNamesItsBlockOnceAndSaysItMayHaveChanged() {
+        val text = SwarmTexts.stated(SwarmTexts.GONE, 43_000_512, held = true)
+        assertEquals(false, text.endsWith(".."), text)
+        assertEquals(true, text.endsWith("it may have changed since."), text)
+        assertEquals(
+            SwarmTexts.GONE + " Verified at block 43,000,512.",
+            SwarmTexts.stated(SwarmTexts.GONE, 43_000_512, held = false),
+        )
     }
 
     @Test

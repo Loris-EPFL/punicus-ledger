@@ -544,6 +544,8 @@ class AppGraph(
         ObserveSwarmNode(swarmCandidates, swarmContracts),
         AddSwarmCandidate(swarmCandidates, swarmContracts),
         RemoveSwarmCandidate(swarmCandidates),
+        ObserveEnabledNetworks(networkSettings),
+        SetNetworkEnabled(networkSettings),
     )
 
     /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it. */

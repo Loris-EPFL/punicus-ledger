@@ -18,7 +18,9 @@ sealed interface SwarmUiState {
     /**
      * The node [label] at [address] (EIP-55): its [chequebooks] with [chequebookNote] saying why
      * there are none; its [batches] with [batchNote] likewise; [note] about the candidates kept
-     * (set aside once damaged); and [adding], the form that adds one by hand, when open.
+     * (set aside once damaged); [adding], the form that adds one by hand, when open; [addReason],
+     * why Add is greyed out (Gnosis Chain turned off), null when it can be done; and [message], what
+     * the last action said when it could not be done.
      */
     data class Ready(
         val label: String,
@@ -29,6 +31,8 @@ sealed interface SwarmUiState {
         val batchNote: String?,
         val note: String? = null,
         val adding: AddForm? = null,
+        val addReason: String? = null,
+        val message: String? = null,
     ) : SwarmUiState
 }
 

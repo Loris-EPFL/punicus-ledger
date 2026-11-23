@@ -1,6 +1,7 @@
 package eth.serotine.ui.swarm
 
 import androidx.compose.runtime.Composable
+import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.ui.ScreenPreview
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -82,7 +83,11 @@ private fun SwarmHeldPreview() = SwarmPreview(
                 shortId = "0x0f0f0f0f…0f0f",
                 capacity = null,
                 timeLeft = null,
-                status = SwarmTexts.othersBatch("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"),
+                status = SwarmTexts.stated(
+                    SwarmTexts.othersBatch("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"),
+                    43_000_512,
+                    held = true,
+                ),
             ),
         ),
     ),
@@ -112,6 +117,25 @@ private fun SwarmAddRefusedPreview() = SwarmPreview(
     ),
 )
 
+/** Gnosis Chain off: Add greyed out, a tap saying so with Turn on (owner ruling, 2026-10-18, #55). */
+@Preview
+@Composable
+private fun SwarmNetworkOffPreview() = SwarmPreview(
+    node.copy(
+        chequebooks = listOf(
+            chequebook.copy(lines = emptyList(), status = SwarmTexts.unavailable(ReadUnavailable.NETWORK_OFF)),
+        ),
+        batches = emptyList(),
+        batchNote = SwarmTexts.NO_BATCH,
+        addReason = SwarmTexts.NETWORK_OFF,
+    ),
+)
+
+/** A removal that could not be saved, said above the lists. */
+@Preview
+@Composable
+private fun SwarmNotRemovedPreview() = SwarmPreview(node.copy(message = SwarmTexts.NOT_REMOVED))
+
 @Preview
 @Composable
 private fun SwarmLoadingPreview() = SwarmPreview(SwarmUiState.Loading)
@@ -130,6 +154,8 @@ internal val swarmScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("add-chequebook") { SwarmAddChequebookPreview() },
     ScreenPreview("add-checking") { SwarmAddCheckingPreview() },
     ScreenPreview("add-refused") { SwarmAddRefusedPreview() },
+    ScreenPreview("network-off") { SwarmNetworkOffPreview() },
+    ScreenPreview("not-removed") { SwarmNotRemovedPreview() },
     ScreenPreview("loading") { SwarmLoadingPreview() },
     ScreenPreview("unavailable") { SwarmUnavailablePreview() },
 )

@@ -12,14 +12,17 @@ import eth.serotine.domain.repository.SwarmReading
 import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AddSwarmCandidate
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveSwarmNode
 import eth.serotine.domain.usecase.RemoveSwarmCandidate
+import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SwarmAddOutcome
 import eth.serotine.domain.usecase.SwarmItem
 import eth.serotine.domain.usecase.SwarmNodeReading
 import eth.serotine.ui.components.AddressInput
 import eth.serotine.ui.components.Eip55
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -46,9 +49,19 @@ class SwarmViewModel(
     private val observeSwarmNode: ObserveSwarmNode,
     private val addSwarmCandidate: AddSwarmCandidate,
     private val removeSwarmCandidate: RemoveSwarmCandidate,
+    observeEnabledNetworks: ObserveEnabledNetworks,
+    private val setNetworkEnabled: SetNetworkEnabled,
 ) : ViewModel() {
 
     private val form = MutableStateFlow<AddForm?>(null)
+
+    /** What the last action said, when it could not be done; cleared by the next one. */
+    private val message = MutableStateFlow<String?>(null)
+
+    /** The check the open form started, cancelled with the form: a check taken back keeps nothing. */
+    private var check: Job? = null
+
+    private val networkOn = observeEnabledNetworks().map { node.network in it }.distinctUntilChanged()
 
     private val lookup = observeAccount(node)
 
@@ -60,7 +73,13 @@ class SwarmViewModel(
         .flatMapLatest { account -> if (account == null) flowOf(null) else observeSwarmNode(account) }
 
     /** The screen's state. */
-    val uiState: StateFlow<SwarmUiState> = combine(lookup, reading, form) { lookup, reading, form ->
+    val uiState: StateFlow<SwarmUiState> = combine(
+        lookup,
+        reading,
+        form,
+        networkOn,
+        message,
+    ) { lookup, reading, form, on, said ->
         when (lookup) {
             AccountLookup.ListUnavailable -> SwarmUiState.Unavailable(SwarmTexts.LIST_UNAVAILABLE)
             AccountLookup.NotInList -> SwarmUiState.Gone
@@ -68,14 +87,27 @@ class SwarmViewModel(
                 null -> SwarmUiState.Loading
                 SwarmNodeReading.NotASwarmAccount -> SwarmUiState.Unavailable(SwarmTexts.NOT_SWARM)
                 SwarmNodeReading.Unreadable -> SwarmUiState.Unavailable(SwarmTexts.UNREADABLE)
-                is SwarmNodeReading.Read -> ready(lookup.account.label, reading, form)
+                is SwarmNodeReading.Read -> ready(lookup.account.label, reading, form).copy(
+                    // Nothing can be proven on a network that is off: Add is greyed out, with Turn on.
+                    addReason = SwarmTexts.NETWORK_OFF.takeUnless { on },
+                    message = said,
+                )
             }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SwarmUiState.Loading)
 
     /** Opens the form that adds a [kind] by hand. */
     fun startAdd(kind: AddKind) {
+        check?.cancel()
+        message.value = null
         form.value = AddForm(kind, attempt = ++attempts)
+    }
+
+    /** Turns Gnosis Chain on, from Add's greyed-out notice; says so when it could not be saved. */
+    fun turnOnNetwork() {
+        viewModelScope.launch {
+            message.value = SwarmTexts.NETWORK_NOT_TURNED_ON.takeUnless { setNetworkEnabled(node.network, on = true) }
+        }
     }
 
     /** Counts each form opened and each check made, so that a check's answer reaches only its own form. */
@@ -86,8 +118,10 @@ class SwarmViewModel(
         form.update { it?.copy(text = text, error = null) }
     }
 
-    /** Closes the form. */
+    /** Closes the form, and stops the check it started: what was taken back is not kept. */
     fun cancelAdd() {
+        check?.cancel()
+        check = null
         form.value = null
     }
 
@@ -104,7 +138,8 @@ class SwarmViewModel(
         }
         val checking = current.copy(checking = true, error = null, attempt = ++attempts)
         form.value = checking
-        viewModelScope.launch {
+        check?.cancel()
+        check = viewModelScope.launch {
             val outcome = addFor(candidate)
             val error = if (outcome == null) SwarmTexts.LIST_UNAVAILABLE else SwarmTexts.added(outcome)
             // Kept: the form closes. Not kept: it stays, saying why. Only the form that asked: one
@@ -122,13 +157,21 @@ class SwarmViewModel(
     /** Takes the chequebook at [address] (EIP-55) out of the node's: remembered as removed. */
     fun removeChequebook(address: String) {
         val parsed = Address.parse(address) ?: return
-        viewModelScope.launch { removeSwarmCandidate(node, SwarmCandidate.ChequebookAt(parsed)) }
+        remove(SwarmCandidate.ChequebookAt(parsed))
     }
 
     /** Takes the batch [id] out of the node's: remembered as removed. */
     fun removeBatch(id: String) {
         val parsed = BatchId.parse(id) ?: return
-        viewModelScope.launch { removeSwarmCandidate(node, SwarmCandidate.Batch(parsed)) }
+        remove(SwarmCandidate.Batch(parsed))
+    }
+
+    /** Removes [candidate], saying so when that could not be saved. */
+    private fun remove(candidate: SwarmCandidate) {
+        message.value = null
+        viewModelScope.launch {
+            if (!removeSwarmCandidate(node, candidate)) message.value = SwarmTexts.NOT_REMOVED
+        }
     }
 
     /** What adding [candidate] made of it; null when the account list cannot be read to add it with. */

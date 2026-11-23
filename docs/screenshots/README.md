@@ -10,7 +10,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 
 | Screen | Folder | States |
 |---|---|---|
-| [Account detail](#account-detail) | `account-detail/` | 51 |
+| [Account detail](#account-detail) | `account-detail/` | 52 |
 | [Accounts](#accounts) | `accounts/` | 41 |
 | [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 3 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 11 |
@@ -63,6 +63,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Transfer status (simple mode)](#simple-transfer-status) | `simple-transfer-status/` | 13 |
 | [Watch address (simple mode)](#simple-watch) | `simple-watch/` | 9 |
 | [Swap](#swap) | `swap/` | 38 |
+| [Swarm node](#swarm) | `swarm/` | 10 |
 | [Tokens](#tokens) | `tokens/` | 7 |
 | [Transfer status](#transfer-status) | `transfer-status/` | 37 |
 | [Update required](#update-required) | `update-required/` | 2 |
@@ -72,10 +73,11 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="account-detail"></a>
 ## Account detail
 
-`account-detail/`, 51 states: `assets`, `assets-dark`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `per-app-tab-no-network`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`
+`account-detail/`, 52 states: `assets`, `assets-dark`, `swarm-node`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `per-app-tab-no-network`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`
 
 <a href="account-detail/assets.png"><img src="account-detail/assets.png" width="206" alt="assets"></a>
 <a href="account-detail/assets-dark.png"><img src="account-detail/assets-dark.png" width="206" alt="assets-dark"></a>
+<a href="account-detail/swarm-node.png"><img src="account-detail/swarm-node.png" width="206" alt="swarm-node"></a>
 <a href="account-detail/checking.png"><img src="account-detail/checking.png" width="206" alt="checking"></a>
 <a href="account-detail/head-too-old.png"><img src="account-detail/head-too-old.png" width="206" alt="head-too-old"></a>
 <a href="account-detail/by-name-with-impostor.png"><img src="account-detail/by-name-with-impostor.png" width="206" alt="by-name-with-impostor"></a>
@@ -1125,6 +1127,22 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="swap/wrap-review.png"><img src="swap/wrap-review.png" width="206" alt="wrap-review"></a>
 <a href="swap/wrap-review-dark.png"><img src="swap/wrap-review-dark.png" width="206" alt="wrap-review-dark"></a>
 <a href="swap/unwrap-review.png"><img src="swap/unwrap-review.png" width="206" alt="unwrap-review"></a>
+
+<a name="swarm"></a>
+## Swarm node
+
+`swarm/`, 10 states: `node`, `node-dark`, `empty`, `bounced-expired`, `held`, `add-chequebook`, `add-checking`, `add-refused`, `loading`, `unavailable`
+
+<a href="swarm/node.png"><img src="swarm/node.png" width="206" alt="node"></a>
+<a href="swarm/node-dark.png"><img src="swarm/node-dark.png" width="206" alt="node-dark"></a>
+<a href="swarm/empty.png"><img src="swarm/empty.png" width="206" alt="empty"></a>
+<a href="swarm/bounced-expired.png"><img src="swarm/bounced-expired.png" width="206" alt="bounced-expired"></a>
+<a href="swarm/held.png"><img src="swarm/held.png" width="206" alt="held"></a>
+<a href="swarm/add-chequebook.png"><img src="swarm/add-chequebook.png" width="206" alt="add-chequebook"></a>
+<a href="swarm/add-checking.png"><img src="swarm/add-checking.png" width="206" alt="add-checking"></a>
+<a href="swarm/add-refused.png"><img src="swarm/add-refused.png" width="206" alt="add-refused"></a>
+<a href="swarm/loading.png"><img src="swarm/loading.png" width="206" alt="loading"></a>
+<a href="swarm/unavailable.png"><img src="swarm/unavailable.png" width="206" alt="unavailable"></a>
 
 <a name="tokens"></a>
 ## Tokens

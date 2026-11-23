@@ -13,6 +13,7 @@ import eth.serotine.domain.model.SwarmDeployment
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.ChequebookFinding
+import eth.serotine.domain.repository.ConnectionCost
 import eth.serotine.domain.repository.IndexedLog
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.LogCoverage
@@ -77,6 +78,12 @@ class FollowSwarmLogsTest {
         }
 
         override suspend fun remove(node: AccountId, candidate: SwarmCandidate) = SwarmCandidateChange.NOT_FOUND
+
+        override suspend fun forget(node: AccountId): SwarmCandidateChange {
+            if (node !in kept.value) return SwarmCandidateChange.NOT_FOUND
+            kept.value = kept.value - node
+            return SwarmCandidateChange.CHANGED
+        }
     }
 
     /** Proofs that cannot be had yet: each answers unverified, once. */
@@ -163,6 +170,9 @@ class FollowSwarmLogsTest {
         index.coverage.value = LogCoverageReading.Read(entries.toMap())
     }
 
+    /** The device's connection: unmetered unless a test says otherwise. */
+    private val meter = FakeConnectionMeter()
+
     private fun TestScope.follow() {
         val follower = FollowSwarmLogs(
             accounts,
@@ -170,7 +180,7 @@ class FollowSwarmLogsTest {
             contracts,
             lightClient,
             index,
-            ObserveHeavyDownloads(FakeConnectionMeter(), MemoryMeteredDownloads()),
+            ObserveHeavyDownloads(meter, MemoryMeteredDownloads()),
         )
         backgroundScope.launch { follower() }
         runCurrent()
@@ -483,6 +493,89 @@ class FollowSwarmLogsTest {
         )
         runCurrent()
         assertEquals(listOf(aliceBatch), kept.value[alice.id]?.batches)
+    }
+
+    @Test
+    fun anAccountThatPaidThePostageStampHasItFollowed() = runTest {
+        // No chequebook known: the node's own payment for a batch is the sign.
+        coverage(LogWatchKey.Mention(bee.address) to LogCoverage(300, 300L..1_000L))
+        index.answer = { query ->
+            val own = query.key == LogWatchKey.Mention(bee.address)
+            LogsReading.Logs(if (own) listOf(transfer(bee.address, stamp)) else emptyList())
+        }
+        follow()
+        lightClient.status.value = synced
+        runCurrent()
+        assertEquals(mapOf<LogWatchKey, Long>(LogWatchKey.Emitter(stamp) to 300), index.watched)
+    }
+
+    @Test
+    fun eachChangeCarriesThePauseOfTheHeavyDownloads() = runTest {
+        meter.cost.value = ConnectionCost.METERED
+        kept.value = mapOf(bee.id to SwarmCandidateList.Loaded(listOf(chequebook), emptyList()))
+        coverage(LogWatchKey.Mention(bee.address) to LogCoverage(300, 300L..1_000L))
+        index.answer = { LogsReading.Logs(emptyList()) }
+        follow()
+        lightClient.status.value = synced
+        runCurrent()
+        assertEquals(listOf(true), index.pauses, "a metered connection the user did not allow pauses the walk")
+    }
+
+    @Test
+    fun aChangeTheEngineDidNotTakeIsAskedAgain() = runTest {
+        index.takes = false
+        kept.value = mapOf(bee.id to SwarmCandidateList.Loaded(listOf(chequebook), emptyList()))
+        coverage(LogWatchKey.Mention(bee.address) to LogCoverage(300, 300L..1_000L))
+        index.answer = { LogsReading.Logs(emptyList()) }
+        follow()
+        lightClient.status.value = synced
+        runCurrent()
+        assertEquals(1, index.asked.size)
+        index.takes = true
+        coverage(LogWatchKey.Mention(bee.address) to LogCoverage(300, 300L..1_001L))
+        runCurrent()
+        assertEquals(mapOf<LogWatchKey, Long>(LogWatchKey.Emitter(stamp) to 300), index.watched)
+    }
+
+    @Test
+    fun theStartIsLoweredForANodeWithAnEarlierOneAndEverythingIsAskedAgainAfterOff() = runTest {
+        accounts.accounts.value = listOf(bee, alice)
+        kept.value = mapOf(bee.id to SwarmCandidateList.Loaded(listOf(chequebook), emptyList()))
+        coverage(
+            LogWatchKey.Mention(bee.address) to LogCoverage(500, 500L..1_000L),
+            LogWatchKey.Mention(alice.address) to LogCoverage(100, 100L..1_000L),
+        )
+        index.answer = { LogsReading.Logs(emptyList()) }
+        follow()
+        lightClient.status.value = synced
+        runCurrent()
+        assertEquals(500L, index.watched[LogWatchKey.Emitter(stamp)])
+
+        kept.value = kept.value + (alice.id to SwarmCandidateList.Loaded(emptyList(), listOf(batch)))
+        runCurrent()
+        assertEquals(100L, index.watched[LogWatchKey.Emitter(stamp)])
+
+        // Turned off and on: the engine's chain is new, and the PostageStamp is asked for again.
+        val asked = index.asked.size
+        lightClient.status.value = LightClientStatus.Off
+        runCurrent()
+        lightClient.status.value = synced
+        runCurrent()
+        assertEquals(asked + 1, index.asked.size)
+    }
+
+    @Test
+    fun anAccountThatLeftTheWalletTakesItsCandidatesWithIt() = runTest {
+        kept.value = mapOf(
+            bee.id to SwarmCandidateList.Loaded(listOf(chequebook), emptyList()),
+            alice.id to SwarmCandidateList.Loaded(emptyList(), listOf(batch)),
+        )
+        coverage(LogWatchKey.Mention(bee.address) to LogCoverage(300, 300L..1_000L))
+        index.answer = { LogsReading.Logs(emptyList()) }
+        follow()
+        lightClient.status.value = synced
+        runCurrent()
+        assertEquals(setOf(bee.id), kept.value.keys, "Alice is not in the wallet")
     }
 
     @Test

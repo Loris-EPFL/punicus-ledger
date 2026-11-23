@@ -39,6 +39,12 @@ interface SwarmCandidates {
      * [SwarmCandidateChange.NOT_FOUND] when it is not there. Never throws.
      */
     suspend fun remove(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange
+
+    /**
+     * Drops everything kept for [node], its removals too: the account left the wallet.
+     * [SwarmCandidateChange.NOT_FOUND] when nothing was kept. Never throws.
+     */
+    suspend fun forget(node: AccountId): SwarmCandidateChange
 }
 
 /** What may be one of a node's: a chequebook, or a postage batch. */

@@ -132,7 +132,9 @@ So:
     Swarm, and each round's price update, about a hundred blocks a day. It
     tells the serving peer that this device follows the PostageStamp, as any
     watched contract does (*An account's history*). It is configured while a
-    Swarm node is in the wallet, and dropped with the last one.
+    Swarm node is in the wallet, or an account of the wallet paid the
+    PostageStamp in xBZZ (it bought a batch), from the earliest start among
+    them, and dropped with the last one.
   - Each candidate found is proven as one added by hand is, at most 16 a
     round, the newest first, the rest in later rounds. The top 64 blocks of
     what was read are read again as the index grows, so that a block a
@@ -153,6 +155,8 @@ So:
 - **Removed by hand.** A candidate the user removes is remembered as
   removed, and the log index never adds it back; adding it by hand again
   keeps it again.
+- **An account removed from the wallet** takes its candidates and its
+  removals with it, as its history's start is forgotten.
 
 The candidates are kept per node in an app-private file: public data, not
 key material. Punicus never calls a Bee node's API, nor any other Swarm

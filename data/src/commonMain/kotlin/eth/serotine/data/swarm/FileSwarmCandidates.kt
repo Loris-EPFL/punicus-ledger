@@ -121,6 +121,15 @@ class FileSwarmCandidates(
             Decision(SwarmCandidateChange.CHANGED, all + (node to next.copy(dismissed = next.dismissed + candidate)))
         }
 
+    override suspend fun forget(node: AccountId): SwarmCandidateChange =
+        file.change(SwarmCandidateChange.NOT_SAVED) { all ->
+            if (node !in all) {
+                Decision(SwarmCandidateChange.NOT_FOUND)
+            } else {
+                Decision(SwarmCandidateChange.CHANGED, all - node)
+            }
+        }
+
     /** The file's layout: [version] first, then each node with its candidates. */
     @Serializable
     private class StoredCandidates(val version: Int, val nodes: List<StoredNode>)

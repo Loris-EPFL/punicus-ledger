@@ -111,6 +111,16 @@ class FileSwarmCandidatesTest {
     }
 
     @Test
+    fun aForgottenNodeLeavesNothingBehind() = runTest {
+        val store = candidates()
+        store.add(node, SwarmCandidate.Batch(batch), byHand = true)
+        store.remove(node, SwarmCandidate.Batch(batch))
+        assertEquals(SwarmCandidateChange.CHANGED, store.forget(node))
+        assertEquals(SwarmCandidateChange.NOT_FOUND, store.forget(node))
+        assertEquals(emptyMap(), candidates().observeNodes(Network.GNOSIS).first())
+    }
+
+    @Test
     fun aNodeOnAnUnknownNetworkIsPassedOverAndKeptAside() = runTest {
         SystemFileSystem.createDirectories(directory)
         val address = node.address.hex

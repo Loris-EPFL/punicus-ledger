@@ -33,8 +33,9 @@ import kotlinx.coroutines.flow.conflate
  *   [FollowAccountLogs]'s mention of it, the EOA as topic 1) names a recipient: other than the
  *   PostageStamp, a chequebook candidate.
  * - **A batch the wallet bought** (owner's decision, 2026-11-23). While a Swarm node is in the
- *   wallet (an EOA with a candidate kept), the index also follows the PostageStamp as an emitter,
- *   from the earliest start among those nodes' entries; with none left, the entry is dropped. A
+ *   wallet (an EOA with a candidate kept), or an account of the wallet paid the PostageStamp in
+ *   xBZZ (it bought a batch), the index also follows the PostageStamp as an emitter, from the
+ *   earliest start among those accounts' entries; with none left, the entry is dropped. A
  *   `BatchCreated` it holds makes its batch a candidate only when its owner, in its data, is an EOA
  *   of the wallet AND its transaction also holds an xBZZ `Transfer` to the PostageStamp from an
  *   account of the wallet: the wallet paid for it. `createBatch` takes any owner, so anyone can
@@ -52,6 +53,8 @@ import kotlinx.coroutines.flow.conflate
  *   replace, are read again as the span grows: coverage is polled, so a rewind and its re-walk
  *   between two polls look like growth. An entry that starts anew is read again from scratch, and
  *   so is the PostageStamp's when an EOA joins the wallet.
+ * - **An account that leaves the wallet** takes its candidates and removals with it
+ *   ([SwarmCandidates.forget]), as [FollowAccountLogs] forgets its start.
  * - **Nothing outlives a run.** What was read, and what was proven not to be an account's, live
  *   in this instance: each start of the hosts' work reads the covered spans again (local, and
  *   cheap) and proves again what is neither kept nor removed, 16 a round (verified reads).
@@ -82,6 +85,9 @@ class FollowSwarmLogs(
 
     /** Transactions in which an account of the wallet paid the PostageStamp in xBZZ. */
     private val paid = mutableSetOf<String>()
+
+    /** The accounts of the wallet seen paying the PostageStamp: the PostageStamp is followed for them. */
+    private val payers = mutableSetOf<Address>()
 
     /** `BatchCreated`s for an EOA of the wallet whose transaction no payment of the wallet is known in yet. */
     private val unpaid = mutableMapOf<String, MutableSet<FoundBatch>>()
@@ -121,17 +127,21 @@ class FollowSwarmLogs(
         val nodes = round.nodes ?: return
         val coverage = (round.coverage as? LogCoverageReading.Read)?.entries ?: return
         forgetWhatLeft(listed, eoas, deployment)
-        followTheStamp(eoas, nodes, coverage, deployment, !round.downloads.mayRun)
+        // An account that left the wallet takes its candidates and removals with it.
+        val addresses = listed.map { it.address }.toSet()
+        nodes.keys.filter { it.address !in addresses }.forEach { candidates.forget(it) }
         val eoaIds = eoas.map { it.id }.toSet()
         for (account in listed) {
             for (transfer in xbzzSentBy(account, coverage, deployment)) {
                 if (transfer.to == deployment.postageStamp) {
                     paid += transfer.transaction
+                    payers += account.address
                 } else if (account.id in eoaIds) {
                     found(account, SwarmCandidate.ChequebookAt(transfer.to), transfer.block)
                 }
             }
         }
+        followTheStamp(listed, nodes, coverage, deployment, !round.downloads.mayRun)
         val byAddress = eoas.associateBy { it.address }
         batchesIn(coverage, deployment).filter { it.owner in byAddress }.forEach {
             unpaid.getOrPut(it.transaction) { mutableSetOf() } += it
@@ -153,6 +163,7 @@ class FollowSwarmLogs(
         val addresses = listed.map { it.address }.toSet()
         read.keys.removeAll { it is LogWatchKey.Mention && it.address !in addresses }
         pending.keys.removeAll { it.address !in addresses }
+        payers.retainAll(addresses)
         refused.keys.removeAll { (id, _) -> id.address !in addresses }
         val now = eoas.map { it.address }.toSet()
         if (!listedEoas.containsAll(now)) read.remove(LogWatchKey.Emitter(deployment.postageStamp))
@@ -207,18 +218,23 @@ class FollowSwarmLogs(
         }
     }
 
-    /** Asks the engine to follow the PostageStamp while a node is in the wallet, and to drop it after. */
+    /**
+     * Asks the engine to follow the PostageStamp while a node is in the wallet, or an account of
+     * it paid the PostageStamp, and to drop it after.
+     */
     private suspend fun followTheStamp(
-        eoas: List<Account>,
+        listed: List<Account>,
         nodes: Map<AccountId, SwarmCandidateList.Loaded>,
         coverage: Map<LogWatchKey, LogCoverage>,
         deployment: SwarmDeployment,
         walkPaused: Boolean,
     ) {
         val key = LogWatchKey.Emitter(deployment.postageStamp)
-        val swarmNodes = eoas.filter { nodes[it.id]?.keepsAny == true }
+        val swarmNodes = listed.filter {
+            (canBeSwarmNode(it) && nodes[it.id]?.keepsAny == true) || it.address in payers
+        }
         if (swarmNodes.isEmpty()) {
-            // Dropped with the last node, an entry kept from an earlier run included.
+            // Dropped with the last of them, an entry kept from an earlier run included.
             val followed = emitterFrom != null || key in coverage
             if (followed && index.configure(network, emptyList(), listOf(key), walkPaused)) {
                 emitterFrom = null

@@ -74,6 +74,8 @@ class SwarmNodesTest {
         }
 
         override suspend fun remove(node: AccountId, candidate: SwarmCandidate) = SwarmCandidateChange.CHANGED
+
+        override suspend fun forget(node: AccountId) = SwarmCandidateChange.NOT_FOUND
     }
 
     private val observe = ObserveSwarmNode(candidates, contracts)

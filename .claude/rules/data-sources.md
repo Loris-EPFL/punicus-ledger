@@ -358,17 +358,20 @@ docs/walletconnect.md is the contract.)
 (Owner's decisions, 2026-11-23; docs/swarm.md.)
 
 - **Gnosis Chain only.** Bee's contracts as Bee v2.8.3 names them, each
-  pinned by address and code hash and proven before it is read: the BZZ
-  token's proxy and the implementation its EIP-1967 slot names, the
-  PostageStamp, the chequebook factory and its master copy.
+  pinned by address and code hash: the PostageStamp, the chequebook factory
+  and its master copy, proven before they are read; and the BZZ token's
+  proxy and the implementation its EIP-1967 slot names, proven before an
+  approval is quoted or an action signed. xBZZ's balances are read like any
+  built-in token's.
   Retired PostageStamps are not read. Swarm's testnet on Sepolia is open,
   the owner's to decide.
 - **xBZZ joins Gnosis Chain's built-in token list.** No feed and no pool
   prices it: "no price", out of totals.
-- **Found in the node's verified log index:** an xBZZ `Transfer` from the
-  node to a candidate chequebook, or to the PostageStamp, whose verified
-  receipt names the batch. Only as far back as the index reaches ("since
-  added").
+- **Found in the verified log index**, only as far back as it reaches
+  ("since added"): a chequebook as the recipient of an xBZZ `Transfer` from
+  the node; a batch from the pinned PostageStamp's `BatchCreated` logs,
+  followed as an emitter while a Swarm node is in the wallet, whose owner,
+  decoded from the data, is the node.
 - **Or bought here, or added by hand:** a chequebook by address, a batch by
   id, kept once proven. The candidates are public data, kept in an
   app-private file.
@@ -393,6 +396,4 @@ docs/walletconnect.md is the contract.)
 ## Open decisions
 
 Each is recorded here before its code lands. Today: each optional
-WalletConnect service above; Swarm on Sepolia, and whether the Swarm
-screen holds a reading for an hour as the Gnosis Pay screen does
-(docs/swarm.md).
+WalletConnect service above, and Swarm on Sepolia (docs/swarm.md).

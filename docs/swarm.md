@@ -46,10 +46,14 @@ keccak-256 of its code, as Uniswap's and CoW's contracts are (docs/swaps.md,
 
 - xBZZ is upgradeable: the bridge can point its proxy at new code. So the
   implementation slot is read with a verified storage proof, and its code
-  is held to the pin, before an approval is quoted. Another implementation
-  makes the four actions unavailable, saying so, until a release pins it.
-  xBZZ is listed like any built-in token: its `symbol()` "BZZ" and
-  `decimals()` 16 are checked when it is listed.
+  is held to the pin, before an approval is quoted or an action signed.
+  Another implementation makes the four actions unavailable, saying so,
+  until a release pins it. The xBZZ pins gate the four actions only: xBZZ is
+  listed and its balances read like any built-in token's, its `symbol()`
+  "BZZ" and `decimals()` 16 checked when it is listed.
+- The PostageStamp's, the factory's and the master copy's pins gate every
+  read of them: a chequebook or a batch is not proven, and is "not
+  available", while one does not match.
 - Gnosis Chain has had one chequebook factory. The factory's `ERC20Address()`
   is BZZ and its `master()` the master copy above.
 - Three retired PostageStamps still hold state (`0x6a1a…900e`, `0xa9c8…7c9A`
@@ -100,18 +104,31 @@ from the address. The factory's `SimpleSwapDeployed` names the chequebook in
 unindexed data, and a batch id is the hash of its buyer and a random nonce.
 So:
 
-- **The node's log index.** Bee funds its chequebook and pays for its batches
-  with xBZZ from the node, so each leaves a `Transfer` that names the node as
-  its sender (topic 1). For each one the account's log index holds:
-  - to an address other than the PostageStamp: that address is a chequebook
-    candidate;
-  - to the PostageStamp: the transaction's receipt, verified against its
-    block's receipts root (`ReceiptTracker`), holds the PostageStamp's
-    `BatchCreated` or `BatchTopUp`, and its batch id is a candidate.
-  The index covers an account from the block it was added at
-  (`.claude/rules/data-sources.md`, *An account's history*), so a node added after its chequebook and its
-  batches were made has nothing to find there. The screen says so, and
-  offers adding by hand.
+- **The log index**, from the block the node was added at:
+  - **A chequebook.** Bee funds its chequebook with xBZZ from the node, so
+    the funding leaves a `Transfer` that names the node as its sender
+    (topic 1) in the node's own index. Its recipient, other than the
+    PostageStamp, is a chequebook candidate.
+  - **A batch.** The index also follows the pinned PostageStamp as an
+    emitter (`LogWatchKey.Emitter`), from the earliest start among the
+    wallet's Swarm nodes on Gnosis Chain, for its `BatchCreated` logs alone.
+    Their owner is in the log's data, not a topic, so each is decoded here,
+    and one naming a node of the wallet makes its batch id a candidate. This
+    finds a batch bought for the node by anyone, not only by the node. A
+    past transaction's receipt cannot be had by its hash
+    (docs/embedding-myotis.md, `EngineReceipts`), so nothing here waits on
+    one.
+  - The emitter watch costs the walk the receipts of the blocks whose bloom
+    flags the PostageStamp: every batch bought or topped up on Swarm, a few
+    blocks a day. It tells the serving peer that this device follows the
+    PostageStamp, as any watched contract does (*An account's history*). It
+    is configured while a Swarm node is in the wallet, and dropped with the
+    last one.
+  - The index covers an account from the block it was added at
+    (`.claude/rules/data-sources.md`, *An account's history*), so a node
+    added after its chequebook and its batches were made has nothing to
+    find there. The screen says so, and offers adding by hand. A range the
+    index does not cover yet is never taken as "nothing there".
 - **Bought here.** A batch bought from this wallet is remembered with its id,
   worked out locally: `keccak256(abi.encode(buyer, nonce))`.
 - **Added by hand.** A chequebook by its address, a batch by its id: Bee's
@@ -126,18 +143,27 @@ service: the user copies what Bee shows.
 
 Each value is a verified call at one block, named on the screen, or "not
 available". A reading that could not be verified at the latest block is
-shown as any older answer is: dated, marked as possibly changed since, and
-never acted on. Whether it stays for an hour as the Gnosis Pay screen's
-does (docs/gnosis-pay.md, *A read that did not answer*) is open, the
-owner's to decide.
+held as last verified, for an hour at most, as the Gnosis Pay screen's is
+(owner's decisions, 2026-11-17: an old state remains until a new one is
+confirmed, for an hour at most, and the owner decided the same for every
+value shown; docs/gnosis-pay.md, *A read that did not answer*). It names
+its block or its age and says it may have changed since; a verified answer
+that differs, or a reason that stands, replaces it at once. Nothing is
+quoted or signed on a held reading.
 
 - **The node:** its xDAI and xBZZ, as on its own screen.
 - **The chequebook:** its address, `balance()`, `liquidBalance()` (what is
   not hard-deposited to a peer), `totalPaidOut()`, and `bounced()`: once a
   cheque of it bounced, peers know, and the screen says so.
 - **Each batch:** its id, depth and bucket depth, whether it is immutable,
-  its theoretical capacity (`2^depth` chunks of 4 KiB), its remaining balance
-  per chunk, and its time to live.
+  its capacity, its remaining balance per chunk, and its time to live.
+- **The capacity** is said as Swarm's documentation publishes it per depth,
+  the effective share a batch can hold before one of its buckets fills, from
+  a table pinned in the code with its source and date. The theoretical
+  `2^depth` chunks of 4 KiB is shown beside it, called theoretical. Chunks
+  fill the buckets unevenly: once one is full, an immutable batch takes no
+  more, and a mutable one overwrites the oldest chunks in that bucket. The
+  screen says so where the depth is chosen.
 - **The time to live** is the remaining balance per chunk divided by the
   contract's `lastPrice()`, in blocks of 5 seconds, as Bee's own
   `estimateBatchTTL` works it out. The price is set by Swarm's price oracle
@@ -148,7 +174,7 @@ owner's to decide.
 
 ## The four actions
 
-Each is a transaction from a key held here on Gnosis Chain, quoted, simulated
+Each is a transaction from an EOA whose key is held here on Gnosis Chain, quoted, simulated
 and signed like any other (`CallQuoter`), at the normal fee level, never on a
 quote over a minute old. Only to the pinned contracts, after a fresh read
 proves their code. Strict in both modes: none is drafted in lenient mode for
@@ -157,11 +183,12 @@ the blocks its figures were read at.
 
 ### Buy a batch
 
-- **Who pays:** any account held here on Gnosis Chain, chosen on the form.
-  It is the batch's buyer.
+- **Who pays:** any EOA whose key is held here on Gnosis Chain, chosen on
+  the form. It is the batch's buyer. A Safe does not pay here: that would
+  be a Safe transaction, which this page does not describe.
 - **Who owns it:** the node. Bee uses only the batches its own address owns.
 - **The form:** the depth, offered from 17 (Bee refuses less) to 30, each
-  named with its theoretical capacity; the time to live, from which the
+  named with its capacity (above); the time to live, from which the
   amount per chunk is worked out at the verified `lastPrice()`, never below
   the contract's `minimumInitialBalancePerChunk()`; and whether the batch is
   immutable, off by default. Bucket depth 16, as Bee buys.
@@ -179,8 +206,8 @@ the blocks its figures were read at.
 
 ### Top up a batch
 
-- Any account held here on Gnosis Chain pays: the contract lets anyone top
-  up any batch.
+- Any EOA whose key is held here on Gnosis Chain pays: the contract lets
+  anyone top up any batch.
 - The form takes the time to add, works out the amount per chunk at the
   verified `lastPrice()`, and says the total: that amount times `2^depth`.
 - Approve, then `topUp(batchId, amountPerChunk)`, as for a purchase.
@@ -213,6 +240,25 @@ the blocks its figures were read at.
   yet. Punicus cannot see them: they live in Bee. A cheque that cannot be
   paid in full bounces, the chequebook stays marked `bounced` for good, and
   peers may stop serving the node.
+
+### A key that Bee also uses
+
+Where the signing key is the node's own (Dilute, Withdraw, or a Buy or Top
+up the node pays), a running Bee node signs with it too: its own purchases,
+cashouts, and on a staked node the redistribution round's commit, reveal and
+claim. Punicus counts its own transactions not mined yet, never Bee's. So a
+transaction of Bee's still waiting to be mined can take the nonce Punicus
+signs: the send is turned away, or it replaces Bee's, which may be the
+node's commit or reveal for the round.
+
+- **The review warns**, whenever the signer is a Swarm node of the wallet:
+  "This is the node's own key. If Bee is running, stop it before you send:
+  Bee signs with the same key, and one of the two transactions can replace
+  the other."
+- **The nonce is checked again before the broadcast.** Where the verified
+  count of the key's mined transactions moved since the quote, by a
+  transaction not sent from here, nothing is sent, and the review is made
+  again.
 
 ### Not part of this
 

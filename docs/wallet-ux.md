@@ -1882,14 +1882,17 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
   when it was added here; add the chequebook by its address, as Bee shows
   it." with **Add chequebook**.
 - **Postage batches:** each with its id (shortened, copyable), its depth and
-  capacity ("Depth 22 · up to 16 GiB"), "Immutable" where it is, and its time
-  to live at the current price ("About 41 days left at the current price"),
+  capacity ("Depth 22 · ‹effective› of 16 GiB theoretical"), "Immutable"
+  where it is, and its time to live at the current price ("About 41 days
+  left at the current price"),
   or "Expired". **Top up** on each; **Dilute** on each, greyed out unless the
   node's key is held here. Both are greyed out on an expired batch, a tap
-  saying to buy a new one. **Buy a batch** and **Add a batch by id** under
+  saying to buy a new one. The capacity is Swarm's published effective
+  figure, with the theoretical one beside it called theoretical
+  (docs/swarm.md, *What the Swarm screen shows*). **Buy a batch** and **Add a batch by id** under
   the list.
-- **Buy a batch** is a form: the account that pays (any held here on Gnosis
-  Chain, with its xBZZ), the depth with its capacity, the time to live, and
+- **Buy a batch** is a form: the account that pays (any EOA whose key is
+  held here on Gnosis Chain, with its xBZZ), the depth with its capacity, the time to live, and
   "Immutable". It says the total in xBZZ before Review. Its review is two
   steps, as a swap's: "Approve 12.5 xBZZ to Swarm's postage contract", then,
   once that is mined, "Buy a postage batch for 0x…", each signed with the
@@ -1903,9 +1906,13 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
   from this chequebook that are not cashed yet. Punicus cannot see them. If
   one cannot be paid in full it bounces, the chequebook is marked as bounced
   for good, and peers may stop serving the node."
+- Signed by the node's own key, each review warns: "This is the node's own
+  key. If Bee is running, stop it before you send: Bee signs with the same
+  key, and one of the two transactions can replace the other."
 - Every figure names its block (Detailed view) or its age (simple mode). A
-  reading that could not be verified at the latest block is shown dated,
-  marked as possibly changed since, and nothing is quoted on it.
+  reading that could not be verified at the latest block stays as last
+  verified, for an hour at most (owner's decisions, 2026-11-17), said as
+  such, and nothing is quoted on it.
 - The light client's strip (Detailed view) or sync line (simple mode) sits
   above the screen.
 

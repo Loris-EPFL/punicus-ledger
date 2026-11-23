@@ -42,7 +42,7 @@ import kotlinx.serialization.json.put
 /**
  * [CowApi] over HTTP, CoW Protocol's order API (`api.cow.fi`, its OpenAPI spec
  * `crates/orderbook/openapi.yml` in `cowprotocol/services`), on the client [engine] each platform
- * gives ([create]). Three calls, and only for a swap the user sends to CoW (CLAUDE.md, *Data
+ * gives ([create]). Three calls, and only while CoW is chosen for a swap (CLAUDE.md, *Data
  * sources*): `POST quote`, `POST orders`, `GET orders/{UID}`.
  *
  * - **Requests carry only the fields the API requires**, and the app data is the empty document

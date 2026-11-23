@@ -300,26 +300,29 @@ class QuoteSwap(
         // A sell's minimum below its quote; a buy's maximum above what its route takes.
         val minimum = if (buys) amount else tolerance.minimumOf(found.quote.amountOut)
         if (minimum.isZero) return@cancellingReads SwapQuoting.TooSmall
-        val amountIn = if (buys) {
-            val most = tolerance.maximumOf(found.amountIn)
-            val tooLittle = if (soldToken == null) SwapQuoting.InsufficientFunds else SwapQuoting.InsufficientToken
-            if (most == null || (sellRoom != null && sellRoom < most)) return@cancellingReads tooLittle
-            if (soldToken == null && nativeBefore.wei < most) return@cancellingReads SwapQuoting.InsufficientFunds
-            most
-        } else {
-            amount
-        }
-        if (soldToken != null) {
-            val allowance = when (val read = readAllowance(network, inputs, from, soldToken, router)) {
+        val allowance = if (soldToken != null) {
+            when (val read = readAllowance(network, inputs, from, soldToken, router)) {
                 is AllowanceRead.Read -> read.allowance
                 AllowanceRead.NotAToken -> return@cancellingReads SwapQuoting.NotAToken
                 AllowanceRead.Refused -> return@cancellingReads SwapQuoting.Refused
                 is AllowanceRead.Unavailable ->
                     return@cancellingReads SwapQuoting.Unavailable(read.reason, QuoteFigure.ALLOWANCE)
             }
-            if (allowance < amountIn) {
-                return@cancellingReads SwapQuoting.NeedsApproval(soldToken, router, allowance, amountIn)
-            }
+        } else {
+            null
+        }
+        val amountIn = if (buys) {
+            val tooLittle = if (soldToken == null) SwapQuoting.InsufficientFunds else SwapQuoting.InsufficientToken
+            val most = tolerance.maximumOf(found.amountIn)?.let { withinAllowance(it, found.amountIn, allowance) }
+                ?: return@cancellingReads tooLittle
+            if (sellRoom != null && sellRoom < most) return@cancellingReads tooLittle
+            if (soldToken == null && nativeBefore.wei < most) return@cancellingReads SwapQuoting.InsufficientFunds
+            most
+        } else {
+            amount
+        }
+        if (soldToken != null && allowance != null && allowance < amountIn) {
+            return@cancellingReads SwapQuoting.NeedsApproval(soldToken, router, allowance, amountIn)
         }
         val buysEther = buy == TransferAsset.Native
         val sellsEther = sell == TransferAsset.Native
@@ -403,6 +406,16 @@ class QuoteSwap(
         )
     }
 }
+
+/**
+ * A buy's maximum, [maximum] (its [quote] plus the tolerance), held to the [allowance] its spender
+ * already has when the quote itself is within it (docs/swaps.md, *Buying an exact amount*): after
+ * its approval, a buy is quoted again, and a quote that moved a little must not ask for another
+ * approval of the maximum the user approved. The buy then sells at most what was approved, which
+ * is still at least what it is quoted to take. Otherwise, [maximum] itself (null: no allowance read).
+ */
+internal fun withinAllowance(maximum: UInt256, quote: UInt256, allowance: UInt256?): UInt256 =
+    if (allowance != null && allowance < maximum && allowance >= quote) allowance else maximum
 
 /** What [unminedOf] read. */
 internal sealed interface Unmined {

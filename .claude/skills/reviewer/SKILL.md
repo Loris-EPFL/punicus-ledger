@@ -54,7 +54,8 @@ diff at step 2 of the Workflow.
 4. **Data sources** (`.claude/rules/data-sources.md`). Flag: a price that
    reaches a signature; a remote token list or icon CDN; a Safe signing
    request through a service; CoW contacted for anything but a swap the user
-   sent to CoW; a network answered from another network.
+   sent to CoW or, with CoW chosen, the compose step's estimate (owner ruling,
+   2026-11-23); a network answered from another network.
 5. **Android first** (`.claude/rules/platform.md`). Flag: a JVM-only API
    desugaring cannot cover (the minSdk 29 JDK-API budget); `java.net.http`;
    HTTP not through Ktor; class files above Java 17 for anything Android

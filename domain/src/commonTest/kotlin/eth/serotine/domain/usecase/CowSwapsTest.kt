@@ -168,16 +168,27 @@ class CowSwapsTest {
     @Test
     fun aBuyNeedsTheRelayerAllowedItsMaximum() = runTest {
         cowApi.quote = CowQuoteReading.Quoted(UInt256.of(98_000_000), wethBought, UInt256.ZERO)
-        allow(UInt256.of(98_000_000))
+        allow(UInt256.of(97_999_999))
         assertEquals(
             CowSwapQuoting.NeedsApproval(
                 usdcToken,
                 COW_SEPOLIA.vaultRelayer,
-                UInt256.of(98_000_000),
+                UInt256.of(97_999_999),
                 UInt256.of(98_490_000),
             ),
             buyWethWithUsdc(),
         )
+    }
+
+    @Test
+    fun aBuyQuotedAgainAfterItsApprovalSellsAtMostWhatWasApproved() = runTest {
+        // Approved for an earlier estimate's maximum of 98.2 USDC; CoW now estimates 98, its maximum 98.49.
+        cowApi.quote = CowQuoteReading.Quoted(UInt256.of(98_000_000), wethBought, UInt256.ZERO)
+        allow(UInt256.of(98_200_000))
+
+        val quote = assertIs<CowSwapQuoting.Quoted>(buyWethWithUsdc()).quote
+        assertEquals(UInt256.of(98_200_000), quote.amountIn, "the maximum approved, not a new approval")
+        assertEquals(UInt256.of(98_200_000), quote.order.sellAmount)
     }
 
     @Test

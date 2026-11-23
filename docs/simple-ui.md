@@ -305,7 +305,9 @@ change what it trusts.
   exactly it, the figures say what it would pay and the most it may, the
   amount sold shows the estimate under its field, and a maximum above the
   balance is said there and keeps Review greyed out (docs/swaps.md, *Buying
-  an exact amount*).
+  an exact amount*). W2 and W4 then lead a buy with "for exactly" its amount
+  for "at most" what it sells, and W4 says the settlement contract refuses
+  a fill that buys less, or sells more.
 - **W2 · Swap review, Uniswap, 2 steps.** The swap in one line ("100 USDC →
   7.18 LINK, at least · via Uniswap · from Main"). Step 1, "Allow Uniswap to
   use 100 USDC: only this amount, for this swap", with its fee. Step 2,

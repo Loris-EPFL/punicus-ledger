@@ -195,6 +195,10 @@ sealed interface SwapUiState {
         val minimumNote: String,
         /** How simple mode leads to [minimum]: "for at least" a sell's, "for exactly" a buy's. */
         val receiveLead: String = "for at least",
+        /** The asset [estimate] is an amount of: the one bought for a sell, the one sold for a buy. */
+        val estimateAsset: AssetChoice = buy,
+        /** What simple mode says the settlement contract holds the order to. */
+        val simpleChecked: String = "Checked on chain: the settlement contract refuses any fill below the minimum",
         /** What simple mode says the amount signed rests on: CoW's estimate, less or plus the tolerance. */
         val simpleBasis: String =
             "The minimum is CoW's estimate less your tolerance. CoW's estimate is not checked on chain.",

@@ -9,8 +9,10 @@ import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.UInt256
 
 /**
- * The port for CoW Protocol's order API (`api.cow.fi`), an off-chain service, used only for a
- * swap the user sends to CoW (owner ruling, 2026-10-22; CLAUDE.md, *Data sources*). Nothing it
+ * The port for CoW Protocol's order API (`api.cow.fi`), an off-chain service, used only while CoW
+ * is chosen: for a swap the user sends to CoW (owner ruling, 2026-10-22) and the compose step's
+ * estimate ([eth.serotine.domain.usecase.EstimateCowSwap]; owner ruling, 2026-11-23; CLAUDE.md,
+ * *Data sources*). Nothing it
  * answers is chain data:
  *
  * - its quote is an estimate, shown as not verified. It is the one thing CoW is trusted with: the

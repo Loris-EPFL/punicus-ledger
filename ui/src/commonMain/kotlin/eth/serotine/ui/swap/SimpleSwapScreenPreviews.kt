@@ -210,6 +210,39 @@ private fun SimpleSwapComposeBuyPreview() = SimpleSwapPreview(
     ),
 )
 
+/** W2 for a buy: exactly 7 LINK for at most what Uniswap's quote and the tolerance allow. */
+@Preview
+@Composable
+private fun SimpleSwapBuyPreview() = SimpleSwapPreview(
+    swap.copy(
+        sold = "at most 97.49 USDC",
+        receive = "7 LINK",
+        minimum = "exactly 7 LINK",
+        receiveLead = "for exactly",
+        tolerance = "0.5 % tolerance, above QuoterV2's verified quote of 97 USDC: the most it sells",
+        balances = listOf(
+            BalanceChange("USDC balance", "1,250 USDC", "at least 1,152.51 USDC", "verified at block 23,614,090"),
+            BalanceChange("LINK balance", "40 LINK", "47 LINK", "verified at block 23,614,090"),
+        ),
+    ),
+)
+
+/** W4 for a buy: exactly 7 LINK on CoW, for at most its estimate and the tolerance. */
+@Preview
+@Composable
+private fun SimpleSwapCowBuyPreview() = SimpleSwapPreview(
+    cow.copy(
+        sold = "at most 96.92 USDC",
+        estimate = "about 96.44 USDC",
+        estimateAsset = usdc,
+        minimum = "exactly 7 LINK",
+        receiveLead = "for exactly",
+        simpleChecked = "Checked on chain: the settlement contract refuses any fill that buys less, or sells more",
+        simpleBasis = "The most it sells is CoW's estimate plus your tolerance. CoW's estimate is not checked on " +
+            "chain.",
+    ),
+)
+
 /** W2: step 1 of 2, the approval, for this swap only. */
 @Preview
 @Composable
@@ -293,6 +326,8 @@ internal val simpleSwapScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("pending") { SimpleSwapPendingPreview() },
     ScreenPreview("step-two") { SimpleSwapStepTwoPreview() },
     ScreenPreview("cow") { SimpleSwapCowPreview() },
+    ScreenPreview("swap-buy") { SimpleSwapBuyPreview() },
+    ScreenPreview("cow-buy") { SimpleSwapCowBuyPreview() },
     ScreenPreview("reset-first") { SimpleSwapResetFirstPreview() },
     ScreenPreview("earlier-failed") { SimpleSwapEarlierFailedPreview() },
     ScreenPreview("one-step") { SimpleSwapOneStepPreview() },

@@ -1167,7 +1167,7 @@ class SwapViewModel(
             }
             else -> composing(swapping, request)
         }
-        // CoW is asked only here: the user chose it, and asked for the review.
+        // CoW is asked for the order only here: the user chose it, and asked for the review.
         SwapVenue.COW -> when (val ordering = askCow(request, tolerance)) {
             is CowSwapQuoting.Quoted -> Quoted.Cow(ordering.quote)
             is CowSwapQuoting.NeedsApproval -> approvalFirst(
@@ -1617,8 +1617,16 @@ class SwapViewModel(
             },
             earlierFailed = step.earlierFailed?.let {
                 FailedApproval(
-                    "A block has the approval sent before, yet the allowance still falls short: it may have " +
-                        "failed. Open it to see why before you send another.",
+                    if (step.request.kind == SwapKind.BUY) {
+                        // A buy is held to what was approved while its quote stays within it: only a quote above
+                        // it, or a failed approval, asks again.
+                        "A block has the approval sent before, yet the allowance still falls short: it may have " +
+                            "failed, or the price moved past the most it allowed. Open it to see which before " +
+                            "you send another."
+                    } else {
+                        "A block has the approval sent before, yet the allowance still falls short: it may have " +
+                            "failed. Open it to see why before you send another."
+                    },
                     it,
                 )
             },
@@ -1731,7 +1739,9 @@ class SwapViewModel(
             feeDetail = feeDetail(quote.level, quote.transaction, quote.feeBlock),
             balances = balances,
             pending = pendingText(quote, sell),
-            netNote = if (quote.netOfFees) {
+            // A buy is ranked by what each route takes, its fee aside, by design (docs/swaps.md, *Buying an exact
+            // amount*): no fee reading went missing, so nothing is said.
+            netNote = if (buying || quote.netOfFees) {
                 null
             } else {
                 "The route was chosen by what it returns, without its network fee, which could not be had right now."
@@ -1879,6 +1889,12 @@ class SwapViewModel(
                     "buys less, or sells more, is refused by the settlement contract."
             },
             receiveLead = if (quote.kind == SwapKind.BUY) "for exactly" else "for at least",
+            estimateAsset = if (quote.kind == SwapKind.BUY) sell.choice() else buy.choice(),
+            simpleChecked = if (quote.kind == SwapKind.BUY) {
+                "Checked on chain: the settlement contract refuses any fill that buys less, or sells more"
+            } else {
+                "Checked on chain: the settlement contract refuses any fill below the minimum"
+            },
             simpleBasis = if (quote.kind == SwapKind.BUY) {
                 "The most it sells is CoW's estimate plus your tolerance. CoW's estimate is not checked on chain."
             } else {

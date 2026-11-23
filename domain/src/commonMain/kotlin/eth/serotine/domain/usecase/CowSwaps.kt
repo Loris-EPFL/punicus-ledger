@@ -109,7 +109,7 @@ data class CowSwapQuote internal constructor(
  * Quotes a CoW swap from an account this wallet holds (docs/swaps.md, *CoW Protocol*), the venue
  * the user chose (*The user's choice of venue*). Everything that can refuse it on verified state
  * is read first, side by side, and only then is CoW's API asked, so that a swap refused here never
- * reaches CoW (CLAUDE.md, *Data sources*: CoW learns only the swaps sent to it). The order is built
+ * reaches CoW (CLAUDE.md, *Data sources*). The order is built
  * here, never taken from CoW, and its domain separator is checked against the settlement
  * contract's own before it is offered. Its minimum is CoW's estimate less the tolerance: no other
  * venue is quoted for it (owner ruling, 2026-11-23).
@@ -245,7 +245,7 @@ class QuoteCowSwap(
                 return@cancellingReads CowSwapQuoting.CowRefused(reading.why, reading.errorType)
             is CowQuoteReading.Unavailable -> return@cancellingReads CowSwapQuoting.CowNoAnswer(reading.why)
         }
-        val (estimate, sellAmount, buyAmount) = when (kind) {
+        val (estimate, quotedSell, buyAmount) = when (kind) {
             SwapKind.SELL -> Triple(quoted.buyAmount, amount, CowMinimum.buyAmount(quoted.buyAmount, tolerance))
             SwapKind.BUY -> Triple(
                 quoted.sellAmount,
@@ -254,7 +254,9 @@ class QuoteCowSwap(
                 amount,
             )
         }
-        if (buyAmount.isZero || sellAmount.isZero) return@cancellingReads CowSwapQuoting.TooSmall
+        if (buyAmount.isZero || quotedSell.isZero) return@cancellingReads CowSwapQuoting.TooSmall
+        // A buy's maximum, held to what the relayer may take already when CoW's estimate is within it.
+        val sellAmount = if (kind == SwapKind.BUY) withinAllowance(quotedSell, estimate, allowance) else quotedSell
         if (kind == SwapKind.BUY) {
             if (sellAmount > sellAvailable) {
                 return@cancellingReads CowSwapQuoting.MaximumAboveBalance(sellAmount, sellAvailable)

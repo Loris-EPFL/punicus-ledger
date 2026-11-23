@@ -413,8 +413,20 @@ class SwapsTest {
     @Test
     fun aBuyNeedsTheRoutersAllowanceForItsMaximum() = runTest {
         costs(amountOut, hundredUsdc)
-        allow(hundredUsdc)
-        assertEquals(SwapQuoting.NeedsApproval(usdcToken, router, hundredUsdc, mostUsdc), buyLink())
+        allow(UInt256.of(99_999_999))
+        assertEquals(SwapQuoting.NeedsApproval(usdcToken, router, UInt256.of(99_999_999), mostUsdc), buyLink())
+    }
+
+    @Test
+    fun aBuyQuotedAgainAfterItsApprovalSellsAtMostWhatWasApproved() = runTest {
+        // Step 1 approved 100.3 USDC; the quote moved, its maximum is now 100.5: still within, no new approval.
+        costs(amountOut, hundredUsdc)
+        allow(UInt256.of(100_300_000))
+        inputs.routerReturns = returns(UInt256.of(100_200_000))
+
+        val quoted = assertIs<SwapQuoting.Quoted>(buyLink()).quote
+        assertEquals(UInt256.of(100_300_000), quoted.amountIn, "the maximum approved")
+        assertEquals(hundredUsdc, quoted.quotedIn)
     }
 
     @Test

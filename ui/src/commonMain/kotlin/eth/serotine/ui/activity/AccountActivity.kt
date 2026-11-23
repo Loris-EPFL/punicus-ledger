@@ -344,7 +344,13 @@ class AccountActivity(
         val (asset, moved) = when (val action = entry.transfer.action) {
             is SentAction.Transfer ->
                 if (from == account && action.to == to) action.asset to action.amount else return false
-            is SentAction.Swap -> if (from == account) action.sell to action.amountIn else return false
+            // A buy takes at most its maximum: what it took is said by its row too.
+            is SentAction.Swap -> if (from == account) {
+                if (action.kind == SwapKind.BUY) return sells(action.sell) && amount <= action.amountIn
+                action.sell to action.amountIn
+            } else {
+                return false
+            }
             is SentAction.Wrap -> if (from == account && to == action.weth.address) {
                 TransferAsset.Native to action.amount
             } else {
@@ -366,11 +372,13 @@ class AccountActivity(
             }
             else -> return false
         }
-        val same = when (asset) {
-            TransferAsset.Native -> isEth
-            is TransferAsset.Erc20Token -> asset.token.address == token
-        }
-        return same && moved == amount
+        return sells(asset) && moved == amount
+    }
+
+    /** Whether this transfer is of [asset]: its token, or ETH by the network's own log of it. */
+    private fun TokenTransfer.Fungible.sells(asset: TransferAsset): Boolean = when (asset) {
+        TransferAsset.Native -> isEth
+        is TransferAsset.Erc20Token -> asset.token.address == token
     }
 
     /**

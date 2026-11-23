@@ -39,7 +39,7 @@ this page is fixed.
 | What enforces the signed minimum | The router: `amountOutMinimum`, or the call reverts | The settlement contract: the order's `buyAmount`, or it does not settle |
 | MEV | The transaction is gossiped to the public mempool, so a sandwich can take up to the slippage tolerance | A batch auction: the user's order never sits in the public mempool |
 | Gas | The account pays it in ETH | Taken out of the price; ETH only for an approval, and for a cancellation on chain |
-| What leaves the device | The signed transaction, to peers, like every send | The order, the account's address and the device's IP address, to `api.cow.fi`, and only for a swap the user sends to CoW |
+| What leaves the device | The signed transaction, to peers, like every send | The order, the account's address and the device's IP address, to `api.cow.fi`, only while CoW is chosen: for the compose step's estimate and the swap sent |
 | On Sepolia | v3 and v4 deployed | Deployed; the API is `https://api.cow.fi/sepolia/api/v1` |
 | On Ethereum | v3's canonical deployment | Deployed; the API is `https://api.cow.fi/mainnet/api/v1` |
 | On Gnosis Chain | v3, deployed by Uniswap governance; little liquidity (*Pins*) | Deployed; the API is `https://api.cow.fi/xdai/api/v1` |
@@ -171,8 +171,12 @@ holds too little; exactly the amount bought, at most an amount sold.)
   in the bought token, so the order is done at the head once it reads the
   amount bought. What a live buy order holds back of the token sold is its
   maximum.
-- **What is shown afterwards** comes from the verified logs, as for a sell:
-  the amount the transaction or the settlement's `Trade` actually took.
+- **What is shown afterwards** comes from the verified logs. On CoW, the
+  settlement's `Trade` says what a buy took, as for a sell. On Uniswap the
+  record, its Activity row and its status keep the maximum ("at most"): the
+  sale's own `Transfer`, of at most that, is the row's and not listed again,
+  and the router's refund of the network's currency a buy did not use is no
+  stranger's. Reading what it took from the receipt is for later.
 - **A wrap stays a wrap**: buying an exact amount of WETH (WXDAI) with the
   network's currency, or the reverse, is the same one-for-one wrap.
 - **A Safe's swap stays a sell** for now: its screen has no buy.
@@ -582,8 +586,10 @@ The user decides which venue each swap uses (owner's direction,
     (owner ruling, 2026-10-22, decision 10).
   - The choice is kept on the device, in a file of its own like the display
     currency.
-- **CoW is contacted only for a swap the user sends to CoW.** With Uniswap
-  chosen, nothing goes to `api.cow.fi`, not even a quote (*What CoW learns*).
+- **CoW is contacted only while CoW is chosen**: for the compose step's
+  estimate (owner ruling, 2026-11-23) and for the swap the user sends. With
+  Uniswap chosen, nothing goes to `api.cow.fi`, not even a quote (*What CoW
+  learns*).
 - **With CoW chosen, the review shows CoW's estimate**, marked as not
   verified, and signs the minimum *The signed minimum* sets. It shows no
   Uniswap figure (owner ruling, 2026-11-23).
@@ -807,14 +813,16 @@ So the proof is the account's own verified logs.
 ### What CoW learns, and how the app talks to it
 
 - **What CoW learns** is ruled in CLAUDE.md, *Data sources* (owner ruling,
-  2026-10-22, decision 7). It learns only the swaps the user sends to CoW.
-  With Uniswap chosen, CoW is never contacted.
+  2026-10-22, decision 7, amended 2026-11-23). It learns the swaps the user
+  sends to CoW, and those composed with CoW chosen. With Uniswap chosen, CoW
+  is never contacted.
   - For each such swap, over HTTPS to `api.cow.fi`: the account's address,
     the pair, the amounts, the device's IP address and the timing.
   - Each quote of a review with CoW chosen reaches CoW. So does a review the
     user then gives up, or switches to Uniswap.
   - So does the compose step's estimate with CoW chosen (owner ruling,
-    2026-11-23): the pair and the amount typed, a moment after the last edit
+    2026-11-23): the account's address, the pair and the amount typed, a
+    moment after the last edit
     and every 30 seconds while the step shows, whether the swap is then sent
     or not. With Uniswap chosen, still nothing.
   - For a signed order, also the order itself, its signature, `validTo` and

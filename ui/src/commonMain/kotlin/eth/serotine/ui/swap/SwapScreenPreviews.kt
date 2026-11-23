@@ -587,6 +587,8 @@ private fun SwapCowReviewBuyPreview() = SwapPreview(
             "not checked on chain, so the most it sells rests on it. A fill that buys less, or sells more, is " +
             "refused by the settlement contract.",
         receiveLead = "for exactly",
+        estimateAsset = usdc,
+        simpleChecked = "Checked on chain: the settlement contract refuses any fill that buys less, or sells more",
         simpleBasis = "The most it sells is CoW's estimate plus your tolerance. CoW's estimate is not checked on " +
             "chain.",
         balances = listOf(

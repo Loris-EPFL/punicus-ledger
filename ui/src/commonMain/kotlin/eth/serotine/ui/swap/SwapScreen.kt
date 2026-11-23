@@ -562,7 +562,7 @@ private fun CowContent(state: SwapUiState.CowReview) {
     Heading("You sell")
     AmountLine(state.sell.icon, state.sell.symbol, state.sold)
     Heading("CoW's estimate, not verified")
-    AmountLine(state.buy.icon, state.buy.symbol, state.estimate)
+    AmountLine(state.estimateAsset.icon, state.estimateAsset.symbol, state.estimate)
     Note(state.estimateNote)
     Heading("You receive")
     SelectionContainer {
@@ -847,7 +847,7 @@ private fun SimpleCowContent(state: SwapUiState.CowReview) {
         state.simpleBasis,
         style = MaterialTheme.typography.bodyMedium,
     )
-    Checked("Checked on chain: the settlement contract refuses any fill below the minimum")
+    Checked(state.simpleChecked)
     Text(
         "No network fee from this account: CoW takes it out of the trade.",
         style = MaterialTheme.typography.bodyMedium,

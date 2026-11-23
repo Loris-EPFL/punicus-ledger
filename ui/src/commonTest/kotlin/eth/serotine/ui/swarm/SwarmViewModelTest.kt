@@ -21,6 +21,7 @@ import eth.serotine.domain.repository.SwarmContracts
 import eth.serotine.domain.repository.SwarmReading
 import eth.serotine.domain.usecase.AddSwarmCandidate
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveSwarmNode
 import eth.serotine.domain.usecase.RemoveSwarmCandidate
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
@@ -158,6 +159,7 @@ class SwarmViewModelTest {
             RemoveSwarmCandidate(candidates),
             ObserveEnabledNetworks(networks),
             SetNetworkEnabled(networks),
+            ObserveAccounts(accounts),
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
         return viewModel
@@ -183,6 +185,36 @@ class SwarmViewModelTest {
         // 27,688 blocks of 5 s: a day and a half.
         assertEquals("About 38 hours left at the current price", batch.timeLeft)
         assertNull(ready.chequebookNote)
+    }
+
+    @Test
+    fun theBatchActionsAreGreyedOutSayingWhatIsMissing() = runTest {
+        kept.value = SwarmCandidateList.Loaded(emptyList(), listOf(batchId))
+        val viewModel = viewModel()
+        runCurrent()
+        // A watched node and no key held here on Gnosis Chain: nothing can pay, and nothing signs for the node.
+        assertEquals(SwarmAction(SwarmTexts.NO_PAYER), viewModel.ready.buy)
+        assertEquals(SwarmAction(SwarmTexts.NO_PAYER), viewModel.ready.batches.single().topUp)
+        assertEquals(SwarmAction(SwarmTexts.NODE_KEY_NOT_HELD), viewModel.ready.batches.single().dilute)
+
+        // Another account's key held here pays; the node's own key still signs a dilution only.
+        accounts.add(
+            Account(Network.GNOSIS, stranger, AccountKind.EOA, "Savings", AccountCustody.InKeyStore),
+        )
+        runCurrent()
+        assertEquals(SwarmAction(), viewModel.ready.buy)
+        assertEquals(SwarmAction(), viewModel.ready.batches.single().topUp)
+        assertEquals(SwarmAction(SwarmTexts.NODE_KEY_NOT_HELD), viewModel.ready.batches.single().dilute)
+
+        accounts.setCustody(bee.id, AccountCustody.InKeyStore)
+        runCurrent()
+        assertEquals(SwarmAction(), viewModel.ready.batches.single().dilute)
+
+        // Gnosis Chain off: each says so, with Turn on.
+        networks.setEnabled(Network.GNOSIS, false)
+        runCurrent()
+        assertEquals(SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true), viewModel.ready.buy)
+        assertEquals(SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true), viewModel.ready.batches.single().dilute)
     }
 
     @Test

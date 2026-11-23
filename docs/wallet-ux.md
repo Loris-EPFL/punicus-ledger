@@ -1906,18 +1906,43 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
   0x…, not this node.", "It could not be verified right now, so nothing was
   kept."). With Gnosis Chain off, Add is greyed out, a tap saying that
   nothing can be checked on chain, with **Turn on Gnosis Chain**.
-- Withdraw, Top up, Dilute and Buy a batch come with their parts
-  (docs/swarm.md, *Delivery*).
+- Withdraw comes with its part (docs/swarm.md, *Delivery*).
+- **Buy a batch, Top up and Dilute** open **Postage batch**, a screen of
+  their own over the node's, under Gnosis Chain's light client strip or
+  sync line. Buy a batch and Top up are greyed out while no EOA of the
+  wallet on Gnosis Chain has its key here, a tap saying to create or import
+  one; Dilute while the node's own key is not here; all three while Gnosis
+  Chain is off, with **Turn on Gnosis Chain**.
 - **Buy a batch** is a form: the account that pays (any EOA whose key is
-  held here on Gnosis Chain, with its xBZZ), the depth with its capacity, the time to live, and
-  "Immutable". It says the total in xBZZ before Review. Its review is two
-  steps, as a swap's: "Approve 12.5 xBZZ to Swarm's postage contract", then,
-  once that is mined, "Buy a postage batch for 0x…", each signed with the
-  unlock that signs a send. A paused postage contract greys out Buy, Top up
-  and Dilute, saying so.
-- **Top up** takes the time to add and says the total; its review is the
-  same two steps. **Dilute** takes the new depth and its review shows the
-  capacity and the time to live before and after, and that no xBZZ moves.
+  held here on Gnosis Chain; the node itself first where it is one), the
+  depth from 17 to 30, 20 at first, with its capacity, the time to live in
+  days (30 at first), and "Immutable", off at first, saying what it means.
+  The amount per chunk is worked out from the days at the price verified
+  when **Review** quotes it, so the total in xBZZ is said in the review,
+  before anything is signed. Its review is two steps, as a swap's: "Step 1
+  of 2: the approval", **Approve xBZZ for the postage contract**, for
+  exactly the total; then, once a block has it, "Step 2 of 2: the batch",
+  **Buy a postage batch**, with the node that owns it, who pays, what it
+  holds, its time to live, immutable or not, the total, the batch id, the
+  fee and the blocks it was read at. While the approval is on its way the
+  screen says so and offers its status. Each is signed with the unlock that
+  signs a send.
+- **Top up** takes the days to add; its review says what they add, the time
+  left after, and the total, and is the same two steps. **Dilute** takes
+  the new depth; its review shows what the batch holds and its time left,
+  before and after, and that no xBZZ moves, and says what immutable means
+  for an immutable batch.
+- **Where a Swarm node's key signs** (Dilute; Buy or Top up paid by this
+  node, or by another Swarm node of the wallet), the review warns: "This is the node's own key. If Bee is running,
+  stop it before you send: Bee signs with the same key, and one of the two
+  transactions can replace the other." A transaction not sent from here
+  that took the nonce since the quote signs nothing: the review is made
+  again, saying so.
+- **Refused at Review**, saying why: a paused postage contract, a time
+  below the contract's minimum (naming it), an expired or another's batch,
+  too little xBZZ, an earlier purchase or top-up from the account still on
+  its way (with its status), an upgraded xBZZ. The call sent opens its
+  status in the screen's place; back returns to the node.
 - **Withdraw** takes an amount up to what is free; its review says the xBZZ
   goes to the node's own address and warns: "Bee may have issued cheques
   from this chequebook that are not cashed yet. Punicus cannot see them. If

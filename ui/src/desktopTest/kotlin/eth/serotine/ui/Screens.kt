@@ -30,6 +30,7 @@ import eth.serotine.ui.handoff.handoffScreenPreviews
 import eth.serotine.ui.mnemonicimport.mnemonicImportScreenPreviews
 import eth.serotine.ui.pairdapp.pairDappScreenPreviews
 import eth.serotine.ui.perapp.perAppScreenPreviews
+import eth.serotine.ui.postage.postageScreenPreviews
 import eth.serotine.ui.ratewidget.widgetPairScreenPreviews
 import eth.serotine.ui.receive.receiveScreenPreviews
 import eth.serotine.ui.removeaccount.removeAccountDialogPreviews
@@ -87,6 +88,7 @@ internal object Screens {
     val deriveAccount = Screen("derive-account", "Add account from the same phrase", deriveAccountScreenPreviews)
     val gnosisPay = Screen("gnosis-pay", "Gnosis Pay account", gnosisPayScreenPreviews)
     val swarm = Screen("swarm", "Swarm node", swarmScreenPreviews)
+    val postage = Screen("postage", "Postage batch", postageScreenPreviews)
     val handoff = Screen("handoff", "Send from another wallet", handoffScreenPreviews)
     val mnemonicImport = Screen("mnemonic-import", "Import recovery phrase", mnemonicImportScreenPreviews)
     val noAccountOpen = Screen("no-account-open", "No account open (wide window)", noAccountOpenScreenPreviews)
@@ -160,6 +162,7 @@ internal object Screens {
         noAccountOpen,
         pairDapp,
         perApp,
+        postage,
         receive,
         removeAccountDialog,
         renameAccountDialog,

@@ -87,6 +87,9 @@ internal object SwarmTexts {
     const val NETWORK_OFF =
         "Gnosis Chain is off in this wallet, so nothing can be checked on chain. Turned on, a chequebook or " +
             "a batch can be added here."
+    const val NETWORK_OFF_ACTION =
+        "Gnosis Chain is off in this wallet, so nothing can be quoted or sent. Turned on, batches can be bought, " +
+            "topped up and diluted here."
     const val NETWORK_NOT_TURNED_ON = "Gnosis Chain could not be turned on: try again in Settings."
     const val NOT_REMOVED = "It could not be removed: the chequebooks and batches kept could not be saved."
 
@@ -138,6 +141,14 @@ internal object SwarmTexts {
             "It could not be verified right now, so nothing was kept. " + unavailable(outcome.reason)
         SwarmAddOutcome.NotSaved -> "It is this node's, but it could not be saved."
     }
+
+    const val NO_PAYER =
+        "No account of this wallet on Gnosis Chain has its key on this device, so nothing can be paid from " +
+            "here. Create or import one, and send it xBZZ and xDAI."
+    const val NODE_KEY_NOT_HELD =
+        "Only the batch's owner may dilute it, and this node's key is not on this device: its own key signs it."
+    const val EXPIRED_ACTION = "This batch has expired: the postage contract takes no top-up or dilution of it. " +
+        "Buy a new one."
 
     const val NOT_AN_ADDRESS = "Not an address: 0x and 40 hex digits."
     const val CHECKSUM = "This address's checksum does not match: check it was copied in full."

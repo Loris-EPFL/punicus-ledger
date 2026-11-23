@@ -2,6 +2,7 @@ package eth.serotine.ui
 
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
@@ -145,6 +146,7 @@ import eth.serotine.domain.usecase.ObserveOutbox
 import eth.serotine.domain.usecase.ObservePerAppAddresses
 import eth.serotine.domain.usecase.ObservePerAppChoice
 import eth.serotine.domain.usecase.ObservePortfolio
+import eth.serotine.domain.usecase.ObservePostageBatch
 import eth.serotine.domain.usecase.ObserveRecipientCheck
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeHistory
@@ -154,6 +156,7 @@ import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.ObserveSwapVenue
 import eth.serotine.domain.usecase.ObserveSwarmNode
+import eth.serotine.domain.usecase.ObserveSwarmNodes
 import eth.serotine.domain.usecase.ObserveSyncPolicy
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
@@ -172,6 +175,9 @@ import eth.serotine.domain.usecase.ProposeSafeSwap
 import eth.serotine.domain.usecase.ProposeSafeTx
 import eth.serotine.domain.usecase.QueueSafeCall
 import eth.serotine.domain.usecase.QueueTransfer
+import eth.serotine.domain.usecase.QuoteBatchDilution
+import eth.serotine.domain.usecase.QuoteBatchPurchase
+import eth.serotine.domain.usecase.QuoteBatchTopUp
 import eth.serotine.domain.usecase.QuoteCowCancellation
 import eth.serotine.domain.usecase.QuoteCowSwap
 import eth.serotine.domain.usecase.QuoteDappTransaction
@@ -202,6 +208,8 @@ import eth.serotine.domain.usecase.RenameAccount
 import eth.serotine.domain.usecase.ResolveRecipient
 import eth.serotine.domain.usecase.RestorePerAppAddress
 import eth.serotine.domain.usecase.RouteRanking
+import eth.serotine.domain.usecase.SendBatchApproval
+import eth.serotine.domain.usecase.SendBatchCall
 import eth.serotine.domain.usecase.SendCowCancellation
 import eth.serotine.domain.usecase.SendDappTransaction
 import eth.serotine.domain.usecase.SendDelayCall
@@ -255,6 +263,8 @@ import eth.serotine.ui.pairdapp.IncomingDappLink
 import eth.serotine.ui.pairdapp.PairDappViewModel
 import eth.serotine.ui.perapp.PerAppViewModel
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
+import eth.serotine.ui.postage.PostageAction
+import eth.serotine.ui.postage.PostageViewModel
 import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
 import eth.serotine.ui.renameaccount.RenameAccountViewModel
@@ -546,7 +556,29 @@ class AppGraph(
         RemoveSwarmCandidate(swarmCandidates),
         ObserveEnabledNetworks(networkSettings),
         SetNetworkEnabled(networkSettings),
+        ObserveAccounts(accounts),
     )
+
+    /**
+     * The postage screen of the Swarm node [node] (docs/swarm.md, *The four actions*): [action], of
+     * its batch [batch] for a top-up or a dilution, null for a purchase.
+     */
+    fun postageViewModel(node: AccountId, action: PostageAction, batch: BatchId?): PostageViewModel =
+        PostageViewModel(
+            node,
+            action,
+            batch,
+            ObserveAccount(accounts),
+            ObserveAccounts(accounts),
+            ObservePostageBatch(swarmContracts),
+            ObserveSwarmNodes(swarmCandidates),
+            QuoteBatchPurchase(swarmContracts, transactionInputs, nativeBalances, tokenBalances, sentTransfers, outbox),
+            QuoteBatchTopUp(swarmContracts, transactionInputs, nativeBalances, tokenBalances, sentTransfers, outbox),
+            QuoteBatchDilution(swarmContracts, transactionInputs, nativeBalances, tokenBalances, sentTransfers, outbox),
+            SendBatchApproval(signer, broadcaster, sentTransfers, transactionInputs, swarmContracts),
+            SendBatchCall(signer, broadcaster, sentTransfers, transactionInputs, swarmCandidates, swarmContracts),
+            DescribeKeyStore(keys),
+        )
 
     /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it. */
     fun gnosisPayViewModel(safe: AccountId): GnosisPayViewModel = GnosisPayViewModel(

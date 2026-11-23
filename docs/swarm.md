@@ -226,8 +226,10 @@ the blocks its figures were read at.
   nonce, immutable)` with a nonce of 32 random bytes made here. The batch id
   is remembered as it is sent.
 - An allowance that already covers the total skips the approval.
-- **A paused PostageStamp** greys out Buy, Top up and Dilute, saying so:
-  `createBatch`, `topUp` and `increaseDepth` all revert while it is paused.
+- **A paused PostageStamp** refuses Buy, Top up and Dilute at Review,
+  saying so: `createBatch`, `topUp` and `increaseDepth` all revert while it
+  is paused. The Swarm screen does not read the PostageStamp before then,
+  so the actions are not greyed out for it.
 
 ### Top up a batch
 

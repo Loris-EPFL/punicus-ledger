@@ -2,9 +2,13 @@ package eth.serotine.ui.swarm
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
+import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
+import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.ChequebookFinding
 import eth.serotine.domain.repository.SwarmCandidate
@@ -12,6 +16,7 @@ import eth.serotine.domain.repository.SwarmReading
 import eth.serotine.domain.usecase.AccountLookup
 import eth.serotine.domain.usecase.AddSwarmCandidate
 import eth.serotine.domain.usecase.ObserveAccount
+import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveSwarmNode
 import eth.serotine.domain.usecase.RemoveSwarmCandidate
@@ -51,6 +56,7 @@ class SwarmViewModel(
     private val removeSwarmCandidate: RemoveSwarmCandidate,
     observeEnabledNetworks: ObserveEnabledNetworks,
     private val setNetworkEnabled: SetNetworkEnabled,
+    observeAccounts: ObserveAccounts,
 ) : ViewModel() {
 
     private val form = MutableStateFlow<AddForm?>(null)
@@ -65,6 +71,11 @@ class SwarmViewModel(
 
     private val lookup = observeAccount(node)
 
+    /** Whether any account may pay for a batch here: an EOA on Gnosis Chain whose key is on this device. */
+    private val canPay = observeAccounts().map { list ->
+        (list as? AccountList.Loaded)?.accounts?.any(::signsHere) == true
+    }.distinctUntilChanged()
+
     @OptIn(ExperimentalCoroutinesApi::class)
     private val reading = lookup
         .map { (it as? AccountLookup.Found)?.account }
@@ -74,12 +85,12 @@ class SwarmViewModel(
 
     /** The screen's state. */
     val uiState: StateFlow<SwarmUiState> = combine(
-        lookup,
-        reading,
+        combine(lookup, reading, ::Pair),
         form,
         networkOn,
         message,
-    ) { lookup, reading, form, on, said ->
+        canPay,
+    ) { (lookup, reading), form, on, said, pays ->
         when (lookup) {
             AccountLookup.ListUnavailable -> SwarmUiState.Unavailable(SwarmTexts.LIST_UNAVAILABLE)
             AccountLookup.NotInList -> SwarmUiState.Gone
@@ -87,11 +98,15 @@ class SwarmViewModel(
                 null -> SwarmUiState.Loading
                 SwarmNodeReading.NotASwarmAccount -> SwarmUiState.Unavailable(SwarmTexts.NOT_SWARM)
                 SwarmNodeReading.Unreadable -> SwarmUiState.Unavailable(SwarmTexts.UNREADABLE)
-                is SwarmNodeReading.Read -> ready(lookup.account.label, reading, form).copy(
-                    // Nothing can be proven on a network that is off: Add is greyed out, with Turn on.
-                    addReason = SwarmTexts.NETWORK_OFF.takeUnless { on },
-                    message = said,
-                )
+                is SwarmNodeReading.Read -> {
+                    val signs = Signs(on, pays, signsHere(lookup.account))
+                    ready(lookup.account.label, reading, form, signs).copy(
+                        // Nothing can be proven on a network that is off: Add is greyed out, with Turn on.
+                        addReason = SwarmTexts.NETWORK_OFF.takeUnless { on },
+                        buy = signs.pay(),
+                        message = said,
+                    )
+                }
             }
         }
     }.stateIn(
@@ -206,9 +221,27 @@ class SwarmViewModel(
         data class Error(val message: String) : Parsed
     }
 
-    private fun ready(label: String, reading: SwarmNodeReading.Read, form: AddForm?): SwarmUiState.Ready {
+    /**
+     * What the batch actions need here: Gnosis Chain [on], an account that may pay ([pays]), and the
+     * node's own key on this device ([nodeSigns]), which a dilution needs.
+     */
+    private data class Signs(val on: Boolean, val pays: Boolean, val nodeSigns: Boolean) {
+        fun pay(): SwarmAction = when {
+            !on -> SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true)
+            !pays -> SwarmAction(SwarmTexts.NO_PAYER)
+            else -> SwarmAction()
+        }
+
+        fun sign(): SwarmAction = when {
+            !on -> SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true)
+            !nodeSigns -> SwarmAction(SwarmTexts.NODE_KEY_NOT_HELD)
+            else -> SwarmAction()
+        }
+    }
+
+    private fun ready(label: String, reading: SwarmNodeReading.Read, form: AddForm?, signs: Signs): SwarmUiState.Ready {
         val chequebooks = reading.chequebooks.map(::chequebookRow)
-        val batches = reading.batches.map(::batchRow)
+        val batches = reading.batches.map { batchRow(it, signs) }
         return SwarmUiState.Ready(
             label = label,
             address = Eip55.format(node.address),
@@ -253,20 +286,26 @@ class SwarmViewModel(
         }
     }
 
-    private fun batchRow(item: SwarmItem<BatchId, BatchFinding>): BatchRow {
+    private fun batchRow(item: SwarmItem<BatchId, BatchFinding>, signs: Signs): BatchRow {
         val id = "0x" + item.key.hex
         val short = id.take(10) + "…" + id.takeLast(4)
         return when (val reading = item.reading) {
             null -> BatchRow(id, short, null, null, false, SwarmTexts.NOT_READ)
             is SwarmReading.Verified -> when (val finding = reading.finding) {
-                is BatchFinding.Node -> BatchRow(
-                    id,
-                    short,
-                    SwarmTexts.capacity(finding.batch.depth),
-                    SwarmTexts.timeLeft(finding.batch),
-                    finding.batch.immutable,
-                    SwarmTexts.verified(reading.blockNumber, item.held),
-                )
+                is BatchFinding.Node -> {
+                    // An expired batch takes neither: a new one is the way on.
+                    val expired = SwarmAction(SwarmTexts.EXPIRED_ACTION).takeIf { finding.batch.expired }
+                    BatchRow(
+                        id,
+                        short,
+                        SwarmTexts.capacity(finding.batch.depth),
+                        SwarmTexts.timeLeft(finding.batch),
+                        finding.batch.immutable,
+                        SwarmTexts.verified(reading.blockNumber, item.held),
+                        topUp = expired ?: signs.pay(),
+                        dilute = expired ?: signs.sign(),
+                    )
+                }
                 BatchFinding.Gone ->
                     BatchRow(id, short, null, null, false, stated(SwarmTexts.GONE, reading, item))
                 is BatchFinding.OthersOwner -> BatchRow(
@@ -285,6 +324,10 @@ class SwarmViewModel(
     /** [statement], verified as [reading] was, held as [item] is. */
     private fun stated(statement: String, reading: SwarmReading.Verified<*>, item: SwarmItem<*, *>): String =
         SwarmTexts.stated(statement, reading.blockNumber, item.held)
+
+    /** Whether [account] signs here on Gnosis Chain: an EOA there whose key is on this device. */
+    private fun signsHere(account: Account): Boolean = account.network == node.network &&
+        account.kind == AccountKind.EOA && account.custody == AccountCustody.InKeyStore
 
     private fun unread(reading: SwarmReading<*>): String = when (reading) {
         SwarmReading.Syncing -> SwarmTexts.SYNCING

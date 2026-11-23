@@ -1864,7 +1864,8 @@ opens **Gnosis Pay**, a screen of its own:
 
 ## Swarm nodes
 
-A Swarm node's EOA on Gnosis Chain, watched, whose chequebook or postage
+A Swarm node's EOA on Gnosis Chain, added as a watched address (or held
+here, where Bee runs on a key of this wallet), whose chequebook or postage
 batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
 
 - **On the account's own screen** a **Swarm node** row ("Chequebook and 3

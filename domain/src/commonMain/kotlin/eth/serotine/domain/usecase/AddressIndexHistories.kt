@@ -254,7 +254,8 @@ sealed interface AddressIndexLoad {
  * Checks one entry of an account's addr1 history again, for the detail of its row (docs/wallet-ux.md, screen 26):
  * the detail never shows what the list once found, only what the engine's check finds now, against verified chain
  * data. [importer] is the key pinned in the release that the list rests on, which the detail names. Only while the
- * experimental setting is on for that key, with a reader ([setting], [history]): otherwise it is refused
+ * experimental setting is on ([AddressIndexStatus.on] for [importer], with a reader: [setting], [history]; on by
+ * default, an explicit off kept): otherwise it is refused
  * ([AddressIndexRefusal.SettingOff]) and nothing is fetched, as the privacy policy promises. A
  * `TRACE`-only entry is never sent to the check, since the engine never verifies one: it is unverified. A verdict is
  * matched to the entry asked by block, slot and roles, as [LoadAddressIndexPage] matches it; none matched is
@@ -262,7 +263,7 @@ sealed interface AddressIndexLoad {
  */
 class CheckAddressIndexEntry(
     private val history: AddressIndexHistory,
-    /** The user's choice: the check runs only while it is on for [importer]. */
+    /** The user's choice: the check runs only while the setting is on ([AddressIndexStatus.on]). */
     private val setting: AddressIndexSetting,
     /** The importer key pinned in the release: what the list's completeness rests on. */
     val importer: Address,

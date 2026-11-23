@@ -69,7 +69,7 @@ internal class FakeAddressIndexHistory(
 
 /** An [AddressIndexSetting] in memory, as the port's contract says one behaves; [failSaves] makes every save fail. */
 internal class MemoryAddressIndexSetting : AddressIndexSetting {
-    val choice = MutableStateFlow<AddressIndexChoice>(AddressIndexChoice.Chosen(importer = null))
+    val choice = MutableStateFlow<AddressIndexChoice>(AddressIndexChoice.NotChosen)
     var failSaves = false
 
     override fun observe(): Flow<AddressIndexChoice> = choice

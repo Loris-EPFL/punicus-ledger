@@ -396,10 +396,11 @@ private const val METERED_DOWNLOADS_TITLE = "Heavy downloads on metered connecti
 private const val ADDRESS_INDEX_TITLE = "Account history from the addr1 index"
 
 /** What the addr1 history does, and what others learn once it is on (docs/privacy-policy.md). */
-private const val ADDRESS_INDEX_TEXT = "Experimental. Activity also lists the entries of the addr1 index on Swarm, " +
-    "each checked against the chain before it is listed. Whether entries are missing rests on the importer. Turned " +
-    "on, Swarm peers see your IP address and which part of the index is read, not through Tor, and archive peers " +
-    "learn which past blocks matter to you (privacy policy)."
+private const val ADDRESS_INDEX_TEXT = "Experimental, on by default. Activity also lists the entries of the addr1 " +
+    "index on Swarm, each checked against the chain before it is listed. Whether entries are missing rests on the " +
+    "importer. While it is on, Swarm peers see your IP address and which part of the index is read, not through " +
+    "Tor, and archive peers learn which past blocks matter to you (privacy policy). Turn it off here to keep them " +
+    "from it."
 
 /**
  * The experimental addr1 history's switch: the whole row toggles it, or, greyed out, says what it needs through
@@ -426,7 +427,8 @@ private fun AddressIndexRow(item: AddressIndexItem, onChange: (Boolean) -> Unit,
         // The row takes the tap, so a greyed switch still says why.
         trailingContent = { Switch(checked = item.on, onCheckedChange = null, enabled = reason == null) },
     )
-    // A choice to turn it on that is stored but not in force is taken back here, whatever greys the row out.
+    // An explicit off is stored here, whatever greys the row out: for a choice to turn it on that is not in force, the
+    // default while it cannot be read, or a choice found damaged and set aside.
     if (item.turnOff) {
         TextButton(onClick = { onChange(false) }, Modifier.padding(start = 8.dp)) { Text("Turn off") }
     }

@@ -351,7 +351,9 @@ private const val ADDRESS_INDEX_GREYED_TEXT =
 
 private val addressIndexGreyed = AddressIndexItem(
     on = false,
-    text = ADDRESS_INDEX_GREYED_TEXT,
+    // No choice made yet: on by default once it can be read, and Turn off keeps it off ahead (2026-11-22).
+    text = "$ADDRESS_INDEX_GREYED_TEXT · On by default once it can be read: Turn off keeps it off",
+    turnOff = true,
     unavailableReason = "No importer key is pinned in this release yet. The index is read only on the word of an " +
         "importer whose key a release pins; a key is never typed in here. This build's engine has no Swarm " +
         "reader, so the index cannot be read here. The history stays the light client's log index.",
@@ -375,7 +377,9 @@ private fun SettingsAddressIndexNoReaderPreview() = SettingsPreview(
     synced.copy(
         addressIndex = AddressIndexItem(
             on = false,
-            text = "Off: importer $sampleImporter, pinned in this release · This build's engine has no Swarm reader",
+            text = "Off: importer $sampleImporter, pinned in this release · This build's engine has no Swarm reader" +
+                " · On by default once it can be read: Turn off keeps it off",
+            turnOff = true,
             unavailableReason = "This build's engine has no Swarm reader, so the index cannot be read here. The " +
                 "history stays the light client's log index.",
         ),
@@ -383,12 +387,15 @@ private fun SettingsAddressIndexNoReaderPreview() = SettingsPreview(
     atTheEnd = true,
 )
 
-/** On, for the key pinned in the release, with an engine that reads Swarm: what a later release may offer. */
+/** On by default for the key pinned in the release, with an engine that reads Swarm: what a later release may offer. */
 @Preview
 @Composable
 private fun SettingsAddressIndexOnPreview() = SettingsPreview(
     synced.copy(
-        addressIndex = AddressIndexItem(on = true, text = "On: importer $sampleImporter, pinned in this release"),
+        addressIndex = AddressIndexItem(
+            on = true,
+            text = "On: importer $sampleImporter, pinned in this release · On by default: you can turn it off",
+        ),
     ),
     atTheEnd = true,
 )
@@ -412,6 +419,24 @@ private fun SettingsAddressIndexTurnOffPreview() =
 @Composable
 private fun SettingsAddressIndexTurnOffDarkPreview() =
     SettingsPreview(synced.copy(addressIndex = addressIndexStored), darkTheme = true, atTheEnd = true)
+
+/**
+ * A choice found damaged and set aside, with a key pinned and an engine that reads Swarm: it reads off, never the
+ * default, and Turn off below the row stores the same off as the user's own choice.
+ */
+@Preview
+@Composable
+private fun SettingsAddressIndexSetAsidePreview() = SettingsPreview(
+    synced.copy(
+        addressIndex = AddressIndexItem(
+            on = false,
+            text = "Off: importer $sampleImporter, pinned in this release" +
+                " (your saved choice was damaged and set aside)",
+            turnOff = true,
+        ),
+    ),
+    atTheEnd = true,
+)
 
 /** Every preview above, which SettingsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val settingsScreenPreviews: List<ScreenPreview> = listOf(
@@ -450,6 +475,7 @@ internal val settingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("address-index-on") { SettingsAddressIndexOnPreview() },
     ScreenPreview("address-index-turn-off") { SettingsAddressIndexTurnOffPreview() },
     ScreenPreview("address-index-turn-off-dark") { SettingsAddressIndexTurnOffDarkPreview() },
+    ScreenPreview("address-index-set-aside") { SettingsAddressIndexSetAsidePreview() },
 )
 
 /** Not allowed, on a metered connection now, for this file's previews and simple mode's. */

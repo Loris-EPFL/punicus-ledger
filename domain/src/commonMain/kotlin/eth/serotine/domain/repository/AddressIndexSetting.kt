@@ -6,10 +6,10 @@ import kotlinx.coroutines.flow.Flow
 /**
  * The port for the experimental setting that lets an account's *Activity* also take the addr1 index from Swarm, on
  * the desktop only (owner ruling, 2026-11-21, #334, and the owner's decisions of that day on #335;
- * `.claude/rules/data-sources.md`, *The history may also take the addr1 index from Swarm*). Off by default. It keeps
- * the importer key the user turned it on for, not merely "on": a later release that pins another key finds the
- * setting turned on for a key it no longer pins, and that is off until the user turns it on again
- * (`eth.serotine.domain.usecase.AddressIndexStatus`). The key itself is pinned in the release and never typed by the
+ * `.claude/rules/data-sources.md`, *The history may also take the addr1 index from Swarm*). On by default (owner's
+ * decision, 2026-11-22): until the user chooses, it holds no choice ([AddressIndexChoice.NotChosen]), which
+ * `eth.serotine.domain.usecase.AddressIndexStatus` reads as on. A choice is the importer key the user turned it on
+ * for, or none, an explicit off, which stays off. The key itself is pinned in the release and never typed by the
  * user; this port only remembers which pinned key the user accepted. :data keeps it in a file, so it survives a
  * restart. Never throws.
  */
@@ -26,9 +26,12 @@ interface AddressIndexSetting {
 
 /** What [AddressIndexSetting.observe] emits. */
 sealed interface AddressIndexChoice {
+    /** No choice was ever made (a fresh install): on by default. */
+    data object NotChosen : AddressIndexChoice
+
     /**
-     * The key the user turned the setting on for ([importer]), null while it is off, which it is until the user
-     * turns it on; [setAside] when no choice is left because the stored one was damaged and set aside.
+     * The key the user turned the setting on for ([importer]), or null: the user turned it off. [setAside] when the
+     * stored choice was found damaged and set aside: read as off, since it may have been one, until another is made.
      */
     data class Chosen(val importer: Address?, val setAside: Boolean = false) : AddressIndexChoice
 

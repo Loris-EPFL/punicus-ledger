@@ -465,7 +465,10 @@ class AppGraph(
      * its experimental setting; null on a host that offers no such setting (Android, iOS), and nothing is shown of it.
      */
     private val addressIndex: AddressIndexHistory? = null,
-    /** The desktop's experimental setting for [addressIndex], off by default; null with it. */
+    /**
+     * The desktop's experimental setting for [addressIndex]: on by default, an explicit off kept (owner's decisions,
+     * 2026-11-22, #334); null with it.
+     */
     private val addressIndexSetting: AddressIndexSetting? = null,
     /**
      * The importer key of the addr1 index pinned in the release, the one key its list may rest on; null while the
@@ -968,7 +971,7 @@ class AppGraph(
         ObserveSentTo(transactionHistory),
         ObserveAmountsHidden(amountsHidden),
         toggleAmountsHidden,
-        // Gated by the setting as the list is: nothing is checked while it is not on for the pinned key.
+        // Gated by the setting as the list is: nothing is checked while it is not on (AddressIndexStatus.on).
         checkIndexEntry = addressIndex?.let { history ->
             addressIndexSetting?.let { setting ->
                 addressIndexImporter?.let { CheckAddressIndexEntry(history, setting, it) }

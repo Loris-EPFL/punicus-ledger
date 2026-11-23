@@ -28,10 +28,17 @@ enum class AddressIndexMissing {
 
 /**
  * Where the experimental addr1 history stands (owner ruling, 2026-11-21, #334; the owner's decisions of that day on
- * #335): [pinned], the importer key pinned in the release (null: none pinned in this one), whether the engine has its
- * Swarm [reader], and the user's [choice]. It is [on] only when all three agree: a key is pinned, the engine reads
- * Swarm, and the user turned it on for that very key. A choice made for another key ([trustsAnotherKey]) is off: the
- * user accepted that key's word, not the one pinned now.
+ * #335; on by default, the owner's decision of 2026-11-22): [pinned], the importer key pinned in the release (null:
+ * none pinned in this one), whether the engine has its Swarm [reader], and the user's [choice]. It is [on] when a key
+ * is pinned, the engine reads Swarm, and the user did not turn it off:
+ * - **no choice made** ([AddressIndexChoice.NotChosen]: a fresh install): on, by default;
+ * - **an explicit off** (a stored choice of no key): off, whatever key is pinned, until the user turns it on again;
+ * - **on for the key pinned now**: on;
+ * - **on for another key** ([trustsAnotherKey]): that choice does not carry over to the key pinned now, which no choice
+ *   was made for, so it is on by default for it, as on a fresh install; only an explicit off is kept across keys;
+ * - **a choice that cannot be read**, or one found damaged and set aside: off, since it may have been an explicit off,
+ *   and nothing is read on a guess. Unreadable, it cannot be changed until it can be read; set aside, it is off until
+ *   the user chooses again.
  */
 data class AddressIndexStatus(val pinned: Address?, val reader: Boolean, val choice: AddressIndexChoice) {
 
@@ -43,9 +50,17 @@ data class AddressIndexStatus(val pinned: Address?, val reader: Boolean, val cho
             if (choice is AddressIndexChoice.Unreadable) add(AddressIndexMissing.CHOICE_UNREADABLE)
         }
 
-    /** Whether *Activity* takes the addr1 index: on for the key pinned now, with a reader to read it. */
+    /**
+     * Whether *Activity* takes the addr1 index: a key pinned, a reader to read it, and no explicit off nor a choice
+     * that cannot be read or was set aside (the cases above): on by default otherwise.
+     */
     val on: Boolean
-        get() = missing.isEmpty() && (choice as? AddressIndexChoice.Chosen)?.importer == pinned
+        get() = missing.isEmpty() && when (choice) {
+            AddressIndexChoice.NotChosen -> true
+            // On for any key: for the key pinned now, or, for another one, no choice for this one (default on).
+            is AddressIndexChoice.Chosen -> choice.importer != null
+            AddressIndexChoice.Unreadable -> false
+        }
 
     /** The key the setting was turned on for when that is not the key pinned now; null otherwise. */
     val trustsAnotherKey: Address?

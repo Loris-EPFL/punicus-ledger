@@ -1160,8 +1160,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       are not listed yet (issue #85 has the plan for them).
     - Before every other row, whichever way the rows run, what the account
       has queued in lenient mode (docs/lenient-mode.md, *Where it shows*;
-      owner rulings, 2026-11-06): "Send 0.1 ETH", "To Savings · 0x5aAe…eAed",
-      when it was signed, and "Waiting to send", "Waiting for your answer"
+      owner rulings, 2026-11-06): "Send 0.1 ETH" (in the list "Send ETH",
+      with "−0.1 ETH" on the right), "To Savings · 0x5aAe…eAed", when it was
+      signed, and "Waiting to send", "Waiting for your answer"
       (past its hour) or "Needs your signature again". A tap opens its
       status (9). A Safe transaction's approval or execution queued from the
       account reads "Approve on chain: Safe nonce 12" or "Execute: Safe
@@ -1304,11 +1305,12 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       ETH", "Received 1 ETH", "Created a contract") only when its verified
       receipt says it succeeded, and one that reverted reads "Failed on
       chain", as a sent row does. The engine does not report the receipt's
-      status yet, so today such a row says how the account is named in it
-      ("Named in a transaction · sender"), and its value is left to the
-      detail (26), beside the fact that its outcome is not checked; the
-      list shows that value at a glance, saying so ("−0.25 ETH", "Sent ETH ·
-      outcome not checked"; owner's request, 2026-11-23). An entry
+      status yet, so today its detail (26) heads it with how the account is
+      named in it ("Named in a transaction · sender") and gives its value
+      beside the fact that its outcome is not checked. The list shows that
+      value at a glance, muted and saying so ("−0.25 ETH", "Sent ETH ·
+      outcome not checked"; owner's request, 2026-11-23); with no value, the
+      list says how the account is named in it, as the detail does. An entry
       about the block itself reads "Named by the block itself". The same
       protections hold: a transfer of nothing the account did not send is
       not listed, an unlisted token's transfer is its claim, and a row the

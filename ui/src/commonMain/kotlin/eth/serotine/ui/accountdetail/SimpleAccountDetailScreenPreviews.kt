@@ -191,6 +191,9 @@ private fun SimpleAccountActivityQueuedPreview() = SimpleAccountDetailPreview(
                     status = "Waiting to send",
                     state = ActivityState.WAITING,
                     opens = ActivityKey("0x" + "9a".repeat(32), queued = true),
+                    direction = ActivityDirection.OUT,
+                    amount = "\u2212250 USDC",
+                    headline = "Send USDC",
                 ),
             ),
         ),
@@ -276,7 +279,8 @@ private fun SimpleAccountActivityIndexPreview() = SimpleAccountDetailPreview(
             rows = listOf(
                 ActivityRow(
                     key = "index:23590120:7",
-                    title = "Received 0.5 ETH",
+                    // As today's engine reports it: no receipt status, its value muted, its outcome not checked.
+                    title = "Named in a transaction · recipient",
                     detail = "From Family Safe · 0xdbF0…C6FB",
                     about = FAMILY_SAFE,
                     time = "Block 23,590,120",
@@ -292,7 +296,8 @@ private fun SimpleAccountActivityIndexPreview() = SimpleAccountDetailPreview(
                     simpleDay = "Date not available",
                     direction = ActivityDirection.IN,
                     amount = "+0.5 ETH",
-                    headline = "Received ETH",
+                    headline = "Received ETH · outcome not checked",
+                    unchecked = true,
                 ),
             ),
             coverage = "Transactions sent from this device.",

@@ -250,7 +250,8 @@ internal class ActivityRows(
      * account did not send, from someone the user does not deal with ([Parties.familiar]), is cautioned. A
      * transaction's value is said as moved only when its verified receipt says it succeeded
      * ([AddressIndexTransaction.succeeded]); reverted, it failed on chain, as a sent row says; not known (the engine
-     * does not report it yet), the row says how the account is named in it, and the value is left to the detail. Its
+     * does not report it yet), its title says how the account is named in it, and the list shows the value apart,
+     * muted and marked as not checked ([valueMoved]). Its
      * status
      * says it was checked against the chain, and in which block; dated by that block alone, like an event the engine
      * did not date: the index carries no time.
@@ -357,7 +358,8 @@ internal class ActivityRows(
         }
         val row = when (tx.succeeded) {
             // The engine does not report the receipt's status yet: a reverted transaction keeps its value field and
-            // moves nothing, so the row says only how the account is named in it. Its value is in the detail.
+            // moves nothing, so the title says only how the account is named in it. The list shows the value apart,
+            // muted and marked as not checked (valueMoved); the detail gives it beside that.
             null -> base.copy(title = "Named in a transaction · ${rolesText(entry.roles)}", detail = counterpart)
             // As a sent row says a revert: its fee paid, nothing else done.
             false -> base.copy(

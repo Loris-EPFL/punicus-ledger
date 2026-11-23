@@ -8,6 +8,7 @@ import platform.Foundation.NSDateFormatterNoStyle
 import platform.Foundation.NSDateFormatterShortStyle
 import platform.Foundation.NSLocale
 import platform.Foundation.NSTimeZone
+import platform.Foundation.autoupdatingCurrentLocale
 import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.Foundation.localTimeZone
 
@@ -44,9 +45,13 @@ actual fun formatClockTime(epochSeconds: Long): String =
 actual fun formatLongDate(epochSeconds: Long): String =
     longDate.stringFromDate(NSDate.dateWithTimeIntervalSince1970(epochSeconds.toDouble()))
 
-/** Made once, as an Activity times every row (see [timeOfDay]); the time zone follows the device's. */
+/**
+ * Made once, as an Activity times every row (see [timeOfDay]); its locale and time zone follow the user's settings as
+ * they change.
+ */
 private val clockTime: NSDateFormatter by lazy {
     NSDateFormatter().apply {
+        locale = NSLocale.autoupdatingCurrentLocale
         timeZone = NSTimeZone.localTimeZone
         dateStyle = NSDateFormatterNoStyle
         timeStyle = NSDateFormatterShortStyle
@@ -56,6 +61,7 @@ private val clockTime: NSDateFormatter by lazy {
 /** Made once, as [clockTime] is. */
 private val longDate: NSDateFormatter by lazy {
     NSDateFormatter().apply {
+        locale = NSLocale.autoupdatingCurrentLocale
         timeZone = NSTimeZone.localTimeZone
         dateStyle = NSDateFormatterFullStyle
         timeStyle = NSDateFormatterNoStyle

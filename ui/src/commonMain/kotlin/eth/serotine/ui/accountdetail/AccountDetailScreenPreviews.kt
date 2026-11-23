@@ -682,6 +682,9 @@ private val QUEUED_ROWS = listOf(
         status = "Waiting to send",
         state = ActivityState.WAITING,
         opens = ActivityKey("0x" + "9a".repeat(32), queued = true),
+        direction = ActivityDirection.OUT,
+        amount = "\u22120.1 ETH",
+        headline = "Send ETH",
     ),
 )
 
@@ -1046,7 +1049,8 @@ private val indexActivityRows = listOf(
     activityRows[1],
     ActivityRow(
         key = "index:9412300:4",
-        title = "Received 0.5 ETH",
+        // As today's engine reports it: no receipt status, so its value is shown muted, its outcome not checked.
+        title = "Named in a transaction · recipient",
         detail = "From Treasury · 0xfB69…d359",
         about = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
         time = "Block 9,412,300",
@@ -1057,7 +1061,8 @@ private val indexActivityRows = listOf(
         simpleDay = "Date not available",
         direction = ActivityDirection.IN,
         amount = "+0.5 ETH",
-        headline = "Received ETH",
+        headline = "Received ETH · outcome not checked",
+        unchecked = true,
     ),
     ActivityRow(
         key = "index:9380102:12",

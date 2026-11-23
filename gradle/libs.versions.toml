@@ -47,9 +47,9 @@ secp256k1-kmp = "0.22.0"
 # The persistent account list (eth.serotine.data.account): multiplatform file I/O and
 # JSON. kotlinx-io 0.8.2 and kotlinx-serialization 1.9.0, built for Kotlin 2.2, which
 # the 2.4 compiler reads: held, moving them is a change of their own. On iOS,
-# kotlinx-serialization resolves to 1.12.0, the release Myotis's iOS module depends on
-# from 0.1.21; 1.12 reads what 1.9 writes. The serialization compiler plugin is Kotlin's
-# own, at the Kotlin pin.
+# kotlinx-serialization resolves to 1.13.0, the release Myotis's iOS module depends on
+# from 0.1.22 (1.12.0 up to 0.1.21-rc1); 1.13 reads what 1.9 writes. The serialization
+# compiler plugin is Kotlin's own, at the Kotlin pin.
 kotlinx-io = "0.8.2"
 kotlinx-serialization = "1.9.0"
 # The key envelope's Argon2id (docs/keys-and-signing.md, rule 2), from libsodium (the

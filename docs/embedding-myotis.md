@@ -583,7 +583,11 @@ answered with an empty list.
     alone, never by a time counted back from the head: a block's time is
     verified or not shown. Reading a block's header for it instead is no
     answer: `getBlockByNumber` serves one header window anchored at the
-    head (512 blocks), and a history reaches further back.
+    head (512 blocks) on Gnosis Chain and Sepolia, and a history reaches
+    further back. On Ethereum, from Myotis 0.1.21, it also serves a deeper
+    block through the engine's bundled checkpoint table (its rule D1), with
+    a walk down from the finalized block: a heavy read per block, not one
+    for every event of a history.
   - The engine takes an entry's `fromBlock` as saying nothing of it comes
     before that block, and answers a range reaching below it from there on.
     For an account not created here that is not so, so the adapter reads the

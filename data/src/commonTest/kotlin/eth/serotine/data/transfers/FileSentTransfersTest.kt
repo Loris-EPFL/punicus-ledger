@@ -362,9 +362,13 @@ class FileSentTransfersTest {
     fun aSwarmNodesPostageBatchCallsAreRecordedAsTheCallsTheyAre() = runTest {
         val stamp = Address.of("0x45a1502382541cd610cc9068e88727426b696293")
         val id = BatchId.of("af132f8c833af8d2da19979a31603c6507435ea4ce1194adf14b45a54cc78db2")
+        val bzz =
+            Token(Address.of("0xdbf3ea6f5bee45c02255b2c26a16f300502f68da"), "BZZ", "BZZ on xDai", 16, icon = "bzz")
         val calls = listOf(
-            transfer(9).copy(action = SentAction.BatchPurchase(stamp, bob, id, 22, UInt256.of(3_578_031_360), true)),
-            transfer(10).copy(action = SentAction.BatchTopUp(stamp, id, 22, UInt256.of(1_000))),
+            transfer(9).copy(
+                action = SentAction.BatchPurchase(bzz, stamp, bob, id, 22, UInt256.of(3_578_031_360), true),
+            ),
+            transfer(10).copy(action = SentAction.BatchTopUp(bzz, stamp, id, 22, UInt256.of(1_000))),
             transfer(11).copy(action = SentAction.BatchDilution(stamp, id, 23)),
         )
         val recorder = record()

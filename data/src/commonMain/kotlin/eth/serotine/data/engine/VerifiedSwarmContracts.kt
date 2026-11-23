@@ -123,14 +123,15 @@ class VerifiedSwarmContracts internal constructor(
         return bzz?.let { SwarmDeployment(it, pinned.postageStamp) }
     }
 
-    override suspend fun postage(network: Network): PostageReading {
+    override suspend fun postage(network: Network, node: Address?, id: BatchId?): PostageReading {
+        require((node == null) == (id == null)) { "a batch is asked about by its node and its id together" }
         if (network != served) return PostageReading.Unavailable(ReadUnavailable.NO_ENGINE)
         val pinned = pins ?: return PostageReading.NotPinned
         val verified = chain ?: return PostageReading.Unavailable(ReadUnavailable.NO_ENGINE)
         return withContext(dispatcher) {
             try {
                 whyUnreadable(verified.snapshot())?.let { return@withContext PostageReading.Unavailable(it) }
-                readPostage(verified, pinned)
+                readPostage(verified, pinned, node?.let { owner -> checkNotNull(id).let { owner to it } })
             } catch (e: Throwable) {
                 // A cancellation of this call ends it; anything else is an engine failure, as in ProvenReads.
                 currentCoroutineContext().ensureActive()
@@ -140,7 +141,11 @@ class VerifiedSwarmContracts internal constructor(
     }
 
     /** The PostageStamp's state, its code and xBZZ's proven first. */
-    private suspend fun readPostage(chain: VerifiedChain, pins: PinnedSwarm): PostageReading {
+    private suspend fun readPostage(
+        chain: VerifiedChain,
+        pins: PinnedSwarm,
+        batch: Pair<Address, BatchId>?,
+    ): PostageReading {
         val unproven = PostageReading.Unavailable(ReadUnavailable.UNPROVEN)
         if (codeCheck(chain, pins.postageStamp, pins.postageStampCodeHash) != CodeCheck.Matches) return unproven
         when (codeCheck(chain, pins.bzz, pins.bzzProxyCodeHash)) {
@@ -156,13 +161,20 @@ class VerifiedSwarmContracts internal constructor(
             is CodeCheck.Differs -> return PostageReading.BzzChanged
             CodeCheck.Matches -> Unit
         }
-        val read = readAtOneBlock(chain) { calls -> postageAt(calls, pins.postageStamp) }
+        val read = readAtOneBlock(chain) { calls ->
+            val state = postageAt(calls, pins.postageStamp) ?: return@readAtOneBlock null
+            // The batch at the same block as the state it is quoted with, never a reading kept before.
+            val found = batch?.let { (owner, id) ->
+                batchAt(calls, pins.postageStamp, owner, id) ?: return@readAtOneBlock null
+            }
+            state to found
+        }
         // The slot read again after the state: an upgrade between the two reads never passes unseen.
         val after = implementationOf(chain, pins) ?: return unproven
         if (after != implementation) return PostageReading.BzzChanged
         return when (read) {
             null -> unproven
-            is EngineReading.Proven -> PostageReading.Read(read.value, read.blockNumber)
+            is EngineReading.Proven -> PostageReading.Read(read.value.first, read.blockNumber, read.value.second)
             is EngineReading.Unavailable -> PostageReading.Unavailable(read.reason)
             EngineReading.Syncing, is EngineReading.LastKnown -> unproven
         }

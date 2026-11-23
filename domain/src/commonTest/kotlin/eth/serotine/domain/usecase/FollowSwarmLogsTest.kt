@@ -128,7 +128,8 @@ class FollowSwarmLogsTest {
         override fun deployment(network: Network) =
             SwarmDeployment(eth.serotine.domain.model.Token(bzz, "BZZ", "BZZ on xDai", 16, icon = "bzz"), stamp)
 
-        override suspend fun postage(network: Network) = eth.serotine.domain.repository.PostageReading.NotPinned
+        override suspend fun postage(network: Network, node: Address?, id: BatchId?) =
+            eth.serotine.domain.repository.PostageReading.NotPinned
     }
 
     private fun eoa(byte: String, label: String, custody: AccountCustody) =

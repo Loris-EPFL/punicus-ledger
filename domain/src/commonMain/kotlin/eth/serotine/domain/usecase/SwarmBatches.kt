@@ -8,6 +8,7 @@ import eth.serotine.domain.model.PostageBatch
 import eth.serotine.domain.model.PostageState
 import eth.serotine.domain.model.SwarmCalls
 import eth.serotine.domain.model.SwarmDeployment
+import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.Broadcast
@@ -26,6 +27,8 @@ import eth.serotine.domain.repository.SwarmCandidate
 import eth.serotine.domain.repository.SwarmCandidates
 import eth.serotine.domain.repository.SwarmContracts
 import eth.serotine.domain.repository.SwarmReading
+import eth.serotine.domain.repository.TokenBalanceReading
+import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.Unlock
 import kotlin.random.Random
@@ -54,6 +57,7 @@ sealed interface BatchCall {
      */
     @ConsistentCopyVisibility
     data class Purchase internal constructor(
+        val token: Token,
         override val stamp: Address,
         val buyer: Address,
         val owner: Address,
@@ -67,21 +71,28 @@ sealed interface BatchCall {
             get() = BatchId.of(buyer, nonce)
 
         override val action: SentAction
-            get() = SentAction.BatchPurchase(stamp, owner, id, depth, perChunk, immutable)
+            get() = SentAction.BatchPurchase(token, stamp, owner, id, depth, perChunk, immutable)
 
         // A nonce is compared by its bytes: two purchases of one nonce are one batch.
         override fun equals(other: Any?): Boolean =
-            other is Purchase && stamp == other.stamp && buyer == other.buyer && owner == other.owner &&
+            other is Purchase && token == other.token && stamp == other.stamp && buyer == other.buyer &&
+                owner == other.owner &&
                 depth == other.depth && perChunk == other.perChunk && immutable == other.immutable &&
                 nonce.contentEquals(other.nonce)
 
         override fun hashCode(): Int = nonce.contentHashCode()
     }
 
-    /** [perChunk] more for each chunk of the batch [id], of [depth]. */
-    data class TopUp(override val stamp: Address, val id: BatchId, val depth: Int, val perChunk: UInt256) : BatchCall {
+    /** [perChunk] more of [token] for each chunk of the batch [id], of [depth]. */
+    data class TopUp(
+        val token: Token,
+        override val stamp: Address,
+        val id: BatchId,
+        val depth: Int,
+        val perChunk: UInt256,
+    ) : BatchCall {
         override val action: SentAction
-            get() = SentAction.BatchTopUp(stamp, id, depth, perChunk)
+            get() = SentAction.BatchTopUp(token, stamp, id, depth, perChunk)
     }
 
     /** The batch [id] diluted from [from] to [depth], its owner's own transaction. */
@@ -94,8 +105,8 @@ sealed interface BatchCall {
 /**
  * A batch's transaction quoted for review: its [call], the [quote] of the sender's transaction, the
  * PostageStamp's [postage] state at [postageBlock] it was quoted on, the [total] it pulls in xBZZ
- * (PLUR; zero for a dilution), and, for a dilution or a top-up, the [batch] as read before it.
- * Only this file makes one: what is signed is its [quote]'s transaction.
+ * (PLUR; zero for a dilution), and, for a dilution or a top-up, the [batch] as read at that same
+ * block. Only this file makes one: what is signed is its [quote]'s transaction.
  */
 @ConsistentCopyVisibility
 data class BatchQuote internal constructor(
@@ -162,6 +173,12 @@ sealed interface BatchRefusal {
     /** The total does not fit 256 bits. */
     data object TooMuch : BatchRefusal
 
+    /**
+     * The payer holds less xBZZ than the total ([total]) beside what its own transactions not mined
+     * yet still move of it: nothing is approved for a purchase or a top-up it cannot pay.
+     */
+    data class InsufficientBzz(val total: UInt256) : BatchRefusal
+
     /** Something it rests on could not be verified right now: [reason]. */
     data class Unavailable(val reason: ReadUnavailable) : BatchRefusal
 
@@ -184,6 +201,7 @@ internal class BatchQuoter(
     private val contracts: SwarmContracts,
     private val inputs: TransactionInputs,
     private val nativeBalances: NativeBalances,
+    private val tokenBalances: TokenBalances,
     private val sentTransfers: SentTransfers,
     private val outbox: Outbox,
     private val approvals: QuoteTokenApproval,
@@ -192,36 +210,38 @@ internal class BatchQuoter(
     val network = SWARM_NETWORK
     private val quoter = CallQuoter(inputs, sentTransfers, network, clock, outbox)
 
-    /** The pins and the PostageStamp's state, read fresh, once: what a quote rests on, or why there is none. */
-    suspend fun prepare(): Prepared {
+    /**
+     * The pins and the PostageStamp's state, read fresh, once: what a quote rests on, or why there is
+     * none; with [node] and [id], the batch too, at the same block, the node's own and not expired.
+     */
+    suspend fun prepare(node: Address? = null, id: BatchId? = null): Prepared {
         val pinned = contracts.deployment(network) ?: return Prepared.Refused(BatchRefusal.NotPinned)
-        return when (val reading = contracts.postage(network)) {
-            is PostageReading.Read ->
-                if (reading.state.paused) Prepared.Refused(BatchRefusal.Paused) else Prepared.Ready(pinned, reading)
-            PostageReading.NotPinned -> Prepared.Refused(BatchRefusal.NotPinned)
-            PostageReading.BzzChanged -> Prepared.Refused(BatchRefusal.BzzChanged)
-            is PostageReading.Unavailable -> Prepared.Refused(BatchRefusal.Unavailable(reading.reason))
+        val reading = when (val read = contracts.postage(network, node, id)) {
+            is PostageReading.Read -> read
+            PostageReading.NotPinned -> return Prepared.Refused(BatchRefusal.NotPinned)
+            PostageReading.BzzChanged -> return Prepared.Refused(BatchRefusal.BzzChanged)
+            is PostageReading.Unavailable -> return Prepared.Refused(BatchRefusal.Unavailable(read.reason))
         }
+        if (reading.state.paused) return Prepared.Refused(BatchRefusal.Paused)
+        if (id == null) return Prepared.Ready(pinned, reading, batch = null)
+        val batch = when (val finding = reading.batch) {
+            is BatchFinding.Node -> finding.batch
+            null -> return Prepared.Refused(BatchRefusal.Unavailable(ReadUnavailable.UNPROVEN))
+            else -> return Prepared.Refused(BatchRefusal.NotTheNodes(finding))
+        }
+        if (batch.expired) return Prepared.Refused(BatchRefusal.Expired)
+        return Prepared.Ready(pinned, reading, batch)
     }
 
     /** What [prepare] gives. */
     sealed interface Prepared {
-        data class Ready(val pinned: SwarmDeployment, val postage: PostageReading.Read) : Prepared
+        data class Ready(
+            val pinned: SwarmDeployment,
+            val postage: PostageReading.Read,
+            val batch: PostageBatch?,
+        ) : Prepared
         data class Refused(val refusal: BatchRefusal) : Prepared
     }
-
-    /** The batch [id] of [node], read fresh: the node's own and not expired, else why not. */
-    suspend fun batch(node: Address, id: BatchId): Pair<PostageBatch?, BatchRefusal?> =
-        when (val reading = contracts.observeBatch(network, node, id).first()) {
-            is SwarmReading.Verified -> when (val finding = reading.finding) {
-                is BatchFinding.Node ->
-                    if (finding.batch.expired) null to BatchRefusal.Expired else finding.batch to null
-                else -> null to BatchRefusal.NotTheNodes(finding)
-            }
-            SwarmReading.NotPinned -> null to BatchRefusal.NotPinned
-            SwarmReading.Syncing -> null to BatchRefusal.Unavailable(ReadUnavailable.SYNCING)
-            is SwarmReading.Unavailable -> null to BatchRefusal.Unavailable(reading.reason)
-        }
 
     /**
      * [call] from [from], pulling [total] xBZZ: the PostageStamp approved first when its allowance
@@ -239,10 +259,26 @@ internal class BatchQuoter(
     ): BatchQuoting {
         if (!total.isZero) {
             // An earlier pull of xBZZ from here, not mined yet, would take the allowance this one counts on.
-            when (val unmined = unminedOf(network, sentTransfers, inputs, from, clock)) {
-                is Unmined.Read -> unmined.transfers.lastOrNull { it.pullsXbzz(pinned.postageStamp) }
-                    ?.let { return BatchQuoting.EarlierPullPending(it.hash) }
-                is Unmined.Unavailable -> return BatchQuoting.Refused(BatchRefusal.Unavailable(unmined.reason))
+            val unmined = when (val read = unminedOf(network, sentTransfers, inputs, from, clock)) {
+                is Unmined.Read -> read.transfers
+                is Unmined.Unavailable -> return BatchQuoting.Refused(BatchRefusal.Unavailable(read.reason))
+            }
+            unmined.lastOrNull { it.pullsXbzz(pinned.postageStamp) }
+                ?.let { return BatchQuoting.EarlierPullPending(it.hash) }
+            // What the payer holds, beside what its own transactions not mined yet still move of it:
+            // nothing is approved for what it cannot pay.
+            val held = when (val read = tokenBalances.observeBalance(network, from, pinned.bzz.address).first()) {
+                is TokenBalanceReading.Verified -> UInt256.parse(read.units.decimal)
+                    ?: return BatchQuoting.Refused(BatchRefusal.Unavailable(ReadUnavailable.UNPROVEN))
+                TokenBalanceReading.Syncing, is TokenBalanceReading.LastKnown ->
+                    return BatchQuoting.Refused(BatchRefusal.Unavailable(ReadUnavailable.SYNCING))
+                TokenBalanceReading.NotAToken -> return BatchQuoting.Refused(BatchRefusal.BzzChanged)
+                is TokenBalanceReading.Unavailable -> return BatchQuoting.Refused(BatchRefusal.Unavailable(read.reason))
+            }
+            val moving = unmined.mapNotNull { it.tokenAmount(pinned.bzz.address) }.sumOrNull()
+                ?: return BatchQuoting.Refused(BatchRefusal.InsufficientBzz(total))
+            if ((held.minusOrNull(moving) ?: UInt256.ZERO) < total) {
+                return BatchQuoting.Refused(BatchRefusal.InsufficientBzz(total))
             }
             when (val approval = approvals(from, pinned.bzz, pinned.postageStamp, total, level)) {
                 is ApprovalQuoting.AlreadyAllowed -> Unit
@@ -279,12 +315,13 @@ class QuoteBatchPurchase internal constructor(
         contracts: SwarmContracts,
         inputs: TransactionInputs,
         nativeBalances: NativeBalances,
+        tokenBalances: TokenBalances,
         sentTransfers: SentTransfers,
         outbox: Outbox,
         approvals: QuoteTokenApproval,
         clock: () -> Long = ::epochSecondsNow,
     ) : this(
-        BatchQuoter(contracts, inputs, nativeBalances, sentTransfers, outbox, approvals, clock),
+        BatchQuoter(contracts, inputs, nativeBalances, tokenBalances, sentTransfers, outbox, approvals, clock),
         { Random.nextBytes(32) },
     )
 
@@ -299,15 +336,17 @@ class QuoteBatchPurchase internal constructor(
         if (depth !in SwarmCalls.MIN_DEPTH..SwarmCalls.MAX_DEPTH) {
             return BatchQuoting.Refused(BatchRefusal.DepthNotOffered)
         }
-        val (pinned, postage) = when (val prepared = quoter.prepare()) {
-            is BatchQuoter.Prepared.Ready -> prepared.pinned to prepared.postage
-            is BatchQuoter.Prepared.Refused -> return BatchQuoting.Refused(prepared.refusal)
+        val prepared = when (val read = quoter.prepare()) {
+            is BatchQuoter.Prepared.Ready -> read
+            is BatchQuoter.Prepared.Refused -> return BatchQuoting.Refused(read.refusal)
         }
+        val (pinned, postage) = prepared.pinned to prepared.postage
         if (perChunk < postage.state.minimumPerChunk) {
             return BatchQuoting.Refused(BatchRefusal.BelowMinimum(postage.state.minimumPerChunk))
         }
         val total = SwarmCalls.total(perChunk, depth) ?: return BatchQuoting.Refused(BatchRefusal.TooMuch)
-        val call = BatchCall.Purchase(pinned.postageStamp, buyer, owner, depth, perChunk, immutable, nonce())
+        val call =
+            BatchCall.Purchase(pinned.bzz, pinned.postageStamp, buyer, owner, depth, perChunk, immutable, nonce())
         val data = SwarmCalls.createBatch(owner, perChunk, depth, call.nonce, immutable)
         return quoter.quote(buyer, call, data, total, pinned, postage, level)
     }
@@ -324,11 +363,12 @@ class QuoteBatchTopUp internal constructor(private val quoter: BatchQuoter) {
         contracts: SwarmContracts,
         inputs: TransactionInputs,
         nativeBalances: NativeBalances,
+        tokenBalances: TokenBalances,
         sentTransfers: SentTransfers,
         outbox: Outbox,
         approvals: QuoteTokenApproval,
         clock: () -> Long = ::epochSecondsNow,
-    ) : this(BatchQuoter(contracts, inputs, nativeBalances, sentTransfers, outbox, approvals, clock))
+    ) : this(BatchQuoter(contracts, inputs, nativeBalances, tokenBalances, sentTransfers, outbox, approvals, clock))
 
     suspend operator fun invoke(
         payer: Address,
@@ -337,18 +377,18 @@ class QuoteBatchTopUp internal constructor(private val quoter: BatchQuoter) {
         perChunk: UInt256,
         level: FeeLevel,
     ): BatchQuoting {
-        val (pinned, postage) = when (val prepared = quoter.prepare()) {
-            is BatchQuoter.Prepared.Ready -> prepared.pinned to prepared.postage
-            is BatchQuoter.Prepared.Refused -> return BatchQuoting.Refused(prepared.refusal)
+        val prepared = when (val read = quoter.prepare(node, id)) {
+            is BatchQuoter.Prepared.Ready -> read
+            is BatchQuoter.Prepared.Refused -> return BatchQuoting.Refused(read.refusal)
         }
-        val (batch, refusal) = quoter.batch(node, id)
-        if (refusal != null || batch == null) return BatchQuoting.Refused(refusal ?: BatchRefusal.Expired)
+        val (pinned, postage) = prepared.pinned to prepared.postage
+        val batch = checkNotNull(prepared.batch)
         val after = batch.remainingPerChunk.plusOrNull(perChunk) ?: return BatchQuoting.Refused(BatchRefusal.TooMuch)
         if (after < postage.state.minimumPerChunk) {
             return BatchQuoting.Refused(BatchRefusal.BelowMinimum(postage.state.minimumPerChunk))
         }
         val total = SwarmCalls.total(perChunk, batch.depth) ?: return BatchQuoting.Refused(BatchRefusal.TooMuch)
-        val call = BatchCall.TopUp(pinned.postageStamp, id, batch.depth, perChunk)
+        val call = BatchCall.TopUp(pinned.bzz, pinned.postageStamp, id, batch.depth, perChunk)
         return quoter.quote(payer, call, SwarmCalls.topUp(id, perChunk), total, pinned, postage, level, batch)
     }
 }
@@ -365,19 +405,20 @@ class QuoteBatchDilution internal constructor(private val quoter: BatchQuoter) {
         contracts: SwarmContracts,
         inputs: TransactionInputs,
         nativeBalances: NativeBalances,
+        tokenBalances: TokenBalances,
         sentTransfers: SentTransfers,
         outbox: Outbox,
         approvals: QuoteTokenApproval,
         clock: () -> Long = ::epochSecondsNow,
-    ) : this(BatchQuoter(contracts, inputs, nativeBalances, sentTransfers, outbox, approvals, clock))
+    ) : this(BatchQuoter(contracts, inputs, nativeBalances, tokenBalances, sentTransfers, outbox, approvals, clock))
 
     suspend operator fun invoke(node: Address, id: BatchId, depth: Int, level: FeeLevel): BatchQuoting {
-        val (pinned, postage) = when (val prepared = quoter.prepare()) {
-            is BatchQuoter.Prepared.Ready -> prepared.pinned to prepared.postage
-            is BatchQuoter.Prepared.Refused -> return BatchQuoting.Refused(prepared.refusal)
+        val prepared = when (val read = quoter.prepare(node, id)) {
+            is BatchQuoter.Prepared.Ready -> read
+            is BatchQuoter.Prepared.Refused -> return BatchQuoting.Refused(read.refusal)
         }
-        val (batch, refusal) = quoter.batch(node, id)
-        if (refusal != null || batch == null) return BatchQuoting.Refused(refusal ?: BatchRefusal.Expired)
+        val (pinned, postage) = prepared.pinned to prepared.postage
+        val batch = checkNotNull(prepared.batch)
         if (depth <= batch.depth || depth > PostageBatch.MAX_DEPTH) {
             return BatchQuoting.Refused(BatchRefusal.DepthNotOffered)
         }
@@ -408,8 +449,8 @@ sealed interface BatchSending {
 
     /**
      * Not signed: the batch's depth is not the one the quote rests on any more (the node's Bee diluted
-     * it meanwhile), so a top-up would pull more than was approved, or a dilution would revert. The
-     * review is made again.
+     * it meanwhile), so a top-up would pull more than was approved, or a dilution would revert; or
+     * the PostageStamp was paused, or xBZZ upgraded, since. The review is made again.
      */
     data object BatchChanged : BatchSending
 }
@@ -456,14 +497,15 @@ class SendBatchCall(
      * signed. A top-up pulls its amount times `2^depth` at the depth it is mined at.
      */
     private suspend fun stillAsQuoted(quote: BatchQuote, before: PostageBatch): BatchSending? =
-        when (val reading = contracts.observeBatch(quote.network, before.owner, before.id).first()) {
-            is SwarmReading.Verified -> {
-                val depth = (reading.finding as? BatchFinding.Node)?.batch?.depth
-                BatchSending.BatchChanged.takeUnless { depth == before.depth }
+        // Read fresh, never the reading the quote was made on.
+        when (val reading = contracts.postage(quote.network, before.owner, before.id)) {
+            is PostageReading.Read -> {
+                val depth = (reading.batch as? BatchFinding.Node)?.batch?.depth
+                BatchSending.BatchChanged.takeUnless { depth == before.depth && !reading.state.paused }
             }
-            SwarmReading.Syncing -> BatchSending.NotChecked(ReadUnavailable.SYNCING)
-            SwarmReading.NotPinned -> BatchSending.NotChecked(ReadUnavailable.NO_ENGINE)
-            is SwarmReading.Unavailable -> BatchSending.NotChecked(reading.reason)
+            PostageReading.BzzChanged -> BatchSending.BatchChanged
+            PostageReading.NotPinned -> BatchSending.NotChecked(ReadUnavailable.NO_ENGINE)
+            is PostageReading.Unavailable -> BatchSending.NotChecked(reading.reason)
         }
 
     /** Whether a peer took it, or may have: a purchase on its way is kept, so that its batch is found. */

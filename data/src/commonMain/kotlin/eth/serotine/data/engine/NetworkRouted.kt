@@ -232,8 +232,9 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
 
         override fun deployment(network: Network): SwarmDeployment? = of(network)?.swarmContracts?.deployment(network)
 
-        override suspend fun postage(network: Network): PostageReading =
-            of(network)?.swarmContracts?.postage(network) ?: PostageReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        override suspend fun postage(network: Network, node: Address?, id: BatchId?): PostageReading =
+            of(network)?.swarmContracts?.postage(network, node, id)
+                ?: PostageReading.Unavailable(ReadUnavailable.NO_ENGINE)
     }
 
     val uniswap: UniswapV3Chain = object : UniswapV3Chain {

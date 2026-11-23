@@ -390,6 +390,19 @@ class VerifiedSwarmContractsTest {
     }
 
     @Test
+    fun aBatchIsReadFreshWithThePostageStampsStateAtOneBlock() = runTest {
+        thePostageStamp()
+        theBatch()
+        val read = contracts().postage(Network.GNOSIS, buyer, batch) as PostageReading.Read
+        assertEquals(7, read.blockNumber)
+        val found = assertIs<BatchFinding.Node>(read.batch)
+        assertEquals(22, found.batch.depth)
+        // Another owner's is said to be another's, at the same block.
+        val others = contracts().postage(Network.GNOSIS, node, batch) as PostageReading.Read
+        assertEquals(BatchFinding.OthersOwner(buyer), others.batch)
+    }
+
+    @Test
     fun anotherXbzzImplementationApprovesNothing() = runTest {
         thePostageStamp(implementation = Address.of("0x" + "99".repeat(20)))
         assertEquals(PostageReading.BzzChanged, contracts().postage(Network.GNOSIS))

@@ -9,6 +9,7 @@ import eth.serotine.domain.model.PostageState
 import eth.serotine.domain.model.SwarmCalls
 import eth.serotine.domain.model.SwarmDeployment
 import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.Wei
 import eth.serotine.domain.model.toHex
@@ -25,6 +26,7 @@ import eth.serotine.domain.repository.SwarmCandidateList
 import eth.serotine.domain.repository.SwarmCandidates
 import eth.serotine.domain.repository.SwarmContracts
 import eth.serotine.domain.repository.SwarmReading
+import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.Unlock
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -59,11 +61,18 @@ class SwarmBatchesTest {
         override fun observeBatch(network: Network, node: Address, id: BatchId): Flow<SwarmReading<BatchFinding>> =
             flowOf(batch)
         override fun deployment(network: Network) = SwarmDeployment(bzz, stamp)
-        override suspend fun postage(network: Network) = postage
+        override suspend fun postage(network: Network, node: Address?, id: BatchId?): PostageReading =
+            when (val read = postage) {
+                // The batch at the same block, as the adapter reads it.
+                is PostageReading.Read ->
+                    if (id == null) read else read.copy(batch = (batch as? SwarmReading.Verified)?.finding)
+                else -> read
+            }
     }
 
     private val inputs = FakeTransactionInputs()
     private val native = FakeNativeBalances()
+    private val tokens = FakeTokenBalances()
     private val sent = MemorySentTransfers()
 
     /** The PostageStamp's allowance over each account's xBZZ, as `allowance` answers it. */
@@ -72,6 +81,8 @@ class SwarmBatchesTest {
     init {
         listOf(node, payer).forEach {
             native.of(it).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 100)
+            // Plenty of xBZZ: 10^30 PLUR.
+            tokens.of(it, bzz.address).value = TokenBalanceReading.Verified(TokenUnits.of("1" + "0".repeat(30)), 100)
         }
         inputs.simulationOf = { _, to ->
             // xBZZ answers `allowance` with the allowance, `approve` with true; the PostageStamp nothing.
@@ -92,7 +103,7 @@ class SwarmBatchesTest {
 
     private val approvals =
         QuoteTokenApproval(inputs, native, sent, Network.GNOSIS, outbox = Outbox.None, clock = { 1_000 })
-    private val quoter = BatchQuoter(contracts, inputs, native, sent, Outbox.None, approvals) { 1_000 }
+    private val quoter = BatchQuoter(contracts, inputs, native, tokens, sent, Outbox.None, approvals) { 1_000 }
 
     private suspend fun buy(perChunk: UInt256 = minimum, depth: Int = 22) =
         QuoteBatchPurchase(quoter) { nonce }(payer, node, depth, perChunk, immutable = true, FeeLevel.NORMAL)
@@ -107,7 +118,7 @@ class SwarmBatchesTest {
         assertEquals(encoded, quote.quote.transaction.data.toHex())
         val call = assertIs<BatchCall.Purchase>(quote.call)
         assertEquals(BatchId.of(payer, nonce), call.id)
-        assertEquals(SentAction.BatchPurchase(stamp, node, call.id, 22, minimum, true), call.action)
+        assertEquals(SentAction.BatchPurchase(bzz, stamp, node, call.id, 22, minimum, true), call.action)
     }
 
     @Test
@@ -188,7 +199,7 @@ class SwarmBatchesTest {
         assertIs<TransferSending.Sent>(sending.sending)
         val batch: SwarmCandidate = SwarmCandidate.Batch(BatchId.of(payer, nonce))
         assertEquals(listOf(Triple(AccountId(Network.GNOSIS, node), batch, true)), kept)
-        val bought: SentAction = SentAction.BatchPurchase(stamp, node, BatchId.of(payer, nonce), 22, minimum, true)
+        val bought: SentAction = SentAction.BatchPurchase(bzz, stamp, node, BatchId.of(payer, nonce), 22, minimum, true)
         assertEquals(bought, sent.transfers.value.single().action)
     }
 
@@ -206,6 +217,26 @@ class SwarmBatchesTest {
             BatchQuoting.EarlierPullPending(hash),
             QuoteBatchTopUp(quoter)(payer, node, id, UInt256.of(1_000), FeeLevel.NORMAL),
         )
+    }
+
+    @Test
+    fun nothingIsApprovedForWhatThePayerCannotPay() = runTest {
+        val total = SwarmCalls.total(minimum, 22)!!
+        tokens.of(payer, bzz.address).value = TokenBalanceReading.Verified(TokenUnits.of(total.toDecimal()), 100)
+        // Enough on its own; not beside a Send of xBZZ from the payer not mined yet.
+        assertIs<BatchQuoting.NeedsApproval>(buy())
+        sent.record(
+            eth.serotine.domain.repository.SentTransfer(
+                Network.GNOSIS,
+                payer,
+                7,
+                eth.serotine.domain.model.SignedTransfer(byteArrayOf(1)),
+                SentAction.Transfer(stranger, eth.serotine.domain.model.TransferAsset.Erc20Token(bzz), UInt256.of(1)),
+                UInt256.of(1),
+                1_000,
+            ),
+        )
+        assertEquals(BatchQuoting.Refused(BatchRefusal.InsufficientBzz(total)), buy())
     }
 
     @Test

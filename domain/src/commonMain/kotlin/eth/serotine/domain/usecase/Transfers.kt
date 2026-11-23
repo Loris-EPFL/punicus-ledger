@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SignedTransfer
+import eth.serotine.domain.model.SwarmCalls
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.hasValidChecksum
@@ -345,12 +346,17 @@ private val UNPROVEN = TransferQuoting.Unavailable(ReadUnavailable.UNPROVEN, Quo
 
 /**
  * What this transaction moves of the token at [token] out of the account: a transfer's amount,
- * what a swap sells, or what an unwrap takes, of that token.
+ * what a swap sells, what an unwrap takes, or what a Swarm node's postage batch bought or topped up
+ * pulls, of that token.
  */
 internal fun SentTransfer.tokenAmount(token: Address): UInt256? = when (val action = action) {
     is SentAction.Transfer -> action.amount.takeIf { action.asset.isToken(token) }
     is SentAction.Swap -> action.amountIn.takeIf { action.sell.isToken(token) }
     is SentAction.Unwrap -> action.amount.takeIf { action.weth.address == token }
+    is SentAction.BatchPurchase ->
+        action.takeIf { it.token.address == token }?.let { SwarmCalls.total(it.perChunk, it.depth) }
+    is SentAction.BatchTopUp ->
+        action.takeIf { it.token.address == token }?.let { SwarmCalls.total(it.perChunk, it.depth) }
     else -> null
 }
 

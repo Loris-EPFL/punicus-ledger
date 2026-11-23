@@ -245,9 +245,11 @@ sealed interface SentAction {
      * A Swarm postage batch bought at the PostageStamp [stamp] (docs/swarm.md, *Buy a batch*), owned
      * by [owner], the node, with [perChunk] PLUR for each of its `2^depth` chunks and bucket depth
      * [eth.serotine.domain.model.SwarmCalls.BUCKET_DEPTH]; [immutable] or not; its id [id], worked out
-     * from the sender and the nonce signed. It moves the total in xBZZ from the account, approved before.
+     * from the sender and the nonce signed. It moves the total in [token], xBZZ, from the account,
+     * approved before: what the account's later transactions of xBZZ cannot move while it is not mined.
      */
     data class BatchPurchase(
+        val token: Token,
         val stamp: Address,
         val owner: Address,
         val id: BatchId,
@@ -258,9 +260,16 @@ sealed interface SentAction {
 
     /**
      * [perChunk] PLUR more for each chunk of the batch [id], of [depth], at the PostageStamp [stamp]
-     * (docs/swarm.md, *Top up a batch*). It moves the total in xBZZ from the account, approved before.
+     * (docs/swarm.md, *Top up a batch*). It moves the total in [token], xBZZ, from the account,
+     * approved before, as a purchase does.
      */
-    data class BatchTopUp(val stamp: Address, val id: BatchId, val depth: Int, val perChunk: UInt256) : SentAction
+    data class BatchTopUp(
+        val token: Token,
+        val stamp: Address,
+        val id: BatchId,
+        val depth: Int,
+        val perChunk: UInt256,
+    ) : SentAction
 
     /**
      * The batch [id] diluted to [depth] at the PostageStamp [stamp] by its owner (docs/swarm.md,

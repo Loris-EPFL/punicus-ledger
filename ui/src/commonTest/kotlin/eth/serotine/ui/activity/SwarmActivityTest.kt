@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SignedTransfer
+import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.SentAction
@@ -18,6 +19,8 @@ class SwarmActivityTest {
     private val node = Address.of("0x" + "0b".repeat(20))
     private val payer = Address.of("0x" + "a1".repeat(20))
     private val id = BatchId.of("a1b2c3d4".repeat(8))
+    private val bzz =
+        Token(Address.of("0xdbf3ea6f5bee45c02255b2c26a16f300502f68da"), "BZZ", "BZZ on xDai", 16, icon = "bzz")
 
     private fun entry(from: Address, action: SentAction, nonce: Long = 1) = HistoryEntry(
         SentTransfer(
@@ -35,7 +38,7 @@ class SwarmActivityTest {
 
     @Test
     fun aPurchaseSaysWhomItWasForAndWhoPaid() {
-        val bought = entry(payer, SentAction.BatchPurchase(stamp, node, id, 22, UInt256.of(1), true))
+        val bought = entry(payer, SentAction.BatchPurchase(bzz, stamp, node, id, 22, UInt256.of(1), true))
         val paid = rows(payer).row(bought, emptyMap())
         assertEquals("Bought a postage batch", paid.title)
         assertEquals(true, paid.detail.startsWith("For "))
@@ -48,7 +51,7 @@ class SwarmActivityTest {
     fun aTopUpAndADilutionNameTheBatch() {
         assertEquals(
             "Topped up batch 0xa1b2c3d4…c3d4",
-            rows(payer).row(entry(payer, SentAction.BatchTopUp(stamp, id, 22, UInt256.of(1))), emptyMap()).title,
+            rows(payer).row(entry(payer, SentAction.BatchTopUp(bzz, stamp, id, 22, UInt256.of(1))), emptyMap()).title,
         )
         assertEquals(
             "Diluted batch 0xa1b2c3d4…c3d4 to depth 23",

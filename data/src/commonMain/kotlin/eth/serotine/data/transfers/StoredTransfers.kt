@@ -359,6 +359,7 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
                 perChunk = action.perChunk.toDecimal(),
                 owner = action.owner.hex,
                 immutable = action.immutable,
+                token = stored(action.token),
             )
             is SentAction.BatchTopUp -> StoredPostageCall(
                 TOP_UP,
@@ -366,6 +367,7 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
                 action.id.hex,
                 action.depth,
                 perChunk = action.perChunk.toDecimal(),
+                token = stored(action.token),
             )
             is SentAction.BatchDilution -> StoredPostageCall(DILUTION, action.stamp.hex, action.id.hex, action.depth)
             else -> null
@@ -392,7 +394,8 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
 
 /**
  * A Swarm node's postage batch call (format 13, docs/swarm.md): bought ([kind] `purchase`, with
- * its [owner], [perChunk] and [immutable]), topped up (`top-up`, with [perChunk]) or diluted
+ * its [owner], [perChunk], [immutable] and the [token] it pulls, xBZZ), topped up (`top-up`, with
+ * [perChunk] and [token]) or diluted
  * (`dilution`), of the batch [id] at the PostageStamp [stamp], at [depth] (the new one for a
  * dilution). A field its kind does not have, or one it lacks, makes the entry damaged.
  */
@@ -405,12 +408,14 @@ internal class StoredPostageCall(
     val perChunk: String? = null,
     val owner: String? = null,
     val immutable: Boolean? = null,
+    val token: StoredToken? = null,
 ) {
     fun toAction(): SentAction {
         val stamp = Address.of(stamp)
         val id = BatchId.of(id)
         return when (kind) {
             PURCHASE -> SentAction.BatchPurchase(
+                requireNotNull(token) { "a purchase without its token" }.toToken(),
                 stamp,
                 Address.of(requireNotNull(owner) { "a purchase without its owner" }),
                 id,
@@ -421,10 +426,13 @@ internal class StoredPostageCall(
             TOP_UP -> {
                 require(owner == null && immutable == null) { "a top-up with a purchase's fields" }
                 val amount = requireNotNull(perChunk) { "a top-up without its amount" }
-                SentAction.BatchTopUp(stamp, id, depth, UInt256.of(amount))
+                val pulled = requireNotNull(token) { "a top-up without its token" }.toToken()
+                SentAction.BatchTopUp(pulled, stamp, id, depth, UInt256.of(amount))
             }
             DILUTION -> {
-                require(owner == null && immutable == null && perChunk == null) { "a dilution with an amount" }
+                require(owner == null && immutable == null && perChunk == null && token == null) {
+                    "a dilution with an amount"
+                }
                 SentAction.BatchDilution(stamp, id, depth)
             }
             else -> throw IllegalArgumentException("a postage call of no known kind")

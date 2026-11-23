@@ -13,7 +13,6 @@ import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.SwarmCalls
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
-import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryList
@@ -40,7 +39,6 @@ import eth.serotine.ui.activity.Parties
 import eth.serotine.ui.activity.movesNothing
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.displaySymbol
-import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.platform.formatDateTime
 import kotlinx.coroutines.flow.Flow
@@ -294,13 +292,15 @@ class ActivityDetailViewModel(
                 fields += addressOf("For the node", action.owner, names)
                 fields += DetailField("Batch", "0x" + action.id.hex, DetailKind.HASH)
                 fields += DetailField("Depth", action.depth.toString())
-                SwarmCalls.total(action.perChunk, action.depth)?.let { fields += DetailField("Paid", plur(it)) }
+                SwarmCalls.total(action.perChunk, action.depth)
+                    ?.let { fields += DetailField("Paid", rows.amount(it, TransferAsset.Erc20Token(action.token))) }
                 fields += DetailField("Immutable", if (action.immutable) "Yes" else "No")
                 fields += addressOf("Postage contract", action.stamp, names)
             }
             is SentAction.BatchTopUp -> {
                 fields += DetailField("Batch", "0x" + action.id.hex, DetailKind.HASH)
-                SwarmCalls.total(action.perChunk, action.depth)?.let { fields += DetailField("Paid", plur(it)) }
+                SwarmCalls.total(action.perChunk, action.depth)
+                    ?.let { fields += DetailField("Paid", rows.amount(it, TransferAsset.Erc20Token(action.token))) }
                 fields += addressOf("Postage contract", action.stamp, names)
             }
             is SentAction.BatchDilution -> {
@@ -315,9 +315,6 @@ class ActivityDetailViewModel(
         entry.outcome.blockNumberOrNull?.let { fields += DetailField("Block", grouped(it), DetailKind.BLOCK) }
         return fields
     }
-
-    /** An amount of PLUR, in BZZ (16 decimals), as the Swarm screen writes it. */
-    private fun plur(amount: UInt256): String = formatUnits(amount.toDecimal(), 16, "BZZ")
 
     /** What an approval or execution of [request]'s Safe transaction concerns: the Safe, and the transaction. */
     private fun safeCallFields(request: SigningRequest, names: Map<Address, String>): List<DetailField> = listOf(

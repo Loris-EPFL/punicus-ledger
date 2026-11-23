@@ -1573,8 +1573,11 @@ private object NoSwarm : eth.serotine.domain.repository.SwarmContracts {
 
     override fun deployment(network: eth.serotine.domain.model.Network) = null
 
-    override suspend fun postage(network: eth.serotine.domain.model.Network) =
-        eth.serotine.domain.repository.PostageReading.NotPinned
+    override suspend fun postage(
+        network: eth.serotine.domain.model.Network,
+        node: eth.serotine.domain.model.Address?,
+        id: eth.serotine.domain.model.BatchId?,
+    ) = eth.serotine.domain.repository.PostageReading.NotPinned
 }
 
 /** No candidate kept for any node. */

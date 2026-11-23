@@ -51,17 +51,20 @@ interface SwarmContracts {
      * code is proven the pinned one first, and so are xBZZ's proxy and the implementation its
      * EIP-1967 slot names, since every purchase and top-up approves xBZZ: another implementation is
      * [PostageReading.BzzChanged], and nothing is quoted. Its `paused()`, `lastPrice()` and
-     * `minimumInitialBalancePerChunk()` answer at one block. Blocks on the engine, bounded by it;
-     * never throws. A [network] no adapter serves here is refused ([ReadUnavailable.NO_ENGINE]).
+     * `minimumInitialBalancePerChunk()` answer at one block; and, given a [node] and a batch [id],
+     * the batch too, at that block, as [observeBatch] would find it ([PostageReading.Read.batch]):
+     * what a top-up or a dilution is quoted, and checked before it is signed, on. Never a reading
+     * kept before. Blocks on the engine, bounded by it; never throws. A [network] no adapter serves
+     * here is refused ([ReadUnavailable.NO_ENGINE]). [node] and [id] go together, or neither.
      */
-    suspend fun postage(network: Network): PostageReading
+    suspend fun postage(network: Network, node: Address? = null, id: BatchId? = null): PostageReading
 }
 
 /** One answer of [SwarmContracts.postage]. */
 sealed interface PostageReading {
 
-    /** [state], verified at block [blockNumber]. */
-    data class Read(val state: PostageState, val blockNumber: Long) : PostageReading
+    /** [state], and the [batch] asked about (null when none was), verified at block [blockNumber]. */
+    data class Read(val state: PostageState, val blockNumber: Long, val batch: BatchFinding? = null) : PostageReading
 
     /**
      * xBZZ's proxy, or the implementation it names, is not the pinned one any more: the bridge

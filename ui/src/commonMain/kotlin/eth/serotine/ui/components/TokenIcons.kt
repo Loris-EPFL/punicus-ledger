@@ -21,8 +21,10 @@ import androidx.compose.ui.unit.dp
  * - `eurc`, `pyusd`, `gho`, `gno`, `eure`, `cow`, `safe` and `bzz`, which that set lacks:
  *   0xa3k5/web3icons, `raw-svgs/tokens/background/<KEY>.svg` at commit
  *   3cce0f390cf902f204a1b3d52f485bcc95d2fe9e (https://github.com/0xa3k5/web3icons), its
- *   square background drawn as a circle like the others'. The marks are the trademarks of
- *   their issuers (Circle, Paxos, Aave, Gnosis, Monerium, CoW DAO, Safe, the Swarm Foundation).
+ *   square background drawn as a circle like the others'; `bzz` is that repository's branded
+ *   drawing of the mark, drawn as there, on no disc (added to main by 24cc32be). The marks are
+ *   the trademarks of their issuers (Circle, Paxos, Aave, Gnosis, Monerium, CoW DAO, Safe, the
+ *   Swarm Foundation).
  *   Its licence, which these eight icons carry:
  *
  *   MIT License. Copyright (c) 2024 0xa3k5.
@@ -346,28 +348,6 @@ object TokenIcons {
             .build()
     }
 
-    /** `bzz`: Swarm's xBZZ, web3icons' `BZZ.svg`, its square drawn as a circle like the others'. */
-    private val bzz: ImageVector by lazy {
-        icon("bzz", 24f)
-            .addPath(
-                addPathNodes(
-                    "M0,12a12,12 0 1,0 24,0a12,12 0 1,0 -24,0z",
-                ),
-                fill = SolidColor(Color(0xFFD66700)),
-            )
-            .addPath(
-                addPathNodes(
-                    "M14.5 5.36999L16.5 4.25L18.4999 5.37999V7.62998L16.5 8.74998L16.495 8.73998L14.5 7.61998V5." +
-                    "36999ZM7.74998 19.75L4 17.75V13.7499L7.74998 11.7499L11.4999 13.7499V17.75L7.74998 19.75ZM2" +
-                    "0 13.7499L16.25 11.7499L12.5 13.7499V17.75L16.25 19.75L20 17.75V13.7499ZM8.49998 6.86998L1" +
-                    "1.995 4.99499L13.4999 5.74999V7.95498L15.4999 9.24998V10.615L11.9999 12.4899L8.49998 10.61" +
-                    "5V6.86498V6.86998Z",
-                ),
-                fill = SolidColor(Color(0xFFFFFFFF)),
-            )
-            .build()
-    }
-
     /** `cow`: its square's gradient, drawn as a circle like the others'. */
     private val cow: ImageVector by lazy {
         icon("cow", 24f)
@@ -414,6 +394,22 @@ object TokenIcons {
                     "4Z",
                 ),
                 fill = SolidColor(Color(0xFFFFFFFF)),
+            )
+            .build()
+    }
+
+    /** `bzz`: Swarm's BZZ, web3icons' branded mark on no disc, as drawn there. */
+    private val bzz: ImageVector by lazy {
+        icon("bzz", 24f)
+            .addPath(
+                addPathNodes(
+                    "M14.8125 4.54125L17.0625 3.28125L19.3124 4.55249V7.08373L17.0625 8.34373L17.0568 8.332" +
+                    "48L14.8125 7.07249V4.54125ZM7.21873 20.7187L3 18.4687V13.9687L7.21873 11.7187L11.4374 " +
+                    "13.9687V18.4687L7.21873 20.7187ZM21 13.9687L16.7812 11.7187L12.5625 13.9687V18.4687L16" +
+                    ".7812 20.7187L21 18.4687V13.9687ZM8.06248 6.22874L11.9943 4.11938L13.6874 4.96874V7.44" +
+                    "936L15.9374 8.90623V10.4419L11.9999 12.5512L8.06248 10.4419V6.22311V6.22874Z",
+                ),
+                fill = SolidColor(Color(0xFFD66700)),
             )
             .build()
     }

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -50,6 +51,7 @@ import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.figureText
+import eth.serotine.ui.components.finalityWaitText
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
@@ -517,8 +519,8 @@ class CowOrderViewModel(
                 "Not proven yet: it may fill until $until. Its end is read from this account's verified logs, " +
                     "never from CoW."
             } else {
-                "Its validity passed at $until. Whether it filled is proven once a finalized block is past it, a " +
-                    "quarter of an hour or so, from this account's verified logs."
+                "Its validity passed at $until. Whether it filled is proven once a finalized block is past it, " +
+                    "${finalityWaitText(network)} or so, from this account's verified logs."
             }
             is CowOrderEnd.Filled -> OrderState.FILLED to "Filled in block ${grouped(proven.block)}: it bought " +
                 "${buy(proven.trade.buyAmount)}, as the settlement's trade in this account's verified logs says."
@@ -536,10 +538,12 @@ class CowOrderViewModel(
         return CowOrderUiState.Shown(
             network = network.displayName,
             from = fromOf(record, model.label),
-            sold = exactAmount(record.order.sellAmount, sold.decimals, sold.symbol),
+            sold = (if (record.order.kind == SwapKind.BUY && filled == null) "at most " else "") +
+                exactAmount(filled?.trade?.sellAmount ?: record.order.sellAmount, sold.decimals, sold.symbol),
             soldSymbol = sold.symbol,
             soldIcon = sold.icon,
-            bought = filled?.let { buy(it.trade.buyAmount) } ?: ("at least " + buy(record.order.buyAmount)),
+            bought = filled?.let { buy(it.trade.buyAmount) }
+                ?: ((if (record.order.kind == SwapKind.BUY) "exactly " else "at least ") + buy(record.order.buyAmount)),
             boughtSymbol = boughtSymbol,
             boughtIcon = boughtIcon,
             state = state,
@@ -564,7 +568,11 @@ class CowOrderViewModel(
                     from = record.account.hex,
                     sell = sold.address.hex,
                     buy = (bought as? TransferAsset.Erc20Token)?.token?.address?.hex,
-                    amount = record.order.sellAmount.formatUnits(sold.decimals),
+                    amount = when (record.order.kind) {
+                        SwapKind.SELL -> record.order.sellAmount.formatUnits(sold.decimals)
+                        SwapKind.BUY -> record.order.buyAmount.formatUnits(boughtDecimals)
+                    },
+                    kind = record.order.kind,
                 )
             } else {
                 null

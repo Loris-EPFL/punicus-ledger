@@ -5,13 +5,20 @@
     screenshots.py budget [--dir docs/screenshots]
 
 `table` reads `git diff --name-status --no-renames <branch point> <head> -- docs/screenshots` on stdin and writes
-the before/after table of the screenshots the PR changed into the PR's description, between the
+the before/after list of the screenshots the PR changed into the PR's description, between the
 markers `<!-- screenshots:start -->` and `<!-- screenshots:end -->`, each on a line of its own outside
 fenced code (a marker quoted in the text is text). A description without the markers
 gets them under its `## Screenshots` heading; without that heading, above its session link, the last
 line (the pr skill); without either, at the end. Every run rewrites the whole block from the diff, so
-the table never accumulates stale rows. The images are the files at the two commits, by raw URL, so
+the list never accumulates stale rows. The images are the files at the two commits, by raw URL, so
 they stay as long as the commits do. `--dry-run` prints the new description instead of saving it.
+
+Each screenshot is a `<details>` of its own (owner's request, 2026-11-23: readable without zooming, and
+dismissed where it was opened): its summary names the state beside small before and after thumbnails, and
+opening it shows both at up to their own width in place, side by side for a phone, one above the other for
+anything wider. Closing it leaves the reader where they were. The thumbnails sit in a `<picture>`, which
+GitHub does not link, so a click on one opens the entry too. No image is wrapped in a link of the script's
+own: GitHub links each opened one to its file in a new tab, never in place of the description.
 
 `budget` fails when `docs/screenshots` is over its size budget, so growth is noticed before it hurts:
 the folder as a whole (TOTAL_BUDGET) and any one file (FILE_BUDGET). The way out is in the message.
@@ -34,7 +41,9 @@ from typing import Callable
 FOLDER = "docs/screenshots"
 START = "<!-- screenshots:start -->"
 END = "<!-- screenshots:end -->"
-THUMB_WIDTH = 206
+PHONE_WIDTH = 412
+THUMB_DIVISOR = 4
+SIDE_BY_SIDE_MAX = 450
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 MAX_ROWS = 40
 TOTAL_BUDGET = 64 * 1024 * 1024
@@ -95,13 +104,11 @@ def git_show(sha: str, path: str) -> bytes:
         return b""
 
 
-def thumb_width(sha: str, path: str, read: Callable[[str, str], bytes] = git_show) -> int:
-    """A thumbnail's width: half its screenshot's, at the commit the image is shown from, so a phone's (412 px
-    wide) and a tablet's (1280 px) are drawn at one scale, before and after alike. THUMB_WIDTH, a phone's half,
-    where the file cannot be read.
+def shot_width(sha: str, path: str, read: Callable[[str, str], bytes] = git_show) -> int:
+    """A screenshot's own width at the commit the image is shown from: a phone's is 412 px, a tablet's 1280.
+    PHONE_WIDTH where the file cannot be read.
     """
-    width = png_width(read(sha, path))
-    return width // 2 if width else THUMB_WIDTH
+    return png_width(read(sha, path)) or PHONE_WIDTH
 
 
 def table(
@@ -110,10 +117,11 @@ def table(
     base_sha: str,
     head_sha: str,
     max_rows: int = MAX_ROWS,
-    width_of: Callable[[str, str], int] = lambda _sha, _path: THUMB_WIDTH,
+    width_of: Callable[[str, str], int] = lambda _sha, _path: PHONE_WIDTH,
 ) -> str:
-    """The marked block for the description: a summary line, then one row per changed screenshot, each image
-    `width_of(sha, path)` wide, its commit's and its path's.
+    """The marked block for the description: a summary line, then one `<details>` per changed screenshot. Its
+    summary names the state and shows small thumbnails, a quarter of each screenshot's width (`width_of(sha,
+    path)`), so a phone and a tablet share one scale; opened, it shows the screenshots at their own width.
     """
     lines = [START]
     if not changes:
@@ -129,19 +137,11 @@ def table(
     lines.append(
         f"{len(changes)} screenshot{'s' if len(changes) != 1 else ''}: {summary} "
         f"([`{FOLDER}/`]({folder_url}), CI render of {head_sha[:7]}; the before images are the branch point's, "
-        f"{base_sha[:7]})."
+        f"{base_sha[:7]}). Open a state to see it at full size; close it to come back here."
     )
-    lines.append("")
-    lines.append("| Screen / state | Before | After |")
-    lines.append("|---|---|---|")
     for change in changes[:max_rows]:
-        before = "—"
-        if change.status != "A":
-            before = img(raw_url(repo, base_sha, change.path), change.state, width_of(base_sha, change.path))
-        after = "—"
-        if change.status != "D":
-            after = img(raw_url(repo, head_sha, change.path), change.state, width_of(head_sha, change.path))
-        lines.append(f"| `{change.state}` ({STATUS_WORD[change.status]}) | {before} | {after} |")
+        lines.append("")
+        lines.extend(entry(change, repo, base_sha, head_sha, width_of))
     rest = len(changes) - max_rows
     if rest > 0:
         lines.append("")
@@ -150,8 +150,52 @@ def table(
     return "\n".join(lines)
 
 
-def img(url: str, alt: str, width: int = THUMB_WIDTH) -> str:
-    return f'<a href="{url}"><img src="{url}" width="{width}" alt="{alt}"></a>'
+@dataclass(frozen=True)
+class Shot:
+    """One side of a change: the image's URL, its own width, and which side it is."""
+
+    url: str
+    width: int
+    side: str
+
+
+def entry(
+    change: Change, repo: str, base_sha: str, head_sha: str, width_of: Callable[[str, str], int]
+) -> list[str]:
+    """One screenshot's `<details>`: thumbnails in its summary, the full-size images in its body."""
+    shots = []
+    if change.status != "A":
+        shots.append(Shot(raw_url(repo, base_sha, change.path), width_of(base_sha, change.path), "Before"))
+    if change.status != "D":
+        shots.append(Shot(raw_url(repo, head_sha, change.path), width_of(head_sha, change.path), "After"))
+    # In a <picture>, which GitHub does not link: a click on a thumbnail opens the entry like the rest of its summary.
+    thumbs = " → ".join(
+        f"<picture>{img(s.url, f'{change.state}, {s.side.lower()}', max(1, s.width // THUMB_DIVISOR))}</picture>"
+        for s in shots
+    )
+    lines = [
+        "<details>",
+        f"<summary><code>{change.state}</code> ({STATUS_WORD[change.status]})<br>{thumbs}</summary>",
+        "",
+    ]
+    if all(s.width <= SIDE_BY_SIDE_MAX for s in shots):
+        # Phones side by side, at about their own size: a narrow window scales them to fit.
+        lines.append("<table><tr>" + "".join(f"<th>{s.side}</th>" for s in shots) + "</tr><tr>")
+        lines.append("".join(f"<td>{img(s.url, f'{change.state}, {s.side.lower()}', s.width)}</td>" for s in shots))
+        lines.append("</tr></table>")
+    else:
+        # Anything wider one above the other, each as wide as the description lets it be.
+        for s in shots:
+            lines.append(f"<p><b>{s.side}</b><br>{img(s.url, f'{change.state}, {s.side.lower()}', s.width)}</p>")
+    lines.append("")
+    lines.append("</details>")
+    return lines
+
+
+def img(url: str, alt: str, width: int) -> str:
+    """An image with no link of its own: GitHub links it to the file, opened in a new tab, unless it sits in a
+    `<picture>` (the summary's thumbnails)."""
+    return f'<img src="{url}" width="{width}" alt="{alt}">'
 
 
 def opens_fence(line: str) -> str | None:
@@ -259,7 +303,7 @@ def over_budget(folder: Path, total_budget: int = TOTAL_BUDGET, file_budget: int
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
-    t = sub.add_parser("table", help="write the before/after table into the PR description")
+    t = sub.add_parser("table", help="write the before/after list into the PR description")
     t.add_argument("--repo", required=True)
     t.add_argument("--pr", required=True, type=int)
     t.add_argument("--base-sha", required=True)
@@ -270,7 +314,7 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     if args.command == "table":
         changes = parse_changes(sys.stdin.read())
-        block = table(changes, args.repo, args.base_sha, args.head_sha, width_of=thumb_width)
+        block = table(changes, args.repo, args.base_sha, args.head_sha, width_of=shot_width)
         new = update_description(args.repo, args.pr, block, args.dry_run)
         print(new if args.dry_run else f"description of {args.repo}#{args.pr}: {len(changes)} screenshot(s) listed")
         return 0

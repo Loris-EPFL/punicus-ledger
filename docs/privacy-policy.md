@@ -4,7 +4,7 @@ Punicus is a wallet app for Ethereum accounts and Safe accounts. It runs on
 your device. This page says what it keeps there and what reaches anyone else.
 Its developer runs no server for Punicus and receives nothing from the app.
 
-Last updated: 2026-11-15.
+Last updated: 2026-11-23.
 
 ## What Punicus does not do
 
@@ -86,12 +86,14 @@ Punicus pass through WalletConnect's relay (run by Reown).
 The dApp itself learns the accounts you choose to share with it, and what it
 asks you to sign. It is not run by Punicus.
 
-### CoW Protocol (only for a swap you send to CoW)
+### CoW Protocol (only while CoW is chosen for a swap)
 
 Swaps go through Uniswap by default, with verified on-chain calls and no
 service in between. If you choose CoW Protocol for a swap, its order API
-learns your address, the tokens, the amounts and your IP address, for that
-swap. With Uniswap chosen, CoW is never contacted (docs/swaps.md).
+learns your address, the tokens, the amounts and your IP address: for the
+estimate the swap screen shows while you type, whether you then send the swap
+or not, and for the swap you send. With Uniswap chosen, CoW is never contacted
+(docs/swaps.md).
 
 ### Another wallet app (only if you hand a transfer to one)
 

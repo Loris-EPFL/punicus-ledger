@@ -105,6 +105,7 @@ private val empty = SwapUiState.Compose(
         amount = "",
         tolerance = "0.5",
         canMax = true,
+        buyAmount = "",
     ),
     fee = FeeLevel.NORMAL,
     // ETH sold: CoW is greyed out, as the ViewModel draws it.
@@ -137,19 +138,45 @@ private val composed = empty.with {
         amountHint = "≈ $40.00 · testnet prices",
         canReview = true,
         estimate = estimate,
+        buyAmountPlaceholder = "≈ 0.01587 ETH",
     )
 }.copy(venue = VenueItem(SwapVenue.UNISWAP))
 
+/** What CoW estimates for 40 USDC, as the ViewModel draws it on the compose step (owner ruling, 2026-11-23). */
+private val cowEstimate = SwapEstimateItem(
+    label = "You receive",
+    receive = "≈ 0.01593 ETH",
+    minimum = "At least 0.01585 ETH at 0.5 % tolerance",
+    rate = "1 USDC ≈ 0.0003982 ETH",
+    inverseRate = "1 ETH ≈ 2511.14 USDC",
+    note = "CoW's estimate, not checked on chain: its fee of 0.41 USDC is in the price. The review asks CoW again " +
+        "before anything is signed.",
+    simpleNote = "CoW's estimate, not checked on chain. The review asks CoW again before you confirm.",
+)
+
+// On CoW nothing of Uniswap is read: the figures are CoW's own.
 private val onCow = composed.with {
+    it.copy(estimate = cowEstimate, buyAmountPlaceholder = "≈ 0.01593 ETH")
+}.copy(venue = VenueItem(SwapVenue.COW))
+
+/** Exactly 10 LINK bought on CoW: the amount sold is the estimate's (docs/swaps.md, *Buying an exact amount*). */
+private val buyingOnCow = onCow.with {
     it.copy(
-        estimate = estimate.copy(
-            label = "On Uniswap, you would receive",
-            note = "Uniswap's verified quote at block 8,412,307, to compare. CoW is asked for its own estimate " +
-                "only when you review the order.",
-            simpleNote = "Uniswap's price, checked on chain. CoW's own estimate comes with the review.",
+        buy = link,
+        amount = "",
+        amountHint = null,
+        amountPlaceholder = "≈ 72.41 USDC",
+        buyAmount = "10",
+        buyAmountPlaceholder = null,
+        estimate = cowEstimate.copy(
+            label = "You pay",
+            receive = "≈ 72.41 USDC",
+            minimum = "At most 72.77 USDC at 0.5 % tolerance",
+            rate = "1 USDC ≈ 0.1381 LINK",
+            inverseRate = "1 LINK ≈ 7.241 USDC",
         ),
     )
-}.copy(venue = VenueItem(SwapVenue.COW))
+}
 
 /** This form step with [edit] applied to its form and the fee [fee]. */
 private fun SwapUiState.Compose.with(fee: FeeLevel = this.fee, edit: (SwapForm) -> SwapForm = { it }) =
@@ -218,13 +245,9 @@ private val cowReview = SwapUiState.CowReview(
     buy = ether,
     estimate = "about 0.015931 ETH",
     estimateNote = "CoW's own estimate, net of the network fee it takes out of the trade: 0.41 USDC. Not verified.",
-    uniswapNet = "0.015688 ETH",
-    uniswapNote = "Uniswap's verified quote at block 8,412,307 less its expected network fee, about 0.000185 ETH.",
-    comparison = "By CoW's estimate, CoW gives about 0.000243 ETH more than Uniswap. Only the minimum below is signed.",
-    uniswapGivesMore = false,
     minimum = "at least 0.015851 ETH",
-    minimumNote = "CoW's estimate less the 0.5 % tolerance, never below the Uniswap net less it (0.01561 ETH). A " +
-        "fill that buys less is refused by the settlement contract.",
+    minimumNote = "CoW's estimate less the 0.5 % tolerance. The estimate is CoW's word, not checked on chain, so the " +
+        "minimum rests on it. A fill that buys less is refused by the settlement contract.",
     validUntil = "Until 19 Oct 2026, 14:27: the verified head's time and 5 minutes. It fills by then or not at all.",
     settlement = SpenderItem("CoW's settlement contract", SETTLEMENT),
     balances = listOf(
@@ -395,6 +418,24 @@ private fun SwapComposeOnCowPreview() = SwapPreview(onCow)
 
 @Preview
 @Composable
+private fun SwapComposeBuyExactPreview() = SwapPreview(buyingOnCow)
+
+@Preview
+@Composable
+private fun SwapComposeBuyNotEnoughPreview() = SwapPreview(
+    buyingOnCow.with {
+        it.copy(
+            buyAmount = "40",
+            amountPlaceholder = "≈ 289.64 USDC",
+            amountError = "Not enough USDC: this buy may take up to 291.08 USDC, and the account holds 250 USDC.",
+            canReview = false,
+            estimate = it.estimate?.copy(receive = "≈ 289.64 USDC", minimum = "At most 291.08 USDC at 0.5 % tolerance"),
+        )
+    },
+)
+
+@Preview
+@Composable
 private fun SwapComposeCowDidNotAnswerPreview() = SwapPreview(
     onCow.with { it.copy(error = "CoW did not answer.") }.copy(uniswapInstead = true),
 )
@@ -471,6 +512,24 @@ private fun SwapReviewPreview() = SwapPreview(
 
 @Preview
 @Composable
+private fun SwapReviewBuyPreview() = SwapPreview(
+    review.copy(
+        sold = "at most 40.2 USDC",
+        receive = "0.016 ETH",
+        ranAt = "The swap, run as a verified call from this account at block 8,412,307, takes 39.98 USDC for this.",
+        minimum = "exactly 0.016 ETH",
+        receiveLead = "for exactly",
+        tolerance = "0.5 % tolerance, above QuoterV2's verified quote of 40 USDC: the most it sells",
+        balances = listOf(
+            BalanceChange("USDC balance", "250 USDC", "at least 209.8 USDC", "verified at block 8,412,305"),
+            BalanceChange("ETH balance", "1.25 ETH", "at least 1.262665 ETH", "verified at block 8,412,307"),
+        ),
+        unlock = UnlockStep(WalletPassword("made-up preview password")),
+    ),
+)
+
+@Preview
+@Composable
 private fun SwapReviewDarkPreview() = SwapPreview(review, darkTheme = true)
 
 @Preview
@@ -517,14 +576,30 @@ private fun SwapCowReviewDarkPreview() = SwapPreview(cowReview, darkTheme = true
 
 @Preview
 @Composable
-private fun SwapCowReviewUniswapGivesMorePreview() = SwapPreview(
+private fun SwapCowReviewBuyPreview() = SwapPreview(
     cowReview.copy(
-        estimate = "about 0.015402 ETH",
-        comparison = "By CoW's own estimate, Uniswap gives more. The order is signed at the floor below, and may " +
-            "well not fill. Then nothing is swapped, but the USDC it sells stays held back until a finalized block " +
-            "is past its validity, about 18 to 24 minutes from now.",
-        uniswapGivesMore = true,
-        minimum = "at least 0.01561 ETH",
+        sold = "at most 40.2 USDC",
+        estimate = "about 40 USDC",
+        estimateNote = "CoW's own estimate of what it sells, the network fee it takes out of the trade included: " +
+            "0.41 USDC. Not verified.",
+        minimum = "exactly 0.0159 ETH",
+        minimumNote = "Exactly this, for at most CoW's estimate and the 0.5 % tolerance. The estimate is CoW's word, " +
+            "not checked on chain, so the most it sells rests on it. A fill that buys less, or sells more, is " +
+            "refused by the settlement contract.",
+        receiveLead = "for exactly",
+        estimateAsset = usdc,
+        simpleChecked = "Checked on chain: the settlement contract refuses any fill that buys less, or sells more",
+        simpleBasis = "The most it sells is CoW's estimate plus your tolerance. CoW's estimate is not checked on " +
+            "chain.",
+        balances = listOf(
+            BalanceChange(
+                "USDC balance",
+                "250 USDC",
+                "at least 209.8 USDC once it fills",
+                "verified at block 8,412,305",
+            ),
+        ),
+        unlock = UnlockStep(WalletPassword("made-up preview password")),
     ),
 )
 
@@ -617,6 +692,8 @@ internal val swapScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("compose-no-route") { SwapComposeNoRoutePreview() },
     ScreenPreview("compose-cow-orders-unreadable") { SwapComposeCowOrdersUnreadablePreview() },
     ScreenPreview("compose-on-cow") { SwapComposeOnCowPreview() },
+    ScreenPreview("compose-buy-exact") { SwapComposeBuyExactPreview() },
+    ScreenPreview("compose-buy-not-enough") { SwapComposeBuyNotEnoughPreview() },
     ScreenPreview("compose-cow-did-not-answer") { SwapComposeCowDidNotAnswerPreview() },
     ScreenPreview("compose-earlier-order-live") { SwapComposeEarlierOrderLivePreview() },
     ScreenPreview("compose-approval-sent") { SwapComposeApprovalSentPreview() },
@@ -626,6 +703,7 @@ internal val swapScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("approval-reset-first") { SwapApprovalResetFirstPreview() },
     ScreenPreview("review") { SwapReviewPreview() },
     ScreenPreview("review-dark") { SwapReviewDarkPreview() },
+    ScreenPreview("review-buy") { SwapReviewBuyPreview() },
     ScreenPreview("review-through-weth-with-biometrics") { SwapReviewThroughWethWithBiometricsPreview() },
     ScreenPreview("review-wrong-password") { SwapReviewWrongPasswordPreview() },
     ScreenPreview("review-signing") { SwapReviewSigningPreview() },
@@ -633,7 +711,7 @@ internal val swapScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("review-not-sent") { SwapReviewNotSentPreview() },
     ScreenPreview("cow-review") { SwapCowReviewPreview() },
     ScreenPreview("cow-review-dark") { SwapCowReviewDarkPreview() },
-    ScreenPreview("cow-review-uniswap-gives-more") { SwapCowReviewUniswapGivesMorePreview() },
+    ScreenPreview("cow-review-buy") { SwapCowReviewBuyPreview() },
     ScreenPreview("order-placed") { SwapOrderPlacedPreview() },
     ScreenPreview("loading") { SwapLoadingPreview() },
     ScreenPreview("watch-only") { SwapWatchOnlyPreview() },

@@ -6,6 +6,7 @@ import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.CowApi
 import eth.serotine.domain.repository.CowOrderLife
@@ -41,7 +42,7 @@ import kotlinx.serialization.json.put
 /**
  * [CowApi] over HTTP, CoW Protocol's order API (`api.cow.fi`, its OpenAPI spec
  * `crates/orderbook/openapi.yml` in `cowprotocol/services`), on the client [engine] each platform
- * gives ([create]). Three calls, and only for a swap the user sends to CoW (CLAUDE.md, *Data
+ * gives ([create]). Three calls, and only while CoW is chosen for a swap (CLAUDE.md, *Data
  * sources*): `POST quote`, `POST orders`, `GET orders/{UID}`.
  *
  * - **Requests carry only the fields the API requires**, and the app data is the empty document
@@ -77,21 +78,30 @@ class HttpCowApi internal constructor(
         network: Network,
         sellToken: Address,
         buyToken: Address,
-        sellAmount: UInt256,
+        amount: UInt256,
         from: Address,
+        kind: SwapKind,
     ): CowQuoteReading {
         val base = baseUrl(network) ?: return CowQuoteReading.Unavailable(CowUnavailable.NOT_PINNED)
         val body = buildJsonObject {
             put("sellToken", sellToken.hex)
             put("buyToken", buyToken.hex)
             put("from", from.hex)
-            put("kind", "sell")
-            put("sellAmountBeforeFee", sellAmount.toDecimal())
+            when (kind) {
+                SwapKind.SELL -> {
+                    put("kind", "sell")
+                    put("sellAmountBeforeFee", amount.toDecimal())
+                }
+                SwapKind.BUY -> {
+                    put("kind", "buy")
+                    put("buyAmountAfterFee", amount.toDecimal())
+                }
+            }
         }
         return when (val answer = exchange { client.post("$base/quote") { json(body) } }) {
             is Answer.Failed -> CowQuoteReading.Unavailable(answer.why)
             is Answer.Status -> when {
-                answer.code == OK -> quotedOf(answer.json, sellToken, buyToken, sellAmount)
+                answer.code == OK -> quotedOf(answer.json, sellToken, buyToken, amount, kind)
                     ?: CowQuoteReading.Unavailable(CowUnavailable.UNDECODABLE)
                 answer.code in REFUSALS -> refusalOf(answer.json)
                     ?.let { (why, errorType) -> CowQuoteReading.Refused(why, errorType) }
@@ -119,7 +129,7 @@ class HttpCowApi internal constructor(
             put("appData", CowAppData.DOCUMENT)
             put("appDataHash", CowAppData.HASH)
             put("feeAmount", "0")
-            put("kind", "sell")
+            put("kind", kindOf(order.kind))
             put("partiallyFillable", false)
             put("sellTokenBalance", "erc20")
             put("buyTokenBalance", "erc20")
@@ -223,9 +233,13 @@ class HttpCowApi internal constructor(
     }
 }
 
-/** CoW's order API on [network], pinned: none for a network CoW is not offered on. */
+/**
+ * CoW's order API on [network], pinned: none for a network CoW is not offered on. Gnosis Chain's is
+ * under the name CoW gives it, `xdai` (docs.cow.fi, *API*).
+ */
 internal fun baseUrlOf(network: Network): String? = when (network) {
-    Network.ETHEREUM, Network.GNOSIS -> null
+    Network.ETHEREUM -> "https://api.cow.fi/mainnet/api/v1"
+    Network.GNOSIS -> "https://api.cow.fi/xdai/api/v1"
     Network.SEPOLIA -> "https://api.cow.fi/sepolia/api/v1"
 }
 
@@ -238,24 +252,37 @@ private fun HttpRequestBuilder.json(body: JsonObject) {
 internal fun signatureHex(signature: Signature): String =
     "0x" + signature.r + signature.s + (27 + signature.recoveryId).toString(16)
 
+/** GPv2's name of an order's [kind], as the API spells it. */
+internal fun kindOf(kind: SwapKind): String = when (kind) {
+    SwapKind.SELL -> "sell"
+    SwapKind.BUY -> "buy"
+}
+
 /**
- * CoW's quote in [json], checked against the request: the tokens as asked, a sell quote, and the
- * amount it sells after its fee plus that fee adding up to [sellAmount]; null for anything else.
+ * CoW's quote in [json], checked against the request: the tokens as asked, a quote of [kind], and
+ * its amounts adding up: of a sell, the amount it sells after its fee plus that fee is [amount]; of
+ * a buy, the amount it buys is [amount]. The amount sold it answers is that fee included. Null for
+ * anything else.
  */
 internal fun quotedOf(
     json: JsonElement?,
     sellToken: Address,
     buyToken: Address,
-    sellAmount: UInt256,
+    amount: UInt256,
+    kind: SwapKind,
 ): CowQuoteReading? {
     val quote = (json as? JsonObject)?.get("quote") as? JsonObject ?: return null
     if (quote.address("sellToken") != sellToken || quote.address("buyToken") != buyToken) return null
-    if (quote.text("kind") != "sell") return null
+    if (quote.text("kind") != kindOf(kind)) return null
     val sold = quote.amount("sellAmount") ?: return null
     val fee = quote.amount("feeAmount") ?: return null
     val bought = quote.amount("buyAmount") ?: return null
-    if (sold.plusOrNull(fee) != sellAmount) return null
-    return CowQuoteReading.Quoted(buyAmount = bought, feeAmount = fee)
+    val total = sold.plusOrNull(fee) ?: return null
+    when (kind) {
+        SwapKind.SELL -> if (total != amount) return null
+        SwapKind.BUY -> if (bought != amount || bought.isZero) return null
+    }
+    return CowQuoteReading.Quoted(sellAmount = total, buyAmount = bought, feeAmount = fee)
 }
 
 /** CoW's refusal in [json] (`errorType`), in the kinds the screens tell apart, with CoW's own word; null when none. */

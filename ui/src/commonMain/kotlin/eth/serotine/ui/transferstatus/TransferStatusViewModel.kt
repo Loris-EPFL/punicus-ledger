@@ -6,6 +6,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DelayMemberChange
 import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwarmCalls
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
@@ -527,9 +528,11 @@ class TransferStatusViewModel(
                 progress is TransactionProgress.Unavailable -> unavailable(progress.reason)
                 failed && transfer?.action is SentAction.Transfer ->
                     "It failed: the transfer reverted in its block, so nothing was moved. Its fee is paid all the same."
-                failed && transfer?.action is SentAction.Swap ->
+                failed && transfer?.action is SentAction.Swap -> {
+                    val bound = if ((transfer.action as SentAction.Swap).kind == SwapKind.BUY) "maximum" else "minimum"
                     "It failed: the swap reverted in its block, so nothing was swapped: the price moved past its " +
-                        "minimum, or its deadline passed. Its fee is paid all the same."
+                        "$bound, or its deadline passed. Its fee is paid all the same."
+                }
                 failed && (transfer?.action is SentAction.Wrap || transfer?.action is SentAction.Unwrap) ->
                     "It failed: the ${transfer?.let(::whatOf)} reverted in its block, so nothing was moved. Its fee " +
                         "is paid all the same."
@@ -831,12 +834,17 @@ class TransferStatusViewModel(
         val swap = transfer.action as? SentAction.Swap ?: return null
         val (soldSymbol, soldDecimals, soldIcon) = shown(swap.sell)
         val (boughtSymbol, boughtDecimals, boughtIcon) = shown(swap.buy)
-        val minimum = "at least ${swap.minimumOut.formatUnits(boughtDecimals)} $boughtSymbol"
+        val buying = swap.kind == SwapKind.BUY
+        val minimum = (if (buying) "exactly " else "at least ") +
+            "${swap.minimumOut.formatUnits(boughtDecimals)} $boughtSymbol"
         // "At least" the minimum until the receipt's logs say what it paid (docs/swaps.md, *The record*).
         val bought = received?.let { "${it.formatUnits(boughtDecimals)} $boughtSymbol" } ?: minimum
+        // A buy keeps the most it may sell: what it took is in the receipt's logs (docs/swaps.md, *Buying an
+        // exact amount*).
+        val sold = (if (buying) "at most " else "") + "${swap.amountIn.formatUnits(soldDecimals)} $soldSymbol"
         return SwapSummary(
-            title = "Swap of ${swap.amountIn.formatUnits(soldDecimals)} $soldSymbol for $bought on Uniswap",
-            sold = "${swap.amountIn.formatUnits(soldDecimals)} $soldSymbol",
+            title = "Swap of $sold for $bought on Uniswap",
+            sold = sold,
             soldSymbol = soldSymbol,
             soldIcon = soldIcon,
             bought = bought,

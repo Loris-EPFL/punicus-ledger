@@ -62,6 +62,7 @@ import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenTransfers
@@ -435,8 +436,9 @@ class AppNavigationTest {
                 network: Network,
                 sellToken: Address,
                 buyToken: Address,
-                sellAmount: UInt256,
+                amount: UInt256,
                 from: Address,
+                kind: SwapKind,
             ): CowQuoteReading = CowQuoteReading.Unavailable(CowUnavailable.NOT_PINNED)
 
             override suspend fun place(
@@ -1168,7 +1170,8 @@ class AppNavigationTest {
         // Over the bar, as every flow that ends in a transaction.
         rule.onNodeWithText("Settings").assertDoesNotExist()
         rule.onNodeWithText("Slippage tolerance").assertExists()
-        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}&continue={continue}"
+        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}" +
+            "&continue={continue}&kind={kind}"
         assertEquals(listOf("accounts", "account/{chain}/{address}", swap), screens())
 
         rule.onNodeWithContentDescription("Back").performClick()
@@ -1282,7 +1285,8 @@ class AppNavigationTest {
 
         rule.onNodeWithTag(COW_ORDER_UNISWAP_TAG).performScrollTo().performClick()
         rule.waitUntil { rule.onAllNodesWithText("Slippage tolerance").fetchSemanticsNodes().isNotEmpty() }
-        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}&continue={continue}"
+        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}" +
+            "&continue={continue}&kind={kind}"
         assertEquals(listOf("accounts", "account/{chain}/{address}", swap), screens(), "in the order's place")
 
         rule.onNodeWithContentDescription("Back").performClick()

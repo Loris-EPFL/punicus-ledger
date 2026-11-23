@@ -106,6 +106,17 @@ data class SwapRoute(val tokens: List<Address>, val fees: List<FeeTier>) {
         return path
     }
 
+    /**
+     * The route as QuoterV2's `quoteExactOutput` and SwapRouter02's `exactOutput` take it, which
+     * buy an exact amount: [path] from the token bought back to the token sold (token out ‖ fee ‖
+     * … ‖ token in).
+     */
+    fun reversedPath(): ByteArray {
+        var path = tokens.last().toBytes()
+        for (i in fees.indices.reversed()) path += fees[i].pips.toUInt24() + tokens[i].toBytes()
+        return path
+    }
+
     companion object {
         /** The most tokens a route goes through: one hop. */
         const val MAX_TOKENS = 3

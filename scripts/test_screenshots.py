@@ -41,41 +41,70 @@ class ParseChangesTest(unittest.TestCase):
 
 
 class TableTest(unittest.TestCase):
-    def test_one_row_per_change_with_the_images_of_both_commits(self):
+    @staticmethod
+    def entries(block: str) -> list[str]:
+        """The block's `<details>`, each as one string."""
+        return [part.split("</details>")[0] for part in block.split("<details>")[1:]]
+
+    def test_one_details_per_change_with_the_images_of_both_commits(self):
         block = screenshots.table(screenshots.parse_changes(DIFF), REPO, BASE, HEAD)
         self.assertTrue(block.startswith(screenshots.START) and block.endswith(screenshots.END))
         self.assertIn("3 screenshots: 1 added, 1 changed, 1 removed", block)
         self.assertIn(f"https://raw.githubusercontent.com/{REPO}/{BASE}/docs/screenshots/send/compose-empty.png", block)
         self.assertIn(f"https://raw.githubusercontent.com/{REPO}/{HEAD}/docs/screenshots/send/compose-empty.png", block)
-        rows = [line for line in block.splitlines() if line.startswith("| `")]
-        self.assertEqual(len(rows), 3)
-        added = next(r for r in rows if "compose-full" in r)
-        self.assertTrue(added.split("|")[2].strip() == "—", "an added state has no before image")
+        entries = self.entries(block)
+        self.assertEqual(len(entries), 3)
+        self.assertEqual(block.count("</details>"), 3)
+        added = next(e for e in entries if "compose-full" in e)
+        self.assertIn("<summary><code>send/compose-full</code> (added)", added)
+        self.assertNotIn(BASE, added, "an added state has no before image")
+        self.assertNotIn("Before", added)
         self.assertIn(f"{HEAD}/docs/screenshots/send/compose-full.png", added)
-        removed = next(r for r in rows if "old-state" in r)
-        self.assertTrue(removed.split("|")[3].strip() == "—", "a removed state has no after image")
+        removed = next(e for e in entries if "old-state" in e)
+        self.assertNotIn(HEAD, removed, "a removed state has no after image")
+        changed = next(e for e in entries if "compose-empty" in e)
+        self.assertIn("<th>Before</th><th>After</th>", changed)
 
-    def test_each_image_is_as_wide_as_its_commit_and_path_ask(self):
+    def test_no_image_is_wrapped_in_a_link_of_its_own(self):
+        # GitHub then opens an image in a new tab, never in place of the description.
+        block = screenshots.table(screenshots.parse_changes(DIFF), REPO, BASE, HEAD)
+        self.assertNotIn("<a ", block)
+
+    def test_the_thumbnails_sit_in_a_picture_which_github_does_not_link(self):
+        # So a click on a thumbnail opens its entry, as a click on the rest of its summary does.
+        block = screenshots.table(screenshots.parse_changes(DIFF), REPO, BASE, HEAD)
+        for entry in self.entries(block):
+            summary = entry.split("</summary>")[0]
+            self.assertEqual(summary.count("<img "), summary.count("<picture><img "), summary)
+            body = entry.split("</summary>")[1]
+            self.assertNotIn("<picture>", body, "an opened image keeps GitHub's link to its file")
+
+    def test_thumbnails_are_a_quarter_and_the_opened_images_their_own_width(self):
         # compose-empty became a tablet's screenshot: the before image a phone's, the after a tablet's.
         shot = "docs/screenshots/send/compose-empty.png"
-        widths = {(BASE, shot): 206, (HEAD, shot): 640}
+        widths = {(BASE, shot): 412, (HEAD, shot): 1280}
         block = screenshots.table(
-            screenshots.parse_changes(DIFF), REPO, BASE, HEAD, width_of=lambda sha, path: widths.get((sha, path), 206)
+            screenshots.parse_changes(DIFF), REPO, BASE, HEAD, width_of=lambda sha, path: widths.get((sha, path), 412)
         )
-        changed = next(line for line in block.splitlines() if "compose-empty" in line and line.startswith("| `"))
-        before, after = changed.split("|")[2], changed.split("|")[3]
-        self.assertIn('width="206"', before)
-        self.assertIn('width="640"', after)
+        changed = next(e for e in self.entries(block) if "compose-empty" in e)
+        summary, body = changed.split("</summary>")
+        self.assertIn('width="103"', summary)
+        self.assertIn('width="320"', summary)
+        self.assertIn('width="412"', body)
+        self.assertIn('width="1280"', body)
+        # A tablet's does not fit beside another: one above the other.
+        self.assertNotIn("<table>", body)
+        self.assertIn("<p><b>Before</b>", body)
 
     def test_no_change_says_so(self):
         block = screenshots.table([], REPO, BASE, HEAD)
         self.assertIn("No screenshot changed", block)
-        self.assertNotIn("|---|", block)
+        self.assertNotIn("<details>", block)
 
     def test_long_lists_are_capped(self):
         diff = "".join(f"A\tdocs/screenshots/s/state-{i:03d}.png\n" for i in range(50))
         block = screenshots.table(screenshots.parse_changes(diff), REPO, BASE, HEAD, max_rows=40)
-        self.assertEqual(sum(1 for line in block.splitlines() if line.startswith("| `")), 40)
+        self.assertEqual(block.count("<details>"), 40)
         self.assertIn("…and 10 more", block)
 
 
@@ -178,19 +207,19 @@ def png(width: int, height: int) -> bytes:
     return screenshots.PNG_SIGNATURE + len(ihdr).to_bytes(4, "big") + b"IHDR" + ihdr + b"\0\0\0\0"
 
 
-class ThumbWidthTest(unittest.TestCase):
-    def test_half_the_screenshots_width_so_a_phone_and_a_tablet_share_a_scale(self):
+class ShotWidthTest(unittest.TestCase):
+    def test_the_screenshots_own_width(self):
         files = {("a", "phone.png"): png(412, 892), ("a", "tablet.png"): png(1280, 800)}
         read = lambda sha, path: files.get((sha, path), b"")  # noqa: E731
         self.assertEqual(screenshots.png_width(png(1280, 800)), 1280)
-        self.assertEqual(screenshots.thumb_width("a", "phone.png", read), 206)
-        self.assertEqual(screenshots.thumb_width("a", "tablet.png", read), 640)
+        self.assertEqual(screenshots.shot_width("a", "phone.png", read), 412)
+        self.assertEqual(screenshots.shot_width("a", "tablet.png", read), 1280)
 
-    def test_a_file_that_is_missing_or_no_png_gets_a_phones_thumbnail(self):
+    def test_a_file_that_is_missing_or_no_png_is_taken_for_a_phones(self):
         read = lambda sha, path: b"not a png at all, but long enough" if path == "text.png" else b""  # noqa: E731
         self.assertIsNone(screenshots.png_width(b"not a png at all, but long enough"))
-        self.assertEqual(screenshots.thumb_width("a", "text.png", read), screenshots.THUMB_WIDTH)
-        self.assertEqual(screenshots.thumb_width("a", "removed.png", read), screenshots.THUMB_WIDTH)
+        self.assertEqual(screenshots.shot_width("a", "text.png", read), screenshots.PHONE_WIDTH)
+        self.assertEqual(screenshots.shot_width("a", "removed.png", read), screenshots.PHONE_WIDTH)
 
     def test_reads_the_file_at_its_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -203,8 +232,8 @@ class ThumbWidthTest(unittest.TestCase):
             cwd = os.getcwd()
             os.chdir(tmp)
             try:
-                self.assertEqual(screenshots.thumb_width(sha, "shot.png"), 640)
-                self.assertEqual(screenshots.thumb_width(sha, "gone.png"), screenshots.THUMB_WIDTH)
+                self.assertEqual(screenshots.shot_width(sha, "shot.png"), 1280)
+                self.assertEqual(screenshots.shot_width(sha, "gone.png"), screenshots.PHONE_WIDTH)
             finally:
                 os.chdir(cwd)
 

@@ -1,5 +1,6 @@
 package eth.serotine.ui.coworder
 
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.SendFrom
@@ -102,10 +103,17 @@ sealed interface CowOrderUiState {
 
 /**
  * The same swap again, as Swap opens with it, on Uniswap: from the account at [from], selling the
- * token at [sell] for the one at [buy] (null: the network's currency), [amount] as text in the sold
- * token's units. Addresses in lower case: route identifiers, never display text.
+ * token at [sell] for the one at [buy] (null: the network's currency), [amount] as text, the exact
+ * amount of [kind]: in the sold token's units for a sell, the bought one's for a buy. Addresses in
+ * lower case: route identifiers, never display text.
  */
-data class SwapAgain(val from: String, val sell: String, val buy: String?, val amount: String)
+data class SwapAgain(
+    val from: String,
+    val sell: String,
+    val buy: String?,
+    val amount: String,
+    val kind: SwapKind = SwapKind.SELL,
+)
 
 /**
  * A transaction of the account's whose status the order's screen offers: [hash], what to say of it

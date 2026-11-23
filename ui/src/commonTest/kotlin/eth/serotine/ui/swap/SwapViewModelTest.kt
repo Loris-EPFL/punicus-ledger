@@ -16,6 +16,7 @@ import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.QuoterV2
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapRoute
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.SyncPolicy
@@ -63,6 +64,7 @@ import eth.serotine.domain.usecase.ChooseSwapVenue
 import eth.serotine.domain.usecase.CowOfferedOnThisDevice
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.DropWaitingSwap
+import eth.serotine.domain.usecase.EstimateCowSwap
 import eth.serotine.domain.usecase.EstimateSwap
 import eth.serotine.domain.usecase.FindUniswapRoute
 import eth.serotine.domain.usecase.FindWaitingSwap
@@ -280,6 +282,7 @@ class SwapViewModelTest {
                 now,
             ),
             PlaceCowOrder(signer, cowOrders, cowApi, light),
+            EstimateCowSwap(cowChain, cowApi, light),
             KeepWaitingSwap(waitingSwaps),
             DropWaitingSwap(waitingSwaps),
             FindWaitingSwap(waitingSwaps),
@@ -506,7 +509,8 @@ class SwapViewModelTest {
     }
 
     @Test
-    fun onCowNothingOfUniswapIsReadAndCowIsNotAskedBeforeTheReview() = runTest {
+    fun onCowTheEstimateIsCowsOwnAndNothingOfUniswapIsRead() = runTest {
+        cowReady()
         val viewModel = viewModel(sell = usdc.address)
         viewModel.onBuyChange(null)
         viewModel.onAmountChange("40")
@@ -514,9 +518,75 @@ class SwapViewModelTest {
         advanceTimeBy(1.seconds)
         runCurrent()
 
-        assertNull(viewModel.compose.estimate)
+        // The first screen shows the amount and the rate (owner ruling, 2026-11-23).
+        val estimate = assertNotNull(viewModel.compose.estimate)
+        assertEquals("You receive", estimate.label)
+        assertEquals("≈ 0.0161 ETH", estimate.receive)
+        assertEquals("1 USDC ≈ 0.0004025 ETH", estimate.rate)
+        assertTrue(estimate.note.startsWith("CoW's estimate, not checked on chain"), estimate.note)
+        assertEquals("≈ 0.0161 ETH", viewModel.compose.buyAmountPlaceholder)
         assertEquals(0, uniswap.quotes, "no Uniswap quote for a CoW order (owner ruling, 2026-11-23)")
-        assertTrue(cowApi.quotes.isEmpty(), "CoW is not asked before the review")
+        assertEquals(listOf(usdc.address), cowApi.quotes, "CoW asked for its estimate")
+        assertEquals(listOf(SwapKind.SELL), cowApi.kinds)
+    }
+
+    @Test
+    fun anAmountBoughtTypedIsQuotedAsABuyAndReviewedAsOne() = runTest {
+        // CoW: exactly 0.016 ETH costs 40 USDC, its fee included; at most 40.2 USDC at 0.5 %.
+        cowReady(CowQuoteReading.Quoted(fortyUsdc, UInt256.of("16000000000000000"), UInt256.ONE))
+        allow(UInt256.of(1_000_000_000))
+        val viewModel = viewModel(sell = usdc.address)
+        viewModel.onBuyChange(null)
+        viewModel.onVenueChange(SwapVenue.COW)
+        viewModel.onBuyAmountChange("0.016")
+        advanceTimeBy(1.seconds)
+        runCurrent()
+
+        val form = viewModel.compose
+        assertEquals("", form.amount, "the amount sold is the estimate's")
+        assertEquals("≈ 40 USDC", form.amountPlaceholder)
+        assertEquals("You pay", form.estimate?.label)
+        assertEquals("At most 40.2 USDC at 0.5 % tolerance", form.estimate?.minimum)
+        assertTrue(form.canReview)
+
+        viewModel.review()
+        runCurrent()
+        val review = assertIs<SwapUiState.CowReview>(viewModel.uiState.value)
+        assertEquals("exactly 0.016 ETH", review.minimum)
+        assertEquals("at most 40.2 USDC", review.sold)
+        assertEquals(listOf(SwapKind.BUY, SwapKind.BUY), cowApi.kinds, "the estimate, then the review")
+    }
+
+    @Test
+    fun aBuyThatMayTakeMoreThanTheBalanceIsSaidBeforeTheReview() = runTest {
+        // 0.1 ETH would cost 300 USDC: more than the 250 USDC held.
+        cowReady(CowQuoteReading.Quoted(UInt256.of(300_000_000), UInt256.of("100000000000000000"), UInt256.ONE))
+        val viewModel = viewModel(sell = usdc.address)
+        viewModel.onBuyChange(null)
+        viewModel.onVenueChange(SwapVenue.COW)
+        viewModel.onBuyAmountChange("0.1")
+        advanceTimeBy(1.seconds)
+        runCurrent()
+
+        val form = viewModel.compose
+        assertEquals(
+            "Not enough USDC: this buy may take up to 301.5 USDC, and the account holds 250 USDC.",
+            form.amountError,
+        )
+        assertFalse(form.canReview)
+    }
+
+    @Test
+    fun typingTheAmountSoldAgainMakesItASellOnceMore() = runTest {
+        cowReady()
+        val viewModel = viewModel(sell = usdc.address)
+        viewModel.onBuyChange(null)
+        viewModel.onVenueChange(SwapVenue.COW)
+        viewModel.onBuyAmountChange("0.016")
+        viewModel.onAmountChange("40")
+        runCurrent()
+        assertEquals("40", viewModel.compose.amount)
+        assertEquals("", viewModel.compose.buyAmount, "the amount bought is the estimate's again")
     }
 
     @Test

@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -31,6 +32,7 @@ import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveWaitingSwaps
 import eth.serotine.domain.usecase.SafeChainEvent
 import eth.serotine.domain.usecase.TokenTransferEvent
+import eth.serotine.ui.components.NATIVE_DECIMALS
 import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.outbox.redatedAtTheirHour
@@ -256,8 +258,17 @@ class AccountActivity(
             WaitingStep(
                 title = tokens?.get(swap.sell)?.token?.let { sold ->
                     // Only no token bought is the network's currency: one no longer listed is not named.
-                    val bought = if (swap.buy == null) account.network.nativeSymbol else tokens[swap.buy]?.token?.symbol
-                    bought?.let { "Swap ${rows.figure(swap.amount, sold.decimals, sold.symbol)} → $it" }
+                    val bought = if (swap.buy == null) {
+                        KnownBuy(account.network.nativeSymbol, NATIVE_DECIMALS)
+                    } else {
+                        tokens[swap.buy]?.token?.let { KnownBuy(it.symbol, it.decimals) }
+                    }
+                    bought?.let {
+                        when (swap.kind) {
+                            SwapKind.SELL -> "Swap ${rows.figure(swap.amount, sold.decimals, sold.symbol)} → ${it.symbol}"
+                            SwapKind.BUY -> "Buy ${rows.figure(swap.amount, it.decimals, it.symbol)} with ${sold.symbol}"
+                        }
+                    }
                 } ?: "A swap",
                 message = waitingText(swap, entries.firstOrNull { it.transfer.hash.equals(swap.approval, true) }),
                 sell = swap.sell.hex,
@@ -458,10 +469,15 @@ class AccountActivity(
             CowOrderEnd.NotProvable -> null
         }
 
-    /** Whether this transfer is what the filled [order] sold: of its token, from its account, its whole sale. */
-    private fun TokenTransfer.soldIn(order: CowOrderRecord): Boolean =
-        this is TokenTransfer.Fungible && from == order.account && token == order.order.sellToken &&
-            amount == order.order.sellAmount
+    /**
+     * Whether this transfer is what the filled [order] sold: of its token, from its account, what its
+     * trade sold (a sell's whole amount; a buy's, up to its maximum).
+     */
+    private fun TokenTransfer.soldIn(order: CowOrderRecord): Boolean {
+        val sold = (order.end as? CowOrderEnd.Filled)?.trade?.sellAmount ?: order.order.sellAmount
+        return this is TokenTransfer.Fungible && from == order.account && token == order.order.sellToken &&
+            amount == sold
+    }
 
     /** Whether this transfer is what the filled [order] bought: its trade's buy, from its settlement to its account. */
     private fun TokenTransfer.boughtIn(order: CowOrderRecord): Boolean {
@@ -485,3 +501,6 @@ class AccountActivity(
         const val UNREADABLE = "The history of your transactions cannot be read right now. Punicus keeps trying."
     }
 }
+
+/** The asset a waiting swap buys, as its title names it: its [symbol], and its [decimals] for a buy's amount. */
+private data class KnownBuy(val symbol: String, val decimals: Int)

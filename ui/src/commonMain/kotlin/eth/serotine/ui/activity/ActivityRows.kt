@@ -10,6 +10,7 @@ import eth.serotine.domain.model.PinnedFallbackHandlers
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.SafeTxAction
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -418,7 +419,10 @@ internal class ActivityRows(
      * order's status.
      */
     fun orderRow(order: CowOrderRecord): ActivityRow {
-        val sells = amount(order.order.sellAmount, order.sell)
+        val buys = order.order.kind == SwapKind.BUY
+        // A filled order sold what its trade says: a buy's maximum is only its bound.
+        val sold = (order.end as? CowOrderEnd.Filled)?.trade?.sellAmount ?: order.order.sellAmount
+        val sells = amount(sold, order.sell)
         val simple = when (val end = order.end) {
             is CowOrderEnd.Filled -> "Filled"
             is CowOrderEnd.Unfilled -> if (end.cancelled) "Cancelled" else "Not filled: it expired"
@@ -426,7 +430,11 @@ internal class ActivityRows(
         }
         val (title, status, state) = when (val end = order.end) {
             null -> Triple(
-                "CoW order: $sells for at least ${amount(order.order.buyAmount, order.buy)}",
+                if (buys) {
+                    "CoW order: ${amount(order.order.buyAmount, order.buy)} for at most $sells"
+                } else {
+                    "CoW order: $sells for at least ${amount(order.order.buyAmount, order.buy)}"
+                },
                 "May fill until ${formatTime(order.order.validTo)}",
                 ActivityState.WAITING,
             )

@@ -90,6 +90,7 @@ import eth.serotine.domain.usecase.DraftTransfer
 import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.EncodeSigningRequest
+import eth.serotine.domain.usecase.EstimateCowSwap
 import eth.serotine.domain.usecase.EstimateSwap
 import eth.serotine.domain.usecase.ExecuteSafeTx
 import eth.serotine.domain.usecase.ExtendDappSession
@@ -848,6 +849,7 @@ class AppGraph(
             outbox = outbox,
         ),
         PlaceCowOrder(signer, cowOrders, cowApi, lightClient),
+        EstimateCowSwap(cowChain, cowApi, lightClient),
         KeepWaitingSwap(waitingSwaps),
         DropWaitingSwap(waitingSwaps),
         FindWaitingSwap(waitingSwaps),

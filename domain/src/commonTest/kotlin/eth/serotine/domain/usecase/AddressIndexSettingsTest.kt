@@ -224,7 +224,16 @@ class AddressIndexSettingsTest {
         val follow = backgroundScope.launch { FollowAddressIndexSetting(status(fixtureImporter), reader)() }
         testScheduler.runCurrent()
 
-        assertEquals(listOf<Address?>(null), reader.applied)
+        assertEquals(listOf<Address?>(null), reader.applied, "no reader")
         follow.cancel()
+
+        // No key pinned in this release, with a reader and a key the user once chose: still none.
+        index.reader = true
+        val unpinned = RecordingReaderSettings()
+        val followUnpinned = backgroundScope.launch { FollowAddressIndexSetting(status(null), unpinned)() }
+        testScheduler.runCurrent()
+
+        assertEquals(listOf<Address?>(null), unpinned.applied, "no key pinned")
+        followUnpinned.cancel()
     }
 }

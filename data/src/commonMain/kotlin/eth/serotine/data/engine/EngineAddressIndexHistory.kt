@@ -47,7 +47,8 @@ import kotlinx.serialization.json.putJsonArray
  */
 internal interface AddressHistoryChain {
 
-    /** The engine's state right now. Never blocks. */
+    /** The engine's state right now. May call into the engine (its status over JNA), so it is asked on the
+     * adapter's dispatcher, and may throw. */
     fun snapshot(): EngineSnapshot
 
     /** Whether the engine serves the address history at all; null while no running light client can be asked. */
@@ -103,12 +104,12 @@ class EngineAddressIndexHistory internal constructor(
                 try {
                     chain.supportsAddressHistory()
                 } catch (e: Throwable) {
-                    // Throwable: the call crosses JNA. An engine that cannot say serves nothing.
-                    false
+                    // Throwable: the call crosses JNA. A failed call is no answer: asked again at the next poll.
+                    null
                 }
             }
             if (known != null) return known
-            if (chain.snapshot() == EngineSnapshot.Down) return false
+            if (snapshotOf(chain) == EngineSnapshot.Down) return false
             delay(readerPoll)
         }
     }
@@ -116,7 +117,7 @@ class EngineAddressIndexHistory internal constructor(
     override suspend fun page(network: Network, address: Address, query: AddressIndexQuery): AddressIndexReading {
         if (network != served) return AddressIndexReading.Refused(AddressIndexRefusal.NetworkNotServed(network))
         val chain = chain ?: return AddressIndexReading.Refused(AddressIndexRefusal.NoEngine)
-        stateRefusal(chain.snapshot())?.let { return AddressIndexReading.Refused(it) }
+        stateRefusal(snapshotOf(chain))?.let { return AddressIndexReading.Refused(it) }
         val answer = withContext(dispatcher) {
             try {
                 chain.addressHistory(address.hex, optionsOf(query))
@@ -140,7 +141,7 @@ class EngineAddressIndexHistory internal constructor(
         }
         if (network != served) return AddressIndexCheck.Refused(AddressIndexRefusal.NetworkNotServed(network))
         val chain = chain ?: return AddressIndexCheck.Refused(AddressIndexRefusal.NoEngine)
-        stateRefusal(chain.snapshot())?.let { return AddressIndexCheck.Refused(it) }
+        stateRefusal(snapshotOf(chain))?.let { return AddressIndexCheck.Refused(it) }
         val answer = withContext(dispatcher) {
             try {
                 chain.verifyAddressHistory(address.hex, entriesOf(entries))
@@ -173,19 +174,31 @@ class EngineAddressIndexHistory internal constructor(
             AddressIndexRefusal.StaleAnchor.takeIf { snapshot.phase == EngineSnapshot.Phase.STALE_ANCHOR }
     }
 
+    /**
+     * The engine's state, asked on [dispatcher] (the status crosses JNA); a call that throws is read as a light client
+     * that failed ([EngineSnapshot.Failed], so [AddressIndexRefusal.NoEngine]), never thrown on.
+     */
+    private suspend fun snapshotOf(chain: AddressHistoryChain): EngineSnapshot = withContext(dispatcher) {
+        try {
+            chain.snapshot()
+        } catch (e: Throwable) {
+            EngineSnapshot.Failed
+        }
+    }
+
     /** No answer at all: the light client went away during the call, or the engine failed in it. */
-    private fun noAnswer(chain: AddressHistoryChain): AddressIndexRefusal =
-        stateRefusal(chain.snapshot()) ?: AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN)
+    private suspend fun noAnswer(chain: AddressHistoryChain): AddressIndexRefusal =
+        stateRefusal(snapshotOf(chain)) ?: AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN)
 
     /** The engine's `{"error"}` answer as a refusal; null when [json] is no error. */
-    private fun refusalOf(json: JsonElement, chain: AddressHistoryChain): AddressIndexRefusal? {
+    private suspend fun refusalOf(json: JsonElement, chain: AddressHistoryChain): AddressIndexRefusal? {
         val error = json as? JsonObject ?: return null
         val message = text(error["error"]) ?: return null
         val lasting = (error["code"] as? JsonPrimitive)?.intOrNull == INVALID_PARAMS
         return when {
             message.startsWith(ALARM_PREFIX) -> AddressIndexRefusal.CheckpointAlarm(message)
             !lasting -> {
-                val synced = (chain.snapshot() as? EngineSnapshot.Running)?.phase == EngineSnapshot.Phase.SYNCED
+                val synced = (snapshotOf(chain) as? EngineSnapshot.Running)?.phase == EngineSnapshot.Phase.SYNCED
                 AddressIndexRefusal.NotNow(if (synced) ReadUnavailable.UNPROVEN else ReadUnavailable.SYNCING)
             }
             NOT_IN_THIS_BUILD.any { message.contains(it) } -> AddressIndexRefusal.NotInThisBuild

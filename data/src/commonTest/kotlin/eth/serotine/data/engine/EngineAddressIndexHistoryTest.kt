@@ -45,11 +45,14 @@ class EngineAddressIndexHistoryTest {
         var supports: Boolean? = true
         var page: String? = null
         var check: String? = null
+        var snapshotThrows = false
+        var supportsThrows = false
         val pagesAsked = mutableListOf<Pair<String, String>>()
         val checksAsked = mutableListOf<Pair<String, String>>()
 
-        override fun snapshot(): EngineSnapshot = snapshot
-        override fun supportsAddressHistory(): Boolean? = supports
+        override fun snapshot(): EngineSnapshot = if (snapshotThrows) error("status over JNA failed") else snapshot
+        override fun supportsAddressHistory(): Boolean? =
+            if (supportsThrows) error("supportsAddressHistory over JNA failed") else supports
         override fun addressHistory(address: String, optionsJson: String): String? {
             pagesAsked += address to optionsJson
             return page
@@ -85,6 +88,31 @@ class EngineAddressIndexHistoryTest {
         chain.supports = true
         advanceTimeBy(1_500)
         assertTrue(asked.await())
+    }
+
+    @Test
+    fun aFailedCallIsNoAnswerAndNeverEndsTheWaitForGood() = runTest {
+        chain.supportsThrows = true
+        val asked = async { history().hasReader() }
+        advanceTimeBy(3_500)
+        assertFalse(asked.isCompleted, "a thrown call is asked again, not answered false for good")
+        chain.supportsThrows = false
+        advanceTimeBy(1_500)
+        assertTrue(asked.await())
+    }
+
+    @Test
+    fun aStateThatCannotBeReadIsRefusedAndNeverThrown() = runTest {
+        chain.snapshotThrows = true
+        assertEquals(
+            AddressIndexReading.Refused(AddressIndexRefusal.NoEngine),
+            history().page(Network.ETHEREUM, alice, AddressIndexQuery()),
+        )
+        assertEquals(
+            AddressIndexCheck.Refused(AddressIndexRefusal.NoEngine),
+            history().verify(Network.ETHEREUM, alice, listOf(entry)),
+        )
+        assertTrue(chain.pagesAsked.isEmpty() && chain.checksAsked.isEmpty(), "nothing asked of it")
     }
 
     @Test

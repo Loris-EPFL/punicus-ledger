@@ -1175,6 +1175,30 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       no peer confirmed its broadcast, or mined while the app was not
       watching unless another transaction took its nonce. A tap opens its
       detail (26), and from there its status (9).
+    - **At a glance** (owner's request, 2026-11-23): the rows are grouped
+      by the day they go by, in the user's own time zone, under a heading
+      per day ("Today · Monday, November 23, 2026", "Yesterday · …", then
+      the date), and each row says its time of day ("3:00 PM") in place of
+      the date. A row dated by its block alone sits among them by its block:
+      under the day of the rows just above and below it where both are dated
+      by their blocks' times and on the same day (a block's time never runs
+      backwards), with no time of its own; else under a heading that says so,
+      "Date not reported: in block order" (simple mode: "Date not
+      available"), and the day's heading comes again after it. A row that moved value one way has an
+      arrow on its blockie's corner, green for value in and red for value
+      out, and its amount on the right, signed and short ("+250 USDC",
+      "−0.25 ETH"): truncated, never rounded up; to four places from 1 on,
+      two from 1,000 on, then in millions ("1.23M"), billions and
+      trillions; below 1, four significant digits after at most three zeros,
+      smaller "<0.0001". Its headline then names the asset without the
+      amount ("Received USDC"); the exact amount stays in its detail (26).
+      Green and red only once it is done on chain; amount and arrow muted
+      while it waits, for a row that calls for care, and for a value not
+      proven to have moved. A transfer that reverted moved nothing, and one
+      to the account itself went neither way: no arrow, no amount. A
+      transaction of the addr1 index whose outcome the engine does not
+      report shows its value muted, with "outcome not checked" ("Sent ETH ·
+      outcome not checked").
     - A Safe's Activity lists the approvals and executions of its
       transactions and its deployment, whichever account here sent them
       ("Executed transaction 4: Send 40 USDC", "By Alice · …"). An approval
@@ -1282,7 +1306,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       chain", as a sent row does. The engine does not report the receipt's
       status yet, so today such a row says how the account is named in it
       ("Named in a transaction · sender"), and its value is left to the
-      detail (26), beside the fact that its outcome is not checked. An entry
+      detail (26), beside the fact that its outcome is not checked; the
+      list shows that value at a glance, saying so ("−0.25 ETH", "Sent ETH ·
+      outcome not checked"; owner's request, 2026-11-23). An entry
       about the block itself reads "Named by the block itself". The same
       protections hold: a transfer of nothing the account did not send is
       not listed, an unlisted token's transfer is its claim, and a row the

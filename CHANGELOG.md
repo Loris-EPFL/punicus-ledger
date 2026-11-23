@@ -12,6 +12,11 @@ and issues of this repository.
 
 ### Added
 
+- Activity at a glance: the rows are grouped by day under a heading
+  ("Today", "Yesterday", then the date), each with its time in your time
+  zone; a green arrow for value in and a red one for value out, and the
+  amount on the right, signed and shortened for reading ("+250 USDC",
+  "−0.25 ETH", "1.23M"). The exact amount stays in the row's detail.
 - Address poisoning protection on Send. A recipient that starts and ends
   like an address you sent to from this device (or one of your accounts) but
   differs in the middle blocks the send, with both addresses shown and the

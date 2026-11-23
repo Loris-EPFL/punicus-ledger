@@ -2,7 +2,9 @@ package eth.serotine.ui.platform
 
 import platform.Foundation.NSDate
 import platform.Foundation.NSDateFormatter
+import platform.Foundation.NSDateFormatterFullStyle
 import platform.Foundation.NSDateFormatterMediumStyle
+import platform.Foundation.NSDateFormatterNoStyle
 import platform.Foundation.NSDateFormatterShortStyle
 import platform.Foundation.NSLocale
 import platform.Foundation.NSTimeZone
@@ -33,3 +35,38 @@ private val timeOfDay: NSDateFormatter by lazy {
         dateFormat = "HH:mm:ss.SSS"
     }
 }
+
+/** Foundation's short time, in the device's time zone and locale. */
+actual fun formatClockTime(epochSeconds: Long): String =
+    clockTime.stringFromDate(NSDate.dateWithTimeIntervalSince1970(epochSeconds.toDouble()))
+
+/** Foundation's full date, in the device's time zone and locale. */
+actual fun formatLongDate(epochSeconds: Long): String =
+    longDate.stringFromDate(NSDate.dateWithTimeIntervalSince1970(epochSeconds.toDouble()))
+
+/** Made once, as an Activity times every row (see [timeOfDay]); the time zone follows the device's. */
+private val clockTime: NSDateFormatter by lazy {
+    NSDateFormatter().apply {
+        timeZone = NSTimeZone.localTimeZone
+        dateStyle = NSDateFormatterNoStyle
+        timeStyle = NSDateFormatterShortStyle
+    }
+}
+
+/** Made once, as [clockTime] is. */
+private val longDate: NSDateFormatter by lazy {
+    NSDateFormatter().apply {
+        timeZone = NSTimeZone.localTimeZone
+        dateStyle = NSDateFormatterFullStyle
+        timeStyle = NSDateFormatterNoStyle
+    }
+}
+
+/** The local day: the moment shifted by the device's time zone's offset from UTC at that moment, in whole days. */
+actual fun localEpochDay(epochSeconds: Long): Long {
+    val moment = NSDate.dateWithTimeIntervalSince1970(epochSeconds.toDouble())
+    val offset: Long = NSTimeZone.localTimeZone.secondsFromGMTForDate(moment)
+    return (epochSeconds + offset).floorDiv(SECONDS_PER_DAY)
+}
+
+private const val SECONDS_PER_DAY = 86_400L

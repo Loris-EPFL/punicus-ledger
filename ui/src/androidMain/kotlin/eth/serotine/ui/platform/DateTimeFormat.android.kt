@@ -17,3 +17,23 @@ actual fun formatTimeOfDay(epochMillis: Long): String =
 
 /** Parsed once: a debug log formats a time per line. Immutable, so any thread may use it. */
 private val TIME_OF_DAY = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
+
+/** java.time's localized short time, in the system's time zone. */
+actual fun formatClockTime(epochSeconds: Long): String =
+    CLOCK_TIME.withZone(ZoneId.systemDefault())
+        .format(Instant.ofEpochSecond(epochSeconds))
+
+/** java.time's localized full date, in the system's time zone. */
+actual fun formatLongDate(epochSeconds: Long): String =
+    LONG_DATE.withZone(ZoneId.systemDefault())
+        .format(Instant.ofEpochSecond(epochSeconds))
+
+/** The local date in the system's time zone, as java.time counts its epoch day. */
+actual fun localEpochDay(epochSeconds: Long): Long =
+    Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()).toLocalDate().toEpochDay()
+
+/** Made once, as an Activity times and dates every row; immutable, so any thread may use it. */
+private val CLOCK_TIME = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+
+/** Made once, as [CLOCK_TIME] is. */
+private val LONG_DATE = DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL)

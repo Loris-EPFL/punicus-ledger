@@ -1065,20 +1065,28 @@ class SwapViewModel(
     /**
      * What [request] comes to: the wrap it is, when it is ETH against the pinned WETH9, whatever the
      * venue; else on its venue, its quote, the approval it needs first, or why neither.
+     *
+     * With CoW chosen, a token sold for the network's currency is asked of CoW first, and only a pair
+     * CoW's own pin tells is an unwrap goes on to the wrap, which reads Uniswap's WETH9 pin: a CoW
+     * order reads nothing of Uniswap (owner ruling, 2026-11-23).
      */
     private suspend fun quoteOf(request: Request): Next {
+        val cowFirst = request.venue == SwapVenue.COW && request.sell.asset != TransferAsset.Native
         // Only a pair of ETH and a token may be a wrap: no other is asked, so no other waits for it.
-        if (request.mayWrap) {
-            when (val wrapping = askWrap(request)) {
-                WrapQuoting.NotAWrap -> Unit
-                is WrapQuoting.Quoted -> return Quoted.Wrap(wrapping.quote)
-                is WrapQuoting.EarlierMaybeSent -> return heldBack(wrapping.hash, wrapping.queued)
-                else -> return Step.Composing(error = wrapRefusal(wrapping, request))
-            }
-        }
-        // A swap, not a wrap: its tolerance applies, and one not typed right is no swap to quote.
-        val tolerance = request.tolerance ?: return Step.Composing(error = TOLERANCE_ERROR)
+        if (request.mayWrap && !cowFirst) wrapOf(request)?.let { return it }
+        // A swap, not a wrap: its tolerance applies, and one not typed right is no swap to quote. Without
+        // one, only a wrap can be had.
+        val tolerance = request.tolerance ?: return (if (request.mayWrap && cowFirst) wrapOf(request) else null)
+            ?: Step.Composing(error = TOLERANCE_ERROR)
         return onVenue(request, tolerance)
+    }
+
+    /** The wrap [request] is, or why it cannot be had; null when it is no wrap. */
+    private suspend fun wrapOf(request: Request): Next? = when (val wrapping = askWrap(request)) {
+        WrapQuoting.NotAWrap -> null
+        is WrapQuoting.Quoted -> Quoted.Wrap(wrapping.quote)
+        is WrapQuoting.EarlierMaybeSent -> heldBack(wrapping.hash, wrapping.queued)
+        else -> Step.Composing(error = wrapRefusal(wrapping, request))
     }
 
     /** What [request] comes to on its venue: its quote, the approval it needs first, or why neither. */
@@ -1102,6 +1110,8 @@ class SwapViewModel(
                     else -> cowComposing(again, request)
                 }
             }
+            // The wrapped currency sold for the currency itself, by CoW's own pin: an unwrap.
+            CowSwapQuoting.NotASwap -> (if (request.mayWrap) wrapOf(request) else null) ?: cowComposing(ordering, request)
             else -> cowComposing(ordering, request)
         }
     }
@@ -1489,7 +1499,7 @@ class SwapViewModel(
         val sell = step.request.sell
         val buy = step.request.buy
         val native = network.nativeSymbol
-        val route = routeSteps(quote.route, quote.pools, sell, buy)
+        val route = routeSteps(quote.route, quote.pools, sell, buy, network)
         val sold = sell.asset as? TransferAsset.Erc20Token
         val bought = buy.asset as? TransferAsset.Erc20Token
         val balances = listOfNotNull(
@@ -1840,7 +1850,7 @@ class SwapViewModel(
             CowNotOffered.NOT_ON_THIS_DEVICE -> NOT_ON_THIS_DEVICE
             CowNotOffered.SELLS_ETHER -> sellsNativeText(network)
             CowNotOffered.NOT_FOLLOWED_YET -> "This account's history is followed from a block that is not " +
-                "finalized yet, so a CoW order's end could not be proven. CoW is offered once it is, in about " +
+                "finalized yet, so a CoW order's end could not be proven. CoW is offered once it is, in " +
                 "${finalityWaitText(network)}."
         }
         CowSwapQuoting.HistoryUnreadable ->

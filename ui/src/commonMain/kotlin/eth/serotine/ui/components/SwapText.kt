@@ -21,15 +21,22 @@ internal const val TOO_SMALL = "This amount is too small: less the tolerance, th
 internal const val NOT_A_TOKEN = "A token's contract does not answer as a token: nothing can be swapped with it."
 
 /**
- * [route]'s pools, one step each, through the factory's [pools]: the pair in [sell]'s and [buy]'s
- * symbols (WETH between them), its fee tier and the pool.
+ * [route]'s pools on [network], one step each, through the factory's [pools]: the pair in [sell]'s
+ * and [buy]'s symbols (the network's wrapped currency between them, WETH or WXDAI), its fee tier and
+ * the pool.
  */
-internal fun routeSteps(route: SwapRoute, pools: List<Address>, sell: AssetOption, buy: AssetOption): List<RouteStep> {
+internal fun routeSteps(
+    route: SwapRoute,
+    pools: List<Address>,
+    sell: AssetOption,
+    buy: AssetOption,
+    network: Network,
+): List<RouteStep> {
     val symbolOf = { address: Address ->
         when (address) {
             sell.contract -> sell.symbol
             buy.contract -> buy.symbol
-            else -> "WETH"
+            else -> wrappedSymbol(network)
         }
     }
     return route.fees.indices.map { i ->
@@ -59,10 +66,13 @@ internal fun priceHintText(network: Network): String? = if (network.testnet) {
     null
 }
 
-/** [sell] and [buy], one token on Uniswap, as a Safe's swap says it: a wrap, which a Safe cannot propose yet. */
-internal fun notASwapText(sell: String, buy: String): String =
-    "$sell and $buy are one token on Uniswap: ETH for WETH and back is a wrap, not a swap, and a Safe cannot " +
-        "propose a wrap here yet."
+/**
+ * [sell] and [buy], one token on Uniswap on [network], as a Safe's swap says it: a wrap, which a Safe
+ * cannot propose yet.
+ */
+internal fun notASwapText(sell: String, buy: String, network: Network): String =
+    "$sell and $buy are one token on Uniswap: ${network.nativeSymbol} for ${wrappedSymbol(network)} and back is a " +
+        "wrap, not a swap, and a Safe cannot propose a wrap here yet."
 
 /** No pool for [sell] and [buy] on [network]. */
 internal fun noRouteText(sell: String, buy: String, network: Network): String =
@@ -153,7 +163,7 @@ internal fun swapEstimateItem(
                 simpleNote = "Checked on chain. The review checks it again before you confirm.",
             )
         }
-        SwapEstimating.NotASwap -> SwapEstimateItem(label, note = notASwapText(sell.symbol, buy.symbol))
+        SwapEstimating.NotASwap -> SwapEstimateItem(label, note = notASwapText(sell.symbol, buy.symbol, network))
         SwapEstimating.NoRoute -> SwapEstimateItem(label, note = noRouteText(sell.symbol, buy.symbol, network))
         is SwapEstimating.NoVenue -> SwapEstimateItem(label, note = noVenueText(estimating.contract, network))
         is SwapEstimating.Unavailable -> SwapEstimateItem(label, note = estimateUnavailableText(estimating.reason))

@@ -1271,6 +1271,18 @@ class SwapViewModelTest {
     }
 
     @Test
+    fun aCowOrderForEtherReadsNothingOfUniswapNotEvenItsVenue() = runTest {
+        // USDC for ETH may be a wrap only when USDC were the WETH9: on CoW, CoW's own pin says it is not,
+        // so Uniswap's venue, unproven here, holds nothing back (owner ruling, 2026-11-23).
+        cowReady()
+        uniswap.unavailable = true
+
+        val review = assertIs<SwapUiState.CowReview>(reviewed().uiState.value)
+        assertEquals("at least 0.0160195 ETH", review.minimum)
+        assertEquals(0, uniswap.quotes)
+    }
+
+    @Test
     fun aCowOrderIsReviewedAndPlaced() = runTest {
         cowReady()
         waitingSwaps.swaps.value = listOf(waiting("0x" + "a1".repeat(32)).copy(venue = SwapVenue.COW))

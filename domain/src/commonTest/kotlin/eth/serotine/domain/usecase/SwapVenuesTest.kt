@@ -1,11 +1,17 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwapVenue
+import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.SwapVenueSetting
+import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.VenueChoice
+import eth.serotine.domain.repository.VenueReading
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -70,6 +76,25 @@ class SwapVenuesTest {
         }
         assertTrue(CowOfferedOnThisDevice(dating)())
         assertFalse(CowOfferedOnThisDevice(notDating)())
+    }
+
+    @Test
+    fun swapIsOfferedWhereEitherVenueIsPinnedAndOnlyThere() = runTest {
+        val uniswap = object : UniswapV3Chain {
+            var venue: VenueReading = VenueReading.NotPinned
+            override suspend fun venue(network: Network): VenueReading = venue
+            override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation = error("not read")
+        }
+        val cow = FakeCowChain().apply { venue = CowVenueReading.NotPinned }
+        val has = HasSwapVenue(uniswap, cow)
+
+        assertFalse(has(Network.GNOSIS), "neither pinned")
+        // CoW stands without Uniswap (owner ruling, 2026-11-23); an unproven pin is still a pin.
+        cow.venue = CowVenueReading.Unavailable(ReadUnavailable.SYNCING)
+        assertTrue(has(Network.GNOSIS), "CoW alone")
+        cow.venue = CowVenueReading.NotPinned
+        uniswap.venue = VenueReading.Unavailable(ReadUnavailable.SYNCING)
+        assertTrue(has(Network.GNOSIS), "Uniswap alone")
     }
 }
 

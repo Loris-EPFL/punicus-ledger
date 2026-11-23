@@ -814,7 +814,7 @@ class SafeSwapViewModel(
         val held = proposal.safe.ownersHeld
         val labels = accounts.associate { it.address to it.label }
         val decoding = decodingTokens(step.request)
-        val route = routeSteps(proposal.route, proposal.pools, sell, buy)
+        val route = routeSteps(proposal.route, proposal.pools, sell, buy, network)
         val transactions = listOfNotNull(proposal.reset, proposal.approval, proposal.swap).map { tx ->
             SafeSwapTransaction(
                 nonce = "Safe nonce ${tx.request.nonce}",
@@ -995,7 +995,7 @@ class SafeSwapViewModel(
         return when (proposing) {
             is SafeSwapProposing.Proposed -> error("a proposal is no refusal")
             SafeSwapProposing.NothingToSwap -> "There is nothing to swap: enter an amount above zero."
-            SafeSwapProposing.NotASwap -> notASwapText(sell, buy)
+            SafeSwapProposing.NotASwap -> notASwapText(sell, buy, network)
             SafeSwapProposing.NoRoute -> noRouteText(sell, buy, network)
             is SafeSwapProposing.NoVenue -> noVenueText(proposing.contract, network)
             SafeSwapProposing.TooSmall -> TOO_SMALL

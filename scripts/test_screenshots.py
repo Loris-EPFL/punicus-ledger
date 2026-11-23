@@ -70,6 +70,15 @@ class TableTest(unittest.TestCase):
         block = screenshots.table(screenshots.parse_changes(DIFF), REPO, BASE, HEAD)
         self.assertNotIn("<a ", block)
 
+    def test_the_thumbnails_sit_in_a_picture_which_github_does_not_link(self):
+        # So a click on a thumbnail opens its entry, as a click on the rest of its summary does.
+        block = screenshots.table(screenshots.parse_changes(DIFF), REPO, BASE, HEAD)
+        for entry in self.entries(block):
+            summary = entry.split("</summary>")[0]
+            self.assertEqual(summary.count("<img "), summary.count("<picture><img "), summary)
+            body = entry.split("</summary>")[1]
+            self.assertNotIn("<picture>", body, "an opened image keeps GitHub's link to its file")
+
     def test_thumbnails_are_a_quarter_and_the_opened_images_their_own_width(self):
         # compose-empty became a tablet's screenshot: the before image a phone's, the after a tablet's.
         shot = "docs/screenshots/send/compose-empty.png"

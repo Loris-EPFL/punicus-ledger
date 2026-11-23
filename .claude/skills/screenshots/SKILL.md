@@ -41,9 +41,10 @@ has the details) runs on every PR:
    the branch left its base. Each row is a collapsible `<details>` (owner's
    request, 2026-11-23: readable without zooming, dismissed in place): its
    summary names the state beside small before and after thumbnails, and
-   opened, it shows both at their own size, side by side for a phone, one
-   above the other for anything wider. No image carries a link of the
-   script's own, so GitHub opens a click on one in a new tab.
+   opened, it shows both at up to their own size, side by side for a phone,
+   one above the other for anything wider. The thumbnails sit in a
+   `<picture>`, which GitHub does not link, so a click on one opens the
+   entry; a click on an opened image opens it in a new tab.
 
 On `main` it fails when the committed set differs from the render.
 
@@ -59,9 +60,9 @@ On `main` it fails when the committed set differs from the render.
   `ScreenPreview("<state>", PreviewDevice.TABLET) { … }`, 1280 × 800 dp,
   with `@Preview(widthDp = TABLET_WIDTH_DP, heightDp = TABLET_HEIGHT_DP)`
   so Android Studio shows the same size. Such a screen's slug ends in
-  `-tablet` (`accounts-tablet/`). Thumbnails, on the index pages and in the
-  PR's table, are half the screenshot's width, so both devices share a
-  scale.
+  `-tablet` (`accounts-tablet/`). Thumbnails are half the screenshot's width
+  on the index pages and a quarter in the PR's table, so both devices share
+  a scale.
 - **A new screen is registered in `Screens.kt`** with its slug, the folder's
   name. `ScreensTest` fails until it is.
 - **A slug or a state name, once on `main`, stays.** Renaming one moves its

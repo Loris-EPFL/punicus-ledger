@@ -15,9 +15,10 @@ they stay as long as the commits do. `--dry-run` prints the new description inst
 
 Each screenshot is a `<details>` of its own (owner's request, 2026-11-23: readable without zooming, and
 dismissed where it was opened): its summary names the state beside small before and after thumbnails, and
-opening it shows both at full size in place, side by side for a phone, one above the other for anything
-wider. Closing it leaves the reader where they were. No image is wrapped in a link of the script's own:
-GitHub then links each to the file in a new tab, never in place of the description.
+opening it shows both at up to their own width in place, side by side for a phone, one above the other for
+anything wider. Closing it leaves the reader where they were. The thumbnails sit in a `<picture>`, which
+GitHub does not link, so a click on one opens the entry too. No image is wrapped in a link of the script's
+own: GitHub links each opened one to its file in a new tab, never in place of the description.
 
 `budget` fails when `docs/screenshots` is over its size budget, so growth is noticed before it hurts:
 the folder as a whole (TOTAL_BUDGET) and any one file (FILE_BUDGET). The way out is in the message.
@@ -167,8 +168,10 @@ def entry(
         shots.append(Shot(raw_url(repo, base_sha, change.path), width_of(base_sha, change.path), "Before"))
     if change.status != "D":
         shots.append(Shot(raw_url(repo, head_sha, change.path), width_of(head_sha, change.path), "After"))
+    # In a <picture>, which GitHub does not link: a click on a thumbnail opens the entry like the rest of its summary.
     thumbs = " → ".join(
-        img(s.url, f"{change.state}, {s.side.lower()}", max(1, s.width // THUMB_DIVISOR)) for s in shots
+        f"<picture>{img(s.url, f'{change.state}, {s.side.lower()}', max(1, s.width // THUMB_DIVISOR))}</picture>"
+        for s in shots
     )
     lines = [
         "<details>",
@@ -176,7 +179,7 @@ def entry(
         "",
     ]
     if all(s.width <= SIDE_BY_SIDE_MAX for s in shots):
-        # Phones side by side: two fit the description's width at their own size.
+        # Phones side by side, at about their own size: a narrow window scales them to fit.
         lines.append("<table><tr>" + "".join(f"<th>{s.side}</th>" for s in shots) + "</tr><tr>")
         lines.append("".join(f"<td>{img(s.url, f'{change.state}, {s.side.lower()}', s.width)}</td>" for s in shots))
         lines.append("</tr></table>")
@@ -190,7 +193,8 @@ def entry(
 
 
 def img(url: str, alt: str, width: int) -> str:
-    """An image with no link of its own: GitHub links it to the file, opened in a new tab."""
+    """An image with no link of its own: GitHub links it to the file, opened in a new tab, unless it sits in a
+    `<picture>` (the summary's thumbnails)."""
     return f'<img src="{url}" width="{width}" alt="{alt}">'
 
 

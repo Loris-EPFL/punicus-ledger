@@ -428,6 +428,14 @@ internal class ActivityRows(
         // A filled order sold what its trade says: a buy's maximum is only its bound.
         val sold = (order.end as? CowOrderEnd.Filled)?.trade?.sellAmount ?: order.order.sellAmount
         val sells = amount(sold, order.sell)
+        // What an order offered, while it may fill and when it did not: a sell its exact amount, a buy what it buys for
+        // at most its bound (the bound alone would read as an amount the user never typed). Built from the order's own
+        // amounts, so it stays right whatever branch reads it.
+        val offered = if (buys) {
+            "${amount(order.order.buyAmount, order.buy)} for at most ${amount(order.order.sellAmount, order.sell)}"
+        } else {
+            amount(order.order.sellAmount, order.sell)
+        }
         val simple = when (val end = order.end) {
             is CowOrderEnd.Filled -> "Filled"
             is CowOrderEnd.Unfilled -> if (end.cancelled) "Cancelled" else "Not filled: it expired"
@@ -436,7 +444,7 @@ internal class ActivityRows(
         val (title, status, state) = when (val end = order.end) {
             null -> Triple(
                 if (buys) {
-                    "CoW order: ${amount(order.order.buyAmount, order.buy)} for at most $sells"
+                    "CoW order: $offered"
                 } else {
                     "CoW order: $sells for at least ${amount(order.order.buyAmount, order.buy)}"
                 },
@@ -451,12 +459,12 @@ internal class ActivityRows(
             is CowOrderEnd.Unfilled -> {
                 val block = grouped(end.endBlock)
                 if (end.cancelled) {
-                    Triple("CoW order cancelled: $sells", "Cancelled in block $block", ActivityState.DONE)
+                    Triple("CoW order cancelled: $offered", "Cancelled in block $block", ActivityState.DONE)
                 } else {
-                    Triple("CoW order not filled: $sells", "Not filled by block $block", ActivityState.DONE)
+                    Triple("CoW order not filled: $offered", "Not filled by block $block", ActivityState.DONE)
                 }
             }
-            CowOrderEnd.NotProvable -> Triple("CoW order: $sells", "Its end cannot be proven", ActivityState.UNKNOWN)
+            CowOrderEnd.NotProvable -> Triple("CoW order: $offered", "Its end cannot be proven", ActivityState.UNKNOWN)
         }
         return ActivityRow(
             key = order.uid.hex,

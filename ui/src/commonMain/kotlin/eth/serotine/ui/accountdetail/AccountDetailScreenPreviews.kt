@@ -394,6 +394,28 @@ private fun AccountDetailAssetsPreview() = AccountDetailPreview(daily)
 @Composable
 private fun AccountDetailAssetsDarkPreview() = AccountDetailPreview(daily, darkTheme = true)
 
+/**
+ * A Swarm node's EOA on Gnosis Chain, watched (docs/swarm.md): its row says what is proven its own,
+ * and opens the Swarm node screen.
+ */
+@Preview
+@Composable
+private fun AccountDetailSwarmNodePreview() = AccountDetailPreview(
+    daily.copy(
+        label = "Bee node",
+        network = NetworkLabel(100, "Gnosis Chain", testnet = false),
+        control = Control.WATCH_ONLY,
+        total = "$0.40",
+        totalNote = null,
+        assets = listOf(
+            ether.copy(symbol = "XDAI", name = "xDAI", amount = "0.4 XDAI", icon = "xdai", value = "$0.40"),
+        ),
+        pricesNote = null,
+        swarm = "Swarm node: a chequebook and 2 postage batches",
+        offersSwarm = true,
+    ),
+)
+
 /** Amounts hidden: the eye beside Back closed, the total and each asset's amount and value masked. */
 @Preview
 @Composable
@@ -965,6 +987,7 @@ private fun AccountDetailNftsNonePreview() = AccountDetailPreview(
 internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("assets") { AccountDetailAssetsPreview() },
     ScreenPreview("assets-dark") { AccountDetailAssetsDarkPreview() },
+    ScreenPreview("swarm-node") { AccountDetailSwarmNodePreview() },
     ScreenPreview("checking") { AccountDetailCheckingPreview() },
     ScreenPreview("head-too-old") { AccountDetailHeadTooOldPreview() },
     ScreenPreview("by-name-with-impostor") { AccountDetailByNameWithImpostorPreview() },

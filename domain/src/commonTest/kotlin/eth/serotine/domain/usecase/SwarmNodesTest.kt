@@ -28,6 +28,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 class SwarmNodesTest {
@@ -42,16 +44,24 @@ class SwarmNodesTest {
         Chequebook(chequebookAddress, nodeAddress, UInt256.of(10), UInt256.of(10), UInt256.of(0), bounced = false)
     private val batch = PostageBatch(batchId, nodeAddress, 22, 16, false, UInt256.of(100), UInt256.of(10))
 
+    /** When set, what every chequebook reads as, reading after reading. */
+    private var live: MutableStateFlow<SwarmReading<ChequebookFinding>>? = null
+
     /** What each chequebook and batch reads as; the node's own by default. */
     private val chequebookReadings = mutableMapOf<Address, SwarmReading<ChequebookFinding>>()
     private val batchReadings = mutableMapOf<BatchId, SwarmReading<BatchFinding>>()
     private val nodesAsked = mutableListOf<Address>()
 
     private val contracts = object : SwarmContracts {
-        override fun observeChequebook(network: Network, node: Address, chequebook: Address) = flowOf(
-            chequebookReadings[chequebook]
-                ?: SwarmReading.Verified(ChequebookFinding.Node(this@SwarmNodesTest.chequebook), 7),
-        ).also { nodesAsked += node }
+        override fun observeChequebook(
+            network: Network,
+            node: Address,
+            chequebook: Address,
+        ): Flow<SwarmReading<ChequebookFinding>> =
+            live ?: flowOf(
+                chequebookReadings[chequebook]
+                    ?: SwarmReading.Verified(ChequebookFinding.Node(this@SwarmNodesTest.chequebook), 7),
+            ).also { nodesAsked += node }
 
         override fun observeBatch(network: Network, node: Address, id: BatchId) =
             flowOf(batchReadings[id] ?: SwarmReading.Verified(BatchFinding.Node(batch), 7)).also { nodesAsked += node }
@@ -131,6 +141,29 @@ class SwarmNodesTest {
         chequebookReadings[chequebookAddress] = SwarmReading.Verified(ChequebookFinding.OthersIssuer(other), 7)
         batchReadings[batchId] = SwarmReading.Unavailable(ReadUnavailable.UNPROVEN)
         assertFalse((observe(node).first(::allRead) as SwarmNodeReading.Read).recognised)
+    }
+
+    @Test
+    fun aVerifiedReadingStandsAsHeldOverAReadThatDidNotAnswer() = runTest {
+        val readings = MutableStateFlow<SwarmReading<ChequebookFinding>>(
+            SwarmReading.Verified(ChequebookFinding.Node(chequebook), 7),
+        )
+        live = readings
+        stored.value = SwarmCandidateList.Loaded(listOf(chequebookAddress), emptyList())
+        val seen = mutableListOf<SwarmItem<Address, ChequebookFinding>>()
+        backgroundScope.launch {
+            observe(node).collect { (it as? SwarmNodeReading.Read)?.chequebooks?.singleOrNull()?.let(seen::add) }
+        }
+        runCurrent()
+        readings.value = SwarmReading.Unavailable(ReadUnavailable.UNPROVEN)
+        runCurrent()
+        val verified: SwarmReading<ChequebookFinding> = SwarmReading.Verified(ChequebookFinding.Node(chequebook), 7)
+        assertEquals(SwarmItem(chequebookAddress, verified, held = true), seen.last())
+        // A reason that stands replaces it at once.
+        readings.value = SwarmReading.Unavailable(ReadUnavailable.REFUSED)
+        runCurrent()
+        val refused: SwarmReading<ChequebookFinding> = SwarmReading.Unavailable(ReadUnavailable.REFUSED)
+        assertEquals(SwarmItem(chequebookAddress, refused), seen.last())
     }
 
     @Test

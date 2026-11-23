@@ -1,0 +1,74 @@
+package eth.serotine.ui.swarm
+
+/**
+ * A Swarm node's screen (docs/swarm.md; docs/wallet-ux.md, *Swarm nodes*), display-ready: the
+ * node's chequebook and postage batches as the light client proves them, and adding one by hand.
+ */
+sealed interface SwarmUiState {
+
+    /** Not read yet. */
+    data object Loading : SwarmUiState
+
+    /** Nothing to show: the account is no Swarm node's, or cannot be read now, as [message] says. */
+    data class Unavailable(val message: String) : SwarmUiState
+
+    /** The account left the wallet: the screen leaves. */
+    data object Gone : SwarmUiState
+
+    /**
+     * The node [label] at [address] (EIP-55): its [chequebooks] with [chequebookNote] saying why
+     * there are none; its [batches] with [batchNote] likewise; [note] about the candidates kept
+     * (set aside once damaged); and [adding], the form that adds one by hand, when open.
+     */
+    data class Ready(
+        val label: String,
+        val address: String,
+        val chequebooks: List<ChequebookRow>,
+        val chequebookNote: String?,
+        val batches: List<BatchRow>,
+        val batchNote: String?,
+        val note: String? = null,
+        val adding: AddForm? = null,
+    ) : SwarmUiState
+}
+
+/**
+ * A chequebook kept for the node: its EIP-55 [address]; its [lines] once verified ("Balance 12
+ * xBZZ", "Free to withdraw 12 xBZZ", "Paid out 0 xBZZ"), empty otherwise; [warning] where a
+ * cheque of it bounced; and [status], where it stands: verified at a block, held as last verified,
+ * not read yet, or why it is not available.
+ */
+data class ChequebookRow(
+    val address: String,
+    val lines: List<String>,
+    val warning: String?,
+    val status: String,
+)
+
+/**
+ * A batch kept for the node: its [id] (`0x` and 64 hex digits) and [shortId]; its [capacity]
+ * ("Depth 22 · 7.73 GB of 17.18 GB theoretical") and [timeLeft] ("About 41 days left at the current
+ * price", "Expired") once verified, null otherwise; [immutable]; and [status] as a chequebook's.
+ */
+data class BatchRow(
+    val id: String,
+    val shortId: String,
+    val capacity: String?,
+    val timeLeft: String?,
+    val immutable: Boolean,
+    val status: String,
+)
+
+/** What is added by hand: a chequebook by its address, or a batch by its id. */
+enum class AddKind { CHEQUEBOOK, BATCH }
+
+/**
+ * The form that adds a [kind] by hand: the [text] typed, [checking] while it is read on chain,
+ * and [error], why it was not kept.
+ */
+data class AddForm(
+    val kind: AddKind,
+    val text: String = "",
+    val checking: Boolean = false,
+    val error: String? = null,
+)

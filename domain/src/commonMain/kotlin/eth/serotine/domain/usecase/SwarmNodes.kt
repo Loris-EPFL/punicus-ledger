@@ -57,12 +57,14 @@ class ObserveSwarmNode(
     private fun read(node: AccountId, list: SwarmCandidateList.Loaded): Flow<SwarmNodeReading> {
         val chequebooks = list.chequebooks.map { address ->
             contracts.observeChequebook(node.network, node.address, address)
-                .map<SwarmReading<ChequebookFinding>, SwarmItem<Address, ChequebookFinding>> { SwarmItem(address, it) }
+                .holdingVerifiedSwarm()
+                .map { SwarmItem(address, it.value, held = it.held) }
                 .onStart { emit(SwarmItem(address, null)) }
         }
         val batches = list.batches.map { id ->
             contracts.observeBatch(node.network, node.address, id)
-                .map<SwarmReading<BatchFinding>, SwarmItem<BatchId, BatchFinding>> { SwarmItem(id, it) }
+                .holdingVerifiedSwarm()
+                .map { SwarmItem(id, it.value, held = it.held) }
                 .onStart { emit(SwarmItem(id, null)) }
         }
         return combine(all(chequebooks), all(batches)) { found, bought ->
@@ -78,9 +80,20 @@ class ObserveSwarmNode(
 /**
  * One candidate and what the light client proves it to be: [reading], or null until its first
  * reading lands. Each candidate starts as not read yet, so the node is told at once and filled in
- * as the reads land, never held back by its slowest candidate.
+ * as the reads land, never held back by its slowest candidate. [held] when [reading] is the last
+ * verified one, standing in for reads that did not answer since, for an hour at most (owner's
+ * decisions, 2026-11-17; docs/swarm.md, *What the Swarm screen shows*): shown as such, never acted on.
  */
-data class SwarmItem<K, T>(val key: K, val reading: SwarmReading<T>?)
+data class SwarmItem<K, T>(val key: K, val reading: SwarmReading<T>?, val held: Boolean = false)
+
+/**
+ * A Swarm reading, its last [SwarmReading.Verified] answer standing while the readings after it
+ * only did not answer, for [HOLD_LIMIT] at most ([holdingLastMarked]).
+ */
+private fun <T : Any> Flow<SwarmReading<T>>.holdingVerifiedSwarm(): Flow<Held<SwarmReading<T>>> = holdingLastMarked(
+    verified = { it is SwarmReading.Verified },
+    transient = { it == SwarmReading.Syncing || (it as? SwarmReading.Unavailable)?.reason?.transient == true },
+)
 
 /** One answer of [ObserveSwarmNode]. */
 sealed interface SwarmNodeReading {

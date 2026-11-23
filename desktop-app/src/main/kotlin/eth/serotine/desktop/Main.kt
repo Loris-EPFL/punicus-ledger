@@ -525,6 +525,8 @@ private fun openWallet(dataDir: File) {
                 signatureRecovery = signatureRecovery,
                 safeApprovals = node.safeApprovals,
                 delayModules = node.delayModules,
+                swarmContracts = node.swarmContracts,
+                swarmCandidates = swarmCandidates,
                 // Safe 1.4.1's singleton, factory and proxy code, pinned in code: what a new Safe is created from.
                 safeReleases = PinnedSafeReleases(),
                 // Uniswap v3 on each network that has it pinned, its contracts proven by their code before any quote.

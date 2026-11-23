@@ -15,9 +15,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -99,6 +99,7 @@ import eth.serotine.ui.send.SendRoute
 import eth.serotine.ui.settings.SettingsRoute
 import eth.serotine.ui.swap.SwapFill
 import eth.serotine.ui.swap.SwapRoute
+import eth.serotine.ui.swarm.SwarmRoute
 import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.tokens.TokensRoute
 import eth.serotine.ui.transferstatus.SafeTxAgain
@@ -462,6 +463,7 @@ private fun Destinations(
                     onImportRequest = { navController.importRequest(account) },
                     onSafeSettings = { navController.safeSettings(account) },
                     onGnosisPay = { navController.gnosisPay(account) },
+                    onSwarm = { navController.swarm(account) },
                     onOpenActivity = { key -> navController.openActivityDetail(account, key) },
                     onContinueSwap = { sell -> navController.continueSwap(account, sell) },
                     onSendElsewhere = { contract -> navController.sendElsewhere(account, contract) },
@@ -951,6 +953,19 @@ private fun Destinations(
                 LaunchedEffect(Unit) { navController.popBackStack(GNOSIS_PAY_ROUTE, inclusive = true) }
             }
         }
+        composable(SWARM_ROUTE) { entry ->
+            val account = entry.account()
+            if (account != null) {
+                SwarmRoute(
+                    viewModel = viewModel { graph.swarmViewModel(account) },
+                    lightClient = lightClient.item(account.network),
+                    onBack = { navController.popBackStack(SWARM_ROUTE, inclusive = true) },
+                    onGone = { navController.popBackStack(SWARM_ROUTE, inclusive = true) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(SWARM_ROUTE, inclusive = true) }
+            }
+        }
         composable(SAFE_IMPORT_ROUTE) { entry ->
             val account = entry.account()
             if (account != null) {
@@ -1315,6 +1330,12 @@ private fun NavController.safeSettings(safe: AccountId) {
  * Opens the Gnosis Pay account [safe]'s screen (docs/gnosis-pay.md), once; at the step [start] names
  * when the Safe's settings ask for a change of the Delay's members (owner ruling, 2026-11-18).
  */
+/** Opens the Swarm node screen of [node] (docs/swarm.md); a second tap while it opens does nothing. */
+private fun NavController.swarm(node: AccountId) {
+    if (currentDestination?.route == SWARM_ROUTE) return
+    navigate("${Destination.SWARM}/${node.route}")
+}
+
 private fun NavController.gnosisPay(safe: AccountId, start: GnosisPayStart? = null) {
     if (currentDestination?.route == GNOSIS_PAY_ROUTE) return
     val members = when (start) {
@@ -1440,6 +1461,7 @@ private object Destination {
     const val IMPORT = "import"
     const val SAFE_SETTINGS = "settings"
     const val GNOSIS_PAY = "gnosis-pay"
+    const val SWARM = "swarm"
     const val UPDATE_REQUIRED = "update-required"
     const val COW_ORDER = "cow-order"
 }
@@ -1528,6 +1550,9 @@ private fun accountRoute(pattern: String): String = "$pattern/{$CHAIN}/{$ADDRESS
 
 /** An account's detail screen. */
 private val ACCOUNT_ROUTE = accountRoute(Destination.ACCOUNT)
+
+/** A Swarm node's chequebook and postage batches (docs/swarm.md). */
+private val SWARM_ROUTE = accountRoute(Destination.SWARM)
 
 /** The detail of a row of an account's Activity: a transaction by its hash, an event by its log too. */
 private const val ACTIVITY_DETAIL_ROUTE =

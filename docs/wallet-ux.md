@@ -318,8 +318,8 @@ replaces the bar (Material's expanded window size class):
    proposal of a Safe transaction, 16) · Send from another wallet (7H; an
    EOA whose key is not on this device) · Receive · Copy address · Rename · New
    account from the same phrase (an EOA's; greyed out when watch-only, a tap
-   saying why) · Swarm node… (an EOA on Gnosis Chain not recognised as one;
-   *Swarm nodes* below) · Remove. Removing an account the user
+   saying why) · Swarm node… (an EOA on Gnosis Chain; *Swarm nodes* below)
+   · Remove. Removing an account the user
    holds a key for says that only its recovery phrase brings it back, and
    asks for a confirmation, not the wallet password (owner ruling,
    2026-10-18, #17). The key store keeps one envelope per account, under its
@@ -1868,13 +1868,14 @@ A Swarm node's EOA on Gnosis Chain, added as a watched address (or held
 here, where Bee runs on a key of this wallet), whose chequebook or postage
 batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
 
-- **On the account's own screen** a **Swarm node** row ("Chequebook and 3
-  postage batches") opens **Swarm node**, a screen of its own. An EOA on
-  Gnosis Chain that is not recognised has **Swarm node…** in its menu, which
-  opens the same screen empty, to add a chequebook or a batch by hand. The
-  account list shows nothing new.
-- **The node:** its xDAI and xBZZ. xBZZ has no price: "no price", out of
-  totals.
+- **On the account's own screen** a **Swarm node** row ("Swarm node: a
+  chequebook and 3 postage batches") opens **Swarm node**, a screen of its
+  own. Every EOA on Gnosis Chain has **Swarm node…** in its menu, which
+  opens the same screen, empty where nothing is proven yet, to add a
+  chequebook or a batch by hand. The account list shows nothing new. The
+  screen is the same in simple mode and in Detailed view for now.
+- **The node:** its name and address. Its xDAI and xBZZ are on the
+  account's own screen; xBZZ has no price: "no price", out of totals.
 - **Chequebook:** its address, balance, what is free to withdraw (its liquid
   balance), what it has paid out, and "A cheque of this chequebook bounced"
   where one did. **Withdraw** is greyed out unless the node's own key is held
@@ -1883,10 +1884,20 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
   when it was added here; add the chequebook by its address, as Bee shows
   it." with **Add chequebook**.
 - **Postage batches:** each with its id (shortened, copyable), its depth and
-  capacity ("Depth 22 · ‹effective› of 16 GiB theoretical"), "Immutable"
+  capacity ("Depth 22 · 7.73 GB of 17.18 GB theoretical"), "Immutable"
   where it is, and its time to live at the current price ("About 41 days
-  left at the current price"),
-  or "Expired". **Top up** on each; **Dilute** on each, greyed out unless the
+  left at the current price"), or "Expired".
+- **Each chequebook and batch** has **Remove**, which is remembered: the
+  log index never adds it back, and adding it by hand keeps it again. One
+  not read yet says "Checking on chain…"; one that is not the node's says
+  whose it is; one whose reading did not answer says why, or, held as last
+  verified, names its block and says it may have changed since.
+- **Adding by hand** is a dialog: the address (checked against its EIP-55
+  checksum) or the batch id, as Bee shows it. **Add** reads it on chain;
+  kept, the dialog closes; refused, it says why ("This batch is owned by
+  0x…, not this node.", "It could not be verified right now, so nothing was
+  kept."). Withdraw, Top up, Dilute and Buy a batch come with their parts
+  (docs/swarm.md, *Delivery*). **Top up** on each; **Dilute** on each, greyed out unless the
   node's key is held here. Both are greyed out on an expired batch, a tap
   saying to buy a new one. The capacity is Swarm's published effective
   figure, with the theoretical one beside it called theoretical

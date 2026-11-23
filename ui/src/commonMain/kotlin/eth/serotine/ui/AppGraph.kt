@@ -54,6 +54,8 @@ import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.SigningRequestCodec
 import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.repository.SwapVenueSetting
+import eth.serotine.domain.repository.SwarmCandidates
+import eth.serotine.domain.repository.SwarmContracts
 import eth.serotine.domain.repository.SyncPolicySetting
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
@@ -68,6 +70,7 @@ import eth.serotine.domain.usecase.AcknowledgeLostOutbox
 import eth.serotine.domain.usecase.AddEnsName
 import eth.serotine.domain.usecase.AddNft
 import eth.serotine.domain.usecase.AddOnNetworks
+import eth.serotine.domain.usecase.AddSwarmCandidate
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.AllowHeavyDownloadsOnMetered
 import eth.serotine.domain.usecase.ApproveDappProposal
@@ -112,6 +115,7 @@ import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountCowOrders
 import eth.serotine.domain.usecase.ObserveAccountHistory
+import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressKind
@@ -136,20 +140,20 @@ import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveNetworkOverview
-import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveNfts
 import eth.serotine.domain.usecase.ObserveOutbox
 import eth.serotine.domain.usecase.ObservePerAppAddresses
 import eth.serotine.domain.usecase.ObservePerAppChoice
 import eth.serotine.domain.usecase.ObservePortfolio
+import eth.serotine.domain.usecase.ObserveRecipientCheck
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveSafes
-import eth.serotine.domain.usecase.ObserveRecipientCheck
 import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.ObserveSwapVenue
+import eth.serotine.domain.usecase.ObserveSwarmNode
 import eth.serotine.domain.usecase.ObserveSyncPolicy
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
@@ -192,6 +196,7 @@ import eth.serotine.domain.usecase.RememberResolvedNames
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.domain.usecase.RemoveAddedNft
 import eth.serotine.domain.usecase.RemoveQueuedSafeTx
+import eth.serotine.domain.usecase.RemoveSwarmCandidate
 import eth.serotine.domain.usecase.RemoveToken
 import eth.serotine.domain.usecase.RenameAccount
 import eth.serotine.domain.usecase.ResolveRecipient
@@ -265,6 +270,7 @@ import eth.serotine.ui.send.SendViewModel
 import eth.serotine.ui.settings.SettingsViewModel
 import eth.serotine.ui.swap.SwapFill
 import eth.serotine.ui.swap.SwapViewModel
+import eth.serotine.ui.swarm.SwarmViewModel
 import eth.serotine.ui.tokens.TokensViewModel
 import eth.serotine.ui.transferstatus.TransferStatusViewModel
 import eth.serotine.ui.update.UpdateRequiredViewModel
@@ -363,6 +369,10 @@ class AppGraph(
     private val safeApprovals: SafeApprovals,
     /** A Gnosis Pay account's Delay modifier and its queue, verified by that light client (docs/gnosis-pay.md). */
     private val delayModules: DelayModules,
+    /** A Swarm node's chequebook and postage batches, verified by that light client (docs/swarm.md). */
+    private val swarmContracts: SwarmContracts,
+    /** What may be each Swarm node's chequebook and batches: public data kept on this device. */
+    private val swarmCandidates: SwarmCandidates,
     /** The Safe release a new Safe on a network is created from: pinned singleton, factory and proxy code. */
     private val safeReleases: SafeReleases,
     /** Uniswap v3 on each network: its pinned contracts, proven by their code, and verified calls of them. */
@@ -522,11 +532,21 @@ class AppGraph(
             ObserveOutbox(outbox),
             offerHandoff = OfferHandoff(walletHandoff),
             observeGnosisPay = observeGnosisPay(),
+            observeSwarmNode = ObserveSwarmNode(swarmCandidates, swarmContracts),
             observePerAppAddresses = ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases),
             unlinkPerAppAlias = UnlinkPerAppAlias(perAppAliases),
         )
 
     /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it. */
+    /** The Swarm node screen of [node] (docs/swarm.md). */
+    fun swarmViewModel(node: AccountId): SwarmViewModel = SwarmViewModel(
+        node,
+        ObserveAccount(accounts),
+        ObserveSwarmNode(swarmCandidates, swarmContracts),
+        AddSwarmCandidate(swarmCandidates, swarmContracts),
+        RemoveSwarmCandidate(swarmCandidates),
+    )
+
     fun gnosisPayViewModel(safe: AccountId): GnosisPayViewModel = GnosisPayViewModel(
         safe,
         ObserveAccount(accounts),

@@ -77,9 +77,9 @@ An EOA on Gnosis Chain is a Swarm node in the wallet when it has a
 chequebook, or at least one batch, proven as below. No new kind of account
 exists, and no new way to add one: the account stays the EOA it is. Its own
 screen gets a **Swarm node** row that opens the Swarm screen
-(docs/wallet-ux.md, *Swarm nodes*). An EOA on Gnosis Chain that is not
-recognised has a **Swarm node…** item in its menu: it opens the same screen,
-empty, to add a chequebook or a batch by hand.
+(docs/wallet-ux.md, *Swarm nodes*). Every EOA on Gnosis Chain has a
+**Swarm node…** item in its menu: it opens the same screen, empty where
+nothing is proven yet, to add a chequebook or a batch by hand.
 
 ### A chequebook is proven
 

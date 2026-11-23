@@ -27,6 +27,7 @@ import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObservePostageBatch
+import eth.serotine.domain.usecase.ObserveSwarmNodes
 import eth.serotine.domain.usecase.QuoteBatchDilution
 import eth.serotine.domain.usecase.QuoteBatchPurchase
 import eth.serotine.domain.usecase.QuoteBatchTopUp
@@ -81,6 +82,7 @@ class PostageViewModel(
     observeAccount: ObserveAccount,
     observeAccounts: ObserveAccounts,
     observePostageBatch: ObservePostageBatch,
+    observeSwarmNodes: ObserveSwarmNodes,
     private val quoteBatchPurchase: QuoteBatchPurchase,
     private val quoteBatchTopUp: QuoteBatchTopUp,
     private val quoteBatchDilution: QuoteBatchDilution,
@@ -106,6 +108,11 @@ class PostageViewModel(
         val quoting: Boolean = false,
         val note: String? = null,
         val pending: String? = null,
+        /**
+         * The amount per chunk an approval sent from here was for, while it is on its way or mined:
+         * the call is quoted again with it, never with a time worked out anew. Any edit drops it.
+         */
+        val approvedPerChunk: UInt256? = null,
     )
 
     /**
@@ -161,6 +168,9 @@ class PostageViewModel(
     private var waiting: Job? = null
     private var shown = true
 
+    /** Counts each time the screen was hidden: a quote or a signature that spans one is made again. */
+    private var hides = 0L
+
     private val sentHash = MutableStateFlow<String?>(null)
 
     /** The batch call just sent, for its status, which takes this screen's place; null until one is. */
@@ -186,14 +196,18 @@ class PostageViewModel(
             read.onStart { emit(null) }
         }
 
+    /** The wallet's Swarm nodes: a key that is one of them is Bee's too, and the review says so. */
+    private val nodes = observeSwarmNodes()
+
     /** The screen's state. */
-    val uiState: StateFlow<PostageUiState> = combine(lookup, payers, batchReading, step) { found, payers, batch, at ->
-        when (val lookup = found) {
-            AccountLookup.ListUnavailable -> PostageUiState.Unavailable(PostageTexts.LIST_UNAVAILABLE)
-            AccountLookup.NotInList -> PostageUiState.Gone
-            is AccountLookup.Found -> ready(lookup.account, payers, batch, at)
-        }
-    }.stateIn(
+    val uiState: StateFlow<PostageUiState> =
+        combine(lookup, payers, batchReading, nodes, step) { found, payers, batch, nodes, at ->
+            when (val lookup = found) {
+                AccountLookup.ListUnavailable -> PostageUiState.Unavailable(PostageTexts.LIST_UNAVAILABLE)
+                AccountLookup.NotInList -> PostageUiState.Gone
+                is AccountLookup.Found -> ready(lookup.account, payers, batch, nodes, at)
+            }
+        }.stateIn(
         viewModelScope,
         // A screen back after the timeout must not show an old reading as current: no replay then.
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
@@ -204,6 +218,7 @@ class PostageViewModel(
         account: Account,
         payers: List<Account>?,
         batch: SwarmReading<BatchFinding>?,
+        nodes: Set<Address>,
         step: Step,
     ): PostageUiState {
         if (account.network != Network.GNOSIS || account.kind != AccountKind.EOA) {
@@ -221,14 +236,20 @@ class PostageViewModel(
             title = PostageTexts.title(action, shortId),
             node = PostageTexts.node(account.label, account.address),
             batch = batchLines(batch),
-            step = stepOf(step, account, payers, batch),
+            step = stepOf(step, account, payers, batch, nodes),
         )
     }
 
-    private fun stepOf(step: Step, account: Account, payers: List<Account>, batch: SwarmReading<BatchFinding>?) =
+    private fun stepOf(
+        step: Step,
+        account: Account,
+        payers: List<Account>,
+        batch: SwarmReading<BatchFinding>?,
+        nodes: Set<Address>,
+    ) =
         when (step) {
             is Step.Composing -> compose(step.form, payers, batch)
-            is Step.Reviewing -> review(step, account, payers, batch)
+            is Step.Reviewing -> review(step, account, payers, nodes)
             is Step.Awaiting -> PostageStep.Awaiting(step.hash, PostageTexts.AWAITING)
         }
 
@@ -259,7 +280,7 @@ class PostageViewModel(
         step: Step.Reviewing,
         account: Account,
         payers: List<Account>,
-        batch: SwarmReading<BatchFinding>?,
+        nodes: Set<Address>,
     ): PostageStep.Review {
         val payerLabel = payers.firstOrNull { it.address == step.request.payer }?.label
         val signer = when (val reviewed = step.reviewed) {
@@ -276,7 +297,8 @@ class PostageViewModel(
         val diluted = (step.reviewed as? Reviewed.Call)?.quote?.takeIf { it.call is BatchCall.Dilution }
         val immutable = diluted?.batch?.immutable
         val warnings = listOfNotNull(
-            PostageTexts.NODE_KEY_WARNING.takeIf { signer == node.address },
+            // Whenever the signer is a Swarm node of the wallet: this one, or another paying for it.
+            PostageTexts.NODE_KEY_WARNING.takeIf { signer == node.address || signer in nodes },
             PostageTexts.IMMUTABLE_WARNING.takeIf { immutable == true },
         )
         return PostageStep.Review(
@@ -352,7 +374,8 @@ class PostageViewModel(
     private fun edit(change: (Form) -> Form) {
         val current = step.value as? Step.Composing ?: return
         if (current.form.quoting) return
-        step.value = Step.Composing(change(current.form).copy(error = null, note = null))
+        // A change of what is asked for is a new call: the amount an approval was for no longer holds.
+        step.value = Step.Composing(change(current.form).copy(error = null, note = null, approvedPerChunk = null))
     }
 
     /** Quotes what the form says, fresh: its review, or why there is none. */
@@ -377,9 +400,12 @@ class PostageViewModel(
                 return@launch
             }
             val asked = (resolved as Resolved.Ready).request
+            val at = Mark(timeSource.markNow(), hides)
             val quoted = safely { quote(asked) }
             if (request != mine) return@launch
-            landed(after(form, asked, quoted, position = null, unlock = null, note = null))
+            // After an approval sent from here, the call is its step 2.
+            val position = if (asked.perChunk != null) 2 else null
+            landed(after(form, asked, quoted, at, position, unlock = null, note = null))
         }
     }
 
@@ -401,7 +427,7 @@ class PostageViewModel(
         // A depth chosen that the batch no longer offers (Bee diluted it meanwhile) is never swapped for another.
         if (form.depth != null && depth != form.depth) return Resolved.Refused(PostageTexts.DEPTH_GONE)
         val seconds = if (action == PostageAction.DILUTE) null else form.days.trim().toLong() * DAY_SECONDS
-        return Resolved.Ready(Request(payer, depth, seconds, form.immutable))
+        return Resolved.Ready(Request(payer, depth, seconds, form.immutable, form.approvedPerChunk))
     }
 
     private suspend fun quote(request: Request): BatchQuoting = when (action) {
@@ -424,20 +450,26 @@ class PostageViewModel(
             quoteBatchDilution(node.address, checkNotNull(batchId), checkNotNull(request.depth), FeeLevel.NORMAL)
     }
 
+    /** When a quote's first read was made ([time]: its age runs from it), and how often the screen was hidden then. */
+    private data class Mark(val time: TimeMark, val hides: Long)
+
     /**
-     * The step [quoting] leads to from [form]: a review ([position] its step of two, [unlock] kept
-     * from the review it replaces, [note] why it was made again), the wait for an approval, or the
-     * form saying why nothing was quoted.
+     * The step [quoting], whose reads began at [at], leads to from [form]: a review ([position] its
+     * step of two, [unlock] kept from the review it replaces, [note] why it was made again), the wait
+     * for an approval, or the form saying why nothing was quoted. A review whose reads spanned a
+     * hiding of the screen is made again before it is signed.
      */
     private suspend fun after(
         form: Form,
         request: Request,
         quoting: BatchQuoting?,
+        at: Mark,
         position: Int?,
         unlock: UnlockStep?,
         note: String?,
     ): Step {
-        val quotedAt = timeSource.markNow()
+        val quotedAt = at.time
+        val hidden = hides != at.hides || !shown
         return when (quoting) {
             is BatchQuoting.Quoted -> Step.Reviewing(
                 form.copy(quoting = false),
@@ -447,7 +479,7 @@ class PostageViewModel(
                 unlock ?: unlockStep(),
                 position,
                 note = note,
-                hidden = !shown,
+                hidden = hidden,
             )
             is BatchQuoting.NeedsApproval -> Step.Reviewing(
                 form.copy(quoting = false),
@@ -458,7 +490,7 @@ class PostageViewModel(
                 unlock ?: unlockStep(),
                 position = 1,
                 note = note,
-                hidden = !shown,
+                hidden = hidden,
             )
             is BatchQuoting.ApprovalPending ->
                 Step.Awaiting(form.copy(quoting = false), request, quoting.hash, quotedAt)
@@ -475,7 +507,8 @@ class PostageViewModel(
         step.value = next
         when {
             next is Step.Awaiting -> awaitApproval(next)
-            next is Step.Reviewing && next.hidden && shown -> requote(next, note = null)
+            // What it says (an approval that may have failed) is kept through the quote made again.
+            next is Step.Reviewing && next.hidden && shown -> requote(next, note = next.note)
         }
     }
 
@@ -506,7 +539,7 @@ class PostageViewModel(
     /** Whether [review]'s quote is too old to sign, or was made before the screen was hidden: made again instead. */
     private fun requoted(review: Step.Reviewing): Boolean {
         if (review.hidden) {
-            requote(review, note = null)
+            requote(review, note = review.note)
             return true
         }
         if (review.quotedAt.elapsedNow() <= QUOTE_MAX_AGE) return false
@@ -514,16 +547,38 @@ class PostageViewModel(
         return true
     }
 
-    /** [review] quoted again from its request, the password typed kept; [note] what the review then says. */
+    /**
+     * [review] quoted again from its request; [note] what the review then says. The password typed is
+     * kept as the state holds it at the answer (gone, if the screen was hidden meanwhile), and only
+     * while the same transaction is reviewed: one the user has not read yet takes it anew.
+     */
     private fun requote(review: Step.Reviewing, note: String?) {
         step.value = review.copy(requoting = true, error = null, note = null)
         val mine = ++request
         viewModelScope.launch {
+            val at = Mark(timeSource.markNow(), hides)
             val quoting = safely { quote(review.request) }
-            if (request != mine || step.value !is Step.Reviewing) return@launch
+            val current = step.value as? Step.Reviewing ?: return@launch
+            if (request != mine) return@launch
             val position = if (review.position == 2) 2 else null
-            landed(after(review.form, review.request, quoting, position, review.unlock.copy(error = null), note))
+            val same = (quoting is BatchQuoting.Quoted) == (review.reviewed is Reviewed.Call)
+            val unlock = current.unlock.copy(
+                error = null,
+                password = if (same) current.unlock.password else WalletPassword.EMPTY,
+            )
+            landed(after(formOf(review), review.request, quoting, at, position, unlock, note))
         }
+    }
+
+    /**
+     * The form [step] goes back to: with the amount per chunk an approval sent from here was for
+     * (step 2, or the wait for it), so that the call is quoted again for what was approved.
+     */
+    private fun formOf(step: Step): Form = when (step) {
+        is Step.Composing -> step.form
+        is Step.Awaiting -> step.form.copy(approvedPerChunk = step.request.perChunk)
+        is Step.Reviewing ->
+            if (step.position == 2) step.form.copy(approvedPerChunk = step.request.perChunk) else step.form
     }
 
     private fun send(review: Step.Reviewing, unlock: Unlock) {
@@ -532,6 +587,7 @@ class PostageViewModel(
         val signing = review.copy(signing = true, error = null, unlock = unlocked)
         step.value = signing
         val mine = ++request
+        val hidesAtSign = hides
         viewModelScope.launch {
             val sending = safely {
                 when (val reviewed = review.reviewed) {
@@ -541,13 +597,14 @@ class PostageViewModel(
             }
             if (request != mine) return@launch
             val approval = review.reviewed is Reviewed.Approval
+            // Hidden while it signed (a prompt the app's going away cancelled): made again before the next try.
+            val signed = signing.copy(signing = false, hidden = signing.hidden || hides != hidesAtSign || !shown)
             when (sending) {
-                is BatchSending.Sending -> sent(signing, sending.sending, approval)
-                BatchSending.NonceTaken -> requote(signing.copy(signing = false), PostageTexts.NONCE_TAKEN)
-                BatchSending.BatchChanged -> requote(signing.copy(signing = false), PostageTexts.BATCH_CHANGED)
-                is BatchSending.NotChecked ->
-                    landed(signing.copy(signing = false, error = PostageTexts.notChecked(sending.reason)))
-                null -> landed(signing.copy(signing = false, error = PostageTexts.SEND_FAILED))
+                is BatchSending.Sending -> sent(signed, sending.sending, approval)
+                BatchSending.NonceTaken -> requote(signed, PostageTexts.NONCE_TAKEN)
+                BatchSending.BatchChanged -> requote(signed, PostageTexts.BATCH_CHANGED)
+                is BatchSending.NotChecked -> landed(signed.copy(error = PostageTexts.notChecked(sending.reason)))
+                null -> landed(signed.copy(error = PostageTexts.SEND_FAILED))
             }
         }
     }
@@ -579,7 +636,7 @@ class PostageViewModel(
         }
         if (approval) {
             // Step 1 of 2: the call waits for a block to have the approval, then is reviewed on its own.
-            landed(Step.Awaiting(review.form, review.request, hash, timeSource.markNow()))
+            landed(Step.Awaiting(review.form.copy(pending = null), review.request, hash, timeSource.markNow()))
         } else {
             step.value = Step.Composing(review.form)
             sentHash.value = hash
@@ -598,24 +655,25 @@ class PostageViewModel(
             var failed = 0
             while (awaiting.since.elapsedNow() < awaitMax) {
                 delay(awaitPoll)
+                val at = Mark(timeSource.markNow(), hides)
                 val quoting = safely { quote(awaiting.request) }
                 if (step.value != awaiting) return@launch
-                val (form, asked) = awaiting.form to awaiting.request
+                val (form, asked) = formOf(awaiting) to awaiting.request
                 when {
                     quoting is BatchQuoting.ApprovalPending -> failed = 0
                     quoting is BatchQuoting.Quoted -> {
-                        landed(after(form, asked, quoting, position = 2, unlock = null, note = null))
+                        landed(after(form, asked, quoting, at, position = 2, unlock = null, note = null))
                         return@launch
                     }
                     quoting is BatchQuoting.NeedsApproval -> {
                         val note = PostageTexts.APPROVAL_FAILED_MAYBE
-                        landed(after(form, asked, quoting, position = 1, unlock = null, note = note))
+                        landed(after(form, asked, quoting, at, position = 1, unlock = null, note = note))
                         return@launch
                     }
                     // A read that failed for a moment (a peer, the light client between heads): waited out.
                     (quoting == null || quoting is BatchQuoting.Refused) && ++failed < AWAIT_FAILURES -> Unit
                     else -> {
-                        val next = after(form, asked, quoting, position = 2, unlock = null, note = null)
+                        val next = after(form, asked, quoting, at, position = 2, unlock = null, note = null)
                         // The form keeps the approval's status: what it was waiting for.
                         val kept = (next as? Step.Composing)?.let { Step.Composing(it.form.copy(pending = awaiting.hash)) }
                         landed(kept ?: next)
@@ -624,8 +682,8 @@ class PostageViewModel(
                 }
             }
             if (step.value == awaiting) {
-                val timedOut = awaiting.form.copy(note = PostageTexts.AWAIT_TIMED_OUT, pending = awaiting.hash)
-                step.value = Step.Composing(timedOut)
+                val form = formOf(awaiting)
+                step.value = Step.Composing(form.copy(note = PostageTexts.AWAIT_TIMED_OUT, pending = awaiting.hash))
             }
         }
     }
@@ -655,13 +713,14 @@ class PostageViewModel(
         if (current is Step.Composing) return false
         request++
         waiting?.cancel()
-        step.value = Step.Composing(current.form.copy(quoting = false))
+        step.value = Step.Composing(formOf(current).copy(quoting = false))
         return true
     }
 
     /** The screen is no longer shown: the password leaves the state, and the quote under review is made again. */
     fun onHidden() {
         shown = false
+        hides++
         val review = step.value as? Step.Reviewing ?: return
         if (review.signing) return
         step.value = review.copy(unlock = review.unlock.copy(password = WalletPassword.EMPTY), hidden = true)
@@ -671,7 +730,7 @@ class PostageViewModel(
     fun onShown() {
         shown = true
         val review = step.value as? Step.Reviewing ?: return
-        if (review.hidden && !review.signing && !review.requoting) requote(review, note = null)
+        if (review.hidden && !review.signing && !review.requoting) requote(review, note = review.note)
     }
 
     private suspend fun unlockStep(): UnlockStep =

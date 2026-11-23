@@ -265,3 +265,14 @@ class RemoveSwarmCandidate(private val candidates: SwarmCandidates) {
             -> false
         }
 }
+
+/**
+ * The addresses of the wallet's Swarm nodes on Gnosis Chain: each account with a chequebook or a batch
+ * kept for it. What a review warns by (docs/swarm.md, *A key that Bee also uses*): a key that is
+ * one of them is Bee's too. Empty while the candidates cannot be read.
+ */
+class ObserveSwarmNodes(private val candidates: SwarmCandidates) {
+    operator fun invoke(): Flow<Set<Address>> = candidates.observeNodes(Network.GNOSIS).map { nodes ->
+        nodes.orEmpty().filterValues { it.keepsAny }.keys.mapTo(mutableSetOf()) { it.address }
+    }.distinctUntilChanged()
+}

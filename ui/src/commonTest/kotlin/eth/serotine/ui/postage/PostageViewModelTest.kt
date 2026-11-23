@@ -30,6 +30,7 @@ import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObservePostageBatch
+import eth.serotine.domain.usecase.ObserveSwarmNodes
 import eth.serotine.domain.usecase.QuoteBatchDilution
 import eth.serotine.domain.usecase.QuoteBatchPurchase
 import eth.serotine.domain.usecase.QuoteBatchTopUp
@@ -44,6 +45,7 @@ import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTransactionInputs
 import eth.serotine.ui.MemoryOutbox
 import eth.serotine.ui.MemorySentTransfers
+import eth.serotine.ui.components.STALE_QUOTE
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -51,6 +53,8 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -107,10 +111,13 @@ class PostageViewModelTest {
             )
     }
 
+    /** The wallet's Swarm nodes, as the candidates kept say. */
+    private var swarmNodes = emptyMap<AccountId, SwarmCandidateList.Loaded>()
+
     private val candidates = object : SwarmCandidates {
         val added = mutableListOf<SwarmCandidate>()
         override fun observe(node: AccountId) = flowOf(SwarmCandidateList.Loaded(emptyList(), emptyList()))
-        override fun observeNodes(network: Network) = flowOf(emptyMap<AccountId, SwarmCandidateList.Loaded>())
+        override fun observeNodes(network: Network) = flowOf(swarmNodes)
         override suspend fun add(node: AccountId, candidate: SwarmCandidate, byHand: Boolean): SwarmCandidateChange {
             added += candidate
             return SwarmCandidateChange.CHANGED
@@ -150,6 +157,8 @@ class PostageViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
+    private val clock = TestTimeSource()
+
     private fun TestScope.viewModel(action: PostageAction, vararg accounts: Account): PostageViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val held = FakeAccounts(*accounts)
@@ -160,6 +169,7 @@ class PostageViewModelTest {
             ObserveAccount(held),
             ObserveAccounts(held),
             ObservePostageBatch(contracts),
+            ObserveSwarmNodes(candidates),
             QuoteBatchPurchase(contracts, inputs, native, tokens, sent, outbox),
             QuoteBatchTopUp(contracts, inputs, native, tokens, sent, outbox),
             QuoteBatchDilution(contracts, inputs, native, tokens, sent, outbox),
@@ -167,6 +177,8 @@ class PostageViewModelTest {
             SendBatchCall(signer, broadcaster, sent, inputs, candidates, contracts),
             DescribeKeyStore(FakeKeys()),
             awaitPoll = 5.seconds,
+            awaitMax = 30.seconds,
+            timeSource = clock,
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
         return viewModel
@@ -304,5 +316,91 @@ class PostageViewModelTest {
         assertTrue(viewModel.back())
         assertEquals("45", assertIs<PostageStep.Compose>(viewModel.ready.step).days)
         assertEquals(false, viewModel.back())
+    }
+
+    @Test
+    fun aRequoteAnsweringWhileHiddenNeverBringsThePasswordBack() = runTest {
+        node = node.copy(custody = AccountCustody.InKeyStore)
+        val viewModel = viewModel(PostageAction.DILUTE, node)
+        runCurrent()
+        viewModel.review()
+        runCurrent()
+        viewModel.onPasswordChange("secret")
+        // Over a minute old at the tap: quoted again, and the answer waits.
+        clock += 61.seconds
+        val gate = CompletableDeferred<Unit>()
+        inputs.gate = gate
+        viewModel.sign()
+        runCurrent()
+        viewModel.onHidden()
+        gate.complete(Unit)
+        inputs.gate = null
+        runCurrent()
+        val review = assertIs<PostageStep.Review>(viewModel.ready.step)
+        assertEquals("", review.unlock.password.text)
+        assertTrue(signer.asked.isEmpty())
+    }
+
+    @Test
+    fun aQuotesMinuteRunsFromItsFirstRead() = runTest {
+        node = node.copy(custody = AccountCustody.InKeyStore)
+        val viewModel = viewModel(PostageAction.DILUTE, node)
+        runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        inputs.gate = gate
+        viewModel.review()
+        runCurrent()
+        // A slow peer: the reads took 50 seconds.
+        clock += 50.seconds
+        gate.complete(Unit)
+        inputs.gate = null
+        runCurrent()
+        assertIs<PostageStep.Review>(viewModel.ready.step)
+        clock += 15.seconds
+        viewModel.signWith("pw")
+        runCurrent()
+        // 65 seconds since its first read: made again, not signed.
+        assertEquals(STALE_QUOTE, assertIs<PostageStep.Review>(viewModel.ready.step).note)
+        assertTrue(signer.asked.isEmpty())
+    }
+
+    @Test
+    fun theAmountApprovedOutlivesTheWaitsTimeOut() = runTest {
+        val viewModel = viewModel(PostageAction.BUY, node, payer)
+        runCurrent()
+        viewModel.review()
+        runCurrent()
+        viewModel.signWith("pw")
+        runCurrent()
+        val approval = assertIs<SentAction.TokenApproval>(sent.transfers.value.single().action)
+        // No block has it within the wait.
+        repeat(7) {
+            clock += 5.seconds
+            advanceTimeBy(5.seconds)
+            runCurrent()
+        }
+        assertEquals(PostageTexts.AWAIT_TIMED_OUT, assertIs<PostageStep.Compose>(viewModel.ready.step).note)
+        // Mined later, for exactly the total; the price rose meanwhile. Review again: the call, not a new approval.
+        inputs.nonce = 8
+        inputs.mined = 8
+        allowance = approval.amount
+        price = UInt256.of(300_000)
+        viewModel.review()
+        runCurrent()
+        val purchase = assertIs<PostageStep.Review>(viewModel.ready.step)
+        assertEquals("Buy a postage batch", purchase.title)
+        assertEquals(PostageTexts.position(2), purchase.position)
+    }
+
+    @Test
+    fun anotherSwarmNodeOfTheWalletPayingIsWarnedOfToo() = runTest {
+        swarmNodes = mapOf(payer.id to SwarmCandidateList.Loaded(emptyList(), listOf(BatchId.of("cd".repeat(32)))))
+        allowance = UInt256.of(Long.MAX_VALUE)
+        val viewModel = viewModel(PostageAction.TOP_UP, node, payer)
+        runCurrent()
+        viewModel.review()
+        runCurrent()
+        val review = assertIs<PostageStep.Review>(viewModel.ready.step)
+        assertEquals(listOf(PostageTexts.NODE_KEY_WARNING), review.warnings)
     }
 }

@@ -156,6 +156,7 @@ import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.ObserveSwapVenue
 import eth.serotine.domain.usecase.ObserveSwarmNode
+import eth.serotine.domain.usecase.ObserveSwarmNodes
 import eth.serotine.domain.usecase.ObserveSyncPolicy
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
@@ -570,6 +571,7 @@ class AppGraph(
             ObserveAccount(accounts),
             ObserveAccounts(accounts),
             ObservePostageBatch(swarmContracts),
+            ObserveSwarmNodes(swarmCandidates),
             QuoteBatchPurchase(swarmContracts, transactionInputs, nativeBalances, tokenBalances, sentTransfers, outbox),
             QuoteBatchTopUp(swarmContracts, transactionInputs, nativeBalances, tokenBalances, sentTransfers, outbox),
             QuoteBatchDilution(swarmContracts, transactionInputs, nativeBalances, tokenBalances, sentTransfers, outbox),

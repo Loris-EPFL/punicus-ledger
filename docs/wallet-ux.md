@@ -1932,8 +1932,8 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
   the new depth; its review shows what the batch holds and its time left,
   before and after, and that no xBZZ moves, and says what immutable means
   for an immutable batch.
-- **Where the node's own key signs** (Dilute, or Buy or Top up paid by the
-  node), the review warns: "This is the node's own key. If Bee is running,
+- **Where a Swarm node's key signs** (Dilute; Buy or Top up paid by this
+  node, or by another Swarm node of the wallet), the review warns: "This is the node's own key. If Bee is running,
   stop it before you send: Bee signs with the same key, and one of the two
   transactions can replace the other." A transaction not sent from here
   that took the nonce since the quote signs nothing: the review is made

@@ -69,7 +69,15 @@ private fun SwarmEmptyPreview() = SwarmPreview(
 private fun SwarmBouncedExpiredPreview() = SwarmPreview(
     node.copy(
         chequebooks = listOf(chequebook.copy(warning = SwarmTexts.BOUNCED)),
-        batches = listOf(batch.copy(timeLeft = "Expired", immutable = false)),
+        // An expired batch takes neither a top-up nor a dilution: a tap says to buy a new one.
+        batches = listOf(
+            batch.copy(
+                timeLeft = "Expired",
+                immutable = false,
+                topUp = SwarmAction(SwarmTexts.EXPIRED_ACTION),
+                dilute = SwarmAction(SwarmTexts.EXPIRED_ACTION),
+            ),
+        ),
     ),
 )
 
@@ -79,12 +87,22 @@ private fun SwarmHeldPreview() = SwarmPreview(
     node.copy(
         chequebooks = listOf(chequebook.copy(status = SwarmTexts.verified(43_000_512, held = true))),
         batches = listOf(
-            batch.copy(capacity = null, timeLeft = null, immutable = false, status = SwarmTexts.NOT_READ),
+            // Not proven the node's yet, or another's: no batch action.
+            batch.copy(
+                capacity = null,
+                timeLeft = null,
+                immutable = false,
+                status = SwarmTexts.NOT_READ,
+                topUp = null,
+                dilute = null,
+            ),
             batch.copy(
                 id = "0x" + "0f".repeat(32),
                 shortId = "0x0f0f0f0f…0f0f",
                 capacity = null,
                 timeLeft = null,
+                topUp = null,
+                dilute = null,
                 status = SwarmTexts.stated(
                     SwarmTexts.othersBatch("0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB"),
                     43_000_512,
@@ -130,6 +148,17 @@ private fun SwarmNetworkOffPreview() = SwarmPreview(
         batches = emptyList(),
         batchNote = SwarmTexts.NO_BATCH,
         addReason = SwarmTexts.NETWORK_OFF,
+        buy = SwarmAction(SwarmTexts.NETWORK_OFF, turnOn = true),
+    ),
+)
+
+/** No key here to pay with: Buy a batch and Top up greyed out, a tap saying how to get one. */
+@Preview
+@Composable
+private fun SwarmNoPayerPreview() = SwarmPreview(
+    node.copy(
+        batches = listOf(batch.copy(topUp = SwarmAction(SwarmTexts.NO_PAYER))),
+        buy = SwarmAction(SwarmTexts.NO_PAYER),
     ),
 )
 
@@ -170,6 +199,7 @@ internal val swarmScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("add-checking") { SwarmAddCheckingPreview() },
     ScreenPreview("add-refused") { SwarmAddRefusedPreview() },
     ScreenPreview("network-off") { SwarmNetworkOffPreview() },
+    ScreenPreview("no-payer") { SwarmNoPayerPreview() },
     ScreenPreview("not-removed") { SwarmNotRemovedPreview() },
     ScreenPreview("set-aside") { SwarmSetAsidePreview() },
     ScreenPreview("loading") { SwarmLoadingPreview() },

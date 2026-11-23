@@ -3,9 +3,12 @@ package eth.serotine.data.engine
 import eth.serotine.data.prices.ChainlinkFeeds
 import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.BatchFinding
+import eth.serotine.domain.repository.ChequebookFinding
 import eth.serotine.domain.repository.DelayFinding
 import eth.serotine.domain.repository.DelayGeneration
 import eth.serotine.domain.repository.DelayReading
@@ -15,6 +18,7 @@ import eth.serotine.domain.repository.LightClientRun
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SwarmReading
 import eth.serotine.domain.repository.VenueReading
 import java.nio.file.Files
 import kotlin.test.assertEquals
@@ -145,6 +149,36 @@ class MyotisHostGnosisTest {
             val wired = assertIs<DelayFinding.Wired>(assertIs<DelayReading.Verified>(delayReading).finding)
             assertEquals(DelayGeneration.CURRENT, wired.module.generation)
             assertEquals(listOf(Address.of("0xa52bddbc4145f89b3740266a74f2d81c358677aa")), wired.module.members)
+
+            // A Swarm node's chequebook (docs/swarm.md; SwarmDeployments.kt's doc comment, read
+            // 2026-11-23): proves the chequebook proxy's, the factory's and the master copy's pins,
+            // and that seven getters land on one block.
+            val bee = Address.of("0x0b522dfb53807fd9a9a974ee19d2637205970086")
+            val chequebook = Address.of("0x614f90324e7ac11a08c29f3313de9f4c7e047b77")
+            val chequebookReading = withTimeout(5.minutes) {
+                node.swarmContracts.observeChequebook(gnosis, bee, chequebook).first {
+                    it !is SwarmReading.Syncing &&
+                        !(it is SwarmReading.Unavailable && it.reason == ReadUnavailable.UNPROVEN)
+                }
+            }
+            println("[${at()}] $chequebook: $chequebookReading")
+            val provenChequebook = assertIs<SwarmReading.Verified<ChequebookFinding>>(chequebookReading)
+            assertIs<ChequebookFinding.Node>(provenChequebook.finding)
+
+            // Any batch id proves the PostageStamp's pin: the example batch of SwarmTest, which
+            // had about 38 hours left when read, so whatever it is found to be by now.
+            val batchReading = withTimeout(5.minutes) {
+                node.swarmContracts.observeBatch(
+                    gnosis,
+                    Address.of("0x369e38fb83148fb269f74863006e0e6210fe0c3e"),
+                    BatchId.of("af132f8c833af8d2da19979a31603c6507435ea4ce1194adf14b45a54cc78db2"),
+                ).first {
+                    it !is SwarmReading.Syncing &&
+                        !(it is SwarmReading.Unavailable && it.reason == ReadUnavailable.UNPROVEN)
+                }
+            }
+            println("[${at()}] the PostageStamp: $batchReading")
+            assertIs<SwarmReading.Verified<BatchFinding>>(batchReading)
         } finally {
             progress.cancel()
             node.shutdown()

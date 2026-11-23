@@ -1,28 +1,34 @@
 package eth.serotine.data.engine
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.KnownNftCollection
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.NetworkUpgrade
-import eth.serotine.domain.model.KnownNftCollection
 import eth.serotine.domain.model.NftRef
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.ApprovalReading
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.BlockReading
 import eth.serotine.domain.repository.BlockTransactions
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
-import eth.serotine.domain.repository.EnsNftReading
-import eth.serotine.domain.repository.EnsNfts
-import eth.serotine.domain.repository.FeedReading
-import eth.serotine.domain.repository.FeeReading
-import eth.serotine.domain.repository.GasEstimate
-import eth.serotine.domain.repository.HeadReading
+import eth.serotine.domain.repository.ChequebookFinding
 import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.CowVenueReading
+import eth.serotine.domain.repository.DelayModules
+import eth.serotine.domain.repository.DelayQueueReading
+import eth.serotine.domain.repository.DelayReading
+import eth.serotine.domain.repository.EnsNftReading
+import eth.serotine.domain.repository.EnsNfts
+import eth.serotine.domain.repository.FeeReading
+import eth.serotine.domain.repository.FeedReading
+import eth.serotine.domain.repository.GasEstimate
+import eth.serotine.domain.repository.HeadReading
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
@@ -35,7 +41,6 @@ import eth.serotine.domain.repository.LogsReading
 import eth.serotine.domain.repository.MetadataReading
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.NameResolver
-import eth.serotine.domain.repository.PrimaryName
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NetworkUpgrades
 import eth.serotine.domain.repository.NftCollectionReading
@@ -45,14 +50,14 @@ import eth.serotine.domain.repository.NonceReading
 import eth.serotine.domain.repository.PastReading
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.PriceHistory
+import eth.serotine.domain.repository.PrimaryName
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.ReceiptLog
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
-import eth.serotine.domain.repository.DelayModules
-import eth.serotine.domain.repository.DelayQueueReading
-import eth.serotine.domain.repository.DelayReading
 import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.SwarmContracts
+import eth.serotine.domain.repository.SwarmReading
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenMetadata
@@ -210,6 +215,20 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
             ?: DelayQueueReading.Unavailable(ReadUnavailable.NO_ENGINE)
     }
 
+    val swarmContracts: SwarmContracts = object : SwarmContracts {
+        override fun observeChequebook(
+            network: Network,
+            node: Address,
+            chequebook: Address,
+        ): Flow<SwarmReading<ChequebookFinding>> =
+            of(network)?.swarmContracts?.observeChequebook(network, node, chequebook)
+                ?: flowOf(SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE))
+
+        override fun observeBatch(network: Network, node: Address, id: BatchId): Flow<SwarmReading<BatchFinding>> =
+            of(network)?.swarmContracts?.observeBatch(network, node, id)
+                ?: flowOf(SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE))
+    }
+
     val uniswap: UniswapV3Chain = object : UniswapV3Chain {
         override suspend fun venue(network: Network): VenueReading =
             of(network)?.uniswap?.venue(network) ?: VenueReading.Unavailable(ReadUnavailable.NO_ENGINE)
@@ -278,6 +297,7 @@ class ChainPorts(
     val names: NameResolver,
     val safeApprovals: SafeApprovals,
     val delayModules: DelayModules,
+    val swarmContracts: SwarmContracts,
     val uniswap: UniswapV3Chain,
     val cow: CowChain,
     val logIndex: LogIndex,

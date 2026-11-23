@@ -280,10 +280,14 @@ Through `feature/swarm`, one part per PR:
 
 1. This page, and the rules that carry the decisions.
 2. Domain and adapters: the pins, xBZZ in the token list, the verified
-   reads of a chequebook and a batch, the candidates' store and their
-   discovery in the log index.
-3. The Swarm screen, read only: the node, the chequebook, the batches,
-   adding by hand, and the entries from the account's screen.
-4. The batches' transactions: buy, top up, dilute.
-5. The chequebook's withdrawal, and Activity's rows.
-6. `feature/swarm` into `main`, the owner's to merge.
+   reads of a chequebook and a batch, the candidates' store, and adding and
+   removing a candidate by hand.
+3. Discovery in the log index: the chequebook from the node's xBZZ
+   transfers, and the batches from the PostageStamp's `BatchCreated` logs,
+   followed as an emitter.
+4. The Swarm screen, read only: the node, the chequebook, the batches,
+   adding by hand, the entries from the account's screen, and the reading
+   held for an hour.
+5. The batches' transactions: buy, top up, dilute.
+6. The chequebook's withdrawal, and Activity's rows.
+7. `feature/swarm` into `main`, the owner's to merge.

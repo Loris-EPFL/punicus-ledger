@@ -18,12 +18,12 @@ import androidx.compose.ui.unit.dp
  *   glyph on the pink of the common WETH logo (#EC1C79), so it is not taken for ether.
  *   `xdai`, `wxdai` and `sdai` are its `dai` glyph on colours of their own (xDAI's teal, Gnosis
  *   Chain's dark green and an amber), so none is taken for DAI or for another.
- * - `eurc`, `pyusd`, `gho`, `gno`, `eure`, `cow` and `safe`, which that set lacks:
+ * - `eurc`, `pyusd`, `gho`, `gno`, `eure`, `cow`, `safe` and `bzz`, which that set lacks:
  *   0xa3k5/web3icons, `raw-svgs/tokens/background/<KEY>.svg` at commit
  *   3cce0f390cf902f204a1b3d52f485bcc95d2fe9e (https://github.com/0xa3k5/web3icons), its
  *   square background drawn as a circle like the others'. The marks are the trademarks of
- *   their issuers (Circle, Paxos, Aave, Gnosis, Monerium, CoW DAO, Safe). Its licence, which
- *   these seven icons carry:
+ *   their issuers (Circle, Paxos, Aave, Gnosis, Monerium, CoW DAO, Safe, the Swarm Foundation).
+ *   Its licence, which these eight icons carry:
  *
  *   MIT License. Copyright (c) 2024 0xa3k5.
  *
@@ -72,6 +72,7 @@ object TokenIcons {
         "eure" -> eure
         "cow" -> cow
         "safe" -> safe
+        "bzz" -> bzz
         else -> null
     }
 
@@ -341,6 +342,28 @@ object TokenIcons {
                 ),
                 fill = SolidColor(Color(0xFFFFFFFF)),
                 pathFillType = PathFillType.EvenOdd,
+            )
+            .build()
+    }
+
+    /** `bzz`: Swarm's xBZZ, web3icons' `BZZ.svg`, its square drawn as a circle like the others'. */
+    private val bzz: ImageVector by lazy {
+        icon("bzz", 24f)
+            .addPath(
+                addPathNodes(
+                    "M0,12a12,12 0 1,0 24,0a12,12 0 1,0 -24,0z",
+                ),
+                fill = SolidColor(Color(0xFFD66700)),
+            )
+            .addPath(
+                addPathNodes(
+                    "M14.5 5.36999L16.5 4.25L18.4999 5.37999V7.62998L16.5 8.74998L16.495 8.73998L14.5 7.61998V5." +
+                    "36999ZM7.74998 19.75L4 17.75V13.7499L7.74998 11.7499L11.4999 13.7499V17.75L7.74998 19.75ZM2" +
+                    "0 13.7499L16.25 11.7499L12.5 13.7499V17.75L16.25 19.75L20 17.75V13.7499ZM8.49998 6.86998L1" +
+                    "1.995 4.99499L13.4999 5.74999V7.95498L15.4999 9.24998V10.615L11.9999 12.4899L8.49998 10.61" +
+                    "5V6.86498V6.86998Z",
+                ),
+                fill = SolidColor(Color(0xFFFFFFFF)),
             )
             .build()
     }

@@ -38,7 +38,12 @@ has the details) runs on every PR:
 4. It writes the before/after table into the description, between
    `<!-- screenshots:start -->` and `<!-- screenshots:end -->`, under
    `## Screenshots`: one row per screenshot added, changed or removed since
-   the branch left its base.
+   the branch left its base. Each row is a collapsible `<details>` (owner's
+   request, 2026-11-23: readable without zooming, dismissed in place): its
+   summary names the state beside small before and after thumbnails, and
+   opened, it shows both at their own size, side by side for a phone, one
+   above the other for anything wider. No image carries a link of the
+   script's own, so GitHub opens a click on one in a new tab.
 
 On `main` it fails when the committed set differs from the render.
 

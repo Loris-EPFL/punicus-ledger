@@ -101,6 +101,13 @@ private fun WithdrawCheckingPreview() = WithdrawPreview(ready.copy(step = review
 @Composable
 private fun WithdrawSigningPreview() = WithdrawPreview(ready.copy(step = review.copy(signing = true)))
 
+/** The chequebook not verified now: nothing offered to fill in, the card saying why. */
+@Preview
+@Composable
+private fun WithdrawNotVerifiedPreview() = WithdrawPreview(
+    ready.copy(lines = listOf("Waiting for the light client to sync…"), step = form.copy(all = null)),
+)
+
 @Preview
 @Composable
 private fun WithdrawLoadingPreview() = WithdrawPreview(WithdrawUiState.Loading)
@@ -121,6 +128,7 @@ internal val withdrawScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("wrong-password") { WithdrawWrongPasswordPreview() },
     ScreenPreview("checking") { WithdrawCheckingPreview() },
     ScreenPreview("signing") { WithdrawSigningPreview() },
+    ScreenPreview("not-verified") { WithdrawNotVerifiedPreview() },
     ScreenPreview("loading") { WithdrawLoadingPreview() },
     ScreenPreview("no-key") { WithdrawNoKeyPreview() },
 )

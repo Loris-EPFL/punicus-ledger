@@ -1894,6 +1894,9 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
   each; **Dilute** on each, greyed out unless the node's key is held here.
   Both are greyed out on an expired batch, a tap saying to buy a new one.
   **Buy a batch** and **Add a batch by id** under the list.
+- **A chequebook or a batch kept but not verified now** (Gnosis Chain off,
+  syncing, a read that found no proof) shows its Withdraw, Top up and Dilute
+  greyed out, a tap saying what it waits for, never hides them.
 - **Each chequebook and batch** has **Remove**, which is remembered: the
   log index never adds it back, and adding it by hand keeps it again. One
   not read yet says "Checking on chain…"; one that is not the node's says

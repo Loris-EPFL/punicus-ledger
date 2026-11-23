@@ -123,9 +123,8 @@ data class Chequebook(
 }
 
 /**
- * Where Bee's contracts are on a network, as far as finding a node's chequebook and batches in the
- * log index goes (docs/swarm.md, *Where the candidates come from*): the [bzz] token every
- * chequebook and batch is paid in, and the [postageStamp] whose `BatchCreated` logs name each
- * batch's owner.
+ * Where Bee's contracts are on a network (docs/swarm.md, *The contracts*): the [bzz] token every
+ * chequebook and batch is paid in, as the built-in token list has it, and the [postageStamp], whose
+ * `BatchCreated` logs name each batch's owner and which a purchase or a top-up is approved to.
  */
-data class SwarmDeployment(val bzz: Address, val postageStamp: Address)
+data class SwarmDeployment(val bzz: Token, val postageStamp: Address)

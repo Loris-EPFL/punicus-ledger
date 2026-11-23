@@ -200,9 +200,10 @@ data class SwapSummary(
 data class CancellationSummary(val title: String, val order: String, val settlement: String, val from: String)
 
 /**
- * A Gnosis Pay account's call of its Delay module, from this device's record: [title] ("Queued 0.01
- * EURe to 0x91f8…89af through the Delay"), its [lines] (label to value: the account, the Delay
- * module, the recipient, what it moves and when), and the EIP-55 [from], the key that sent it.
+ * A Gnosis Pay account's call of its Delay module, or a Swarm node's postage batch call, from this
+ * device's record: [title] ("Queued 0.01 EURe to 0x91f8…89af through the Delay", "Bought a postage
+ * batch"), its [lines] (label to value: the account, the Delay module, the recipient, what it moves
+ * and when; or the batch, its depth and what was paid), and the EIP-55 [from], the key that sent it.
  */
 data class DelaySummary(val title: String, val lines: List<Pair<String, String>>, val from: String)
 

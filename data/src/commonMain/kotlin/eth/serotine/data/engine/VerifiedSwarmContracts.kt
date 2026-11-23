@@ -3,15 +3,18 @@ package eth.serotine.data.engine
 import eth.serotine.data.keys.fromHex
 import eth.serotine.data.swarm.PinnedSwarm
 import eth.serotine.data.swarm.SwarmDeployments
+import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Chequebook
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PostageBatch
+import eth.serotine.domain.model.PostageState
 import eth.serotine.domain.model.SwarmDeployment
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.ChequebookFinding
+import eth.serotine.domain.repository.PostageReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SwarmContracts
 import eth.serotine.domain.repository.SwarmReading
@@ -26,6 +29,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import org.kotlincrypto.hash.sha3.Keccak256
 
 /**
  * [SwarmContracts] over a verified light client (docs/swarm.md, *Recognition*), against Bee's
@@ -41,8 +46,11 @@ import kotlinx.coroutines.sync.withLock
  *   a zero owner is [BatchFinding.Gone], another owner [BatchFinding.OthersOwner]; then
  *   `remainingBalance(id)` and `lastPrice()`.
  *
- * Code that matched its pin is not proven again in this process: none of these contracts is a
- * proxy that can change its code, and a contract's code cannot change after deployment. A set of
+ * Code that matched its pin is not proven again in this process, since a contract's code cannot
+ * change after deployment; what a proxy can change is the implementation it delegates to, so
+ * xBZZ's EIP-1967 slot is read at every [postage] read, before and after its state, and the
+ * implementation it names is matched against its pin each time. The chequebook proxy's master
+ * copy is immutable in its code. A set of
  * calls that straddles two blocks, or in which a call gave no answer, is made again, after a pause
  * for the latter, up to [READ_TRIES] reads in all, and is otherwise unproven for that poll. A
  * getter that reverts or answers what the pinned contract's never does is unproven; a refusal is
@@ -52,8 +60,8 @@ import kotlinx.coroutines.sync.withLock
  */
 class VerifiedSwarmContracts internal constructor(
     private val served: Network,
-    chain: VerifiedChain?,
-    dispatcher: CoroutineDispatcher,
+    private val chain: VerifiedChain?,
+    private val dispatcher: CoroutineDispatcher,
     pollInterval: Duration,
     private val pins: PinnedSwarm? = SwarmDeployments.of(served),
 ) : SwarmContracts {
@@ -109,8 +117,85 @@ class VerifiedSwarmContracts internal constructor(
         return batches.observe(node to id).map { it.toSwarmReading() }
     }
 
-    override fun deployment(network: Network): SwarmDeployment? =
-        pins?.takeIf { network == served }?.let { SwarmDeployment(it.bzz, it.postageStamp) }
+    /** xBZZ as the built-in token list has it: its symbol and decimals checked when it is listed. */
+    private val bzz = pins?.let { pinned -> BuiltInTokens.of(served).firstOrNull { it.address == pinned.bzz } }
+
+    override fun deployment(network: Network): SwarmDeployment? {
+        if (network != served) return null
+        val pinned = pins ?: return null
+        return bzz?.let { SwarmDeployment(it, pinned.postageStamp) }
+    }
+
+    override suspend fun postage(network: Network, node: Address?, id: BatchId?): PostageReading {
+        require((node == null) == (id == null)) { "a batch is asked about by its node and its id together" }
+        if (network != served) return PostageReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        val pinned = pins ?: return PostageReading.NotPinned
+        val verified = chain ?: return PostageReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        return withContext(dispatcher) {
+            try {
+                whyUnreadable(verified.snapshot())?.let { return@withContext PostageReading.Unavailable(it) }
+                readPostage(verified, pinned, node?.let { owner -> checkNotNull(id).let { owner to it } })
+            } catch (e: Throwable) {
+                // A cancellation of this call ends it; anything else is an engine failure, as in ProvenReads.
+                currentCoroutineContext().ensureActive()
+                PostageReading.Unavailable(ReadUnavailable.UNPROVEN)
+            }
+        }
+    }
+
+    /** The PostageStamp's state, its code and xBZZ's proven first. */
+    private suspend fun readPostage(
+        chain: VerifiedChain,
+        pins: PinnedSwarm,
+        batch: Pair<Address, BatchId>?,
+    ): PostageReading {
+        val unproven = PostageReading.Unavailable(ReadUnavailable.UNPROVEN)
+        if (codeCheck(chain, pins.postageStamp, pins.postageStampCodeHash) != CodeCheck.Matches) return unproven
+        when (codeCheck(chain, pins.bzz, pins.bzzProxyCodeHash)) {
+            null -> return unproven
+            is CodeCheck.Differs -> return PostageReading.BzzChanged
+            CodeCheck.Matches -> Unit
+        }
+        // The implementation the proxy delegates to, as its EIP-1967 slot names it now: read every time.
+        val implementation = implementationOf(chain, pins) ?: return unproven
+        if (implementation != pins.bzzImplementation) return PostageReading.BzzChanged
+        when (codeCheck(chain, implementation, pins.bzzImplementationCodeHash)) {
+            null -> return unproven
+            is CodeCheck.Differs -> return PostageReading.BzzChanged
+            CodeCheck.Matches -> Unit
+        }
+        val read = readAtOneBlock(chain) { calls ->
+            val state = postageAt(calls, pins.postageStamp) ?: return@readAtOneBlock null
+            // The batch at the same block as the state it is quoted with, never a reading kept before.
+            val found = batch?.let { (owner, id) ->
+                batchAt(calls, pins.postageStamp, owner, id) ?: return@readAtOneBlock null
+            }
+            state to found
+        }
+        // The slot read again after the state: an upgrade between the two reads never passes unseen.
+        val after = implementationOf(chain, pins) ?: return unproven
+        if (after != implementation) return PostageReading.BzzChanged
+        return when (read) {
+            null -> unproven
+            is EngineReading.Proven -> PostageReading.Read(read.value.first, read.blockNumber, read.value.second)
+            is EngineReading.Unavailable -> PostageReading.Unavailable(read.reason)
+            EngineReading.Syncing, is EngineReading.LastKnown -> unproven
+        }
+    }
+
+    /** The implementation xBZZ's proxy names in its EIP-1967 slot now; null when it could not be read verified. */
+    private fun implementationOf(chain: VerifiedChain, pins: PinnedSwarm): Address? {
+        val slot = chain.storageAt(pins.bzz, EIP1967_IMPLEMENTATION) ?: return null
+        return addressOf(slot.removePrefix("0x").lowercase().padStart(64, '0'))
+    }
+
+    /** The PostageStamp's `paused()`, `lastPrice()` and `minimumInitialBalancePerChunk()` at one block. */
+    private fun postageAt(calls: OneBlockCalls, stamp: Address): PostageState? {
+        val paused = calls.bool(stamp, PAUSED) ?: return null
+        val price = calls.uint(stamp, LAST_PRICE) ?: return null
+        val minimum = calls.uint(stamp, MINIMUM_PER_CHUNK) ?: return null
+        return PostageState(paused, price, minimum)
+    }
 
     /**
      * Whether the code at [address], proven, hashes to [pin]; null when it could not be proven. A
@@ -233,6 +318,13 @@ class VerifiedSwarmContracts internal constructor(
 
         // The PostageStamp's (storage-incentives, PostageStamp).
         val LAST_PRICE: ByteArray = "053f14da".fromHex()
+        val PAUSED: ByteArray = "5c975abb".fromHex()
+        val MINIMUM_PER_CHUNK: ByteArray =
+            Keccak256().digest("minimumInitialBalancePerChunk()".encodeToByteArray()).copyOf(4)
+
+        /** EIP-1967's implementation slot: `keccak256("eip1967.proxy.implementation") - 1`. */
+        val EIP1967_IMPLEMENTATION: ByteArray =
+            "360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc".fromHex()
 
         /** The factory's `deployedContracts(address)`: whether it deployed [contract]. */
         fun deployedContracts(contract: Address): ByteArray =

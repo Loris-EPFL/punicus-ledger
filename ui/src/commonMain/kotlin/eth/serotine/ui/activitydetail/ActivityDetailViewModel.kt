@@ -10,6 +10,7 @@ import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwarmCalls
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.repository.AccountList
@@ -285,6 +286,28 @@ class ActivityDetailViewModel(
             is SentAction.DelaySkip -> {
                 fields += addressOf("Gnosis Pay account", action.safe, names)
                 fields += addressOf("Delay module", action.delay, names)
+            }
+            // A Swarm node's postage batch (docs/swarm.md, *History*).
+            is SentAction.BatchPurchase -> {
+                fields += addressOf("For the node", action.owner, names)
+                fields += DetailField("Batch", "0x" + action.id.hex, DetailKind.HASH)
+                fields += DetailField("Depth", action.depth.toString())
+                SwarmCalls.total(action.perChunk, action.depth)
+                    ?.let { fields += DetailField("Paid", rows.amount(it, TransferAsset.Erc20Token(action.token))) }
+                fields += DetailField("Immutable", if (action.immutable) "Yes" else "No")
+                fields += addressOf("Postage contract", action.stamp, names)
+            }
+            is SentAction.BatchTopUp -> {
+                fields += addressOf("For the node", action.node, names)
+                fields += DetailField("Batch", "0x" + action.id.hex, DetailKind.HASH)
+                SwarmCalls.total(action.perChunk, action.depth)
+                    ?.let { fields += DetailField("Paid", rows.amount(it, TransferAsset.Erc20Token(action.token))) }
+                fields += addressOf("Postage contract", action.stamp, names)
+            }
+            is SentAction.BatchDilution -> {
+                fields += DetailField("Batch", "0x" + action.id.hex, DetailKind.HASH)
+                fields += DetailField("New depth", action.depth.toString())
+                fields += addressOf("Postage contract", action.stamp, names)
             }
         }
         fields += DetailField("Transaction hash", transfer.hash, DetailKind.HASH)

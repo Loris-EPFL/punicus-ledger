@@ -140,6 +140,9 @@ class SwarmViewModelTest {
         )
 
         override fun deployment(network: Network) = null
+
+        override suspend fun postage(network: Network, node: Address?, id: BatchId?) =
+            eth.serotine.domain.repository.PostageReading.NotPinned
     }
 
     @AfterTest

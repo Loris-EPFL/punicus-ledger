@@ -67,6 +67,9 @@ class SwarmNodesTest {
             flowOf(batchReadings[id] ?: SwarmReading.Verified(BatchFinding.Node(batch), 7)).also { nodesAsked += node }
 
         override fun deployment(network: Network) = null
+
+        override suspend fun postage(network: Network, node: Address?, id: BatchId?) =
+            eth.serotine.domain.repository.PostageReading.NotPinned
     }
 
     private val stored = MutableStateFlow<SwarmCandidateList>(SwarmCandidateList.Loaded(emptyList(), emptyList()))

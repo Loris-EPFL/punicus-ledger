@@ -68,7 +68,7 @@ class SwarmNodesTest {
 
         override fun observeNodes(network: Network) = flowOf(emptyMap<AccountId, SwarmCandidateList.Loaded>())
 
-        override suspend fun add(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange {
+        override suspend fun add(node: AccountId, candidate: SwarmCandidate, byHand: Boolean): SwarmCandidateChange {
             added += candidate
             return addAnswer
         }

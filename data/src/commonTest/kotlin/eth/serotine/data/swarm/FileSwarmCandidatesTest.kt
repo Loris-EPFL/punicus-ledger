@@ -45,9 +45,10 @@ class FileSwarmCandidatesTest {
     @Test
     fun candidatesSurviveARestartPerNode() = runTest {
         val first = candidates()
-        assertEquals(SwarmCandidateChange.CHANGED, first.add(node, SwarmCandidate.ChequebookAt(chequebook)))
-        assertEquals(SwarmCandidateChange.ALREADY_PRESENT, first.add(node, SwarmCandidate.ChequebookAt(chequebook)))
-        assertEquals(SwarmCandidateChange.CHANGED, first.add(node, SwarmCandidate.Batch(batch)))
+        val atChequebook = SwarmCandidate.ChequebookAt(chequebook)
+        assertEquals(SwarmCandidateChange.CHANGED, first.add(node, atChequebook, byHand = true))
+        assertEquals(SwarmCandidateChange.ALREADY_PRESENT, first.add(node, atChequebook, byHand = true))
+        assertEquals(SwarmCandidateChange.CHANGED, first.add(node, SwarmCandidate.Batch(batch), byHand = true))
 
         assertEquals(SwarmCandidateList.Loaded(listOf(chequebook), listOf(batch)), candidates().observe(node).first())
         // The same address on another network is another account, with nothing kept.
@@ -60,8 +61,8 @@ class FileSwarmCandidatesTest {
     @Test
     fun theNodesOfANetworkAreListedWithTheirCandidates() = runTest {
         val store = candidates()
-        store.add(node, SwarmCandidate.Batch(batch))
-        store.add(node.copy(network = Network.ETHEREUM), SwarmCandidate.ChequebookAt(chequebook))
+        store.add(node, SwarmCandidate.Batch(batch), byHand = true)
+        store.add(node.copy(network = Network.ETHEREUM), SwarmCandidate.ChequebookAt(chequebook), byHand = true)
         assertEquals(
             mapOf(node to SwarmCandidateList.Loaded(emptyList(), listOf(batch))),
             store.observeNodes(Network.GNOSIS).first(),
@@ -71,7 +72,7 @@ class FileSwarmCandidatesTest {
     @Test
     fun aRemovedCandidateIsRememberedAsRemovedUntilItIsAddedAgain() = runTest {
         val store = candidates()
-        store.add(node, SwarmCandidate.Batch(batch))
+        store.add(node, SwarmCandidate.Batch(batch), byHand = true)
         assertEquals(SwarmCandidateChange.NOT_FOUND, store.remove(node, SwarmCandidate.ChequebookAt(chequebook)))
         assertEquals(SwarmCandidateChange.CHANGED, store.remove(node, SwarmCandidate.Batch(batch)))
         assertEquals(SwarmCandidateChange.NOT_FOUND, store.remove(node, SwarmCandidate.Batch(batch)))
@@ -81,7 +82,7 @@ class FileSwarmCandidatesTest {
         assertEquals(removed, candidates().observe(node).first())
         assertTrue(!removed.keepsAny, "a removal alone makes no node")
 
-        assertEquals(SwarmCandidateChange.CHANGED, store.add(node, SwarmCandidate.Batch(batch)))
+        assertEquals(SwarmCandidateChange.CHANGED, store.add(node, SwarmCandidate.Batch(batch), byHand = true))
         assertEquals(SwarmCandidateList.Loaded(emptyList(), listOf(batch)), candidates().observe(node).first())
     }
 
@@ -94,6 +95,19 @@ class FileSwarmCandidatesTest {
             SwarmCandidateList.Loaded(emptyList(), emptyList(), setAside = true),
             candidates().observe(node).first(),
         )
+    }
+
+    @Test
+    fun aFoundCandidateNeverUndoesTheUsersRemoval() = runTest {
+        val store = candidates()
+        store.add(node, SwarmCandidate.Batch(batch), byHand = true)
+        store.remove(node, SwarmCandidate.Batch(batch))
+        assertEquals(SwarmCandidateChange.DISMISSED, store.add(node, SwarmCandidate.Batch(batch), byHand = false))
+        // Listed with its removal alone, which is what the log index's follower checks against.
+        val removed =
+            SwarmCandidateList.Loaded(emptyList(), emptyList(), dismissed = setOf(SwarmCandidate.Batch(batch)))
+        assertEquals(mapOf(node to removed), store.observeNodes(Network.GNOSIS).first())
+        assertEquals(SwarmCandidateChange.CHANGED, store.add(node, SwarmCandidate.Batch(batch), byHand = true))
     }
 
     @Test
@@ -120,6 +134,6 @@ class FileSwarmCandidatesTest {
         SystemFileSystem.createDirectories(directory)
         SystemFileSystem.sink(file).buffered().use { it.writeString("{\"version\":2,\"nodes\":[]}") }
         assertEquals(SwarmCandidateList.Unreadable, candidates().observe(node).first())
-        assertEquals(SwarmCandidateChange.NOT_SAVED, candidates().add(node, SwarmCandidate.Batch(batch)))
+        assertEquals(SwarmCandidateChange.NOT_SAVED, candidates().add(node, SwarmCandidate.Batch(batch), byHand = true))
     }
 }

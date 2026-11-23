@@ -119,8 +119,11 @@ class AddSwarmCandidate(
     private val candidates: SwarmCandidates,
     private val contracts: SwarmContracts,
 ) {
-    /** Reads [candidate] for [account] and keeps it when it is the node's. Never throws. */
-    suspend operator fun invoke(account: Account, candidate: SwarmCandidate): SwarmAddOutcome {
+    /**
+     * Reads [candidate] for [account] and keeps it when it is the node's. [byHand] is the user's
+     * own add; one found (in the log index) is never kept when the user removed it. Never throws.
+     */
+    suspend operator fun invoke(account: Account, candidate: SwarmCandidate, byHand: Boolean = true): SwarmAddOutcome {
         if (!canBeSwarmNode(account)) return SwarmAddOutcome.NotASwarmAccount
         val node = account.id
         val refusal = when (candidate) {
@@ -148,9 +151,10 @@ class AddSwarmCandidate(
             }
         }
         if (refusal != null) return refusal
-        return when (candidates.add(node, candidate)) {
+        return when (candidates.add(node, candidate, byHand)) {
             SwarmCandidateChange.CHANGED -> SwarmAddOutcome.Added
             SwarmCandidateChange.ALREADY_PRESENT -> SwarmAddOutcome.AlreadyAdded
+            SwarmCandidateChange.DISMISSED -> SwarmAddOutcome.Dismissed
             SwarmCandidateChange.NOT_FOUND, SwarmCandidateChange.NOT_SAVED -> SwarmAddOutcome.NotSaved
         }
     }
@@ -170,6 +174,9 @@ sealed interface SwarmAddOutcome {
 
     /** Proven the node's, and kept already. */
     data object AlreadyAdded : SwarmAddOutcome
+
+    /** Found, not added by hand, and one the user removed: it stays removed. */
+    data object Dismissed : SwarmAddOutcome
 
     /** The account is no EOA on Gnosis Chain, where Bee's contracts are pinned. */
     data object NotASwarmAccount : SwarmAddOutcome
@@ -199,6 +206,9 @@ class RemoveSwarmCandidate(private val candidates: SwarmCandidates) {
     suspend operator fun invoke(node: AccountId, candidate: SwarmCandidate): Boolean =
         when (candidates.remove(node, candidate)) {
             SwarmCandidateChange.CHANGED, SwarmCandidateChange.NOT_FOUND -> true
-            SwarmCandidateChange.ALREADY_PRESENT, SwarmCandidateChange.NOT_SAVED -> false
+            SwarmCandidateChange.ALREADY_PRESENT,
+            SwarmCandidateChange.NOT_SAVED,
+            SwarmCandidateChange.DISMISSED,
+            -> false
         }
 }

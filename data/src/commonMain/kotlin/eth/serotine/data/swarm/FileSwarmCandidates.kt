@@ -89,9 +89,11 @@ class FileSwarmCandidates(
             }
         }.distinctUntilChanged()
 
-    override suspend fun add(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange =
+    override suspend fun add(node: AccountId, candidate: SwarmCandidate, byHand: Boolean): SwarmCandidateChange =
         file.change(SwarmCandidateChange.NOT_SAVED) { all ->
             val kept = all[node] ?: Kept()
+            // Found, it never undoes the user's removal: checked in the same change as the write.
+            if (!byHand && candidate in kept.dismissed) return@change Decision(SwarmCandidateChange.DISMISSED)
             // Added again, by hand: no longer one the user removed.
             val next = when (candidate) {
                 is SwarmCandidate.ChequebookAt ->

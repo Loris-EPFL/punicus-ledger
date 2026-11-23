@@ -17,16 +17,21 @@ interface SwarmCandidates {
     fun observe(node: AccountId): Flow<SwarmCandidateList>
 
     /**
-     * Every node on [network] that has a candidate kept, with them, re-emitted on each change; null
-     * while the candidates cannot be read. Never throws.
+     * Every node on [network] that has a candidate kept or removed, with them, re-emitted on each
+     * change; null while the candidates cannot be read. A node whose candidates were all removed is
+     * listed too, with its removals ([SwarmCandidateList.Loaded.dismissed]): what finds candidates
+     * in the log index relies on them. [SwarmCandidateList.Loaded.keepsAny] tells which are nodes.
+     * Never throws.
      */
     fun observeNodes(network: Network): Flow<Map<AccountId, SwarmCandidateList.Loaded>?>
 
     /**
-     * Adds [candidate] to [node]'s, and takes it off those the user removed;
-     * [SwarmCandidateChange.ALREADY_PRESENT] when it is there already. Never throws.
+     * Adds [candidate] to [node]'s; [SwarmCandidateChange.ALREADY_PRESENT] when it is there already.
+     * Added [byHand], it is taken off those the user removed. Found ([byHand] false: in the log
+     * index, or bought here), one the user removed is refused ([SwarmCandidateChange.DISMISSED]) and
+     * stays removed, checked in the same change as the write. Never throws.
      */
-    suspend fun add(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange
+    suspend fun add(node: AccountId, candidate: SwarmCandidate, byHand: Boolean): SwarmCandidateChange
 
     /**
      * Takes [candidate] out of [node]'s and remembers that the user removed it, so that what finds
@@ -77,6 +82,9 @@ enum class SwarmCandidateChange {
 
     /** Nothing is there to change. */
     NOT_FOUND,
+
+    /** Found, not added by hand, and one the user removed: it stays removed. */
+    DISMISSED,
 
     /** The candidates could not be saved, or cannot be read; nothing changed. */
     NOT_SAVED,

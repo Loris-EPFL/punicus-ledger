@@ -32,19 +32,29 @@ import kotlinx.coroutines.flow.conflate
  * - **A chequebook.** Every xBZZ `Transfer` an EOA of the wallet sent (its own log-index entry,
  *   [FollowAccountLogs]'s mention of it, the EOA as topic 1) names a recipient: other than the
  *   PostageStamp, a chequebook candidate.
- * - **A batch.** While a Swarm node is in the wallet (an EOA with a candidate kept), the index also
- *   follows the PostageStamp as an emitter, from the earliest start among those nodes' entries;
- *   with none left, the entry is dropped. Each `BatchCreated` it holds names its batch's owner in
- *   its data; one that is an EOA of the wallet makes the batch a candidate. That finds a batch
- *   bought for the node by anyone.
- * - **Proven before it is kept.** Each candidate goes through [AddSwarmCandidate]: kept only once
- *   the light client proves it the account's. At most [MAX_PROOFS_PER_ROUND] are proven a round,
- *   the newest first; the rest wait for the next round. One proven not to be the account's is not
- *   tried again while this runs; one that could not be verified is tried again next round. One the
- *   user removed ([SwarmCandidateList.Loaded.dismissed]) is never added back.
+ * - **A batch the wallet bought** (owner's decision, 2026-11-23). While a Swarm node is in the
+ *   wallet (an EOA with a candidate kept), the index also follows the PostageStamp as an emitter,
+ *   from the earliest start among those nodes' entries; with none left, the entry is dropped. A
+ *   `BatchCreated` it holds makes its batch a candidate only when its owner, in its data, is an EOA
+ *   of the wallet AND its transaction also holds an xBZZ `Transfer` to the PostageStamp from an
+ *   account of the wallet: the wallet paid for it. `createBatch` takes any owner, so anyone can
+ *   create a batch that names an account of the wallet; such a batch is added by hand, never by
+ *   this.
+ * - **Proven before it is kept.** Each candidate goes through [AddSwarmCandidate] as found
+ *   ([AddSwarmCandidate.invoke] with `byHand` false): kept only once the light client proves it
+ *   the account's, and never one the user removed. At most [MAX_PROOFS_PER_ROUND] are proven a
+ *   round, the newest first; the rest wait for the next round. One that could not be verified is
+ *   tried again next round. One proven not to be the account's is not tried again while this
+ *   runs, unless a log of a later block names it again (its transaction mined anew).
  * - **Only what the index covers.** Each entry's covered range is read, from its start, never past
  *   it; a range not covered yet is never taken as "nothing there". What was read is not read again
- *   while this runs, unless the entry starts anew (dropped and followed again).
+ *   while this runs, but the top [REORG_DEPTH] blocks of it, which a reorganisation can still
+ *   replace, are read again as the span grows: coverage is polled, so a rewind and its re-walk
+ *   between two polls look like growth. An entry that starts anew is read again from scratch, and
+ *   so is the PostageStamp's when an EOA joins the wallet.
+ * - **Nothing outlives a run.** What was read, and what was proven not to be an account's, live
+ *   in this instance: each start of the hosts' work reads the covered spans again (local, and
+ *   cheap) and proves again what is neither kept nor removed, 16 a round (verified reads).
  *
  * A change of the index is asked with [downloads]' pause, as [FollowAccountLogs] asks its own: the
  * engine keeps the pause asked last for every entry. Runs on Gnosis Chain, where Bee's contracts
@@ -67,11 +77,23 @@ class FollowSwarmLogs(
     /** What each entry's logs were read over so far, with the start the entry had then. */
     private val read = mutableMapOf<LogWatchKey, ReadSpan>()
 
-    /** Candidates found and not yet proven either way, per account, the newest last. */
-    private val pending = mutableMapOf<AccountId, LinkedHashSet<SwarmCandidate>>()
+    /** The EOAs listed at the last round: one that joins has the PostageStamp's logs matched anew. */
+    private var listedEoas: Set<Address> = emptySet()
 
-    /** Candidates proven not to be the account's, never tried again while this runs. */
-    private val refused = mutableSetOf<Pair<AccountId, SwarmCandidate>>()
+    /** Transactions in which an account of the wallet paid the PostageStamp in xBZZ. */
+    private val paid = mutableSetOf<String>()
+
+    /** `BatchCreated`s for an EOA of the wallet whose transaction no payment of the wallet is known in yet. */
+    private val unpaid = mutableMapOf<String, MutableSet<FoundBatch>>()
+
+    /** Candidates found and not yet proven either way, per account, the newest last, with their log's block. */
+    private val pending = mutableMapOf<AccountId, LinkedHashMap<SwarmCandidate, Long>>()
+
+    /**
+     * Candidates proven not to be the account's, with the newest block a log named them in then;
+     * never tried again while this runs, unless a log of a later block names them.
+     */
+    private val refused = mutableMapOf<Pair<AccountId, SwarmCandidate>, Long>()
 
     /** Runs until cancelled. */
     suspend operator fun invoke() {
@@ -94,36 +116,64 @@ class FollowSwarmLogs(
             return
         }
         if (round.status !is LightClientStatus.Synced) return
-        val eoas = (round.accounts as? AccountList.Loaded)?.accounts?.filter(::canBeSwarmNode) ?: return
+        val listed = (round.accounts as? AccountList.Loaded)?.accounts?.filter { it.network == network } ?: return
+        val eoas = listed.filter(::canBeSwarmNode)
         val nodes = round.nodes ?: return
         val coverage = (round.coverage as? LogCoverageReading.Read)?.entries ?: return
-        forgetWhatLeft(eoas)
+        forgetWhatLeft(listed, eoas, deployment)
         followTheStamp(eoas, nodes, coverage, deployment, !round.downloads.mayRun)
-        for (account in eoas) {
-            chequebooksOf(account, coverage, deployment).forEach { found(account, it) }
+        val eoaIds = eoas.map { it.id }.toSet()
+        for (account in listed) {
+            for (transfer in xbzzSentBy(account, coverage, deployment)) {
+                if (transfer.to == deployment.postageStamp) {
+                    paid += transfer.transaction
+                } else if (account.id in eoaIds) {
+                    found(account, SwarmCandidate.ChequebookAt(transfer.to), transfer.block)
+                }
+            }
         }
         val byAddress = eoas.associateBy { it.address }
-        batchesIn(coverage, deployment).forEach { (owner, id) ->
-            byAddress[owner]?.let { found(it, SwarmCandidate.Batch(id)) }
+        batchesIn(coverage, deployment).filter { it.owner in byAddress }.forEach {
+            unpaid.getOrPut(it.transaction) { mutableSetOf() } += it
+        }
+        // Only a batch the wallet paid for (owner's decision, 2026-11-23).
+        unpaid.keys.filter { it in paid }.forEach { transaction ->
+            unpaid.remove(transaction)?.forEach { batch ->
+                byAddress[batch.owner]?.let { found(it, SwarmCandidate.Batch(batch.id), batch.block) }
+            }
         }
         prove(eoas, nodes)
     }
 
-    /** Drops what is held for accounts that left the wallet: their entries may start anew later. */
-    private fun forgetWhatLeft(eoas: List<Account>) {
-        val listed = eoas.map { it.address }.toSet()
-        read.keys.removeAll { it is LogWatchKey.Mention && it.address !in listed }
-        pending.keys.removeAll { it.address !in listed }
-        refused.removeAll { (id, _) -> id.address !in listed }
+    /**
+     * Drops what is held for accounts that left the wallet, whose entries may start anew later;
+     * and, when an EOA joined, what was read of the PostageStamp's, so that its batches are matched.
+     */
+    private fun forgetWhatLeft(listed: List<Account>, eoas: List<Account>, deployment: SwarmDeployment) {
+        val addresses = listed.map { it.address }.toSet()
+        read.keys.removeAll { it is LogWatchKey.Mention && it.address !in addresses }
+        pending.keys.removeAll { it.address !in addresses }
+        refused.keys.removeAll { (id, _) -> id.address !in addresses }
+        val now = eoas.map { it.address }.toSet()
+        if (!listedEoas.containsAll(now)) read.remove(LogWatchKey.Emitter(deployment.postageStamp))
+        unpaid.values.forEach { batches -> batches.removeAll { it.owner !in now } }
+        unpaid.values.removeAll { it.isEmpty() }
+        listedEoas = now
     }
 
-    /** Notes [candidate] for [account], unless it was proven not to be the account's. */
-    private fun found(account: Account, candidate: SwarmCandidate) {
-        if (account.id to candidate in refused) return
-        val queue = pending.getOrPut(account.id) { LinkedHashSet() }
+    /** Notes [candidate] for [account], named by a log of [block], unless it was proven not to be the account's. */
+    private fun found(account: Account, candidate: SwarmCandidate, block: Long) {
+        val refusal = account.id to candidate
+        val refusedAt = refused[refusal]
+        if (refusedAt != null) {
+            // Proven before against a log no later than this one: nothing new.
+            if (block <= refusedAt) return
+            refused.remove(refusal)
+        }
+        val queue = pending.getOrPut(account.id) { LinkedHashMap() }
+        val newest = maxOf(block, queue.remove(candidate) ?: block)
         // Found again: moved to the newest.
-        queue.remove(candidate)
-        queue.add(candidate)
+        queue[candidate] = newest
     }
 
     /** Proves up to [MAX_PROOFS_PER_ROUND] pending candidates, the newest first; keeps what is the account's. */
@@ -132,22 +182,23 @@ class FollowSwarmLogs(
         for (account in eoas) {
             val queue = pending[account.id] ?: continue
             val kept = nodes[account.id]
-            for (candidate in queue.toList().asReversed()) {
+            for ((candidate, block) in queue.entries.toList().asReversed()) {
                 if (kept != null && (candidate in kept.dismissed || kept.holds(candidate))) {
                     queue.remove(candidate)
                     continue
                 }
                 if (budget == 0) return
                 budget--
-                when (add(account, candidate)) {
-                    SwarmAddOutcome.Added, SwarmAddOutcome.AlreadyAdded -> queue.remove(candidate)
+                when (add(account, candidate, byHand = false)) {
+                    SwarmAddOutcome.Added, SwarmAddOutcome.AlreadyAdded, SwarmAddOutcome.Dismissed ->
+                        queue.remove(candidate)
                     // Not verified this time, or not saved: tried again next round.
                     is SwarmAddOutcome.NotVerified, SwarmAddOutcome.NotSaved -> Unit
                     SwarmAddOutcome.NotASwarmAccount, SwarmAddOutcome.NotAChequebook, SwarmAddOutcome.NoSuchBatch,
                     is SwarmAddOutcome.OthersChequebook, is SwarmAddOutcome.OthersBatch,
                     -> {
                         queue.remove(candidate)
-                        refused += account.id to candidate
+                        refused[account.id to candidate] = block
                     }
                 }
             }
@@ -180,36 +231,41 @@ class FollowSwarmLogs(
         if (index.configure(network, listOf(LogWatch(key, from)), emptyList(), walkPaused)) emitterFrom = from
     }
 
-    /** The chequebook candidates [account]'s own xBZZ transfers name, read over what is covered, oldest first. */
-    private suspend fun chequebooksOf(
+    /** The xBZZ [account] sent, as its own entry holds it over what is covered, oldest first. */
+    private suspend fun xbzzSentBy(
         account: Account,
         coverage: Map<LogWatchKey, LogCoverage>,
         deployment: SwarmDeployment,
-    ): List<SwarmCandidate.ChequebookAt> {
+    ): List<Sent> {
         val key = LogWatchKey.Mention(account.address)
         return newLogs(key, coverage[key], listOf(TRANSFER), position = 1)
             .filter { it.log.address == deployment.bzz && it.log.topics.size == 3 }
-            .mapNotNull { topicAddress(it.log.topics[2]) }
-            .filter { it != deployment.postageStamp && it != account.address }
-            .map { SwarmCandidate.ChequebookAt(it) }
+            .mapNotNull { log ->
+                topicAddress(log.log.topics[2])
+                    ?.takeIf { it != account.address }
+                    ?.let { Sent(it, log.transactionHash, log.blockNumber) }
+            }
     }
 
-    /** Each `BatchCreated` the PostageStamp's entry holds over what is covered: its owner and id. */
+    /** Each `BatchCreated` the PostageStamp's entry holds over what is covered. */
     private suspend fun batchesIn(
         coverage: Map<LogWatchKey, LogCoverage>,
         deployment: SwarmDeployment,
-    ): List<Pair<Address, BatchId>> {
+    ): List<FoundBatch> {
         val key = LogWatchKey.Emitter(deployment.postageStamp)
         if (emitterFrom == null && key !in coverage) return emptyList()
         return newLogs(key, coverage[key], listOf(BATCH_CREATED), position = null)
             .filter { it.log.address == deployment.postageStamp }
-            .mapNotNull { batchCreated(it) }
+            .mapNotNull { log ->
+                batchCreated(log)?.let { (owner, id) -> FoundBatch(owner, id, log.transactionHash, log.blockNumber) }
+            }
     }
 
     /**
-     * The logs of [key]'s entry over the part of its [coverage] not read yet, from its start, oldest
-     * first; none when nothing is covered, or the index cannot answer now (that part is read again
-     * next round). An entry that starts anew is read again from scratch.
+     * The logs of [key]'s entry over the part of its [coverage] not read yet, from its start, and
+     * the top [REORG_DEPTH] blocks read before again, oldest first; none when nothing is covered,
+     * or the index cannot answer now (that part is read again next round). An entry that starts
+     * anew is read again from scratch.
      */
     private suspend fun newLogs(
         key: LogWatchKey,
@@ -229,9 +285,11 @@ class FollowSwarmLogs(
         val parts = if (done == null) {
             listOf(span)
         } else {
+            // The blocks a reorganisation can still replace are read again, as the span grows.
+            val again = maxOf(done.first, done.last - REORG_DEPTH + 1)
             listOfNotNull(
                 (span.first until done.first).takeUnless { it.isEmpty() },
-                (done.last + 1..span.last).takeUnless { it.isEmpty() },
+                (again..span.last).takeUnless { it.isEmpty() || span.last == done.last },
             )
         }
         val logs = mutableListOf<IndexedLog>()
@@ -253,6 +311,12 @@ class FollowSwarmLogs(
 
     /** The blocks [range] of an entry read while it started at [fromBlock]. */
     private data class ReadSpan(val fromBlock: Long, val range: LongRange)
+
+    /** xBZZ sent [to] an address, in [transaction], mined in [block]. */
+    private data class Sent(val to: Address, val transaction: String, val block: Long)
+
+    /** A `BatchCreated` of [id] for [owner], in [transaction], mined in [block]. */
+    private data class FoundBatch(val owner: Address, val id: BatchId, val transaction: String, val block: Long)
 
     private class Round(
         val accounts: AccountList,
@@ -277,6 +341,9 @@ class FollowSwarmLogs(
          * cost a proof each at once. The rest wait for the next round, none dropped.
          */
         const val MAX_PROOFS_PER_ROUND = 16
+
+        /** The top blocks of a span read before that are read again as it grows, as `IndexedReader` does. */
+        const val REORG_DEPTH = 64L
 
         /** The address an indexed address topic holds, or null when its upper 12 bytes are not zero. */
         fun topicAddress(topic: String): Address? {

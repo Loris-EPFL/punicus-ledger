@@ -372,6 +372,10 @@ docs/walletconnect.md is the contract.)
   the node; a batch from the pinned PostageStamp's `BatchCreated` logs,
   followed as an emitter while a Swarm node is in the wallet, whose owner,
   decoded from the data, is the node.
+- **Only a batch the wallet paid for is found** (owner's decision,
+  2026-11-23, on #347). Its transaction must also hold an xBZZ `Transfer`
+  to the PostageStamp from an account of the wallet. Anyone can create a
+  batch naming any owner; a batch someone else bought is added by hand.
 - **Or bought here, or added by hand:** a chequebook by address, a batch by
   id, kept once proven. The candidates are public data, kept in an
   app-private file.

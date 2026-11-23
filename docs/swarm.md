@@ -26,6 +26,12 @@ batches*) and `.claude/rules/data-sources.md` (*Swarm nodes*) carry as rules.
    that asked to merge the part PRs into it (the feature-branch skill: the
    answer lives in that conversation, and a later session asks again). The
    PR into `main` is the owner's.
+5. **The log index keeps only a batch the wallet paid for** (owner's
+   decision, 2026-11-23, on #347). `createBatch` takes any owner, so anyone
+   can create a batch that names an account of the wallet. A batch found in
+   the log index is kept by itself only when its transaction also holds an
+   xBZZ `Transfer` to the PostageStamp from an account of the wallet. A
+   batch someone else bought for the node is added by its id, by hand.
 
 ## The contracts
 
@@ -112,10 +118,13 @@ So:
   - **A batch.** The index also follows the pinned PostageStamp as an
     emitter (`LogWatchKey.Emitter`), from the earliest start among the
     wallet's Swarm nodes on Gnosis Chain, for its `BatchCreated` logs alone.
-    Their owner is in the log's data, not a topic, so each is decoded here,
-    and one naming a node of the wallet makes its batch id a candidate. This
-    finds a batch bought for the node by anyone, not only by the node. A
-    past transaction's receipt cannot be had by its hash
+    Their owner is in the log's data, not a topic, so each is decoded here.
+    One whose owner is an EOA of the wallet makes its batch id a candidate
+    only when the same transaction holds an xBZZ `Transfer` to the
+    PostageStamp from an account of the wallet, as that account's own entry
+    shows (decision 5): the wallet paid for it. A batch a stranger created
+    for an account of the wallet is never added by this. A past
+    transaction's receipt cannot be had by its hash
     (docs/embedding-myotis.md, `EngineReceipts`), so nothing here waits on
     one.
   - The emitter watch costs the walk the receipts of the blocks whose bloom
@@ -125,7 +134,12 @@ So:
     watched contract does (*An account's history*). It is configured while a
     Swarm node is in the wallet, and dropped with the last one.
   - Each candidate found is proven as one added by hand is, at most 16 a
-    round, the newest first, the rest in later rounds.
+    round, the newest first, the rest in later rounds. The top 64 blocks of
+    what was read are read again as the index grows, so that a block a
+    reorganisation replaced is read. What was read, and what was proven not
+    to be an account's, are kept for the run of the app only: each start
+    reads the covered ranges again and proves again what is neither kept
+    nor removed.
   - The index covers an account from the block it was added at
     (`.claude/rules/data-sources.md`, *An account's history*), so a node
     added after its chequebook and its batches were made has nothing to

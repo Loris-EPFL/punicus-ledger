@@ -353,6 +353,28 @@ docs/walletconnect.md is the contract.)
   yet, which is no ruling: the engine's iOS reads have no verified block body,
   and iOS opens an undefined one of several apps that claim `ethereum:`.
 
+## Swarm nodes: pinned contracts, found in the log index or added by hand
+
+(Owner's decisions, 2026-11-23; docs/swarm.md.)
+
+- **Gnosis Chain only.** Bee's contracts as Bee v2.8.3 names them, each
+  pinned by address and code hash and proven before it is read: the BZZ
+  token's proxy and the implementation its EIP-1967 slot names, the
+  PostageStamp, the chequebook factory and its master copy.
+  Retired PostageStamps are not read. Swarm's testnet on Sepolia is open,
+  the owner's to decide.
+- **xBZZ joins Gnosis Chain's built-in token list.** No feed and no pool
+  prices it: "no price", out of totals.
+- **Found in the node's verified log index:** an xBZZ `Transfer` from the
+  node to a candidate chequebook, or to the PostageStamp, whose verified
+  receipt names the batch. Only as far back as the index reaches ("since
+  added").
+- **Or bought here, or added by hand:** a chequebook by address, a batch by
+  id, kept once proven. The candidates are public data, kept in an
+  app-private file.
+- **No Swarm service is contacted.** Not a Bee node's API, not a gateway:
+  the user copies what Bee shows.
+
 ## Privacy Pools' circuit artifacts are bundled
 
 (Owner ruling, 2026-11-11, docs/privacy-pools.md D14.)
@@ -371,4 +393,6 @@ docs/walletconnect.md is the contract.)
 ## Open decisions
 
 Each is recorded here before its code lands. Today: each optional
-WalletConnect service above.
+WalletConnect service above; Swarm on Sepolia, and whether the Swarm
+screen holds a reading for an hour as the Gnosis Pay screen does
+(docs/swarm.md).

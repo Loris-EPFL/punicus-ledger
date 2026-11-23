@@ -3,6 +3,7 @@ package eth.serotine.data.engine
 import eth.serotine.data.keys.toHex
 import eth.serotine.data.swaps.CowDeployments
 import eth.serotine.data.swaps.PinnedCow
+import eth.serotine.data.swaps.UniswapDeployments
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowDeployment
 import eth.serotine.domain.model.Network
@@ -16,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class VerifiedCowTest {
@@ -24,6 +26,7 @@ class VerifiedCowTest {
     private val deployment = CowDeployment(
         settlement = Address.of("0x" + "90".repeat(20)),
         vaultRelayer = Address.of("0x" + "c9".repeat(20)),
+        wrappedNative = Address.of("0x" + "ee".repeat(20)),
     )
     private val codes = mapOf(deployment.settlement to "6000", deployment.vaultRelayer to "6010")
     private val pinned = PinnedCow(deployment, codes.mapValues { codeHash(it.value) })
@@ -94,5 +97,21 @@ class VerifiedCowTest {
         assertEquals(Address.of("0xc92e8bdf79f0507f65a392b0ab4667716bfe0110"), sepolia.deployment.vaultRelayer)
         sepolia.codeHashes.values.forEach { assertEquals(64, it.length) }
         assertFailsWith<IllegalArgumentException> { PinnedCow(deployment, codes.minus(deployment.vaultRelayer)) }
+    }
+
+    @Test
+    fun everyNetworkPinsTheSameTwoContractsTheSettlementsCodePerNetwork() {
+        val pins = Network.entries.associateWith { assertNotNull(CowDeployments.of(it), it.displayName) }
+        val contracts = pins.values.map { it.deployment.settlement to it.deployment.vaultRelayer }
+        assertEquals(1, contracts.toSet().size, "the same addresses everywhere")
+        // The wrapped currency each names is the WETH9 the Uniswap pins name: a wrap is a wrap on either venue.
+        pins.forEach { (network, pin) ->
+            assertEquals(UniswapDeployments.of(network)?.deployment?.weth9, pin.deployment.wrappedNative, "$network")
+        }
+        val relayer = pins.values.first().deployment.vaultRelayer
+        assertEquals(1, pins.values.map { it.codeHashes.getValue(relayer) }.toSet().size, "the relayer's code too")
+        val settlement = pins.values.first().deployment.settlement
+        // Each settlement holds its own chain's domain separator, so its code differs per network.
+        assertEquals(pins.size, pins.values.map { it.codeHashes.getValue(settlement) }.toSet().size)
     }
 }

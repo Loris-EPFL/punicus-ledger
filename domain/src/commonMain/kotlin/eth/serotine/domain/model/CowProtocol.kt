@@ -11,19 +11,27 @@ import kotlin.jvm.JvmInline
  * settles it, and its [vaultRelayer], `GPv2VaultRelayer`, the spender an order's sold token is
  * approved to. :data pins them per network with their code hashes, and the domain uses them only
  * once their code is proven (`CowChain.venue`).
+ *
+ * [wrappedNative] is the token that wraps the network's own currency (WETH, WXDAI), as CoW names
+ * it for the network. It is no contract an order calls: it only tells that selling it for the
+ * network's currency is a wrap, never a CoW order, without reading Uniswap's pins (owner ruling,
+ * 2026-11-23).
  */
-data class CowDeployment(val settlement: Address, val vaultRelayer: Address)
+data class CowDeployment(val settlement: Address, val vaultRelayer: Address, val wrappedNative: Address)
 
 /**
- * A CoW Protocol sell order as Punicus signs one (docs/swaps.md, *An order, step by step*):
- * sell exactly [sellAmount] of [sellToken] for at least [buyAmount] (never zero: an order with no
- * minimum gives the sold token away) of [buyToken], paid to [receiver], until [validTo] (unix
- * seconds, a `uint32`).
+ * A CoW Protocol order as Punicus signs one (docs/swaps.md, *An order, step by step*), of [kind]:
+ * - a sell ([SwapKind.SELL]): sell exactly [sellAmount] of [sellToken] for at least [buyAmount]
+ *   (never zero: an order with no minimum gives the sold token away) of [buyToken];
+ * - a buy ([SwapKind.BUY]; docs/swaps.md, *Buying an exact amount*): buy exactly [buyAmount] of
+ *   [buyToken] for at most [sellAmount] of [sellToken];
+ *
+ * paid to [receiver], until [validTo] (unix seconds, a `uint32`).
  *
  * GPv2's other order fields are fixed here, not chosen: the app data [CowAppData.HASH] (nothing
  * beyond the required fields, owner ruling, 2026-10-22), no fee (`feeAmount` 0, the fee comes out
- * of the price), a sell order, fill-or-kill (`partiallyFillable` false), and both tokens moved as
- * plain ERC-20 balances. [buyToken] may be [NATIVE_BUY_TOKEN], CoW's marker for native ether
+ * of the price), fill-or-kill (`partiallyFillable` false), and both tokens moved as plain ERC-20
+ * balances. [buyToken] may be [NATIVE_BUY_TOKEN], CoW's marker for native ether
  * bought; native ether is never sold this way (it would need CoW's ETH-flow contract).
  */
 data class CowOrder(
@@ -33,6 +41,7 @@ data class CowOrder(
     val sellAmount: UInt256,
     val buyAmount: UInt256,
     val validTo: Long,
+    val kind: SwapKind = SwapKind.SELL,
 ) {
     init {
         require(validTo in 0..UINT32_MAX) { "validTo is a uint32: $validTo" }
@@ -60,6 +69,7 @@ data class CowOrder(
             appData = CowAppData.HASH,
             feeAmount = UInt256.ZERO,
             partiallyFillable = false,
+            kind = kind,
         ),
     )
 
@@ -164,6 +174,9 @@ internal object GPv2Signing {
     /** keccak256("sell"): `GPv2Order.KIND_SELL`. */
     val KIND_SELL: ByteArray = keccak256("sell".encodeToByteArray())
 
+    /** keccak256("buy"): `GPv2Order.KIND_BUY`. */
+    val KIND_BUY: ByteArray = keccak256("buy".encodeToByteArray())
+
     /** keccak256("erc20"): `GPv2Order.BALANCE_ERC20`. */
     val BALANCE_ERC20: ByteArray = keccak256("erc20".encodeToByteArray())
 
@@ -176,7 +189,7 @@ internal object GPv2Signing {
         keccak256(DOMAIN_TYPEHASH + NAME_HASH + VERSION_HASH + word(chainId) + word(settlement))
 
     /**
-     * The struct hash of a sell order with ERC-20 balances, whatever its other fields; [appData] is
+     * The struct hash of an order of [kind] with ERC-20 balances, whatever its other fields; [appData] is
      * one 32-byte word (`0x` optional), and anything else is refused rather than shifting the
      * fields after it.
      */
@@ -190,6 +203,7 @@ internal object GPv2Signing {
         appData: String,
         feeAmount: UInt256,
         partiallyFillable: Boolean,
+        kind: SwapKind = SwapKind.SELL,
     ): ByteArray {
         val appDataWord = appData.removePrefix("0x").hexToBytes()
         require(appDataWord.size == 32) { "appData is one 32-byte word" }
@@ -203,7 +217,7 @@ internal object GPv2Signing {
                 word(validTo) +
                 appDataWord +
                 feeAmount.toBytes32() +
-                KIND_SELL +
+                (if (kind == SwapKind.BUY) KIND_BUY else KIND_SELL) +
                 word(if (partiallyFillable) 1L else 0L) +
                 BALANCE_ERC20 +
                 BALANCE_ERC20,

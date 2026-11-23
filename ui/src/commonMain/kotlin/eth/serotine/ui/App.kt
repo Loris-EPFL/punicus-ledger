@@ -42,6 +42,7 @@ import eth.serotine.domain.model.AddressIndexRole
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.accountdetail.AccountDetailRoute
@@ -815,7 +816,7 @@ private fun Destinations(
         // Swap, and then where the swap stands: the transaction's flow, over the bar too.
         composable(
             SWAP_ROUTE,
-            arguments = listOf(ASSET, BUY, AMOUNT, VENUE, CONTINUE).map { name ->
+            arguments = listOf(ASSET, BUY, AMOUNT, VENUE, CONTINUE, KIND).map { name ->
                 navArgument(name) {
                     type = NavType.StringType
                     nullable = true
@@ -830,6 +831,7 @@ private fun Destinations(
                 entry.savedStateHandle.get<String>(BUY),
                 entry.savedStateHandle.get<String>(AMOUNT),
                 entry.savedStateHandle.get<String>(VENUE),
+                entry.savedStateHandle.get<String>(KIND),
             )
             val continuing = entry.savedStateHandle.get<String>(CONTINUE) == CONTINUING
             if (account != null && (asked == null || asset != null)) {
@@ -1241,7 +1243,10 @@ private fun NavController.swapAgain(network: Network, again: SwapAgain) {
     val amount = again.amount.takeIf(AMOUNT_TEXT::matches) ?: return
     popBackStack(COW_ORDER_ROUTE, inclusive = true)
     if (currentDestination?.route == SWAP_ROUTE) popBackStack()
-    navigate("${Destination.SWAP}/${from.route}?$ASSET=${sell.hex}&$BUY=$buy&$AMOUNT=$amount&$VENUE=$UNISWAP_VENUE")
+    val kind = if (again.kind == SwapKind.BUY) "&$KIND=$BUY_KIND" else ""
+    navigate(
+        "${Destination.SWAP}/${from.route}?$ASSET=${sell.hex}&$BUY=$buy&$AMOUNT=$amount&$VENUE=$UNISWAP_VENUE$kind",
+    )
 }
 
 /**
@@ -1320,9 +1325,10 @@ private fun sendFillOf(to: String?, amount: String?, fee: String?): SendFill? {
 
 /**
  * What Swap's route asks to be filled in: what it buys ([buy], a token's address or [NATIVE_PICK]),
- * the [amount] as text and the [venue]; null when it asks for none, or not in a form this build reads.
+ * the [amount] as text, the [venue], and [kind] ([BUY_KIND]: the amount is bought; none: sold);
+ * null when it asks for none, or not in a form this build reads.
  */
-private fun swapFillOf(buy: String?, amount: String?, venue: String?): SwapFill? {
+private fun swapFillOf(buy: String?, amount: String?, venue: String?, kind: String?): SwapFill? {
     if (buy == null || amount == null || venue == null) return null
     val token = if (buy == NATIVE_PICK) null else Address.parse(buy) ?: return null
     val chosen = when (venue) {
@@ -1330,7 +1336,12 @@ private fun swapFillOf(buy: String?, amount: String?, venue: String?): SwapFill?
         COW_VENUE -> SwapVenue.COW
         else -> return null
     }
-    return SwapFill(token, amount.takeIf(AMOUNT_TEXT::matches) ?: return null, chosen)
+    val exact = when (kind) {
+        null -> SwapKind.SELL
+        BUY_KIND -> SwapKind.BUY
+        else -> return null
+    }
+    return SwapFill(token, amount.takeIf(AMOUNT_TEXT::matches) ?: return null, chosen, exact)
 }
 
 /** Opens the status of the transaction [hash] (`0x` and 64 hex digits) on [network]. */
@@ -1559,6 +1570,12 @@ private const val HANDOFF_ROUTE = "${Destination.SEND_ELSEWHERE}/{$CHAIN}/{$ADDR
 
 /** Swap's route argument for a swap whose next step waits, opened from the account's Activity: [CONTINUING]. */
 private const val CONTINUE = "continue"
+
+/** Swap's route argument for which amount it fills in: [BUY_KIND] the amount bought, none the amount sold. */
+private const val KIND = "kind"
+
+/** [KIND]'s value for an amount bought (docs/swaps.md, *Buying an exact amount*). */
+private const val BUY_KIND = "buy"
 private const val CONTINUING = "waiting"
 
 /** How Swap's route names the network's currency bought, and the two venues. */
@@ -1572,7 +1589,7 @@ private val AMOUNT_TEXT = Regex("^[0-9]+(\\.[0-9]+)?$")
 /** Swap from an account, selling a token or the network's currency, filled in or not. */
 private const val SWAP_ROUTE =
     "${Destination.SWAP}/{$CHAIN}/{$ADDRESS}?$ASSET={$ASSET}&$BUY={$BUY}&$AMOUNT={$AMOUNT}&$VENUE={$VENUE}" +
-        "&$CONTINUE={$CONTINUE}"
+        "&$CONTINUE={$CONTINUE}&$KIND={$KIND}"
 
 /** A CoW order's route argument: its UID. */
 private const val UID = "uid"

@@ -37,6 +37,7 @@ fun SimpleSwapScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     syncLine: LightClientItem? = null,
+    onBuyAmountChange: (String) -> Unit = {},
 ) = SwapScreen(
     state = state.simple(),
     chrome = SwapChrome.Simple(syncLine),
@@ -59,6 +60,7 @@ fun SimpleSwapScreen(
     onOpenOrder = onOpenOrder,
     onBack = onBack,
     modifier = modifier,
+    onBuyAmountChange = onBuyAmountChange,
 )
 
 /** [this] with no block in its form or its estimate: the reviews keep their blocks for their *Details*. */

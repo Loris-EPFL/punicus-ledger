@@ -11,7 +11,9 @@ import eth.serotine.domain.model.QuoterV2
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapRoute
+import eth.serotine.domain.model.SwapRouter02
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.TransferAsset
@@ -218,7 +220,7 @@ class SwapsTest {
     fun anAllowanceThatFallsShortAsksForTheApprovalFirst() = runTest {
         pool(usdcToken.address, linkToken.address, hundredUsdc, amountOut)
         allow(UInt256.of(5))
-        assertEquals(SwapQuoting.NeedsApproval(usdcToken, router, UInt256.of(5)), quoteUsdcForLink())
+        assertEquals(SwapQuoting.NeedsApproval(usdcToken, router, UInt256.of(5), hundredUsdc), quoteUsdcForLink())
         assertEquals(0, inputs.estimates, "no swap is estimated before the approval")
     }
 
@@ -353,6 +355,115 @@ class SwapsTest {
             SentAction.Swap(router, usdc, hundredUsdc, link, quoted.minimumOut),
             sent.transfers.value.single().action,
         )
+    }
+
+    /** QuoterV2's exact-output quote of the USDC/LINK pool: buying [out] LINK takes [usdcIn] USDC. */
+    private fun costs(out: UInt256, usdcIn: UInt256) {
+        pool(usdcToken.address, linkToken.address, hundredUsdc, amountOut)
+        val route = SwapRoute.direct(usdcToken.address, linkToken.address, FeeTier.MEDIUM)
+        chain.answers[deployment.quoterV2 to QuoterV2.quoteToBuy(route, out).toHex()] =
+            word(usdcIn) + "00".repeat(64) + word(UInt256.of(100_000))
+    }
+
+    private suspend fun buyLink(out: UInt256 = amountOut) =
+        quote(account, usdc, link, out, SlippageTolerance.DEFAULT, FeeLevel.NORMAL, SwapKind.BUY)
+
+    /** The most a buy quoted at 100 USDC sells: 100 USDC and 0.5 %. */
+    private val mostUsdc = UInt256.of(100_500_000)
+
+    @Test
+    fun aBuyIsQuotedForTheExactAmountAtMostTheQuotePlusTheTolerance() = runTest {
+        costs(amountOut, hundredUsdc)
+        allow(mostUsdc)
+        inputs.routerReturns = returns(UInt256.of(100_200_000))
+
+        val quoted = assertIs<SwapQuoting.Quoted>(buyLink()).quote
+        assertEquals(SwapKind.BUY, quoted.kind)
+        assertEquals(mostUsdc, quoted.amountIn, "the most it sells")
+        assertEquals(hundredUsdc, quoted.quotedIn)
+        assertEquals(UInt256.of(100_200_000), quoted.takenIn, "what the run took")
+        assertEquals(amountOut, quoted.minimumOut)
+        assertEquals(amountOut, quoted.quotedOut)
+        assertEquals(amountOut, quoted.returnedOut)
+        assertEquals(UInt256.of(399_500_000), quoted.sellAfter, "the balance after counts the maximum")
+        val expected = SwapRouter02.buy(
+            deployment,
+            usdc,
+            link,
+            SwapRoute.direct(usdcToken.address, linkToken.address, FeeTier.MEDIUM),
+            amountOut,
+            mostUsdc,
+            account,
+            headTime + SWAP_DEADLINE_SECONDS,
+        )
+        assertEquals(expected.data.toHex(), quoted.transaction.data.toHex())
+        assertEquals(UInt256.ZERO, quoted.transaction.value)
+    }
+
+    @Test
+    fun aBuyWhoseMaximumTheAccountDoesNotHoldIsSaidAsTooLittle() = runTest {
+        costs(amountOut, hundredUsdc)
+        allow(mostUsdc)
+        inputs.routerReturns = returns(UInt256.of(100_200_000))
+        // 100.4 USDC held: the quote's 100 would do, but not its maximum of 100.5.
+        tokens.of(account, usdcToken.address).value = TokenBalanceReading.Verified(TokenUnits.of("100400000"), 120)
+        assertEquals(SwapQuoting.InsufficientToken, buyLink())
+    }
+
+    @Test
+    fun aBuyNeedsTheRoutersAllowanceForItsMaximum() = runTest {
+        costs(amountOut, hundredUsdc)
+        allow(UInt256.of(99_999_999))
+        assertEquals(SwapQuoting.NeedsApproval(usdcToken, router, UInt256.of(99_999_999), mostUsdc), buyLink())
+    }
+
+    @Test
+    fun aBuyQuotedAgainAfterItsApprovalSellsAtMostWhatWasApproved() = runTest {
+        // Step 1 approved 100.3 USDC; the quote moved, its maximum is now 100.5: still within, no new approval.
+        costs(amountOut, hundredUsdc)
+        allow(UInt256.of(100_300_000))
+        inputs.routerReturns = returns(UInt256.of(100_200_000))
+
+        val quoted = assertIs<SwapQuoting.Quoted>(buyLink()).quote
+        assertEquals(UInt256.of(100_300_000), quoted.amountIn, "the maximum approved")
+        assertEquals(hundredUsdc, quoted.quotedIn)
+    }
+
+    @Test
+    fun aBuysRunThatTakesMoreThanItsMaximumIsNoSwap() = runTest {
+        costs(amountOut, hundredUsdc)
+        allow(mostUsdc)
+        inputs.routerReturns = returns(UInt256.of(100_600_000))
+        assertIs<SwapQuoting.Reverts>(buyLink())
+    }
+
+    @Test
+    fun aBuyIsRunAgainBeforeItIsSignedAndRecordedWithItsMaximum() = runTest {
+        costs(amountOut, hundredUsdc)
+        allow(mostUsdc)
+        inputs.routerReturns = returns(UInt256.of(100_200_000))
+        val quoted = assertIs<SwapQuoting.Quoted>(buyLink()).quote
+        val signer = FakeSigner(FakeRecovery())
+        val send = SendSwap(inputs, signer, FakeBroadcaster(), sent, clock = { headTime })
+        val unlock = Unlock.WithPassword(WalletPassword("not a real password"))
+
+        inputs.routerReturns = returns(UInt256.of(100_600_000))
+        assertIs<SwapSending.NoLongerMet>(send(quoted, unlock))
+        assertTrue(signer.asked.isEmpty(), "nothing is signed")
+
+        inputs.routerReturns = returns(UInt256.of(100_300_000))
+        assertIs<SwapSending.Done>(send(quoted, unlock))
+        assertEquals(
+            SentAction.Swap(router, usdc, mostUsdc, link, amountOut, kind = SwapKind.BUY),
+            sent.transfers.value.single().action,
+        )
+    }
+
+    @Test
+    fun aBuyNoPoolCanDeliverHasNoRoute() = runTest {
+        pool(usdcToken.address, linkToken.address, hundredUsdc, amountOut)
+        allow(mostUsdc)
+        assertEquals(SwapQuoting.NoRoute, buyLink())
     }
 
     @Test

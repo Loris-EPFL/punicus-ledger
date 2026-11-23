@@ -93,6 +93,7 @@ import eth.serotine.domain.usecase.DraftTransfer
 import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.EncodeSigningRequest
+import eth.serotine.domain.usecase.EstimateCowSwap
 import eth.serotine.domain.usecase.EstimateSwap
 import eth.serotine.domain.usecase.ExecuteSafeTx
 import eth.serotine.domain.usecase.ExtendDappSession
@@ -377,8 +378,8 @@ class AppGraph(
     /** CoW Protocol's settlement contracts on each network, proven by their code, and verified calls of them. */
     private val cowChain: CowChain,
     /**
-     * CoW Protocol's order API, an off-chain service, used only for a swap the user sends to CoW
-     * (CLAUDE.md, *Data sources*).
+     * CoW Protocol's order API, an off-chain service, used only while CoW is chosen for a swap: its
+     * estimate and the swap sent (CLAUDE.md, *Data sources*).
      */
     private val cowApi: CowApi,
     /** The CoW orders signed here, live until their end is proven: what Send and a swap hold back. */
@@ -528,7 +529,7 @@ class AppGraph(
             ObserveEnabledNetworks(networkSettings),
             SetNetworkEnabled(networkSettings),
             observeUpgradeWarnings(),
-            HasSwapVenue(uniswap),
+            HasSwapVenue(uniswap, cowChain),
             RefreshNetworkData(networkFreshness),
             ObserveNetworkLive(networkFreshness),
             ObserveLightClient(lightClient),
@@ -860,7 +861,6 @@ class AppGraph(
         QuoteCowSwap(
             cowChain,
             cowApi,
-            FindUniswapRoute(uniswap, transactionInputs),
             transactionInputs,
             tokenBalances,
             sentTransfers,
@@ -870,7 +870,8 @@ class AppGraph(
             from.network,
             outbox = outbox,
         ),
-        PlaceCowOrder(FindUniswapRoute(uniswap, transactionInputs), signer, cowOrders, cowApi, lightClient),
+        PlaceCowOrder(signer, cowOrders, cowApi, lightClient),
+        EstimateCowSwap(cowChain, cowApi, lightClient),
         KeepWaitingSwap(waitingSwaps),
         DropWaitingSwap(waitingSwaps),
         FindWaitingSwap(waitingSwaps),

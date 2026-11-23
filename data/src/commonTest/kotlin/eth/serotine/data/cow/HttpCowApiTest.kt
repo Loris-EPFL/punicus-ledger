@@ -5,6 +5,7 @@ import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.CowOrderLife
 import eth.serotine.domain.repository.CowPlacement
@@ -63,7 +64,10 @@ class HttpCowApiTest {
     fun aQuoteAsksOnlyWhatCowRequiresAndReadsItsEstimate() = runTest {
         val quoting = api { json(realQuote) }.quote(Network.SEPOLIA, weth, cow, amount, owner)
 
-        assertEquals(CowQuoteReading.Quoted(UInt256.of("6206525668391480143"), UInt256.of("49430900000000")), quoting)
+        assertEquals(
+            CowQuoteReading.Quoted(amount, UInt256.of("6206525668391480143"), UInt256.of("49430900000000")),
+            quoting,
+        )
         val request = requests.single()
         assertEquals(HttpMethod.Post, request.method)
         assertEquals("https://api.cow.fi/sepolia/api/v1/quote", request.url.toString())
@@ -73,6 +77,51 @@ class HttpCowApiTest {
                     """"sellAmountBeforeFee":"10000000000000000"}""",
             ),
             request.json(),
+        )
+    }
+
+    // What CoW answered on Gnosis Chain for buying 200 BZZ with WXDAI, verbatim (2026-11-23).
+    private val wxdai = Address.of("0xe91d153e0b41518a2ce8dd3d7944fa863463a97d")
+    private val bzz = Address.of("0xdbf3ea6f5bee45c02255b2c26a16f300502f68da")
+    private val realBuyQuote = """{"quote":{"sellToken":"0xe91d153e0b41518a2ce8dd3d7944fa863463a97d",""" +
+        """"buyToken":"0xdbf3ea6f5bee45c02255b2c26a16f300502f68da","receiver":""" +
+        """"0x0000000000000000000000000000000000000000","sellAmount":"17582823859286644536",""" +
+        """"buyAmount":"2000000000000000000","validTo":1795412235,"appData":""" +
+        """"0x0000000000000000000000000000000000000000000000000000000000000000","feeAmount":"49869600000",""" +
+        """"gasAmount":"498696","gasPrice":"100000","sellTokenPrice":"1","kind":"buy","partiallyFillable":false,""" +
+        """"sellTokenBalance":"erc20","buyTokenBalance":"erc20","signingScheme":"eip712"},"from":""" +
+        """"0x000000000000000000000000000000000000dead","expiration":"2026-11-23T05:09:15.868491456Z",""" +
+        """"id":274488676,"verified":true,"protocolFeeBps":"2"}"""
+
+    @Test
+    fun aBuyQuoteAsksForTheAmountBoughtAndReadsWhatItSellsFeeIncluded() = runTest {
+        val twoHundred = UInt256.of("2000000000000000000")
+        val quoting = api { json(realBuyQuote) }.quote(Network.GNOSIS, wxdai, bzz, twoHundred, owner, SwapKind.BUY)
+
+        // What it sells is CoW's amount plus its fee.
+        assertEquals(
+            CowQuoteReading.Quoted(UInt256.of("17582823909156244536"), twoHundred, UInt256.of("49869600000")),
+            quoting,
+        )
+        val request = requests.single()
+        assertEquals("https://api.cow.fi/xdai/api/v1/quote", request.url.toString())
+        assertEquals(
+            Json.parseToJsonElement(
+                """{"sellToken":"${wxdai.hex}","buyToken":"${bzz.hex}","from":"${owner.hex}","kind":"buy",""" +
+                    """"buyAmountAfterFee":"2000000000000000000"}""",
+            ),
+            request.json(),
+        )
+        // A buy answer for another amount, or a sell answer to a buy, is none.
+        val other = UInt256.of("1000000000000000000")
+        assertEquals(
+            CowQuoteReading.Unavailable(CowUnavailable.UNDECODABLE),
+            api { json(realBuyQuote) }.quote(Network.GNOSIS, wxdai, bzz, other, owner, SwapKind.BUY),
+        )
+        assertEquals(
+            CowQuoteReading.Unavailable(CowUnavailable.UNDECODABLE),
+            api { json(realBuyQuote.replace("\"kind\":\"buy\"", "\"kind\":\"sell\"")) }
+                .quote(Network.GNOSIS, wxdai, bzz, twoHundred, owner, SwapKind.BUY),
         )
     }
 

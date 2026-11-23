@@ -55,6 +55,8 @@ private val composed = SwapUiState.Compose(
         amountHint = "≈ €92.10",
         canMax = true,
         canReview = true,
+        buyAmount = "",
+        buyAmountPlaceholder = "≈ 7.183 LINK",
         // The detailed note names its block; simple mode draws simpleNote in its place.
         estimate = SwapEstimateItem(
             label = "You receive",
@@ -138,12 +140,9 @@ private val cow = SwapUiState.CowReview(
     buy = link,
     estimate = "about 7.26 LINK",
     estimateNote = "CoW's own estimate, net of the network fee it takes out of the trade. Not verified.",
-    uniswapNet = "7.18 LINK",
-    uniswapNote = "Uniswap's verified quote at block 23,614,077 less its expected network fee.",
-    comparison = "By CoW's estimate, CoW gives about 0.08 LINK more than Uniswap. Only the minimum is signed.",
-    uniswapGivesMore = false,
-    minimum = "at least 7.20 LINK",
-    minimumNote = "CoW's estimate less the 0.5 % tolerance, never below the Uniswap net less it.",
+    minimum = "at least 7.22 LINK",
+    minimumNote = "CoW's estimate less the 0.5 % tolerance. The estimate is CoW's word, not checked on chain, so " +
+        "the minimum rests on it.",
     validUntil = "Until 27 Oct 2026, 14:37: the verified head's time and 30 minutes.",
     settlement = SpenderItem("CoW's settlement contract", "0x9008D19f58AAbD9eD0D60971565AA8510560ab41"),
     balances = listOf(
@@ -190,6 +189,59 @@ private fun SimpleSwapComposePreview() = SimpleSwapPreview(composed)
 @Preview
 @Composable
 private fun SimpleSwapComposeDarkPreview() = SimpleSwapPreview(composed, darkTheme = true)
+
+/** Exactly 10 LINK bought: the amount sold is the estimate's (docs/swaps.md, *Buying an exact amount*). */
+@Preview
+@Composable
+private fun SimpleSwapComposeBuyPreview() = SimpleSwapPreview(
+    composed.copy(
+        form = composed.form.copy(
+            amount = "",
+            amountHint = null,
+            amountPlaceholder = "≈ 139.21 USDC",
+            buyAmount = "10",
+            buyAmountPlaceholder = null,
+            estimate = composed.form.estimate?.copy(
+                label = "You pay",
+                receive = "≈ 139.21 USDC",
+                minimum = "At most 139.91 USDC at 0.5 % tolerance",
+            ),
+        ),
+    ),
+)
+
+/** W2 for a buy: exactly 7 LINK for at most what Uniswap's quote and the tolerance allow. */
+@Preview
+@Composable
+private fun SimpleSwapBuyPreview() = SimpleSwapPreview(
+    swap.copy(
+        sold = "at most 97.49 USDC",
+        receive = "7 LINK",
+        minimum = "exactly 7 LINK",
+        receiveLead = "for exactly",
+        tolerance = "0.5 % tolerance, above QuoterV2's verified quote of 97 USDC: the most it sells",
+        balances = listOf(
+            BalanceChange("USDC balance", "1,250 USDC", "at least 1,152.51 USDC", "verified at block 23,614,090"),
+            BalanceChange("LINK balance", "40 LINK", "47 LINK", "verified at block 23,614,090"),
+        ),
+    ),
+)
+
+/** W4 for a buy: exactly 7 LINK on CoW, for at most its estimate and the tolerance. */
+@Preview
+@Composable
+private fun SimpleSwapCowBuyPreview() = SimpleSwapPreview(
+    cow.copy(
+        sold = "at most 96.92 USDC",
+        estimate = "about 96.44 USDC",
+        estimateAsset = usdc,
+        minimum = "exactly 7 LINK",
+        receiveLead = "for exactly",
+        simpleChecked = "Checked on chain: the settlement contract refuses any fill that buys less, or sells more",
+        simpleBasis = "The most it sells is CoW's estimate plus your tolerance. CoW's estimate is not checked on " +
+            "chain.",
+    ),
+)
 
 /** W2: step 1 of 2, the approval, for this swap only. */
 @Preview
@@ -268,11 +320,14 @@ private fun SimpleSwapNotSentPreview() = SimpleSwapPreview(
 internal val simpleSwapScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("compose") { SimpleSwapComposePreview() },
     ScreenPreview("compose-dark") { SimpleSwapComposeDarkPreview() },
+    ScreenPreview("compose-buy") { SimpleSwapComposeBuyPreview() },
     ScreenPreview("approval") { SimpleSwapApprovalPreview() },
     ScreenPreview("approval-dark") { SimpleSwapApprovalDarkPreview() },
     ScreenPreview("pending") { SimpleSwapPendingPreview() },
     ScreenPreview("step-two") { SimpleSwapStepTwoPreview() },
     ScreenPreview("cow") { SimpleSwapCowPreview() },
+    ScreenPreview("swap-buy") { SimpleSwapBuyPreview() },
+    ScreenPreview("cow-buy") { SimpleSwapCowBuyPreview() },
     ScreenPreview("reset-first") { SimpleSwapResetFirstPreview() },
     ScreenPreview("earlier-failed") { SimpleSwapEarlierFailedPreview() },
     ScreenPreview("one-step") { SimpleSwapOneStepPreview() },

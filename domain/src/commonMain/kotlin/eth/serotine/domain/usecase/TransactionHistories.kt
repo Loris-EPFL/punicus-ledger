@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeTxAction
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.HistoryEntry
@@ -209,8 +210,12 @@ class ObserveAccountHistory(private val history: TransactionHistory) {
  */
 data class SentTo(val addresses: Set<Address>, val bought: Map<String, Bought>, val readable: Boolean = true)
 
-/** What a swap bought: the [token] (null for the network's own currency) and the [minimum] it was signed for. */
-data class Bought(val token: Address?, val minimum: UInt256)
+/**
+ * What a swap bought: the [token] (null for the network's own currency) and the [minimum] it was
+ * signed for; [refundFrom], the router that pays back what a buy selling the network's currency did
+ * not use (`refundETH`, docs/swaps.md, *Buying an exact amount*), null for any other swap.
+ */
+data class Bought(val token: Address?, val minimum: UInt256, val refundFrom: Address? = null)
 
 /**
  * What this wallet sent ([SentTo]): the recipient of each transfer any of its accounts sent, and
@@ -233,7 +238,11 @@ class ObserveSentTo(private val history: TransactionHistory) {
 
     /** What this transaction's swap bought, when it is one: an account's, or a Safe's execution of one. */
     private fun HistoryEntry.bought(): Bought? = when (val action = transfer.action) {
-        is SentAction.Swap -> Bought((action.buy as? TransferAsset.Erc20Token)?.token?.address, action.minimumOut)
+        is SentAction.Swap -> Bought(
+            (action.buy as? TransferAsset.Erc20Token)?.token?.address,
+            action.minimumOut,
+            refundFrom = action.router.takeIf { action.kind == SwapKind.BUY && action.sell == TransferAsset.Native },
+        )
         is SentAction.SafeExecution -> (SafeTxAction.of(action.request.safe, action.request.tx) as? SafeTxAction.Swap)
             ?.swap
             ?.let { Bought(if (it.buysEther) null else it.route.tokenOut, it.minimumOut) }

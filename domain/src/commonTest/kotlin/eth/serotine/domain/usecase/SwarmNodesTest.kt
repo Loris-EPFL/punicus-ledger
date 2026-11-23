@@ -55,6 +55,8 @@ class SwarmNodesTest {
 
         override fun observeBatch(network: Network, node: Address, id: BatchId) =
             flowOf(batchReadings[id] ?: SwarmReading.Verified(BatchFinding.Node(batch), 7)).also { nodesAsked += node }
+
+        override fun deployment(network: Network) = null
     }
 
     private val stored = MutableStateFlow<SwarmCandidateList>(SwarmCandidateList.Loaded(emptyList(), emptyList()))
@@ -63,6 +65,8 @@ class SwarmNodesTest {
 
     private val candidates = object : SwarmCandidates {
         override fun observe(node: AccountId): Flow<SwarmCandidateList> = stored.map { it }
+
+        override fun observeNodes(network: Network) = flowOf(emptyMap<AccountId, SwarmCandidateList.Loaded>())
 
         override suspend fun add(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange {
             added += candidate

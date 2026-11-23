@@ -121,3 +121,11 @@ data class Chequebook(
         require(liquidBalance <= balance) { "a chequebook's liquid balance is part of its balance" }
     }
 }
+
+/**
+ * Where Bee's contracts are on a network, as far as finding a node's chequebook and batches in the
+ * log index goes (docs/swarm.md, *Where the candidates come from*): the [bzz] token every
+ * chequebook and batch is paid in, and the [postageStamp] whose `BatchCreated` logs name each
+ * batch's owner.
+ */
+data class SwarmDeployment(val bzz: Address, val postageStamp: Address)

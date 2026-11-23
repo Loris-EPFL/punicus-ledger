@@ -73,6 +73,15 @@ class FileSwarmCandidates(
         }
     }.distinctUntilChanged()
 
+    override fun observeNodes(network: Network): Flow<Map<AccountId, SwarmCandidateList.Loaded>?> =
+        file.observe().map { read ->
+            when (read) {
+                is VersionedJsonFile.Read.Loaded -> read.value.filterKeys { it.network == network }
+                    .mapValues { (_, kept) -> SwarmCandidateList.Loaded(kept.chequebooks, kept.batches) }
+                is VersionedJsonFile.Read.Unreadable -> null
+            }
+        }.distinctUntilChanged()
+
     override suspend fun add(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange =
         file.change(SwarmCandidateChange.NOT_SAVED) { all ->
             val kept = all[node] ?: Kept()

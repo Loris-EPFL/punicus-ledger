@@ -28,6 +28,7 @@ import eth.serotine.data.settings.FileMeteredDownloads
 import eth.serotine.data.settings.FileSwapVenue
 import eth.serotine.data.settings.FileSyncPolicy
 import eth.serotine.data.swaps.FileWaitingSwaps
+import eth.serotine.data.swarm.FileSwarmCandidates
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -48,6 +49,7 @@ import eth.serotine.domain.usecase.FollowNetworks
 import eth.serotine.domain.usecase.FollowOutbox
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
+import eth.serotine.domain.usecase.FollowSwarmLogs
 import eth.serotine.domain.usecase.FollowUpgradeReports
 import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
@@ -220,6 +222,9 @@ class SerotineWallet {
     // One instance each, which the graph and the background work share. Each account added is
     // noted where its history starts (issue #85): addresses with a block or a time, public data only.
     private val historyStarts = FileHistoryStarts("$dataDir/history-starts.json")
+
+    /** What may be each Swarm node's chequebook and batches (docs/swarm.md): public data, app-private. */
+    private val swarmCandidates = FileSwarmCandidates("$dataDir/swarm.json")
     private val accounts = HistoryNotingAccounts(FileAccountRepository("$dataDir/accounts.json"), historyStarts)
 
     // The transactions signed here, with their signed bytes (public once broadcast), and every one
@@ -553,6 +558,19 @@ class SerotineWallet {
                 // The requests that need no one's decision, answered at once.
                 reportingFailure("answering the dApps' requests") {
                     AnswerDappRequestsAtOnce(dapps.requests, sentTransfers, transactionHistory, networkSettings)()
+                }
+            },
+            scope.launch {
+                // Swarm nodes' chequebooks and batches are found in the Gnosis Chain index (docs/swarm.md).
+                reportingFailure("finding Swarm nodes' chequebooks and batches") {
+                    FollowSwarmLogs(
+                        accounts,
+                        swarmCandidates,
+                        node.swarmContracts,
+                        node.lightClient,
+                        node.logIndex,
+                        ObserveHeavyDownloads(connectionMeter, meteredDownloads),
+                    )()
                 }
             },
             scope.launch {

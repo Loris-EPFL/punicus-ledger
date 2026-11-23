@@ -3,6 +3,7 @@ package eth.serotine.domain.repository
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
+import eth.serotine.domain.model.Network
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -14,6 +15,12 @@ import kotlinx.coroutines.flow.Flow
 interface SwarmCandidates {
     /** [node]'s candidates, re-emitted on each change, or why they cannot be read. Never throws. */
     fun observe(node: AccountId): Flow<SwarmCandidateList>
+
+    /**
+     * Every node on [network] that has a candidate kept, with them, re-emitted on each change; null
+     * while the candidates cannot be read. Never throws.
+     */
+    fun observeNodes(network: Network): Flow<Map<AccountId, SwarmCandidateList.Loaded>?>
 
     /** Adds [candidate] to [node]'s; [SwarmCandidateChange.ALREADY_PRESENT] when it is there already. Never throws. */
     suspend fun add(node: AccountId, candidate: SwarmCandidate): SwarmCandidateChange

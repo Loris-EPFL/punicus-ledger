@@ -119,8 +119,8 @@ So:
     (docs/embedding-myotis.md, `EngineReceipts`), so nothing here waits on
     one.
   - The emitter watch costs the walk the receipts of the blocks whose bloom
-    flags the PostageStamp: every batch bought or topped up on Swarm, a few
-    blocks a day. It tells the serving peer that this device follows the
+    flags the PostageStamp: every batch bought, topped up or diluted on
+    Swarm, and each round's price update, about a hundred blocks a day. It tells the serving peer that this device follows the
     PostageStamp, as any watched contract does (*An account's history*). It
     is configured while a Swarm node is in the wallet, and dropped with the
     last one.

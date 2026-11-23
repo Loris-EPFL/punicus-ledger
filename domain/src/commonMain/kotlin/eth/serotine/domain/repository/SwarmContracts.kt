@@ -5,6 +5,7 @@ import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Chequebook
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PostageBatch
+import eth.serotine.domain.model.SwarmDeployment
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -34,6 +35,14 @@ interface SwarmContracts {
      * [observeChequebook]. Never fails.
      */
     fun observeBatch(network: Network, node: Address, id: BatchId): Flow<SwarmReading<BatchFinding>>
+
+    /**
+     * Where Bee's contracts pinned on [network] are, to find candidates in the log index with; null
+     * where none are pinned, or no adapter serves [network] here. What it names is pinned, never
+     * proven by itself: a candidate found with it is still proven by [observeChequebook] or
+     * [observeBatch] before it counts.
+     */
+    fun deployment(network: Network): SwarmDeployment?
 }
 
 /** One answer of [SwarmContracts]. */

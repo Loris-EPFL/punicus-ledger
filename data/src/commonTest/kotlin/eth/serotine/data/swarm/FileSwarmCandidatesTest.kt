@@ -59,6 +59,17 @@ class FileSwarmCandidatesTest {
     }
 
     @Test
+    fun theNodesOfANetworkAreListedWithTheirCandidates() = runTest {
+        val store = candidates()
+        store.add(node, SwarmCandidate.Batch(batch))
+        store.add(node.copy(network = Network.ETHEREUM), SwarmCandidate.ChequebookAt(chequebook))
+        assertEquals(
+            mapOf(node to SwarmCandidateList.Loaded(emptyList(), listOf(batch))),
+            store.observeNodes(Network.GNOSIS).first(),
+        )
+    }
+
+    @Test
     fun aRemovedCandidateIsGoneAndANodeWithNoneLeavesTheFile() = runTest {
         val store = candidates()
         store.add(node, SwarmCandidate.Batch(batch))

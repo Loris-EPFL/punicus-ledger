@@ -8,6 +8,7 @@ import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Chequebook
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PostageBatch
+import eth.serotine.domain.model.SwarmDeployment
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.ChequebookFinding
@@ -107,6 +108,9 @@ class VerifiedSwarmContracts internal constructor(
         if (pins == null) return flowOf(SwarmReading.NotPinned)
         return batches.observe(node to id).map { it.toSwarmReading() }
     }
+
+    override fun deployment(network: Network): SwarmDeployment? =
+        pins?.takeIf { network == served }?.let { SwarmDeployment(it.bzz, it.postageStamp) }
 
     /**
      * Whether the code at [address], proven, hashes to [pin]; null when it could not be proven. A

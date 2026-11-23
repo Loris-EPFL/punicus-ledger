@@ -8,6 +8,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.NetworkUpgrade
 import eth.serotine.domain.model.NftRef
 import eth.serotine.domain.model.PriceId
+import eth.serotine.domain.model.SwarmDeployment
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.ApprovalReading
@@ -227,6 +228,8 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
         override fun observeBatch(network: Network, node: Address, id: BatchId): Flow<SwarmReading<BatchFinding>> =
             of(network)?.swarmContracts?.observeBatch(network, node, id)
                 ?: flowOf(SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE))
+
+        override fun deployment(network: Network): SwarmDeployment? = of(network)?.swarmContracts?.deployment(network)
     }
 
     val uniswap: UniswapV3Chain = object : UniswapV3Chain {

@@ -128,6 +128,13 @@ class FollowSwarmLogsTest {
         override fun deployment(network: Network) =
             SwarmDeployment(eth.serotine.domain.model.Token(bzz, "BZZ", "BZZ on xDai", 16, icon = "bzz"), stamp)
 
+        override suspend fun chequebook(
+            network: eth.serotine.domain.model.Network,
+            node: eth.serotine.domain.model.Address,
+            chequebook: eth.serotine.domain.model.Address,
+        ): eth.serotine.domain.repository.ChequebookReading =
+            eth.serotine.domain.repository.ChequebookReading.NotPinned
+
         override suspend fun postage(network: Network, node: Address?, id: BatchId?) =
             eth.serotine.domain.repository.PostageReading.NotPinned
     }

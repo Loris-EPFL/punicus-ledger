@@ -309,6 +309,11 @@ class ActivityDetailViewModel(
                 fields += DetailField("New depth", action.depth.toString())
                 fields += addressOf("Postage contract", action.stamp, names)
             }
+            is SentAction.ChequebookWithdrawal -> {
+                fields += addressOf("Chequebook", action.chequebook, names)
+                fields += DetailField("Withdrawn", rows.amount(action.amount, TransferAsset.Erc20Token(action.token)))
+                fields += DetailField("To", "The node's own address, which sent it")
+            }
         }
         fields += DetailField("Transaction hash", transfer.hash, DetailKind.HASH)
         fields += DetailField("Nonce", transfer.nonce.toString())

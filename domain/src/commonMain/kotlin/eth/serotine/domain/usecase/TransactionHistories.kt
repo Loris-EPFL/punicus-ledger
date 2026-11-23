@@ -252,6 +252,7 @@ class ObserveSentTo(private val history: TransactionHistory) {
         is SentAction.TokenApproval, is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap,
         is SentAction.SafeDeployment, is SentAction.CowCancellation, is SentAction.DappCall,
         is SentAction.DelaySkip, is SentAction.BatchPurchase, is SentAction.BatchTopUp, is SentAction.BatchDilution,
+        is SentAction.ChequebookWithdrawal,
         -> null
     }
 
@@ -279,7 +280,7 @@ fun HistoryEntry.concerns(id: AccountId): Boolean {
         // A batch bought here for a node: the node's too, whichever account paid (docs/swarm.md, *History*).
         is SentAction.BatchPurchase -> action.owner == id.address
         is SentAction.BatchTopUp -> action.node == id.address
-        is SentAction.BatchDilution -> false
+        is SentAction.BatchDilution, is SentAction.ChequebookWithdrawal -> false
     }
 }
 

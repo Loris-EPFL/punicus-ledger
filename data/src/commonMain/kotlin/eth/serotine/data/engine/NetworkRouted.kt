@@ -19,6 +19,7 @@ import eth.serotine.domain.repository.BlockTransactions
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.ChequebookFinding
+import eth.serotine.domain.repository.ChequebookReading
 import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.repository.DelayModules
@@ -231,6 +232,14 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
                 ?: flowOf(SwarmReading.Unavailable(ReadUnavailable.NO_ENGINE))
 
         override fun deployment(network: Network): SwarmDeployment? = of(network)?.swarmContracts?.deployment(network)
+
+        override suspend fun chequebook(
+            network: Network,
+            node: Address,
+            chequebook: Address,
+        ): ChequebookReading =
+            of(network)?.swarmContracts?.chequebook(network, node, chequebook)
+                ?: ChequebookReading.Unavailable(ReadUnavailable.NO_ENGINE)
 
         override suspend fun postage(network: Network, node: Address?, id: BatchId?): PostageReading =
             of(network)?.swarmContracts?.postage(network, node, id)

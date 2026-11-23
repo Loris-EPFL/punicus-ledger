@@ -232,15 +232,20 @@ class SwarmViewModel(
             else -> SwarmAction()
         }
 
-        fun sign(): SwarmAction = when {
+        /** An action on a chequebook or a batch kept but not verified now: what it waits for. */
+        fun unverified(): SwarmAction =
+            if (!on) SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true) else SwarmAction(SwarmTexts.NOT_VERIFIED)
+
+        /** An action only the node's own key may sign: [notHeld] says so where that key is not here. */
+        fun sign(notHeld: String = SwarmTexts.NODE_KEY_NOT_HELD): SwarmAction = when {
             !on -> SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true)
-            !nodeSigns -> SwarmAction(SwarmTexts.NODE_KEY_NOT_HELD)
+            !nodeSigns -> SwarmAction(notHeld)
             else -> SwarmAction()
         }
     }
 
     private fun ready(label: String, reading: SwarmNodeReading.Read, form: AddForm?, signs: Signs): SwarmUiState.Ready {
-        val chequebooks = reading.chequebooks.map(::chequebookRow)
+        val chequebooks = reading.chequebooks.map { chequebookRow(it, signs) }
         val batches = reading.batches.map { batchRow(it, signs) }
         return SwarmUiState.Ready(
             label = label,
@@ -254,10 +259,10 @@ class SwarmViewModel(
         )
     }
 
-    private fun chequebookRow(item: SwarmItem<Address, ChequebookFinding>): ChequebookRow {
+    private fun chequebookRow(item: SwarmItem<Address, ChequebookFinding>, signs: Signs): ChequebookRow {
         val address = Eip55.format(item.key)
         return when (val reading = item.reading) {
-            null -> ChequebookRow(address, emptyList(), null, SwarmTexts.NOT_READ)
+            null -> ChequebookRow(address, emptyList(), null, SwarmTexts.NOT_READ, withdraw = signs.unverified())
             is SwarmReading.Verified -> when (val finding = reading.finding) {
                 is ChequebookFinding.Node -> ChequebookRow(
                     address,
@@ -268,6 +273,13 @@ class SwarmViewModel(
                     ),
                     SwarmTexts.BOUNCED.takeIf { finding.chequebook.bounced },
                     SwarmTexts.verified(reading.blockNumber, item.held),
+                    withdraw = signs.sign(SwarmTexts.NODE_KEY_NOT_WITHDRAWING).let { action ->
+                        if (action.reason == null && finding.chequebook.liquidBalance.isZero) {
+                            SwarmAction(SwarmTexts.NOTHING_FREE)
+                        } else {
+                            action
+                        }
+                    },
                 )
                 ChequebookFinding.NotAChequebook -> ChequebookRow(
                     address,
@@ -282,7 +294,7 @@ class SwarmViewModel(
                     stated(SwarmTexts.othersChequebook(Eip55.format(finding.issuer)), reading, item),
                 )
             }
-            else -> ChequebookRow(address, emptyList(), null, unread(reading))
+            else -> ChequebookRow(address, emptyList(), null, unread(reading), withdraw = signs.unverified())
         }
     }
 
@@ -290,7 +302,16 @@ class SwarmViewModel(
         val id = "0x" + item.key.hex
         val short = id.take(10) + "…" + id.takeLast(4)
         return when (val reading = item.reading) {
-            null -> BatchRow(id, short, null, null, false, SwarmTexts.NOT_READ)
+            null -> BatchRow(
+                id,
+                short,
+                null,
+                null,
+                false,
+                SwarmTexts.NOT_READ,
+                topUp = signs.unverified(),
+                dilute = signs.unverified(),
+            )
             is SwarmReading.Verified -> when (val finding = reading.finding) {
                 is BatchFinding.Node -> {
                     // An expired batch takes neither: a new one is the way on.
@@ -317,7 +338,17 @@ class SwarmViewModel(
                     stated(SwarmTexts.othersBatch(Eip55.format(finding.owner)), reading, item),
                 )
             }
-            else -> BatchRow(id, short, null, null, false, unread(reading))
+            // Kept, and not read now (Gnosis Chain off, syncing, unproven): greyed out, never hidden.
+            else -> BatchRow(
+                id,
+                short,
+                null,
+                null,
+                false,
+                unread(reading),
+                topUp = signs.unverified(),
+                dilute = signs.unverified(),
+            )
         }
     }
 

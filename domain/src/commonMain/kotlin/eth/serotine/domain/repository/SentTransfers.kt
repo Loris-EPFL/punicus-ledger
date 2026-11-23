@@ -278,4 +278,11 @@ sealed interface SentAction {
      * *Dilute a batch*). It moves nothing but the fee.
      */
     data class BatchDilution(val stamp: Address, val id: BatchId, val depth: Int) : SentAction
+
+    /**
+     * [amount] of [token], xBZZ, withdrawn from the chequebook at [chequebook] by its issuer, the node
+     * that sent it (docs/swarm.md, *Withdraw from the chequebook*). The xBZZ goes to the node: it
+     * moves nothing from the account but the fee.
+     */
+    data class ChequebookWithdrawal(val token: Token, val chequebook: Address, val amount: UInt256) : SentAction
 }

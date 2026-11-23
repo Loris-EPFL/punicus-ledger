@@ -1107,6 +1107,27 @@ class AccountActivityTest {
     }
 
     @Test
+    fun aChequebookWithdrawalsOwnXbzzIsSaidByItsRowNotAsAReceiptFromAnUnfamiliarSender() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val bzz = Token(Address.of("0x" + "db".repeat(20)), "BZZ", "BZZ on xDai", 16, "bzz")
+        val chequebook = Address.of("0x" + "cb".repeat(20))
+        val withdrawal = sent(10, SentAction.ChequebookWithdrawal(bzz, chequebook, UInt256.of(1_000_000)), 450)
+        history.entries.value = listOf(HistoryEntry(withdrawal, SentOutcome.Included(9_406_000, succeeded = true)))
+        index.logs = listOf(
+            tokenLog(bzz.address, 9_406_000, chequebook, alice.address, word("f4240"), withdrawal.hash),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
+
+        // The withdrawal's row alone: its own xBZZ is no receipt, cautioned, from an unfamiliar sender.
+        assertEquals(1, rows.size, rows.map { it.title }.toString())
+        assertTrue(rows.none { it.state == ActivityState.CAUTION })
+    }
+
+    @Test
     fun aTransferReceivedFromAnAddressNeverSentToIsCautionedAndOneSentToIsNot() = runTest {
         starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
         index.coverage.value = LogCoverageReading.Read(

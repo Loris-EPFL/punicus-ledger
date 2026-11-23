@@ -68,6 +68,13 @@ class SwarmNodesTest {
 
         override fun deployment(network: Network) = null
 
+        override suspend fun chequebook(
+            network: eth.serotine.domain.model.Network,
+            node: eth.serotine.domain.model.Address,
+            chequebook: eth.serotine.domain.model.Address,
+        ): eth.serotine.domain.repository.ChequebookReading =
+            eth.serotine.domain.repository.ChequebookReading.NotPinned
+
         override suspend fun postage(network: Network, node: Address?, id: BatchId?) =
             eth.serotine.domain.repository.PostageReading.NotPinned
     }

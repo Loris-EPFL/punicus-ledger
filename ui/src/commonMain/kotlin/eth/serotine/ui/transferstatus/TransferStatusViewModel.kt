@@ -571,7 +571,8 @@ class TransferStatusViewModel(
      * What [transfer] is called in a sentence: "transfer", "approval", "execution", "deployment",
      * "swap", "wrap", "unwrap", "cancellation", for a dApp's "transaction", or for a Gnosis Pay
      * account's transfer through its Delay "queueing" or "execution", for its Delay's skip of
-     * expired entries "skip", and for a Swarm node's postage batch "purchase", "top-up" or "dilution".
+     * expired entries "skip", for a Swarm node's postage batch "purchase", "top-up" or "dilution", and
+     * for its chequebook's "withdrawal".
      */
     private fun whatOf(transfer: SentTransfer): String = when (transfer.action) {
         is SentAction.Transfer -> "transfer"
@@ -590,6 +591,7 @@ class TransferStatusViewModel(
         is SentAction.BatchPurchase -> "purchase"
         is SentAction.BatchTopUp -> "top-up"
         is SentAction.BatchDilution -> "dilution"
+        is SentAction.ChequebookWithdrawal -> "withdrawal"
     }
 
     private fun maybeSentText(what: String) = "No peer answered when this $what was broadcast, so it may not have " +
@@ -800,6 +802,15 @@ class TransferStatusViewModel(
                 ),
                 from,
             )
+            is SentAction.ChequebookWithdrawal -> DelaySummary(
+                "Withdrew from the chequebook",
+                listOf(
+                    "Chequebook" to Eip55.format(action.chequebook),
+                    "Withdrawn" to pulled(action.amount, action.token),
+                    "To" to "The node's own address, which sent it",
+                ),
+                from,
+            )
             else -> null
         }
     }
@@ -903,6 +914,7 @@ class TransferStatusViewModel(
             is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap, is SentAction.CowCancellation,
             is SentAction.DappCall, is SentAction.DelayQueue, is SentAction.DelayExecution,
             is SentAction.DelaySkip, is SentAction.BatchPurchase, is SentAction.BatchTopUp, is SentAction.BatchDilution,
+            is SentAction.ChequebookWithdrawal,
             -> return null
         }
         return SafeTxSummary(

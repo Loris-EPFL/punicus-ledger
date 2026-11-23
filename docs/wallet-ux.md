@@ -1894,6 +1894,9 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
   each; **Dilute** on each, greyed out unless the node's key is held here.
   Both are greyed out on an expired batch, a tap saying to buy a new one.
   **Buy a batch** and **Add a batch by id** under the list.
+- **A chequebook or a batch kept but not verified now** (Gnosis Chain off,
+  syncing, a read that found no proof) shows its Withdraw, Top up and Dilute
+  greyed out, a tap saying what it waits for, never hides them.
 - **Each chequebook and batch** has **Remove**, which is remembered: the
   log index never adds it back, and adding it by hand keeps it again. One
   not read yet says "Checking on chain…"; one that is not the node's says
@@ -1906,7 +1909,6 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
   0x…, not this node.", "It could not be verified right now, so nothing was
   kept."). With Gnosis Chain off, Add is greyed out, a tap saying that
   nothing can be checked on chain, with **Turn on Gnosis Chain**.
-- Withdraw comes with its part (docs/swarm.md, *Delivery*).
 - **Buy a batch, Top up and Dilute** open **Postage batch**, a screen of
   their own over the node's, under Gnosis Chain's light client strip or
   sync line. Buy a batch and Top up are greyed out while no EOA of the
@@ -1943,8 +1945,14 @@ batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
   too little xBZZ, an earlier purchase or top-up from the account still on
   its way (with its status), an upgraded xBZZ. The call sent opens its
   status in the screen's place; back returns to the node.
-- **Withdraw** takes an amount up to what is free; its review says the xBZZ
-  goes to the node's own address and warns: "Bee may have issued cheques
+- **Withdraw** opens **Withdraw from the chequebook**, a screen of its own
+  over the node's. Greyed out where the node's own key is not here, while
+  nothing is free to withdraw, and while Gnosis Chain is off (with **Turn on
+  Gnosis Chain**). It takes an amount in BZZ, with **All that is free**;
+  more than is free is refused at Review, saying how much is. Its review
+  says the xBZZ goes to the node's own address, names the chequebook, the
+  fee and the blocks it was read at, warns of Bee on the same key as the
+  batches' reviews do, and warns: "Bee may have issued cheques
   from this chequebook that are not cashed yet. Punicus cannot see them. If
   one cannot be paid in full it bounces, the chequebook is marked as bounced
   for good, and peers may stop serving the node."

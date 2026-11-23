@@ -112,6 +112,7 @@ import eth.serotine.ui.update.UpdateRequiredRoute
 import eth.serotine.ui.update.UpdateRequiredUiState
 import eth.serotine.ui.update.UpdateRequiredViewModel
 import eth.serotine.ui.watch.WatchRoute
+import eth.serotine.ui.withdraw.WithdrawRoute
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -967,9 +968,32 @@ private fun Destinations(
                     onBuy = { navController.postage(account, PostageAction.BUY) },
                     onTopUp = { id -> navController.postage(account, PostageAction.TOP_UP, id) },
                     onDilute = { id -> navController.postage(account, PostageAction.DILUTE, id) },
+                    onWithdraw = { chequebook -> navController.withdraw(account, chequebook) },
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(SWARM_ROUTE, inclusive = true) }
+            }
+        }
+        composable(WITHDRAW_ROUTE) { entry ->
+            val account = entry.account()
+            val chequebook = entry.savedStateHandle.get<String>(CHEQUEBOOK)?.let(Address::parse)
+            if (account != null && chequebook != null) {
+                WithdrawRoute(
+                    viewModel = viewModel { graph.withdrawViewModel(account, chequebook) },
+                    lightClient = lightClient.item(account.network),
+                    onBack = { navController.popBackStack(WITHDRAW_ROUTE, inclusive = true) },
+                    onGone = { navController.popBackStack(WITHDRAW_ROUTE, inclusive = true) },
+                    // Sent: its status in this screen's place, which back returns from to the node.
+                    onSent = { sent ->
+                        navController.navigate(transferRoute(account.network, sent)) {
+                            popUpTo(WITHDRAW_ROUTE) { inclusive = true }
+                        }
+                    },
+                    // An earlier withdrawal on its way: its status over this screen.
+                    onOpen = { hash -> navController.openTransfer(account.network, hash) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(WITHDRAW_ROUTE, inclusive = true) }
             }
         }
         composable(
@@ -1372,6 +1396,12 @@ private fun NavController.swarm(node: AccountId) {
     navigate("${Destination.SWARM}/${node.route}")
 }
 
+/** Opens the withdrawal from [node]'s chequebook at [chequebook] (EIP-55); a second tap while it opens does nothing. */
+private fun NavController.withdraw(node: AccountId, chequebook: String) {
+    if (currentDestination?.route == WITHDRAW_ROUTE) return
+    navigate("${Destination.SWARM}/${node.route}/${Destination.WITHDRAW}/${chequebook.lowercase()}")
+}
+
 /**
  * Opens the postage screen of [node] for [action], of the batch [batch] (`0x` and 64 hex digits) for a
  * top-up or a dilution; a second tap while it opens does nothing.
@@ -1513,6 +1543,7 @@ private object Destination {
     const val GNOSIS_PAY = "gnosis-pay"
     const val SWARM = "swarm"
     const val POSTAGE = "postage"
+    const val WITHDRAW = "withdraw"
     const val UPDATE_REQUIRED = "update-required"
     const val COW_ORDER = "cow-order"
 }
@@ -1608,6 +1639,12 @@ private val SWARM_ROUTE = accountRoute(Destination.SWARM)
 /** The postage screen's arguments: what it does ([PostageAction]'s name), and of which batch. */
 private const val POSTAGE_ACTION = "action"
 private const val BATCH = "batch"
+
+/** The withdrawal route's argument: the chequebook's address. */
+private const val CHEQUEBOOK = "chequebook"
+
+/** xBZZ withdrawn from a Swarm node's chequebook (docs/swarm.md, *Withdraw from the chequebook*). */
+private const val WITHDRAW_ROUTE = "${Destination.SWARM}/{$CHAIN}/{$ADDRESS}/${Destination.WITHDRAW}/{$CHEQUEBOOK}"
 
 /** A postage batch bought, topped up or diluted for a Swarm node (docs/swarm.md, *The four actions*). */
 private const val POSTAGE_ROUTE =

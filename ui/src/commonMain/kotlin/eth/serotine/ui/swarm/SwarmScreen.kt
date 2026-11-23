@@ -70,6 +70,9 @@ const val SWARM_TOP_UP_TAG = "swarm-top-up"
 /** Test tag of a batch's Dilute, suffixed with its id, for UI tests. */
 const val SWARM_DILUTE_TAG = "swarm-dilute"
 
+/** Test tag of a chequebook's Withdraw, suffixed with its address, for UI tests. */
+const val SWARM_WITHDRAW_TAG = "swarm-withdraw"
+
 /** Test tag of a chequebook's row, for UI tests. */
 const val SWARM_CHEQUEBOOK_TAG = "swarm-chequebook"
 
@@ -98,6 +101,7 @@ fun SwarmRoute(
     onBuy: () -> Unit = {},
     onTopUp: (String) -> Unit = {},
     onDilute: (String) -> Unit = {},
+    onWithdraw: (String) -> Unit = {},
 ) {
     // Main.immediate: as on the other screens that take typing, an edit reaches its field in the same frame.
     val state by viewModel.uiState.collectAsStateWithLifecycle(context = Dispatchers.Main.immediate)
@@ -122,6 +126,7 @@ fun SwarmRoute(
             onBuy = onBuy,
             onTopUp = onTopUp,
             onDilute = onDilute,
+            onWithdraw = onWithdraw,
         ),
         modifier = modifier,
         lightClient = item.takeIf { LocalInterfaceMode.current == InterfaceMode.DETAILED },
@@ -142,6 +147,7 @@ data class SwarmActions(
     val onBuy: () -> Unit = {},
     val onTopUp: (String) -> Unit = {},
     val onDilute: (String) -> Unit = {},
+    val onWithdraw: (String) -> Unit = {},
 )
 
 /**
@@ -236,7 +242,15 @@ private fun Ready(state: SwarmUiState.Ready, actions: SwarmActions) {
                 row.lines.forEach { Text(it) }
                 row.warning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text(row.status, style = MaterialTheme.typography.bodySmall)
-                Row {
+                FlowRow {
+                    row.withdraw?.let { withdraw ->
+                        TextButton(
+                            onClick = { act("Withdraw", withdraw) { actions.onWithdraw(row.address) } },
+                            modifier = Modifier.unavailable(withdraw.reason != null)
+                                .testTag("$SWARM_WITHDRAW_TAG-${row.address}"),
+                            colors = textColors(withdraw.reason != null),
+                        ) { Text("Withdraw") }
+                    }
                     TextButton(onClick = { actions.onCopy(row.address) }) { Text("Copy address") }
                     TextButton(onClick = { actions.onRemoveChequebook(row.address) }) { Text("Remove") }
                 }

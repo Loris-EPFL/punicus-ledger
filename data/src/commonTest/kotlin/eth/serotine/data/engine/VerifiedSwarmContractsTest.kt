@@ -13,6 +13,7 @@ import eth.serotine.domain.model.SwarmDeployment
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.ChequebookFinding
+import eth.serotine.domain.repository.ChequebookReading
 import eth.serotine.domain.repository.PostageReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SwarmReading
@@ -143,6 +144,49 @@ class VerifiedSwarmContractsTest {
             ),
             contracts().observeChequebook(Network.GNOSIS, node, chequebook).first(),
         )
+    }
+
+    @Test
+    fun aChequebookIsReadFreshForAWithdrawal() = runTest {
+        theNodesChequebook()
+        val balance = UInt256.of(12_000_000_000_000_000)
+        thePostageStamp()
+        val contracts = contracts()
+        assertEquals(
+            ChequebookReading.Read(
+                ChequebookFinding.Node(Chequebook(chequebook, node, balance, balance, UInt256.of(0), bounced = false)),
+                7,
+            ),
+            contracts.chequebook(Network.GNOSIS, node, chequebook),
+        )
+        // Read again at each ask: a cash-out since is seen at once, never a reading kept.
+        answer(chequebook, VerifiedSwarmContracts.LIQUID_BALANCE, word("0"))
+        val again = assertIs<ChequebookFinding.Node>(
+            assertIs<ChequebookReading.Read>(contracts.chequebook(Network.GNOSIS, node, chequebook)).finding,
+        )
+        assertEquals(UInt256.of(0), again.chequebook.liquidBalance)
+        assertEquals(
+            ChequebookReading.Unavailable(ReadUnavailable.NO_ENGINE),
+            contracts.chequebook(Network.ETHEREUM, node, chequebook),
+        )
+        assertEquals(ChequebookReading.NotPinned, contracts(pinned = null).chequebook(Network.GNOSIS, node, chequebook))
+    }
+
+    @Test
+    fun aWithdrawalReadsNothingOnceXbzzIsNotThePinnedOne() = runTest {
+        theNodesChequebook()
+        thePostageStamp(implementation = Address.of("0x" + "99".repeat(20)))
+        assertEquals(ChequebookReading.BzzChanged, contracts().chequebook(Network.GNOSIS, node, chequebook))
+        // Upgraded between the slot's two reads: never passes unseen.
+        thePostageStamp()
+        var slotReads = 0
+        val upgrading = object : VerifiedChain by chain {
+            override fun storageAt(address: Address, slot: ByteArray): String? =
+                if (slotReads++ == 0) chain.storageAt(address, slot) else word("99".repeat(20))
+        }
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val contracts = VerifiedSwarmContracts(Network.GNOSIS, upgrading, dispatcher, 4.seconds, pins)
+        assertEquals(ChequebookReading.BzzChanged, contracts.chequebook(Network.GNOSIS, node, chequebook))
     }
 
     @Test

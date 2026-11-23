@@ -60,6 +60,7 @@ import eth.serotine.ui.transferstatus.transferStatusScreenPreviews
 import eth.serotine.ui.update.updateRequiredScreenPreviews
 import eth.serotine.ui.watch.simpleWatchScreenPreviews
 import eth.serotine.ui.watch.watchScreenPreviews
+import eth.serotine.ui.withdraw.withdrawScreenPreviews
 
 /**
  * The map of screens: every screen once, with the slug that is its folder under `docs/screenshots/`.
@@ -89,6 +90,7 @@ internal object Screens {
     val gnosisPay = Screen("gnosis-pay", "Gnosis Pay account", gnosisPayScreenPreviews)
     val swarm = Screen("swarm", "Swarm node", swarmScreenPreviews)
     val postage = Screen("postage", "Postage batch", postageScreenPreviews)
+    val withdraw = Screen("withdraw", "Withdraw from the chequebook", withdrawScreenPreviews)
     val handoff = Screen("handoff", "Send from another wallet", handoffScreenPreviews)
     val mnemonicImport = Screen("mnemonic-import", "Import recovery phrase", mnemonicImportScreenPreviews)
     val noAccountOpen = Screen("no-account-open", "No account open (wide window)", noAccountOpenScreenPreviews)
@@ -200,5 +202,6 @@ internal object Screens {
         updateRequired,
         watch,
         widgetPair,
+        withdraw,
     )
 }

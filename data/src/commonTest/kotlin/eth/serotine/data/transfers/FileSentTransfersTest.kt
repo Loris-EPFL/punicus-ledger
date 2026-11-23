@@ -368,7 +368,7 @@ class FileSentTransfersTest {
             transfer(9).copy(
                 action = SentAction.BatchPurchase(bzz, stamp, bob, id, 22, UInt256.of(3_578_031_360), true),
             ),
-            transfer(10).copy(action = SentAction.BatchTopUp(bzz, stamp, id, 22, UInt256.of(1_000))),
+            transfer(10).copy(action = SentAction.BatchTopUp(bzz, stamp, bob, id, 22, UInt256.of(1_000))),
             transfer(11).copy(action = SentAction.BatchDilution(stamp, id, 23)),
         )
         val recorder = record()

@@ -782,6 +782,7 @@ class TransferStatusViewModel(
             is SentAction.BatchTopUp -> DelaySummary(
                 "Topped up a postage batch",
                 listOfNotNull(
+                    "For the node" to Eip55.format(action.node),
                     "Batch" to "0x" + action.id.hex,
                     SwarmCalls.total(action.perChunk, action.depth)?.let { "Paid" to pulled(it, action.token) },
                     "Postage contract" to Eip55.format(action.stamp),

@@ -366,7 +366,13 @@ internal class ActivityRows(
             } else {
                 Triple("Postage batch bought", transfer.account, "Paid by")
             }
-            is SentAction.BatchTopUp -> Triple("Topped up batch ${batchShort(action.id)}", action.stamp, "At")
+            is SentAction.BatchTopUp -> if (transfer.account == address && action.node != address) {
+                Triple("Topped up batch ${batchShort(action.id)}", action.node, "For")
+            } else if (transfer.account == address) {
+                Triple("Topped up batch ${batchShort(action.id)}", action.stamp, "At")
+            } else {
+                Triple("Batch ${batchShort(action.id)} topped up", transfer.account, "Paid by")
+            }
             is SentAction.BatchDilution ->
                 Triple("Diluted batch ${batchShort(action.id)} to depth ${action.depth}", action.stamp, "At")
         }

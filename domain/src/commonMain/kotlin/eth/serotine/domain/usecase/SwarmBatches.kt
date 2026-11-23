@@ -83,16 +83,17 @@ sealed interface BatchCall {
         override fun hashCode(): Int = nonce.contentHashCode()
     }
 
-    /** [perChunk] more of [token] for each chunk of the batch [id], of [depth]. */
+    /** [perChunk] more of [token] for each chunk of [node]'s batch [id], of [depth]. */
     data class TopUp(
         val token: Token,
         override val stamp: Address,
+        val node: Address,
         val id: BatchId,
         val depth: Int,
         val perChunk: UInt256,
     ) : BatchCall {
         override val action: SentAction
-            get() = SentAction.BatchTopUp(token, stamp, id, depth, perChunk)
+            get() = SentAction.BatchTopUp(token, stamp, node, id, depth, perChunk)
     }
 
     /** The batch [id] diluted from [from] to [depth], its owner's own transaction. */
@@ -173,6 +174,9 @@ sealed interface BatchRefusal {
     /** The total does not fit 256 bits. */
     data object TooMuch : BatchRefusal
 
+    /** A top-up of nothing per chunk: it would add nothing and cost a fee. */
+    data object NothingToAdd : BatchRefusal
+
     /**
      * The payer holds less xBZZ than the total ([total]) beside what its own transactions not mined
      * yet still move of it: nothing is approved for a purchase or a top-up it cannot pay.
@@ -204,11 +208,13 @@ internal class BatchQuoter(
     private val tokenBalances: TokenBalances,
     private val sentTransfers: SentTransfers,
     private val outbox: Outbox,
-    private val approvals: QuoteTokenApproval,
     private val clock: () -> Long,
 ) {
     val network = SWARM_NETWORK
     private val quoter = CallQuoter(inputs, sentTransfers, network, clock, outbox)
+
+    /** xBZZ's approval of the PostageStamp, quoted on the network the batches are on, and no other. */
+    private val approvals = QuoteTokenApproval(inputs, nativeBalances, sentTransfers, network, outbox, clock)
 
     /**
      * The pins and the PostageStamp's state, read fresh, once: what a quote rests on, or why there is
@@ -318,10 +324,9 @@ class QuoteBatchPurchase internal constructor(
         tokenBalances: TokenBalances,
         sentTransfers: SentTransfers,
         outbox: Outbox,
-        approvals: QuoteTokenApproval,
         clock: () -> Long = ::epochSecondsNow,
     ) : this(
-        BatchQuoter(contracts, inputs, nativeBalances, tokenBalances, sentTransfers, outbox, approvals, clock),
+        BatchQuoter(contracts, inputs, nativeBalances, tokenBalances, sentTransfers, outbox, clock),
         { Random.nextBytes(32) },
     )
 
@@ -366,9 +371,8 @@ class QuoteBatchTopUp internal constructor(private val quoter: BatchQuoter) {
         tokenBalances: TokenBalances,
         sentTransfers: SentTransfers,
         outbox: Outbox,
-        approvals: QuoteTokenApproval,
         clock: () -> Long = ::epochSecondsNow,
-    ) : this(BatchQuoter(contracts, inputs, nativeBalances, tokenBalances, sentTransfers, outbox, approvals, clock))
+    ) : this(BatchQuoter(contracts, inputs, nativeBalances, tokenBalances, sentTransfers, outbox, clock))
 
     suspend operator fun invoke(
         payer: Address,
@@ -377,6 +381,7 @@ class QuoteBatchTopUp internal constructor(private val quoter: BatchQuoter) {
         perChunk: UInt256,
         level: FeeLevel,
     ): BatchQuoting {
+        if (perChunk.isZero) return BatchQuoting.Refused(BatchRefusal.NothingToAdd)
         val prepared = when (val read = quoter.prepare(node, id)) {
             is BatchQuoter.Prepared.Ready -> read
             is BatchQuoter.Prepared.Refused -> return BatchQuoting.Refused(read.refusal)
@@ -388,7 +393,7 @@ class QuoteBatchTopUp internal constructor(private val quoter: BatchQuoter) {
             return BatchQuoting.Refused(BatchRefusal.BelowMinimum(postage.state.minimumPerChunk))
         }
         val total = SwarmCalls.total(perChunk, batch.depth) ?: return BatchQuoting.Refused(BatchRefusal.TooMuch)
-        val call = BatchCall.TopUp(pinned.bzz, pinned.postageStamp, id, batch.depth, perChunk)
+        val call = BatchCall.TopUp(pinned.bzz, pinned.postageStamp, node, id, batch.depth, perChunk)
         return quoter.quote(payer, call, SwarmCalls.topUp(id, perChunk), total, pinned, postage, level, batch)
     }
 }
@@ -408,9 +413,8 @@ class QuoteBatchDilution internal constructor(private val quoter: BatchQuoter) {
         tokenBalances: TokenBalances,
         sentTransfers: SentTransfers,
         outbox: Outbox,
-        approvals: QuoteTokenApproval,
         clock: () -> Long = ::epochSecondsNow,
-    ) : this(BatchQuoter(contracts, inputs, nativeBalances, tokenBalances, sentTransfers, outbox, approvals, clock))
+    ) : this(BatchQuoter(contracts, inputs, nativeBalances, tokenBalances, sentTransfers, outbox, clock))
 
     suspend operator fun invoke(node: Address, id: BatchId, depth: Int, level: FeeLevel): BatchQuoting {
         val prepared = when (val read = quoter.prepare(node, id)) {

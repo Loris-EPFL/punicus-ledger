@@ -46,8 +46,11 @@ import org.kotlincrypto.hash.sha3.Keccak256
  *   a zero owner is [BatchFinding.Gone], another owner [BatchFinding.OthersOwner]; then
  *   `remainingBalance(id)` and `lastPrice()`.
  *
- * Code that matched its pin is not proven again in this process: none of these contracts is a
- * proxy that can change its code, and a contract's code cannot change after deployment. A set of
+ * Code that matched its pin is not proven again in this process, since a contract's code cannot
+ * change after deployment; what a proxy can change is the implementation it delegates to, so
+ * xBZZ's EIP-1967 slot is read at every [postage] read, before and after its state, and the
+ * implementation it names is matched against its pin each time. The chequebook proxy's master
+ * copy is immutable in its code. A set of
  * calls that straddles two blocks, or in which a call gave no answer, is made again, after a pause
  * for the latter, up to [READ_TRIES] reads in all, and is otherwise unproven for that poll. A
  * getter that reverts or answers what the pinned contract's never does is unproven; a refusal is

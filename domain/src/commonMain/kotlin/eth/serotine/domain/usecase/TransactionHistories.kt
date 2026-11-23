@@ -278,7 +278,8 @@ fun HistoryEntry.concerns(id: AccountId): Boolean {
         is SentAction.DelaySkip -> action.safe == id.address
         // A batch bought here for a node: the node's too, whichever account paid (docs/swarm.md, *History*).
         is SentAction.BatchPurchase -> action.owner == id.address
-        is SentAction.BatchTopUp, is SentAction.BatchDilution -> false
+        is SentAction.BatchTopUp -> action.node == id.address
+        is SentAction.BatchDilution -> false
     }
 }
 

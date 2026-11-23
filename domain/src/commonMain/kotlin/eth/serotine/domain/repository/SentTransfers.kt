@@ -266,6 +266,8 @@ sealed interface SentAction {
     data class BatchTopUp(
         val token: Token,
         val stamp: Address,
+        /** The node whose batch it tops up: whoever paid, its history shows it too. */
+        val node: Address,
         val id: BatchId,
         val depth: Int,
         val perChunk: UInt256,

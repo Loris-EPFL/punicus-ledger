@@ -412,6 +412,22 @@ class VerifiedSwarmContractsTest {
     }
 
     @Test
+    fun anUpgradeOfXbzzBetweenTheTwoSlotReadsApprovesNothing() = runTest {
+        thePostageStamp()
+        val upgraded = word("99".repeat(20))
+        var slotReads = 0
+        // The slot names the pinned implementation before the state is read, another one after it.
+        val upgrading = object : VerifiedChain by chain {
+            override fun storageAt(address: Address, slot: ByteArray): String? =
+                if (slotReads++ == 0) chain.storageAt(address, slot) else upgraded
+        }
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val contracts = VerifiedSwarmContracts(Network.GNOSIS, upgrading, dispatcher, 4.seconds, pins)
+        assertEquals(PostageReading.BzzChanged, contracts.postage(Network.GNOSIS))
+        assertEquals(2, slotReads)
+    }
+
+    @Test
     fun thePostageStampOfAnotherNetworkIsRefused() = runTest {
         assertEquals(PostageReading.Unavailable(ReadUnavailable.NO_ENGINE), contracts().postage(Network.ETHEREUM))
         assertEquals(PostageReading.NotPinned, contracts(Network.ETHEREUM, pinned = null).postage(Network.ETHEREUM))

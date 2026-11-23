@@ -101,9 +101,7 @@ class SwarmBatchesTest {
         const val ALLOWANCE = "dd62ed3e"
     }
 
-    private val approvals =
-        QuoteTokenApproval(inputs, native, sent, Network.GNOSIS, outbox = Outbox.None, clock = { 1_000 })
-    private val quoter = BatchQuoter(contracts, inputs, native, tokens, sent, Outbox.None, approvals) { 1_000 }
+    private val quoter = BatchQuoter(contracts, inputs, native, tokens, sent, Outbox.None) { 1_000 }
 
     private suspend fun buy(perChunk: UInt256 = minimum, depth: Int = 22) =
         QuoteBatchPurchase(quoter) { nonce }(payer, node, depth, perChunk, immutable = true, FeeLevel.NORMAL)
@@ -147,6 +145,11 @@ class SwarmBatchesTest {
         val quote = assertIs<BatchQuoting.Quoted>(topUp(payer, node, id, UInt256.of(1_000), FeeLevel.NORMAL)).quote
         assertEquals(SwarmCalls.total(UInt256.of(1_000), 22), quote.total)
         assertEquals(SwarmCalls.topUp(id, UInt256.of(1_000)).toHex(), quote.quote.transaction.data.toHex())
+        assertEquals(node, (quote.call as BatchCall.TopUp).node)
+        assertEquals(
+            BatchQuoting.Refused(BatchRefusal.NothingToAdd),
+            topUp(payer, node, id, UInt256.ZERO, FeeLevel.NORMAL),
+        )
 
         batch = SwarmReading.Verified(BatchFinding.OthersOwner(stranger), 100)
         assertEquals(

@@ -367,6 +367,7 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
                 action.id.hex,
                 action.depth,
                 perChunk = action.perChunk.toDecimal(),
+                owner = action.node.hex,
                 token = stored(action.token),
             )
             is SentAction.BatchDilution -> StoredPostageCall(DILUTION, action.stamp.hex, action.id.hex, action.depth)
@@ -395,7 +396,7 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
 /**
  * A Swarm node's postage batch call (format 13, docs/swarm.md): bought ([kind] `purchase`, with
  * its [owner], [perChunk], [immutable] and the [token] it pulls, xBZZ), topped up (`top-up`, with
- * [perChunk] and [token]) or diluted
+ * the node as [owner], [perChunk] and [token]) or diluted
  * (`dilution`), of the batch [id] at the PostageStamp [stamp], at [depth] (the new one for a
  * dilution). A field its kind does not have, or one it lacks, makes the entry damaged.
  */
@@ -424,10 +425,11 @@ internal class StoredPostageCall(
                 requireNotNull(immutable) { "a purchase without whether it is immutable" },
             )
             TOP_UP -> {
-                require(owner == null && immutable == null) { "a top-up with a purchase's fields" }
+                require(immutable == null) { "a top-up with a purchase's fields" }
+                val node = Address.of(requireNotNull(owner) { "a top-up without its node" })
                 val amount = requireNotNull(perChunk) { "a top-up without its amount" }
                 val pulled = requireNotNull(token) { "a top-up without its token" }.toToken()
-                SentAction.BatchTopUp(pulled, stamp, id, depth, UInt256.of(amount))
+                SentAction.BatchTopUp(pulled, stamp, node, id, depth, UInt256.of(amount))
             }
             DILUTION -> {
                 require(owner == null && immutable == null && perChunk == null && token == null) {

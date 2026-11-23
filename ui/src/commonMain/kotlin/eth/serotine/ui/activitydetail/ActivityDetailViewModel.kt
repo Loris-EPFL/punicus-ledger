@@ -298,6 +298,7 @@ class ActivityDetailViewModel(
                 fields += addressOf("Postage contract", action.stamp, names)
             }
             is SentAction.BatchTopUp -> {
+                fields += addressOf("For the node", action.node, names)
                 fields += DetailField("Batch", "0x" + action.id.hex, DetailKind.HASH)
                 SwarmCalls.total(action.perChunk, action.depth)
                     ?.let { fields += DetailField("Paid", rows.amount(it, TransferAsset.Erc20Token(action.token))) }

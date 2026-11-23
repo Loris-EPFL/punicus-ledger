@@ -49,10 +49,13 @@ class SwarmActivityTest {
 
     @Test
     fun aTopUpAndADilutionNameTheBatch() {
-        assertEquals(
-            "Topped up batch 0xa1b2c3d4…c3d4",
-            rows(payer).row(entry(payer, SentAction.BatchTopUp(bzz, stamp, id, 22, UInt256.of(1))), emptyMap()).title,
-        )
+        val topUp = entry(payer, SentAction.BatchTopUp(bzz, stamp, node, id, 22, UInt256.of(1)))
+        val paid = rows(payer).row(topUp, emptyMap())
+        assertEquals("Topped up batch 0xa1b2c3d4…c3d4", paid.title)
+        assertEquals(true, paid.detail.startsWith("For "))
+        val forTheNode = rows(node).row(topUp, emptyMap())
+        assertEquals("Batch 0xa1b2c3d4…c3d4 topped up", forTheNode.title)
+        assertEquals(true, forTheNode.detail.startsWith("Paid by "))
         assertEquals(
             "Diluted batch 0xa1b2c3d4…c3d4 to depth 23",
             rows(node).row(entry(node, SentAction.BatchDilution(stamp, id, 23)), emptyMap()).title,

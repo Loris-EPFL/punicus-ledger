@@ -1,10 +1,13 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.AbiWords
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.SwarmDeployment
+import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.model.hexToBytes
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.IndexedLog
@@ -83,8 +86,11 @@ class FollowSwarmLogs(
     /** The EOAs listed at the last round: one that joins has the PostageStamp's logs matched anew. */
     private var listedEoas: Set<Address> = emptySet()
 
-    /** Transactions in which an account of the wallet paid the PostageStamp in xBZZ. */
-    private val paid = mutableSetOf<String>()
+    /**
+     * Transactions in which an account of the wallet paid the PostageStamp in xBZZ, with each amount
+     * it paid there: a batch is the wallet's only where one of them is that batch's own total.
+     */
+    private val paid = mutableMapOf<String, MutableSet<UInt256>>()
 
     /** The accounts of the wallet seen paying the PostageStamp: the PostageStamp is followed for them. */
     private val payers = mutableSetOf<Address>()
@@ -134,7 +140,7 @@ class FollowSwarmLogs(
         for (account in listed) {
             for (transfer in xbzzSentBy(account, coverage, deployment)) {
                 if (transfer.to == deployment.postageStamp) {
-                    paid += transfer.transaction
+                    paid.getOrPut(transfer.transaction) { mutableSetOf() } += transfer.amount
                     payers += account.address
                 } else if (account.id in eoaIds) {
                     found(account, SwarmCandidate.ChequebookAt(transfer.to), transfer.block)
@@ -146,11 +152,16 @@ class FollowSwarmLogs(
         batchesIn(coverage, deployment).filter { it.owner in byAddress }.forEach {
             unpaid.getOrPut(it.transaction) { mutableSetOf() } += it
         }
-        // Only a batch the wallet paid for (owner's decision, 2026-11-23).
+        // Only a batch the wallet paid for (owner's decision, 2026-11-23): an account of the wallet sent
+        // the PostageStamp, in the same transaction, exactly the total the batch was created with.
         unpaid.keys.filter { it in paid }.forEach { transaction ->
-            unpaid.remove(transaction)?.forEach { batch ->
+            val amounts = paid.getValue(transaction)
+            val batches = unpaid.getValue(transaction)
+            batches.filter { it.total in amounts }.forEach { batch ->
+                batches.remove(batch)
                 byAddress[batch.owner]?.let { found(it, SwarmCandidate.Batch(batch.id), batch.block) }
             }
+            if (batches.isEmpty()) unpaid.remove(transaction)
         }
         prove(eoas, nodes)
     }
@@ -259,9 +270,12 @@ class FollowSwarmLogs(
         return newLogs(key, coverage[key], listOf(TRANSFER), position = 1)
             .filter { it.log.address == deployment.bzz.address && it.log.topics.size == 3 }
             .mapNotNull { log ->
+                // A transfer of nothing proves nothing: anyone may emit one from any account
+                // (`transferFrom(account, to, 0)` needs no allowance).
+                val amount = word(log.log.data)?.takeUnless { it.isZero } ?: return@mapNotNull null
                 topicAddress(log.log.topics[2])
                     ?.takeIf { it != account.address }
-                    ?.let { Sent(it, log.transactionHash, log.blockNumber) }
+                    ?.let { Sent(it, log.transactionHash, log.blockNumber, amount) }
             }
     }
 
@@ -275,7 +289,9 @@ class FollowSwarmLogs(
         return newLogs(key, coverage[key], listOf(BATCH_CREATED), position = null)
             .filter { it.log.address == deployment.postageStamp }
             .mapNotNull { log ->
-                batchCreated(log)?.let { (owner, id) -> FoundBatch(owner, id, log.transactionHash, log.blockNumber) }
+                batchCreated(log)?.let { (owner, id, total) ->
+                    FoundBatch(owner, id, log.transactionHash, log.blockNumber, total)
+                }
             }
     }
 
@@ -331,10 +347,16 @@ class FollowSwarmLogs(
     private data class ReadSpan(val fromBlock: Long, val range: LongRange)
 
     /** xBZZ sent [to] an address, in [transaction], mined in [block]. */
-    private data class Sent(val to: Address, val transaction: String, val block: Long)
+    private data class Sent(val to: Address, val transaction: String, val block: Long, val amount: UInt256)
 
     /** A `BatchCreated` of [id] for [owner], in [transaction], mined in [block]. */
-    private data class FoundBatch(val owner: Address, val id: BatchId, val transaction: String, val block: Long)
+    private data class FoundBatch(
+        val owner: Address,
+        val id: BatchId,
+        val transaction: String,
+        val block: Long,
+        val total: UInt256,
+    )
 
     private class Round(
         val accounts: AccountList,
@@ -370,15 +392,26 @@ class FollowSwarmLogs(
             return Address.parse("0x" + hex.drop(24))
         }
 
-        /** A `BatchCreated` log's owner (its data's third word) and batch id (topic 1); null when malformed. */
-        fun batchCreated(log: IndexedLog): Pair<Address, BatchId>? {
+        /**
+         * A `BatchCreated` log's owner (its data's third word), batch id (topic 1) and total amount (its
+         * data's first word, what `createBatch` pulled); null when malformed.
+         */
+        fun batchCreated(log: IndexedLog): Triple<Address, BatchId, UInt256>? {
             val topics = log.log.topics
             if (topics.size != 2 || topics[0] != BATCH_CREATED) return null
             val data = log.log.data.removePrefix("0x")
             if (data.length != 6 * 64) return null
             val owner = topicAddress(data.substring(2 * 64, 3 * 64)) ?: return null
             val id = BatchId.parse(topics[1]) ?: return null
-            return owner to id
+            val total = word(data.take(64)) ?: return null
+            return Triple(owner, id, total)
+        }
+
+        /** The uint256 one 32-byte word of hex holds, `0x` or not; null when it is not one word of hex. */
+        fun word(hex: String): UInt256? {
+            val digits = hex.removePrefix("0x").lowercase()
+            if (digits.length != 64 || !digits.all { it in '0'..'9' || it in 'a'..'f' }) return null
+            return AbiWords.uint(digits.hexToBytes())
         }
     }
 }

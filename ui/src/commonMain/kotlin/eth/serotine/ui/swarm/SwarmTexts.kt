@@ -111,7 +111,7 @@ internal object SwarmTexts {
 
     fun othersChequebook(issuer: String) = "This chequebook is $issuer's, not this node's."
 
-    const val GONE = "The postage contract holds no batch of this id: it expired and was deleted."
+    const val GONE = "The postage contract holds no batch of this id: not created yet, or expired and deleted."
 
     fun othersBatch(owner: String) = "This batch is owned by $owner, not by this node."
 

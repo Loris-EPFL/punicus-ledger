@@ -54,7 +54,7 @@ internal object PostageTexts {
     const val BATCH_NOT_READ = "The batch is not verified yet: its depth is needed to dilute it."
 
     fun notTheNodes(owner: Address?) = if (owner == null) {
-        "The postage contract holds no batch of this id: it expired and was deleted."
+        SwarmTexts.GONE
     } else {
         "This batch is owned by ${Eip55.format(owner)}, not by this node."
     }

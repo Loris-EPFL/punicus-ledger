@@ -152,8 +152,9 @@ class FollowSwarmLogsTest {
         token: Address = bzz,
         block: Long = 150,
         transaction: String = "0x" + "cc".repeat(32),
+        amount: Long = 1,
     ) = IndexedLog(
-        ReceiptLog(token, listOf(FollowSwarmLogs.TRANSFER, word(from), word(to)), "0x" + "0".repeat(63) + "1"),
+        ReceiptLog(token, listOf(FollowSwarmLogs.TRANSFER, word(from), word(to)), amountWord(amount)),
         block,
         "0x" + "bb".repeat(32),
         transaction,
@@ -164,11 +165,12 @@ class FollowSwarmLogsTest {
         owner: Address,
         id: BatchId = batch,
         transaction: String = "0x" + "cc".repeat(32),
+        total: Long = 1,
     ) = IndexedLog(
         ReceiptLog(
             stamp,
             listOf(FollowSwarmLogs.BATCH_CREATED, "0x" + id.hex),
-            "0x" + "0".repeat(64) + "0".repeat(64) + word(owner).removePrefix("0x") + "0".repeat(62) + "16" +
+            amountWord(total) + "0".repeat(64) + word(owner).removePrefix("0x") + "0".repeat(62) + "16" +
                 "0".repeat(62) + "10" + "0".repeat(64),
         ),
         300,
@@ -408,6 +410,45 @@ class FollowSwarmLogsTest {
     }
 
     @Test
+    fun aTransferOfNothingOrOfAnotherAmountIsNoPayment() = runTest {
+        // Anyone can emit Transfer(node, PostageStamp, 0): transferFrom of nothing needs no allowance.
+        kept.value = mapOf(bee.id to SwarmCandidateList.Loaded(listOf(chequebook), emptyList()))
+        coverage(
+            LogWatchKey.Mention(bee.address) to LogCoverage(200, 200L..1_000L),
+            LogWatchKey.Emitter(stamp) to LogCoverage(200, 200L..1_000L),
+        )
+        val nothing = "0x" + "5e".repeat(32)
+        val other = "0x" + "5f".repeat(32)
+        val faked = Address.of("0x" + "fa".repeat(20))
+        index.answer = { query ->
+            when (query.key) {
+                LogWatchKey.Mention(bee.address) -> LogsReading.Logs(
+                    listOf(
+                        transfer(bee.address, stamp, transaction = nothing, amount = 0),
+                        // A chequebook named in a transfer of nothing is no candidate either.
+                        transfer(bee.address, faked, transaction = nothing, amount = 0),
+                        // The node paid 5, but the batch of that transaction was created with 9.
+                        transfer(bee.address, stamp, transaction = other, amount = 5),
+                    ),
+                )
+                LogWatchKey.Emitter(stamp) -> LogsReading.Logs(
+                    listOf(
+                        batchCreated(bee.address, transaction = nothing, total = 0),
+                        batchCreated(bee.address, BatchId.of("cd".repeat(32)), transaction = other, total = 9),
+                    ),
+                )
+                else -> LogsReading.Logs(emptyList())
+            }
+        }
+        follow()
+        lightClient.status.value = synced
+        runCurrent()
+        assertTrue(proven.isEmpty(), proven.toString())
+        assertEquals(emptyList(), kept.value[bee.id]?.batches)
+        assertEquals(listOf(chequebook), kept.value[bee.id]?.chequebooks)
+    }
+
+    @Test
     fun aBatchAStrangerCreatedForTheNodeIsNotKept() = runTest {
         // Owner's decision, 2026-11-23: only a batch an account of the wallet paid for is found.
         kept.value = mapOf(bee.id to SwarmCandidateList.Loaded(listOf(chequebook), emptyList()))
@@ -591,8 +632,13 @@ class FollowSwarmLogsTest {
 
     @Test
     fun aBatchCreatedLogIsDecodedFromItsData() {
-        assertEquals(bee.address to batch, FollowSwarmLogs.batchCreated(batchCreated(bee.address)))
+        assertEquals(
+            Triple(bee.address, batch, UInt256.of(7)),
+            FollowSwarmLogs.batchCreated(batchCreated(bee.address, total = 7)),
+        )
         val truncated = batchCreated(bee.address).let { it.copy(log = it.log.copy(data = "0x00")) }
         assertEquals(null, FollowSwarmLogs.batchCreated(truncated))
     }
+
+    private fun amountWord(amount: Long) = "0x" + amount.toString(16).padStart(64, '0')
 }

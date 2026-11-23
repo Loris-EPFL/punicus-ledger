@@ -642,7 +642,9 @@ class SendBatchCall(
 ) {
     suspend operator fun invoke(quote: BatchQuote, unlock: Unlock): BatchSending {
         val from = quote.quote.from
-        val changed = quote.batch?.let { before -> stillAsQuoted(quote, before) } ?: stillPinned(quote)
+        // One fresh read: of the batch with the PostageStamp, or of the PostageStamp alone for a purchase.
+        val before = quote.batch
+        val changed = if (before != null) stillAsQuoted(quote, before) else stillPinned(quote)
         changed?.let { return it }
         when (val mined = inputs.minedNonce(quote.network, from)) {
             is NonceReading.Read -> if (mined.nonce > quote.quote.transaction.nonce) return BatchSending.NonceTaken

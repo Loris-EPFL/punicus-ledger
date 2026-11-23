@@ -333,4 +333,17 @@ class SwarmBatchesTest {
             sent.transfers.value.single().action,
         )
     }
+
+    @Test
+    fun aPurchaseIsNotSignedOnceThePostageStampWasPausedMeanwhile() = runTest {
+        allowance = SwarmCalls.total(minimum, 22)!!
+        val quote = assertIs<BatchQuoting.Quoted>(buy()).quote
+        postage = PostageReading.Read(PostageState(true, UInt256.of(207_062), minimum), 100)
+        val signer = FakeSigner(FakeRecovery())
+        val send = SendBatchCall(signer, FakeBroadcaster(), sent, inputs, candidates, contracts) { 1_000 }
+        assertEquals(BatchSending.BatchChanged, send(quote, Unlock.WithBiometrics("test")))
+        postage = PostageReading.BzzChanged
+        assertEquals(BatchSending.BatchChanged, send(quote, Unlock.WithBiometrics("test")))
+        assertTrue(signer.asked.isEmpty())
+    }
 }

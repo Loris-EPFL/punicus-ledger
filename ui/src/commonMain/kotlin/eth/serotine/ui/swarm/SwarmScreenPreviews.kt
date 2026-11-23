@@ -148,7 +148,7 @@ private fun SwarmNetworkOffPreview() = SwarmPreview(
         batches = emptyList(),
         batchNote = SwarmTexts.NO_BATCH,
         addReason = SwarmTexts.NETWORK_OFF,
-        buy = SwarmAction(SwarmTexts.NETWORK_OFF, turnOn = true),
+        buy = SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true),
     ),
 )
 

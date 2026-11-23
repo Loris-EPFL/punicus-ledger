@@ -213,8 +213,8 @@ class SwarmViewModelTest {
         // Gnosis Chain off: each says so, with Turn on.
         networks.setEnabled(Network.GNOSIS, false)
         runCurrent()
-        assertEquals(SwarmAction(SwarmTexts.NETWORK_OFF, turnOn = true), viewModel.ready.buy)
-        assertEquals(SwarmAction(SwarmTexts.NETWORK_OFF, turnOn = true), viewModel.ready.batches.single().dilute)
+        assertEquals(SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true), viewModel.ready.buy)
+        assertEquals(SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true), viewModel.ready.batches.single().dilute)
     }
 
     @Test

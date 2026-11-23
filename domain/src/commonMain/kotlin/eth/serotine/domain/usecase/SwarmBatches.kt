@@ -564,7 +564,8 @@ sealed interface BatchSending {
  * it to the network, recorded as the batch call it is. Before it signs, the sender's verified count
  * of mined transactions is read again: one past the quote's nonce means a transaction not sent from
  * here took it, and nothing is signed (docs/swarm.md, *A key that Bee also uses*). A top-up or a
- * dilution is signed only while the batch's depth is still the one quoted. A purchase sent keeps
+ * dilution is signed only while the batch's depth is still the one quoted; every call only while
+ * the PostageStamp is not paused and xBZZ is the pinned one, read fresh. A purchase sent keeps
  * its batch's id for the node ([SwarmCandidates.add], the user's own: bought by the user's tap), so
  * that it is found once mined. [clock] is in unix seconds.
  */
@@ -579,7 +580,8 @@ class SendBatchCall(
 ) {
     suspend operator fun invoke(quote: BatchQuote, unlock: Unlock): BatchSending {
         val from = quote.quote.from
-        quote.batch?.let { before -> stillAsQuoted(quote, before)?.let { return it } }
+        val changed = quote.batch?.let { before -> stillAsQuoted(quote, before) } ?: stillPinned(quote)
+        changed?.let { return it }
         when (val mined = inputs.minedNonce(quote.network, from)) {
             is NonceReading.Read -> if (mined.nonce > quote.quote.transaction.nonce) return BatchSending.NonceTaken
             is NonceReading.Unavailable -> return BatchSending.NotChecked(mined.reason)
@@ -607,6 +609,18 @@ class SendBatchCall(
                 val depth = (reading.batch as? BatchFinding.Node)?.batch?.depth
                 BatchSending.BatchChanged.takeUnless { depth == before.depth && !reading.state.paused }
             }
+            PostageReading.BzzChanged -> BatchSending.BatchChanged
+            PostageReading.NotPinned -> BatchSending.NotChecked(ReadUnavailable.NO_ENGINE)
+            is PostageReading.Unavailable -> BatchSending.NotChecked(reading.reason)
+        }
+
+    /**
+     * Null while xBZZ is the pinned one and the PostageStamp is not paused, read fresh; otherwise why
+     * nothing is signed.
+     */
+    private suspend fun stillPinned(quote: BatchQuote): BatchSending? =
+        when (val reading = contracts.postage(quote.network)) {
+            is PostageReading.Read -> BatchSending.BatchChanged.takeIf { reading.state.paused }
             PostageReading.BzzChanged -> BatchSending.BatchChanged
             PostageReading.NotPinned -> BatchSending.NotChecked(ReadUnavailable.NO_ENGINE)
             is PostageReading.Unavailable -> BatchSending.NotChecked(reading.reason)

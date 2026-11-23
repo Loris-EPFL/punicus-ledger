@@ -227,13 +227,13 @@ class SwarmViewModel(
      */
     private data class Signs(val on: Boolean, val pays: Boolean, val nodeSigns: Boolean) {
         fun pay(): SwarmAction = when {
-            !on -> SwarmAction(SwarmTexts.NETWORK_OFF, turnOn = true)
+            !on -> SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true)
             !pays -> SwarmAction(SwarmTexts.NO_PAYER)
             else -> SwarmAction()
         }
 
         fun sign(): SwarmAction = when {
-            !on -> SwarmAction(SwarmTexts.NETWORK_OFF, turnOn = true)
+            !on -> SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true)
             !nodeSigns -> SwarmAction(SwarmTexts.NODE_KEY_NOT_HELD)
             else -> SwarmAction()
         }

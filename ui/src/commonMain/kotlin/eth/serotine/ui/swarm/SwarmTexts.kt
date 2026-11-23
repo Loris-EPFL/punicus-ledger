@@ -87,6 +87,9 @@ internal object SwarmTexts {
     const val NETWORK_OFF =
         "Gnosis Chain is off in this wallet, so nothing can be checked on chain. Turned on, a chequebook or " +
             "a batch can be added here."
+    const val NETWORK_OFF_ACTION =
+        "Gnosis Chain is off in this wallet, so nothing can be quoted or sent. Turned on, batches can be bought, " +
+            "topped up and diluted here."
     const val NETWORK_NOT_TURNED_ON = "Gnosis Chain could not be turned on: try again in Settings."
     const val NOT_REMOVED = "It could not be removed: the chequebooks and batches kept could not be saved."
 

@@ -46,8 +46,8 @@ import kotlinx.coroutines.sync.withLock
  * for the latter, up to [READ_TRIES] reads in all, and is otherwise unproven for that poll. A
  * getter that reverts or answers what the pinned contract's never does is unproven; a refusal is
  * [ReadUnavailable.REFUSED]. Polled, cached and refused as [ProvenReads] describes, keyed by the
- * node and the chequebook or batch: the node's own for [OWN_KEPT_FOR_HEADS] heads, anything else
- * for [OTHER_KEPT_FOR_HEADS].
+ * node and the chequebook or batch: the node's own for [OWN_KEPT_FOR_HEADS] heads, another's for
+ * [OTHER_KEPT_FOR_HEADS], and none yet for [CHANGING_KEPT_FOR_HEADS].
  */
 class VerifiedSwarmContracts internal constructor(
     private val served: Network,
@@ -57,22 +57,39 @@ class VerifiedSwarmContracts internal constructor(
     private val pins: PinnedSwarm? = SwarmDeployments.of(served),
 ) : SwarmContracts {
 
-    /** The contracts whose code was proven to match its pin in this process. */
-    private val matched = mutableSetOf<Address>()
+    /**
+     * Each address whose code was proven to match a pin in this process, with that pin: a match of
+     * one pin never stands in for another's (a pinned contract asked about as a chequebook).
+     */
+    private val matched = mutableSetOf<Pair<Address, String>>()
     private val matchedLock = Mutex()
 
     private val chequebooks = ProvenReads<Pair<Address, Address>, ChequebookFinding>(
         chain,
         dispatcher,
         pollInterval,
-        keptForHeads = { if (it is ChequebookFinding.Node) OWN_KEPT_FOR_HEADS else OTHER_KEPT_FOR_HEADS },
+        keptForHeads = {
+            when (it) {
+                is ChequebookFinding.Node -> OWN_KEPT_FOR_HEADS
+                // No chequebook yet may be one as soon as its deployment is mined.
+                ChequebookFinding.NotAChequebook -> CHANGING_KEPT_FOR_HEADS
+                is ChequebookFinding.OthersIssuer -> OTHER_KEPT_FOR_HEADS
+            }
+        },
     ) { verified, (node, chequebook) -> readChequebook(verified, checkNotNull(pins), node, chequebook) }
 
     private val batches = ProvenReads<Pair<Address, BatchId>, BatchFinding>(
         chain,
         dispatcher,
         pollInterval,
-        keptForHeads = { if (it is BatchFinding.Node) OWN_KEPT_FOR_HEADS else OTHER_KEPT_FOR_HEADS },
+        keptForHeads = {
+            when (it) {
+                is BatchFinding.Node -> OWN_KEPT_FOR_HEADS
+                // No batch yet is one as soon as its `createBatch` is mined: a batch bought here.
+                BatchFinding.Gone -> CHANGING_KEPT_FOR_HEADS
+                is BatchFinding.OthersOwner -> OTHER_KEPT_FOR_HEADS
+            }
+        },
     ) { verified, (node, id) -> readBatch(verified, checkNotNull(pins), node, id) }
 
     override fun observeChequebook(
@@ -96,10 +113,10 @@ class VerifiedSwarmContracts internal constructor(
      * match is remembered; a mismatch or a missing proof is asked again next time.
      */
     private suspend fun codeCheck(chain: VerifiedChain, address: Address, pin: String): CodeCheck? {
-        if (matchedLock.withLock { address in matched }) return CodeCheck.Matches
+        if (matchedLock.withLock { (address to pin) in matched }) return CodeCheck.Matches
         val code = chain.proveCode(address) ?: return null
         if (codeHash(code.codeHex) != pin) return CodeCheck.Differs(code.blockNumber)
-        matchedLock.withLock { matched += address }
+        matchedLock.withLock { matched += address to pin }
         return CodeCheck.Matches
     }
 
@@ -164,7 +181,8 @@ class VerifiedSwarmContracts internal constructor(
 
     /** The batch's getters at one block; null once [calls] ended. */
     private fun batchAt(calls: OneBlockCalls, stamp: Address, node: Address, id: BatchId): BatchFinding? {
-        val words = calls.call(stamp, batches(id))?.let(::words) ?: return null
+        val returned = calls.call(stamp, batches(id)) ?: return null
+        val words = words(returned) ?: return calls.end(OneBlockCalls.Ended.NOT_THE_CONTRACTS_ANSWER)
         if (words.size != BATCH_WORDS) return calls.end(OneBlockCalls.Ended.NOT_THE_CONTRACTS_ANSWER)
         val owner = addressOf(words[0]) ?: return calls.end(OneBlockCalls.Ended.NOT_THE_CONTRACTS_ANSWER)
         if (owner == ZERO) return BatchFinding.Gone
@@ -240,8 +258,18 @@ class VerifiedSwarmContracts internal constructor(
          */
         const val OWN_KEPT_FOR_HEADS = 12L
 
-        /** Heads anything else stands, about ten minutes: an issuer or an owner changes rarely, if ever. */
+        /**
+         * Heads another's chequebook or batch stands, about ten minutes: an issuer changes never, a
+         * batch's owner rarely if ever.
+         */
         const val OTHER_KEPT_FOR_HEADS = 120L
+
+        /**
+         * Heads no chequebook or no batch stands: one, since a mined transaction makes it the node's
+         * (a batch bought here, a chequebook deployed), and a screen that waits for it should see it
+         * at the next head.
+         */
+        const val CHANGING_KEPT_FOR_HEADS = 1L
 
         private val ZERO = Address.of("0x" + "0".repeat(40))
     }

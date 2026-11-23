@@ -75,6 +75,10 @@ class SwarmNodesTest {
     private val observe = ObserveSwarmNode(candidates, contracts)
     private val add = AddSwarmCandidate(candidates, contracts)
 
+    /** Whether every candidate of [reading] has its first reading. */
+    private fun allRead(reading: SwarmNodeReading): Boolean =
+        reading is SwarmNodeReading.Read && (reading.chequebooks + reading.batches).all { it.reading != null }
+
     private fun watched(network: Network, address: Address, kind: AccountKind = AccountKind.EOA) =
         Account(network, address, kind, "Bee", AccountCustody.Watched)
 
@@ -99,7 +103,7 @@ class SwarmNodesTest {
     @Test
     fun aProvenChequebookOrBatchMakesTheAccountASwarmNode() = runTest {
         stored.value = SwarmCandidateList.Loaded(listOf(chequebookAddress), listOf(batchId))
-        val reading = observe(node).first() as SwarmNodeReading.Read
+        val reading = observe(node).first(::allRead) as SwarmNodeReading.Read
         assertTrue(reading.recognised)
         assertEquals(listOf(nodeAddress, nodeAddress), nodesAsked, "each is read for the node itself")
         assertEquals(chequebookAddress, reading.chequebooks.single().key)
@@ -107,11 +111,20 @@ class SwarmNodesTest {
     }
 
     @Test
+    fun eachCandidateIsToldAtOnceAsNotReadYet() = runTest {
+        stored.value = SwarmCandidateList.Loaded(listOf(chequebookAddress), listOf(batchId))
+        val first = observe(node).first() as SwarmNodeReading.Read
+        assertEquals(listOf(SwarmItem<Address, ChequebookFinding>(chequebookAddress, null)), first.chequebooks)
+        assertEquals(listOf(SwarmItem<BatchId, BatchFinding>(batchId, null)), first.batches)
+        assertFalse(first.recognised, "what is not read yet never counts")
+    }
+
+    @Test
     fun whatIsNotVerifiedOrAnothersNeverRecognisesIt() = runTest {
         stored.value = SwarmCandidateList.Loaded(listOf(chequebookAddress), listOf(batchId))
         chequebookReadings[chequebookAddress] = SwarmReading.Verified(ChequebookFinding.OthersIssuer(other), 7)
         batchReadings[batchId] = SwarmReading.Unavailable(ReadUnavailable.UNPROVEN)
-        assertFalse((observe(node).first() as SwarmNodeReading.Read).recognised)
+        assertFalse((observe(node).first(::allRead) as SwarmNodeReading.Read).recognised)
     }
 
     @Test

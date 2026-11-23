@@ -81,6 +81,25 @@ class FileSwarmCandidatesTest {
     }
 
     @Test
+    fun aNodeOnAnUnknownNetworkIsPassedOverAndKeptAside() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val address = node.address.hex
+        SystemFileSystem.sink(file).buffered().use {
+            it.writeString(
+                """{"version":1,"nodes":[""" +
+                    """{"chain":100,"address":"$address","batches":["${batch.hex}"]},""" +
+                    """{"chain":999999,"address":"$address","batches":["${batch.hex}"]}]}""",
+            )
+        }
+        // Read as far as this version can, and said to be: the whole file is kept aside as it was.
+        assertEquals(
+            SwarmCandidateList.Loaded(emptyList(), listOf(batch), setAside = true),
+            candidates().observe(node).first(),
+        )
+        assertEquals(1, SystemFileSystem.list(directory).count { it.name.startsWith("swarm.json.damaged-") })
+    }
+
+    @Test
     fun aNewerFormatIsUnreadableAndNothingChanges() = runTest {
         SystemFileSystem.createDirectories(directory)
         SystemFileSystem.sink(file).buffered().use { it.writeString("{\"version\":2,\"nodes\":[]}") }

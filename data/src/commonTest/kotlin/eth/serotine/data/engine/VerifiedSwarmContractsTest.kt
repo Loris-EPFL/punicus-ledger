@@ -15,6 +15,8 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SwarmReading
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -154,11 +156,122 @@ class VerifiedSwarmContractsTest {
             SwarmReading.Verified(ChequebookFinding.NotAChequebook, 7),
             contracts().observeChequebook(Network.GNOSIS, node, chequebook).first(),
         )
+        // Only the code differs now: no call is made, the code alone says it is no chequebook.
+        theNodesChequebook()
         fake.codes[chequebook] = ProvenCode(proxy + "00", blockNumber = 7)
+        calls = 0
         assertEquals(
             SwarmReading.Verified(ChequebookFinding.NotAChequebook, 7),
             contracts().observeChequebook(Network.GNOSIS, node, chequebook).first(),
         )
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun aMatchOfOnePinNeverStandsInForAnother() = runTest {
+        theNodesChequebook()
+        val adapter = contracts()
+        assertIs<ChequebookFinding.Node>(
+            assertIs<SwarmReading.Verified<ChequebookFinding>>(
+                adapter.observeChequebook(Network.GNOSIS, node, chequebook).first(),
+            ).finding,
+        )
+        // The factory's code matched its own pin above; asked about as a chequebook, it is none.
+        assertEquals(
+            SwarmReading.Verified(ChequebookFinding.NotAChequebook, 7),
+            adapter.observeChequebook(Network.GNOSIS, node, pins.chequebookFactory).first(),
+        )
+    }
+
+    @Test
+    fun aMatchIsRememberedAndNotProvenAgain() = runTest {
+        theNodesChequebook()
+        val adapter = contracts()
+        adapter.observeChequebook(Network.GNOSIS, node, chequebook).first()
+        val proofs = fake.codeCalls
+        theBatch(owner = node)
+        adapter.observeBatch(Network.GNOSIS, node, batch).first()
+        adapter.observeChequebook(Network.GNOSIS, buyer, chequebook).first()
+        assertEquals(proofs + 1, fake.codeCalls, "only the PostageStamp's code is proven anew")
+    }
+
+    @Test
+    fun aGetterThatRevertsIsUnprovenAndNotReadAgain() = runTest {
+        theNodesChequebook()
+        fake.calls[chequebook to VerifiedSwarmContracts.ISSUER.toHex()] = CallOutcome.Reverted(7)
+        calls = 0
+        assertEquals(
+            SwarmReading.Unavailable(ReadUnavailable.UNPROVEN),
+            contracts().observeChequebook(Network.GNOSIS, node, chequebook).first(),
+        )
+        assertEquals(2, calls, "deployedContracts and token, once")
+    }
+
+    @Test
+    fun aCallWithoutAnAnswerIsReadAgainAfterAPause() = runTest {
+        theBatch()
+        // No answer for remainingBalance in the first read: asked held to its block twice, then at
+        // the head. The second read's first ask answers.
+        val key = pins.postageStamp to VerifiedSwarmContracts.remainingBalance(batch).toHex()
+        val answer = checkNotNull(fake.calls.remove(key))
+        var reads = 0
+        val adapter = VerifiedSwarmContracts(
+            Network.GNOSIS,
+            object : VerifiedChain by chain {
+                override fun call(to: Address, data: ByteArray): CallOutcome? {
+                    if (to to data.toHex() == key && ++reads == 4) fake.calls[key] = answer
+                    return chain.call(to, data)
+                }
+
+                override fun callAt(to: Address, data: ByteArray, block: Long): CallOutcome? =
+                    when (val outcome = call(to, data)) {
+                        is CallOutcome.Returned -> outcome.copy(blockNumber = block)
+                        else -> outcome
+                    }
+            },
+            StandardTestDispatcher(testScheduler),
+            4.seconds,
+            pins,
+        )
+        val started = testScheduler.currentTime
+        assertIs<SwarmReading.Verified<BatchFinding>>(adapter.observeBatch(Network.GNOSIS, buyer, batch).first())
+        assertTrue(testScheduler.currentTime - started >= VerifiedSwarmContracts.RETRY_PAUSE.inWholeMilliseconds)
+    }
+
+    @Test
+    fun answersNoPinnedContractGivesAreUnproven() = runTest {
+        theNodesChequebook()
+        answer(chequebook, VerifiedSwarmContracts.LIQUID_BALANCE, word("2aa1efb94e0001"))
+        assertEquals(
+            SwarmReading.Unavailable(ReadUnavailable.UNPROVEN),
+            contracts().observeChequebook(Network.GNOSIS, node, chequebook).first(),
+        )
+        theBatch()
+        // A bucket deeper than its batch.
+        answer(
+            pins.postageStamp,
+            VerifiedSwarmContracts.batches(batch),
+            word(buyer.hex) + word("10") + word("16") + word("1") + word("e802246f67") + word("2f221d9"),
+        )
+        assertEquals(
+            SwarmReading.Unavailable(ReadUnavailable.UNPROVEN),
+            contracts().observeBatch(Network.GNOSIS, buyer, batch).first(),
+        )
+    }
+
+    @Test
+    fun noBatchYetIsReadAgainAtTheNextHead() = runTest {
+        theBatch(owner = Address.of("0x" + "0".repeat(40)))
+        val adapter = contracts()
+        assertEquals(
+            SwarmReading.Verified(BatchFinding.Gone, 7),
+            adapter.observeBatch(Network.GNOSIS, buyer, batch).first(),
+        )
+        // Its createBatch is mined: the next head finds it, however recently "none" was read.
+        theBatch()
+        fake.snapshot = running(head = 8)
+        val found = adapter.observeBatch(Network.GNOSIS, buyer, batch).first()
+        assertIs<BatchFinding.Node>(assertIs<SwarmReading.Verified<BatchFinding>>(found).finding)
     }
 
     @Test

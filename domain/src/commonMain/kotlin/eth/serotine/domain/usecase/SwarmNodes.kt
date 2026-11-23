@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 
 /** The one network Bee's contracts are pinned on (docs/swarm.md, *The contracts*). */
 internal val SWARM_NETWORK = Network.GNOSIS
@@ -55,10 +56,14 @@ class ObserveSwarmNode(
 
     private fun read(node: AccountId, list: SwarmCandidateList.Loaded): Flow<SwarmNodeReading> {
         val chequebooks = list.chequebooks.map { address ->
-            contracts.observeChequebook(node.network, node.address, address).map { SwarmItem(address, it) }
+            contracts.observeChequebook(node.network, node.address, address)
+                .map<SwarmReading<ChequebookFinding>, SwarmItem<Address, ChequebookFinding>> { SwarmItem(address, it) }
+                .onStart { emit(SwarmItem(address, null)) }
         }
         val batches = list.batches.map { id ->
-            contracts.observeBatch(node.network, node.address, id).map { SwarmItem(id, it) }
+            contracts.observeBatch(node.network, node.address, id)
+                .map<SwarmReading<BatchFinding>, SwarmItem<BatchId, BatchFinding>> { SwarmItem(id, it) }
+                .onStart { emit(SwarmItem(id, null)) }
         }
         return combine(all(chequebooks), all(batches)) { found, bought ->
             SwarmNodeReading.Read(found, bought, setAside = list.setAside)
@@ -70,8 +75,12 @@ class ObserveSwarmNode(
         if (flows.isEmpty()) flowOf(emptyList()) else combine(flows) { it.toList() }
 }
 
-/** One candidate and what the light client proves it to be. */
-data class SwarmItem<K, T>(val key: K, val reading: SwarmReading<T>)
+/**
+ * One candidate and what the light client proves it to be: [reading], or null until its first
+ * reading lands. Each candidate starts as not read yet, so the node is told at once and filled in
+ * as the reads land, never held back by its slowest candidate.
+ */
+data class SwarmItem<K, T>(val key: K, val reading: SwarmReading<T>?)
 
 /** One answer of [ObserveSwarmNode]. */
 sealed interface SwarmNodeReading {

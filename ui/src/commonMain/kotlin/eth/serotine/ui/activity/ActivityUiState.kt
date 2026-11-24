@@ -55,7 +55,10 @@ sealed interface ActivityUiState {
  * green in, red out), what it moved ([amount], signed and short: "+250 USDC", "−0.5 ETH"; null where nothing is said
  * to have moved), and [headline], what it did without the amount the [amount] says ("Received USDC"), null where that
  * is [title]; [unchecked] when what the [amount] says is not proven to have moved (a transaction whose outcome the
- * engine does not report), which mutes it and its arrow. Rows of a list grouped by day carry their [day]'s heading
+ * engine does not report), which mutes it and its arrow. A [pending] row is an entry of the addr1 index whose check
+ * has not answered yet: a ghost in its place, of a row's height, saying nothing of it; its [key] is the one its row
+ * takes once verified, so the row replaces it in place (owner's request, 2026-11-24). Rows of a list grouped by day
+ * carry their [day]'s heading
  * ("Today · Monday, November 23, 2026"; for a row dated by its block alone, the day of the rows around it where that
  * can be told, else that its date is not reported) and its time of day in the user's time zone ([clock]: "3:00 PM";
  * none for a row dated by its block alone), which the list says in place of [time]; [simpleDay] is the heading in
@@ -72,6 +75,7 @@ data class ActivityRow(
     val opens: ActivityKey,
     val simpleTime: String? = time,
     val simpleStatus: String? = null,
+    val pending: Boolean = false,
     val direction: ActivityDirection = ActivityDirection.NONE,
     val amount: String? = null,
     val headline: String? = null,
@@ -152,6 +156,12 @@ sealed interface IndexFooter {
      * room.
      */
     data class Loading(val text: String, val simpleText: String = text) : IndexFooter
+
+    /**
+     * The page read has entries whose checks have not answered yet: each is a ghost row in its place among the rows,
+     * and [text] counts them ([simpleText] in simple mode). Nothing more is asked for until they have answered.
+     */
+    data class Checking(val text: String, val simpleText: String = text) : IndexFooter
 
     /** More entries lie below: the next page is read as the user nears the end of the list. */
     data object More : IndexFooter
@@ -260,6 +270,7 @@ internal fun ActivityUiState.simple(): ActivityUiState = when (this) {
                 footer = when (val footer = section.footer) {
                     is IndexFooter.End -> IndexFooter.End(footer.simpleText)
                     is IndexFooter.Loading -> IndexFooter.Loading(footer.simpleText)
+                    is IndexFooter.Checking -> IndexFooter.Checking(footer.simpleText)
                     is IndexFooter.Paused -> IndexFooter.Paused(footer.simpleText)
                     is IndexFooter.Refused -> footer.copy(text = footer.simpleText)
                     IndexFooter.More -> footer

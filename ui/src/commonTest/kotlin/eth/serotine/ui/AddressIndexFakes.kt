@@ -43,6 +43,12 @@ internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressInde
     }
     val asked = mutableListOf<AddressIndexCursor?>()
 
+    /** What each check waits for before it answers: nothing by default; a test holds a block's check back with it. */
+    var checkGate: suspend (List<AddressIndexEntry>) -> Unit = {}
+
+    /** The entries of each check asked, in order. */
+    val checked = mutableListOf<List<AddressIndexEntry>>()
+
     /** Whether [hasReader] answers yet: false holds it, as an engine whose Ethereum light client does not run. */
     val readerAnswered = MutableStateFlow(true)
 
@@ -65,6 +71,8 @@ internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressInde
         entries: List<AddressIndexEntry>,
     ): AddressIndexCheck {
         require(entries.size in 1..AddressIndexHistory.MAX_CHECKED) { "1 to 50 entries" }
+        checked += entries
+        checkGate(entries)
         checkRefusal?.let { return AddressIndexCheck.Refused(it) }
         return AddressIndexCheck.Verdicts(entries.map(verdictOf))
     }

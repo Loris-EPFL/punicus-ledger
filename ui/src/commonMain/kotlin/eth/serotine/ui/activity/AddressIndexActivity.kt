@@ -3,14 +3,17 @@ package eth.serotine.ui.activity
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexCoverage
+import eth.serotine.domain.model.AddressIndexEntry
 import eth.serotine.domain.model.AddressIndexRole
 import eth.serotine.domain.model.AddressIndexRow
+import eth.serotine.domain.model.AddressIndexVerdict
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.AddressIndexContinuation
 import eth.serotine.domain.usecase.AddressIndexLeftOut
 import eth.serotine.domain.usecase.AddressIndexLoad
+import eth.serotine.domain.usecase.AddressIndexProgress
 import eth.serotine.domain.usecase.LoadAddressIndexPage
 import eth.serotine.domain.usecase.ObserveAddressIndexStatus
 import eth.serotine.ui.components.Eip55
@@ -40,7 +43,11 @@ class AddressIndexActivity(
      * The pages of [account]'s addr1 history while the setting is on, null while it is off (and until it is read).
      * The newest page is read at once; each later value of [more] above the one it started with asks for the next
      * page, one at a time, or, after a passing refusal, the same page again. An ask that comes while a page is read
-     * is that page's: it asks for nothing more. Nothing is read while it is off.
+     * or checked is that page's: it asks for nothing more. Nothing is read while it is off.
+     *
+     * One by one (owner's request, 2026-11-24): a page holds [PAGE_SIZE] entries, about a screen of rows and one
+     * batch more; once it is read, each entry is pending ([IndexPaging.pending], a ghost row in its place) until its
+     * check answers, and a verified one is a row at once, whatever the others' checks still take.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     internal fun of(account: AccountId, more: StateFlow<Int>): Flow<IndexPaging?> = status()
@@ -53,19 +60,37 @@ class AddressIndexActivity(
         var asked = more.value
         var paging = IndexPaging(pinned)
         emit(paging)
-        paging = paging.after(load(account))
-        emit(paging)
+        load(account, limit = PAGE_SIZE).collect { progress ->
+            paging = paging.after(progress)
+            emit(paging)
+        }
         more.collect { value ->
             if (value <= asked) return@collect
             asked = value
             if (!paging.canAsk) return@collect
-            paging = paging.copy(loading = true, refused = null)
+            // A new page: what the last one added is no longer this page's, so a refusal of it takes nothing away.
+            paging = paging.copy(
+                loading = true,
+                refused = null,
+                lastRows = emptyList(),
+                lastLeftOut = AddressIndexLeftOut(),
+            )
             emit(paging)
-            paging = paging.after(load(account, paging.next))
-            // What was asked while it was read was asked of this page.
+            load(account, paging.next, PAGE_SIZE).collect { progress ->
+                paging = paging.after(progress)
+                emit(paging)
+            }
+            // What was asked while it was read and checked was asked of this page.
             asked = maxOf(asked, more.value)
-            emit(paging)
         }
+    }
+
+    internal companion object {
+        /**
+         * The entries one page reads and checks: about a screen of rows and one batch more. The next page is read
+         * when the list reaches the end of these, so no more old blocks are checked than the user may see soon.
+         */
+        const val PAGE_SIZE = 20
     }
 }
 
@@ -75,11 +100,16 @@ class AddressIndexActivity(
  * in the release it rests on, the entries every page [leftOut], where it goes on ([next]), whether a page is being
  * read ([loading]), and why the last read was [refused], if it was. Of the last page read, its verified rows
  * ([lastRows]) and what it left out ([lastLeftOut]): whether it added a row to the list decides whether the next page
- * is read by itself.
+ * is read by itself. [pending] are the entries of the page read whose check has not answered yet, newest first: the
+ * importer's word that they are there, nothing more, so a list shows each as a ghost row in its place, with nothing
+ * of it but that it is being checked. [checking] while a page read is not done with: from its read to the end of its
+ * load, its last check answered or not, so that nothing more is asked for in between.
  */
 internal data class IndexPaging(
     val pinned: Address,
     val rows: List<AddressIndexRow> = emptyList(),
+    val pending: List<AddressIndexEntry> = emptyList(),
+    val checking: Boolean = false,
     val coverage: AddressIndexCoverage? = null,
     val leftOut: AddressIndexLeftOut = AddressIndexLeftOut(),
     val next: AddressIndexContinuation? = null,
@@ -96,23 +126,56 @@ internal data class IndexPaging(
     val ended: Boolean
         get() = started && next == null
 
-    /** Whether another page may be asked for now: none is being read, more lies below, nothing lasting refused it. */
+    /**
+     * Whether another page may be asked for now: none is being read or checked, more lies below, nothing lasting
+     * refused it.
+     */
     val canAsk: Boolean
-        get() = !loading && !ended && refused?.retryable != false
+        get() = !loading && !checking && !ended && refused?.retryable != false
 
     /**
-     * This list after [load]: its rows added, newest first, and its counts; or the refusal said, the rows kept but
+     * This list after [load], one step of a page's load: the page read, its entries pending; an entry checked, a
+     * verified one a row at once; or the whole page's load, its rows added, newest first, and its counts; or the
+     * refusal said, the rows of earlier pages kept but
      * on the checkpoint table's alarm, which withdraws the trust they rest on (`.claude/rules/trust.md`), and on an
      * index signed by another key than the pinned one, which the list may not rest on. With the alarm, what the
-     * index said of its coverage and its counts go too. In this part the alarm reaches the list only this way, as a
-     * read refused for it; part 5 of the plan feeds the engine's alarm itself (`StatusSnapshot.checkpointAlarm`) in,
-     * so that the rows go the moment it is raised, whether or not a page is read.
+     * index said of its coverage and its counts go too. For now the alarm reaches the list only this way, as a read
+     * refused for it; #363 feeds the engine's alarm itself (`StatusSnapshot.checkpointAlarm`) in, so that the rows go
+     * the moment it is raised, whether or not a page is read.
      */
-    fun after(load: AddressIndexLoad): IndexPaging = when (load) {
+    fun after(load: AddressIndexProgress): IndexPaging = when (load) {
+        // The page is read: its entries wait for their checks, each in its place.
+        is AddressIndexProgress.Read -> copy(
+            // An entry listed already (a page that repeats the one before at its edge) is that row alone.
+            pending = load.entries.distinct().filterNot { entry ->
+                rows.any { it.entry.block == entry.block && it.entry.slot == entry.slot }
+            },
+            checking = true,
+            // What the index covers is said before any row of the page, never after its rows came in.
+            coverage = load.coverage,
+            next = load.next,
+            loading = false,
+            refused = null,
+            lastRows = emptyList(),
+            lastLeftOut = AddressIndexLeftOut(),
+        )
+        // One entry answered: a verified one is a row at once; any other is only no longer pending, counted at the end.
+        is AddressIndexProgress.Checked -> {
+            val row = (load.verdict as? AddressIndexVerdict.Verified)?.row
+            // Only a row the list did not hold is this page's: a refusal takes this page's rows away, never another's.
+            val added = row?.takeIf { new ->
+                rows.none { it.entry.block == new.entry.block && it.entry.slot == new.entry.slot }
+            }
+            copy(
+                rows = row?.let { listed(rows + it) } ?: rows,
+                pending = pending - load.entry,
+                lastRows = added?.let { lastRows + it } ?: lastRows,
+            )
+        }
         is AddressIndexLoad.Loaded -> copy(
-            rows = (rows + load.rows)
-                .distinctBy { it.entry.block to it.entry.slot }
-                .sortedWith(compareByDescending<AddressIndexRow> { it.entry.block }.thenByDescending { it.entry.slot }),
+            rows = listed(rows + load.rows),
+            pending = emptyList(),
+            checking = false,
             coverage = load.coverage,
             leftOut = leftOut + load.leftOut,
             next = load.next,
@@ -123,10 +186,30 @@ internal data class IndexPaging(
         )
         is AddressIndexLoad.Refused -> when (load.reason) {
             is AddressIndexRefusal.CheckpointAlarm -> IndexPaging(pinned, loading = false, refused = load.reason)
-            is AddressIndexRefusal.WrongImporter -> copy(rows = emptyList(), loading = false, refused = load.reason)
-            else -> copy(loading = false, refused = load.reason)
+            is AddressIndexRefusal.WrongImporter ->
+                copy(
+                    rows = emptyList(),
+                    pending = emptyList(),
+                    checking = false,
+                    loading = false,
+                    refused = load.reason,
+                )
+            // What this page verified before the refusal goes with it, as a page refused whole never added any.
+            else -> copy(
+                rows = rows - lastRows.toSet(),
+                pending = emptyList(),
+                checking = false,
+                loading = false,
+                refused = load.reason,
+                lastRows = emptyList(),
+            )
         }
     }
+
+    /** [rows] as the list holds them: each entry once, by block and slot, newest first. */
+    private fun listed(rows: List<AddressIndexRow>): List<AddressIndexRow> = rows
+        .distinctBy { it.entry.block to it.entry.slot }
+        .sortedWith(compareByDescending<AddressIndexRow> { it.entry.block }.thenByDescending { it.entry.slot })
 }
 
 /**
@@ -180,7 +263,7 @@ internal fun indexSection(paging: IndexPaging, network: Network, shownFromLast: 
 
 /**
  * The footer below the index's rows: loading, more, the end of its coverage, or why nothing (more) comes. More is read
- * by itself only while the last page added a row to the list ([shownFromLast]): each page sets off up to 50 checks of
+ * by itself only while the last page added a row to the list ([shownFromLast]): each page sets off up to 20 checks of
  * old blocks against archive peers, so after a page that added none, the next is read only on the user's tap
  * ([IndexFooter.Paused]), which says what that page left out.
  */
@@ -200,6 +283,18 @@ private fun footerOf(paging: IndexPaging, network: Network, shownFromLast: Int?)
             IndexFooter.Loading(
                 "Reading the addr1 index from Swarm and checking its entries…",
                 "Checking older activity from the shared index…",
+            )
+        }
+    }
+    // Entries of the page read still wait for their checks: each is a ghost row in its place; the footer counts them.
+    if (paging.checking) {
+        val n = paging.pending.size
+        return if (n == 0) {
+            IndexFooter.Checking("Checking the addr1 index's entries against the chain…", CHECKING_MORE)
+        } else {
+            IndexFooter.Checking(
+                "Checking ${entries(n)} of the addr1 index against the chain…",
+                "Checking ${if (n == 1) "1 more entry" else "$n more entries"} of the shared index…",
             )
         }
     }

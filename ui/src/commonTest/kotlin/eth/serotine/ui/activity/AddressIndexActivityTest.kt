@@ -62,6 +62,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.CompletableDeferred
 import eth.serotine.domain.usecase.AddressIndexProgress
 import kotlin.test.assertFalse
+import eth.serotine.domain.model.AddressIndexCoverage
+import eth.serotine.domain.model.AddressIndexHeadGap
+import kotlinx.coroutines.awaitCancellation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -168,7 +171,7 @@ class AddressIndexActivityTest {
         val first = IndexPaging(FIXTURE_IMPORTER).copy(rows = listOf(listed), loading = true)
 
         // The next page repeats the entry it starts below, which is listed already: no ghost for it, nor twice.
-        val read = first.after(AddressIndexProgress.Read(account, listOf(again, newer, newer)))
+        val read = first.after(AddressIndexProgress.Read(account, coverage(), null, listOf(again, newer, newer)))
         assertEquals(listOf(newer), read.pending)
         assertTrue(read.checking)
 
@@ -178,6 +181,48 @@ class AddressIndexActivityTest {
         assertTrue(answered.checking)
         assertFalse(answered.canAsk)
         assertIs<IndexFooter.Checking>(indexSection(answered, Network.ETHEREUM, 0).footer)
+    }
+
+    /** What a page of the fake index covers, as [FakeAddressIndexHistory.page] makes it. */
+    private fun coverage() = AddressIndexCoverage(
+        importer = FIXTURE_IMPORTER,
+        headUpdate = 3,
+        covered = 9_000_000L..9_400_000L,
+        headGap = AddressIndexHeadGap(9_400_001, 9_400_120),
+        tailGap = 0L until 9_000_000L,
+        gaps = emptyList(),
+    )
+
+    @Test
+    fun theCoverageIsSaidOnceThePageIsReadBeforeAnyRowOfIt() = runTest {
+        index.page(null, listOf(indexRow(9_300_000, 3, alice.address, bob)), next = null)
+        index.checkGate = { awaitCancellation() }
+        val read = shown(activity())
+
+        assertEquals(listOf(true), read.rows.map { it.pending })
+        val lines = checkNotNull(read.index).lines
+        assertTrue(lines.any { it.contains("blocks 9,000,000 to 9,400,000") }, lines.toString())
+    }
+
+    @Test
+    fun aLastingRefusalWithdrawsThisPagesRowsAloneNeverAnEarlierPagesRow() = runTest {
+        val first = indexRow(9_300_000, 3, alice.address, bob, wei = "250000000000000000")
+        index.page(null, listOf(first), next = "p2")
+        // The next page repeats the first page's row at its edge, verifies a row of its own, then Tor is turned on.
+        val own = indexRow(9_200_000, 2, alice.address, bob, wei = "100000000000000000")
+        val refusedEntry = AddressIndexEntry(9_100_000, 1, setOf(AddressIndexRole.FROM))
+        index.page("p2", listOf(first, own), next = null, others = listOf(refusedEntry))
+        index.checkGate = { entries ->
+            if (entries.first().block == 9_100_000L) index.checkRefusal = AddressIndexRefusal.TorRouting
+        }
+        val activity = activity()
+        assertEquals(listOf("index:9300000:3"), shown(activity).rows.map { it.key })
+
+        more.value = 1
+        val refused = shown(activity)
+
+        assertEquals(listOf("index:9300000:3"), refused.rows.map { it.key }, "this page's row goes, the first stays")
+        assertIs<IndexFooter.Refused>(refused.index?.footer)
     }
 
     @Test

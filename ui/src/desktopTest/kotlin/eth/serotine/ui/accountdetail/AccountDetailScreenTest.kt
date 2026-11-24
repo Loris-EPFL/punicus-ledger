@@ -934,6 +934,42 @@ class AccountDetailScreenTest {
     }
 
     @Test
+    fun anEntryBeingCheckedIsAGhostOfItsRowsHeightInBothViews() {
+        // Its row, as the addr1 index lists it, in short words so that each line holds one line.
+        val row = indexRow.copy(
+            title = "Received 0.5 ETH",
+            headline = "Received ETH",
+            detail = "From Treasury",
+            status = "Final",
+            amount = "+0.5 ETH",
+            direction = ActivityDirection.IN,
+        )
+        val pending = row.copy(title = "", detail = "", about = "", status = "", amount = null, pending = true)
+        // Detailed view dates the row by its block; simple mode says no time for it (ActivityUiState.simple()).
+        var shown by mutableStateOf(pending.copy(time = "Block 9,412,300"))
+        rule.setContent {
+            Screen(
+                ready.copy(
+                    segment = DetailSegment.ACTIVITY,
+                    activity = ActivityUiState.Shown(listOf(shown), "Transactions sent from this device."),
+                ),
+                verifiedStripSample,
+            )
+        }
+        val heights = listOf("Block 9,412,300", "").map { time ->
+            shown = pending.copy(time = time)
+            rule.waitForIdle()
+            val ghost = rule.onNodeWithTag(ACTIVITY_PENDING_TAG, useUnmergedTree = true).getBoundsInRoot().height
+            shown = row.copy(time = time)
+            rule.waitForIdle()
+            ghost to rule.onNodeWithTag(ACTIVITY_ROW_TAG).getBoundsInRoot().height
+        }
+
+        heights.forEach { (ghost, row) -> assertEquals(ghost, row) }
+        assertTrue(heights[0].first > heights[1].first, "the line of its time only where its row has one")
+    }
+
+    @Test
     fun aSafesQueueBeingReadShowsGhostRowsOfItsRowsHeight() {
         val safe = ready.copy(kind = AccountKind.SAFE, safe = SafeDetails.Checking, segment = DetailSegment.QUEUE)
         var queue by mutableStateOf<SafeQueue>(SafeQueue.Checking)

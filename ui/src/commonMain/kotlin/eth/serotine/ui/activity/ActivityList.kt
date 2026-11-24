@@ -143,7 +143,11 @@ fun LazyListScope.activityItems(
                 item(key = row.key) {
                     // An entry still being checked holds its row's room, so that its row, or its leaving, moves
                     // nothing else when it comes.
-                    if (row.pending) PendingItem() else ActivityItem(row, onClick = { onOpen(row.opens) })
+                    if (row.pending) {
+                        PendingItem(withTime = row.time.isNotEmpty())
+                    } else {
+                        ActivityItem(row, onClick = { onOpen(row.opens) })
+                    }
                 }
             }
             if (index != null && !index.footerFirst) {
@@ -266,20 +270,23 @@ private fun WaitingStepCard(step: WaitingStep, available: Boolean, onContinue: (
     }
 }
 
-/** An entry of the addr1 index being checked: a ghost of a row's height, named for a screen reader. */
+/**
+ * An entry of the addr1 index being checked: a ghost of its row's height, with the line of its time where its row
+ * will have one ([withTime]), named for a screen reader.
+ */
 @Composable
-private fun PendingItem() {
+private fun PendingItem(withTime: Boolean) {
     Box(
         Modifier.testTag(ACTIVITY_PENDING_TAG).semantics { contentDescription = CHECKING_ENTRY },
-    ) { ActivityGhost() }
+    ) { ActivityGhost(withTime) }
 }
 
-/** An [ActivityItem] not read yet, of its height. */
+/** An [ActivityItem] not read yet, of its height: with the line of its time unless [withTime] is false. */
 @Composable
-private fun ActivityGhost() {
+private fun ActivityGhost(withTime: Boolean = true) {
     ListItem(
         leadingContent = { GhostCircle(40.dp) },
-        overlineContent = { GhostLine(96.dp) },
+        overlineContent = if (withTime) ({ GhostLine(96.dp) }) else null,
         headlineContent = { GhostLine(140.dp) },
         supportingContent = {
             Column {

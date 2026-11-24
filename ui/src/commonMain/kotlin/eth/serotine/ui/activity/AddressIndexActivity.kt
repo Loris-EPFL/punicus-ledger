@@ -151,6 +151,9 @@ internal data class IndexPaging(
                 rows.any { it.entry.block == entry.block && it.entry.slot == entry.slot }
             },
             checking = true,
+            // What the index covers is said before any row of the page, never after its rows came in.
+            coverage = load.coverage,
+            next = load.next,
             loading = false,
             refused = null,
             lastRows = emptyList(),
@@ -159,10 +162,14 @@ internal data class IndexPaging(
         // One entry answered: a verified one is a row at once; any other is only no longer pending, counted at the end.
         is AddressIndexProgress.Checked -> {
             val row = (load.verdict as? AddressIndexVerdict.Verified)?.row
+            // Only a row the list did not hold is this page's: a refusal takes this page's rows away, never another's.
+            val added = row?.takeIf { new ->
+                rows.none { it.entry.block == new.entry.block && it.entry.slot == new.entry.slot }
+            }
             copy(
                 rows = row?.let { listed(rows + it) } ?: rows,
                 pending = pending - load.entry,
-                lastRows = row?.let { lastRows + it } ?: lastRows,
+                lastRows = added?.let { lastRows + it } ?: lastRows,
             )
         }
         is AddressIndexLoad.Loaded -> copy(

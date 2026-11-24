@@ -35,6 +35,9 @@ internal class FakeAddressIndexHistory(
         AddressIndexCheck.Verdicts(entries.map { AddressIndexVerdict.Unverified(it) })
     }
     var checkTime: Duration = Duration.ZERO
+
+    /** How long the check of these entries takes, where a test wants one block slower than the others. */
+    var checkTimeOf: (List<AddressIndexEntry>) -> Duration = { checkTime }
     var pageTime: Duration = Duration.ZERO
     val queries = mutableListOf<Triple<Network, Address, AddressIndexQuery>>()
     val checks = mutableListOf<List<AddressIndexEntry>>()
@@ -74,7 +77,7 @@ internal class FakeAddressIndexHistory(
         require(entries.size in 1..AddressIndexHistory.MAX_CHECKED) { "1 to 50 entries" }
         val before = checks.size
         checks += entries
-        delay(checkTime)
+        delay(checkTimeOf(entries))
         if (network !in served) return AddressIndexCheck.Refused(AddressIndexRefusal.NetworkNotServed(network))
         return check(entries, before)
     }

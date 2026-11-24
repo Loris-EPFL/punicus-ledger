@@ -52,8 +52,12 @@ class AddressIndexHistoriesTest {
     )
     private val index = FakeAddressIndexHistory()
 
-    private fun loader(attempts: Int = 3, retryPause: Duration = 2.seconds, budget: Duration = 5.minutes) =
-        LoadAddressIndexPage(index, importer, attempts, retryPause, budget)
+    private fun loader(
+        attempts: Int = 3,
+        retryPause: Duration = 2.seconds,
+        budget: Duration = 5.minutes,
+        checkBudget: Duration = 2.minutes,
+    ) = LoadAddressIndexPage(index, importer, attempts, retryPause, budget, checkBudget)
 
     private fun entry(block: Long, slot: Int, vararg roles: AddressIndexRole) =
         AddressIndexEntry(block, slot, roles.toSet())
@@ -172,7 +176,7 @@ class AddressIndexHistoriesTest {
 
         val progress = loader()(account).toList()
 
-        assertEquals(AddressIndexProgress.Read(account, listOf(newest, wrong, older)), progress[0])
+        assertEquals(AddressIndexProgress.Read(account, coverage, null, listOf(newest, wrong, older)), progress[0])
         assertEquals(
             listOf(
                 AddressIndexProgress.Checked(newest, verified(newest)),
@@ -193,7 +197,8 @@ class AddressIndexHistoriesTest {
         val load = loader()(account)
         assertEquals(emptyList(), index.queries, "nothing is read before the flow is collected")
 
-        assertEquals(listOf<AddressIndexProgress>(AddressIndexLoad.Refused(AddressIndexRefusal.TorRouting)), load.toList())
+        val refused = AddressIndexLoad.Refused(AddressIndexRefusal.TorRouting)
+        assertEquals(listOf<AddressIndexProgress>(refused), load.toList())
     }
 
     @Test
@@ -394,19 +399,41 @@ class AddressIndexHistoriesTest {
     }
 
     @Test
-    fun aLoadStopsCheckingAtItsBudgetKeepingWhatItVerifiedAndThePage() = runTest {
-        val entries = (0 until 120).map { entry(21_199_000L, 200 - it, FROM) }
-        index.pages[null] = page(entries, next = "7:21198881:1")
-        index.checkTime = 60.seconds
+    fun aBlockWhoseCheckOverrunsItsBoundIsAskedAgainAndTheOtherBlocksGoOn() = runTest {
+        val slow = entry(21_150_000, 1, FROM)
+        val quick = entry(21_140_000, 1, FROM)
+        index.pages[null] = page(listOf(slow, quick), next = "7:21140000:1")
+        // The first check of the slow block takes longer than its bound; its second does not.
+        var slowAsked = 0
+        index.checkTimeOf = { entries ->
+            if (slow in entries && ++slowAsked == 1) 150.seconds else 10.seconds
+        }
         verifyingAll()
 
-        val load = assertIs<AddressIndexLoad.Loaded>(loader(budget = 100.seconds)(account, limit = 120).last())
+        val load = assertIs<AddressIndexLoad.Loaded>(
+            loader(retryPause = 2.seconds, checkBudget = 100.seconds)(account).last(),
+        )
 
-        assertEquals(100_000, currentTime)
-        assertEquals(listOf(50, 50), index.checks.map { it.size })
-        assertEquals(entries.take(50), load.rows.map { it.entry })
-        assertEquals(AddressIndexLeftOut(unavailable = 70), load.leftOut)
-        assertEquals(AddressIndexContinuation(account, AddressIndexCursor("7:21198881:1")), load.next)
+        assertEquals(listOf(listOf(slow), listOf(quick), listOf(slow)), index.checks)
+        assertEquals(listOf(rowOf(slow), rowOf(quick)), load.rows, "the slow block's entry gets its next attempt")
+        assertEquals(AddressIndexLeftOut(), load.leftOut)
+        // 100 s cut, 10 s for the quick block, the 2 s pause, 10 s for the slow block again.
+        assertEquals(122_000, currentTime)
+        assertEquals(AddressIndexContinuation(account, AddressIndexCursor("7:21140000:1")), load.next)
+    }
+
+    @Test
+    fun aBlockStillPastItsBoundAtTheLastAttemptCountsUnavailableKeepingTheRest() = runTest {
+        val slow = entry(21_150_000, 1, FROM)
+        val quick = entry(21_140_000, 1, FROM)
+        index.pages[null] = page(listOf(slow, quick))
+        index.checkTimeOf = { entries -> if (slow in entries) 150.seconds else 10.seconds }
+        verifyingAll()
+
+        val load = assertIs<AddressIndexLoad.Loaded>(loader(attempts = 2, checkBudget = 100.seconds)(account).last())
+
+        assertEquals(listOf(rowOf(quick)), load.rows)
+        assertEquals(AddressIndexLeftOut(unavailable = 1), load.leftOut)
     }
 
     @Test
@@ -420,22 +447,6 @@ class AddressIndexHistoriesTest {
         assertEquals(AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN), load.reason)
         assertEquals(100_000, currentTime)
         assertEquals(emptyList(), index.checks)
-    }
-
-    @Test
-    fun theReadAndTheChecksShareOneBudget() = runTest {
-        val entries = (0 until 60).map { entry(21_199_000L, 200 - it, FROM) }
-        index.pages[null] = page(entries, next = "7:21198941:1")
-        index.pageTime = 50.seconds
-        index.checkTime = 40.seconds
-        verifyingAll()
-
-        val load = assertIs<AddressIndexLoad.Loaded>(loader(budget = 100.seconds)(account, limit = 60).last())
-
-        // 50 s of reading leave room for one 40 s check: the second chunk is cut at 100 s.
-        assertEquals(100_000, currentTime)
-        assertEquals(entries.take(50), load.rows.map { it.entry })
-        assertEquals(AddressIndexLeftOut(unavailable = 10), load.leftOut)
     }
 
     @Test

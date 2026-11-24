@@ -361,13 +361,17 @@ class AccountActivity(
             )
         }
 
-        /** The ghost row of [entry], an entry of the addr1 index being checked: its key and nothing else of it. */
+        /**
+         * The ghost row of [entry], an entry of the addr1 index being checked: its key, and the time its row will say
+         * (its block in Detailed view, none in simple mode), which the ghost draws as a line of that height only, so
+         * that it is as tall as its row; nothing else of it.
+         */
         private fun pendingRow(entry: AddressIndexEntry): ActivityRow = ActivityRow(
             key = "index:${entry.block}:${entry.slot}",
             title = "",
             detail = "",
             about = "",
-            time = "",
+            time = "Block ${grouped(entry.block)}",
             simpleTime = null,
             status = "",
             state = ActivityState.WAITING,

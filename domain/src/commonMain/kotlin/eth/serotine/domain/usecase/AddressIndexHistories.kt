@@ -63,13 +63,14 @@ import kotlin.time.Duration.Companion.seconds
  *   Tor, a network not served, the checkpoint table's alarm, a stale checkpoint, no engine), since it holds for
  *   every chunk, and the alarm withdraws the trust the rows rest on. [AddressIndexRefusal.Rejected] refuses it too:
  *   the engine refusing an argument this port checked is a bug, and no part of the page is shown over it.
- * - **One load takes at most [budget]**, the page's read and retry pauses included. A page not read by then refuses
- *   the load as passing ([AddressIndexRefusal.NotNow], [ReadUnavailable.UNPROVEN]: Swarm did not deliver it); past
- *   the read, the entries no check answered by then count as unavailable, the rows verified so far are kept, and so
- *   is the page's continuation.
+ * - **The page's read takes at most [budget].** A page not read by then refuses the load as passing
+ *   ([AddressIndexRefusal.NotNow], [ReadUnavailable.UNPROVEN]: Swarm did not deliver it).
+ * - **Each block's check takes at most [checkBudget]** (the engine bounds one at about 90 seconds). One past it gave
+ *   its entries no verdict: they are asked again like an unavailable entry, and the other blocks go on. So a slow
+ *   block costs its own entries their verdicts, never the rest of the page theirs: every entry gets its [attempts].
  *
- * Deterministic: everything it knows comes from [history], called from the caller's coroutine only, one check at a
- * time (the engine bounds each at 90 seconds).
+ * Deterministic: everything it knows comes from [history], called from the load's own coroutine (the flow's
+ * producer), one call at a time.
  */
 class LoadAddressIndexPage(
     private val history: AddressIndexHistory,
@@ -79,13 +80,16 @@ class LoadAddressIndexPage(
     private val attempts: Int = DEFAULT_ATTEMPTS,
     /** How long to wait before asking again for the entries no check answered. */
     private val retryPause: Duration = DEFAULT_RETRY_PAUSE,
-    /** The longest one load may take: the page's read, its checks and the retry pauses between them. */
+    /** The longest the page's read may take. */
     private val budget: Duration = DEFAULT_BUDGET,
+    /** The longest one block's check may take; past it, its entries are asked again. */
+    private val checkBudget: Duration = DEFAULT_CHECK_BUDGET,
 ) {
     init {
         require(attempts >= 1) { "an entry is checked once at least" }
         require(!retryPause.isNegative()) { "a pause is never negative" }
-        require(budget.isPositive()) { "a load has time to check" }
+        require(budget.isPositive()) { "a page has time to be read" }
+        require(checkBudget.isPositive()) { "a block has time to be checked" }
     }
 
     /**
@@ -105,24 +109,23 @@ class LoadAddressIndexPage(
         var readPage: AddressIndexPage? = null
         var refused: AddressIndexRefusal? = null
         val verdicts = mutableMapOf<AddressIndexEntry, AddressIndexVerdict>()
-        // One budget for the read and the checks. Past it the check stops where it is: what it had verified stays,
-        // the rest is unavailable. A page not read by then is a passing refusal.
-        withTimeoutOrNull(budget) {
-            val read = when (val reading = history.page(account.network, account.address, query)) {
-                is AddressIndexReading.Refused -> {
-                    refused = reading.reason
-                    return@withTimeoutOrNull
-                }
-                is AddressIndexReading.Page -> reading.page
+        // A page not read within its budget is a passing refusal.
+        val reading = withTimeoutOrNull(budget) { history.page(account.network, account.address, query) }
+        val read = when (reading) {
+            null -> null
+            is AddressIndexReading.Refused -> {
+                refused = reading.reason
+                null
             }
+            is AddressIndexReading.Page -> reading.page
+        }
+        if (read != null && read.coverage.importer != pinnedImporter) {
+            refused = AddressIndexRefusal.WrongImporter(pinnedImporter, read.coverage.importer)
+        } else if (read != null) {
             readPage = read
-            val importer = read.coverage.importer
-            if (importer != pinnedImporter) {
-                refused = AddressIndexRefusal.WrongImporter(pinnedImporter, importer)
-                return@withTimeoutOrNull
-            }
             val toCheck = read.entries.filterNot { it.traceOnly }
-            send(AddressIndexProgress.Read(account, toCheck))
+            val next = read.next?.let { AddressIndexContinuation(account, it) }
+            send(AddressIndexProgress.Read(account, read.coverage, next, toCheck))
             val outcome = checkAll(account, toCheck, verdicts) { entry, verdict ->
                 send(AddressIndexProgress.Checked(entry, verdict))
             }
@@ -130,7 +133,7 @@ class LoadAddressIndexPage(
         }
         send(summary(account, readPage, refused, verdicts))
     }
-        // Never waits on its collector: the budget is the reads' and the checks', not the time a list takes to draw.
+        // Never waits on its collector: the budgets are the read's and the checks', not the time a list takes to draw.
         .buffer(Channel.UNLIMITED)
 
     /** What a load came to: [refused] if it was, else [page] (null: not read in time) with its [verdicts]. */
@@ -175,7 +178,10 @@ class LoadAddressIndexPage(
             if (pending.isEmpty()) break
             if (attempt > 1) delay(retryPause)
             for (chunk in byBlock(pending)) {
-                when (val answer = history.verify(account.network, account.address, chunk)) {
+                // A check past its budget answered nothing: its entries stay pending, as an unavailable one does.
+                val answer = withTimeoutOrNull(checkBudget) { history.verify(account.network, account.address, chunk) }
+                when (answer) {
+                    null -> Unit
                     // A passing refusal leaves the chunk pending: asked again, or unavailable after the last attempt.
                     is AddressIndexCheck.Refused -> if (!answer.reason.retryable) return Lasting(answer.reason)
                     is AddressIndexCheck.Verdicts -> chunk.forEach { entry ->
@@ -226,8 +232,11 @@ class LoadAddressIndexPage(
         /** Long enough for the engine to try other peers for a block or its receipts. */
         val DEFAULT_RETRY_PAUSE = 2.seconds
 
-        /** About three of the engine's longest checks, with their pauses: a page of 150 entries at its slowest. */
-        val DEFAULT_BUDGET = 5.minutes
+        /** Long enough for Swarm to deliver a page of the index. */
+        val DEFAULT_BUDGET = 2.minutes
+
+        /** The engine's bound on one check (about 90 seconds), with room to spare. */
+        val DEFAULT_CHECK_BUDGET = 2.minutes
     }
 }
 
@@ -281,11 +290,17 @@ data class AddressIndexLeftOut(
 sealed interface AddressIndexProgress {
 
     /**
-     * The page of [account]'s history is read, signed by the pinned key: [entries] are the ones it checks next,
-     * newest first (its `TRACE`-only entries are never checked, so not among them). Each is a candidate: the
-     * importer's word that an entry is there, nothing about the chain.
+     * The page of [account]'s history is read, signed by the pinned key: what the index covers ([coverage]), which
+     * the list states before any row of the page, where it goes on ([next], null at the end of its coverage), and
+     * [entries], the ones it checks next, newest first (its `TRACE`-only entries are never checked, so not among
+     * them). Each is a candidate: the importer's word that an entry is there, nothing about the chain.
      */
-    data class Read(val account: AccountId, val entries: List<AddressIndexEntry>) : AddressIndexProgress
+    data class Read(
+        val account: AccountId,
+        val coverage: AddressIndexCoverage,
+        val next: AddressIndexContinuation?,
+        val entries: List<AddressIndexEntry>,
+    ) : AddressIndexProgress
 
     /**
      * The lasting [verdict] on [entry]. Only an [AddressIndexVerdict.Verified] one is a row; any other leaves the

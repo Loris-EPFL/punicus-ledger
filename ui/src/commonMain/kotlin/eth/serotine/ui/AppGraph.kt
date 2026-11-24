@@ -8,6 +8,8 @@ import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddedNfts
+import eth.serotine.domain.repository.AddressIndexHistory
+import eth.serotine.domain.repository.AddressIndexSetting
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.AmountsHiddenSetting
 import eth.serotine.domain.repository.BlockTransactions
@@ -76,6 +78,7 @@ import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.AllowHeavyDownloadsOnMetered
 import eth.serotine.domain.usecase.ApproveDappProposal
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
+import eth.serotine.domain.usecase.CheckAddressIndexEntry
 import eth.serotine.domain.usecase.CheckSafeSwap
 import eth.serotine.domain.usecase.ChooseSwapVenue
 import eth.serotine.domain.usecase.ClearDebugLog
@@ -111,6 +114,7 @@ import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.KeepWaitingSwap
 import eth.serotine.domain.usecase.LinkMadePerAppAlias
 import eth.serotine.domain.usecase.LinkPerAppAlias
+import eth.serotine.domain.usecase.LoadAddressIndexPage
 import eth.serotine.domain.usecase.MakePerAppAddress
 import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.NewRecoveryPhrase
@@ -120,6 +124,7 @@ import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
+import eth.serotine.domain.usecase.ObserveAddressIndexStatus
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveAmountsHidden
 import eth.serotine.domain.usecase.ObserveChequebook
@@ -234,6 +239,7 @@ import eth.serotine.domain.usecase.SignDappSafeTx
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.domain.usecase.ToggleAmountsHidden
+import eth.serotine.domain.usecase.TurnAddressIndex
 import eth.serotine.domain.usecase.UnlinkPerAppAlias
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.WarmFeeHistory
@@ -243,6 +249,7 @@ import eth.serotine.ui.accountdetail.AccountDetailViewModel
 import eth.serotine.ui.accounts.AccountsViewModel
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityKey
+import eth.serotine.ui.activity.AddressIndexActivity
 import eth.serotine.ui.activitydetail.ActivityDetailViewModel
 import eth.serotine.ui.addnetwork.AddOnNetworksViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
@@ -478,6 +485,21 @@ class AppGraph(
      * off and Settings shows Connected dApps greyed out (ruling 2).
      */
     val dappConnectionsOff: Boolean,
+    /**
+     * An account's history from the addr1 index on Swarm (owner ruling, 2026-11-21, #334): the desktop's alone, behind
+     * its experimental setting; null on a host that offers no such setting (Android, iOS), and nothing is shown of it.
+     */
+    private val addressIndex: AddressIndexHistory? = null,
+    /**
+     * The desktop's experimental setting for [addressIndex]: on by default, an explicit off kept (owner's decisions,
+     * 2026-11-22, #334); null with it.
+     */
+    private val addressIndexSetting: AddressIndexSetting? = null,
+    /**
+     * The importer key of the addr1 index pinned in the release, the one key its list may rest on; null while the
+     * release pins none, which greys the setting out (owner's decision, 2026-11-21).
+     */
+    private val addressIndexImporter: Address? = null,
 ) {
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
@@ -1014,7 +1036,22 @@ class AppGraph(
         ObserveAccountCowOrders(cowOrders),
         ObserveWaitingSwaps(waitingSwaps),
         ObserveOutbox(outbox),
+        addressIndex = addressIndexActivity(),
     )
+
+    /**
+     * What an account's Activity reads of the addr1 index: only with its history, its setting and a key pinned in the
+     * release; none otherwise, and the Activity is the log index's alone.
+     */
+    private fun addressIndexActivity(): AddressIndexActivity? {
+        val history = addressIndex ?: return null
+        val setting = addressIndexSetting ?: return null
+        val importer = addressIndexImporter ?: return null
+        return AddressIndexActivity(
+            ObserveAddressIndexStatus(history, setting, importer),
+            LoadAddressIndexPage(history, importer),
+        )
+    }
 
     /**
      * The detail of the row [key] of the Activity of the [account] (docs/wallet-ux.md, screen 26),
@@ -1034,6 +1071,13 @@ class AppGraph(
         ObserveSentTo(transactionHistory),
         ObserveAmountsHidden(amountsHidden),
         toggleAmountsHidden,
+        // Gated by the user's choice (AddressIndexStatus.wanted), not by the reader: an engine without one refuses
+        // the check itself (NotInThisBuild), which the detail says.
+        checkIndexEntry = addressIndex?.let { history ->
+            addressIndexSetting?.let { setting ->
+                addressIndexImporter?.let { CheckAddressIndexEntry(history, setting, it) }
+            }
+        },
     )
 
     /** Create Safe (docs/wallet-ux.md, screens 13 to 15). */
@@ -1107,6 +1151,12 @@ class AppGraph(
             ObserveOutbox(outbox),
             ObserveHeavyDownloads(connectionMeter, meteredDownloads),
             AllowHeavyDownloadsOnMetered(meteredDownloads),
+            observeAddressIndex = addressIndex?.let { history ->
+                addressIndexSetting?.let { ObserveAddressIndexStatus(history, it, addressIndexImporter) }
+            },
+            turnAddressIndex = addressIndex?.let { history ->
+                addressIndexSetting?.let { TurnAddressIndex(history, it, addressIndexImporter) }
+            },
         )
 
     /** Whether the bottom bar shows the Debug tab: one for the app, in the host's scope. */

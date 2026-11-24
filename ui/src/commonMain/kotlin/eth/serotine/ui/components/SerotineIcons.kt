@@ -98,6 +98,16 @@ object SerotineIcons {
         symbol("Sort", "M120-240v-80h240v80H120Zm0-200v-80h480v80H120Zm0-200v-80h720v80H120Z")
     }
 
+    /** An arrow pointing down and left: value coming in. Material Symbols `south_west`. */
+    val SouthWest: ImageVector by lazy {
+        symbol("SouthWest", "M200-200v-400h80v264l464-464 56 56-464 464h264v80H200Z")
+    }
+
+    /** An arrow pointing up and right: value going out. Material Symbols `north_east`. */
+    val NorthEast: ImageVector by lazy {
+        symbol("NorthEast", "m216-160-56-56 464-464H360v-80h400v400h-80v-264L216-160Z")
+    }
+
     /** An arrow into a tray: importing a recovery phrase. Material Symbols `download`. */
     val Download: ImageVector by lazy {
         symbol(

@@ -1162,8 +1162,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       are not listed yet (issue #85 has the plan for them).
     - Before every other row, whichever way the rows run, what the account
       has queued in lenient mode (docs/lenient-mode.md, *Where it shows*;
-      owner rulings, 2026-11-06): "Send 0.1 ETH", "To Savings · 0x5aAe…eAed",
-      when it was signed, and "Waiting to send", "Waiting for your answer"
+      owner rulings, 2026-11-06): "Send 0.1 ETH" (in the list "Send ETH",
+      with "−0.1 ETH" on the right), "To Savings · 0x5aAe…eAed", when it was
+      signed, and "Waiting to send", "Waiting for your answer"
       (past its hour) or "Needs your signature again". A tap opens its
       status (9). A Safe transaction's approval or execution queued from the
       account reads "Approve on chain: Safe nonce 12" or "Execute: Safe
@@ -1177,6 +1178,30 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       no peer confirmed its broadcast, or mined while the app was not
       watching unless another transaction took its nonce. A tap opens its
       detail (26), and from there its status (9).
+    - **At a glance** (owner's request, 2026-11-23): the rows are grouped
+      by the day they go by, in the user's own time zone, under a heading
+      per day ("Today · Monday, November 23, 2026", "Yesterday · …", then
+      the date), and each row says its time of day ("3:00 PM") in place of
+      the date. A row dated by its block alone sits among them by its block:
+      under the day of the rows just above and below it where both are dated
+      by their blocks' times and on the same day (a block's time never runs
+      backwards), with no time of its own; else under a heading that says so,
+      "Date not reported: in block order" (simple mode: "Date not
+      available"), and the day's heading comes again after it. A row that moved value one way has an
+      arrow on its blockie's corner, green for value in and red for value
+      out, and its amount on the right, signed and short ("+250 USDC",
+      "−0.25 ETH"): truncated, never rounded up; to four places from 1 on,
+      two from 1,000 on, then in millions ("1.23M"), billions and
+      trillions; below 1, four significant digits after at most three zeros,
+      smaller "<0.0001". Its headline then names the asset without the
+      amount ("Received USDC"); the exact amount stays in its detail (26).
+      Green and red only once it is done on chain; amount and arrow muted
+      while it waits, for a row that calls for care, and for a value not
+      proven to have moved. A transfer that reverted moved nothing, and one
+      to the account itself went neither way: no arrow, no amount. A
+      transaction of the addr1 index whose outcome the engine does not
+      report shows its value muted, with "outcome not checked" ("Sent ETH ·
+      outcome not checked").
     - A Safe's Activity lists the approvals and executions of its
       transactions and its deployment, whichever account here sent them
       ("Executed transaction 4: Send 40 USDC", "By Alice · …"). An approval
@@ -1269,6 +1294,90 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       nonce is used, by this transaction or by one that took its place,
       which the device cannot tell apart. The status screen (9) reads the
       same history once the record has forgotten a transaction.
+    - **And, on the desktop, the addr1 index** (owner ruling, 2026-11-21,
+      #334, and the owner's decisions of that day on #335;
+      `.claude/rules/data-sources.md`, *The history may also take the addr1
+      index from Swarm*), while its experimental setting is on (18; on by
+      default since 2026-11-22, #334): the engine reads the account's part
+      of the index from Swarm, page by page, newest first, and checks each
+      entry against verified chain data.
+      **Verified rows only**: an entry unverified, contradicted, unavailable
+      or whose only role is `TRACE` is never a row. Each row goes by its
+      block, as an event the engine did not date ("Block 9,412,300"), and
+      says it was checked ("Finalized in block 9,412,300 · checked against
+      the chain", "… not final yet"; simple mode "Final", "Confirmed"). A
+      token's transfer, from its logs, is said in the log index's words
+      ("Received 1 USDC", "Moved 1 USDC to itself", "An unlisted token logged
+      a transfer to it"). A transaction's value is said as moved ("Sent 0.25
+      ETH", "Received 1 ETH", "Created a contract") only when its verified
+      receipt says it succeeded, and one that reverted reads "Failed on
+      chain", as a sent row does. The engine does not report the receipt's
+      status yet, so today its detail (26) heads it with how the account is
+      named in it ("Named in a transaction · sender") and gives its value
+      beside the fact that its outcome is not checked. The list shows that
+      value at a glance, muted and saying so ("−0.25 ETH", "Sent ETH ·
+      outcome not checked"; owner's request, 2026-11-23); with no value, the
+      list says how the account is named in it, as the detail does. An entry
+      about the block itself reads "Named by the block itself". The same
+      protections hold: a transfer of nothing the account did not send is
+      not listed, an unlisted token's transfer is its claim, and a row the
+      account did not send, from an address it never sent to, is cautioned.
+      **Each transaction once**: one the list holds already, sent from here,
+      a CoW order's fill, or any log of it the log index read (listed or left
+      out), is that row alone.
+      - Under what the list covers, what the index is and what it rests on:
+        its importer key, pinned in the release and named in full, vouches
+        that no entry is missing, so entries may be missing. Then every range
+        it does not cover: where its coverage starts ("It covers blocks
+        9,000,000 to 9,412,800: older blocks are not in it"), the newest
+        blocks it has not reached yet (the head gap), and the ranges inside
+        it that could not be read. Simple mode says the same with no block
+        number ("Older activity also comes from a shared index …", "It
+        hasn't reached the newest activity yet").
+      - How many entries were left out because they could not be verified,
+        and apart, in a warning card, how many the chain contradicts: "the
+        importer's index contradicts the chain in 1 entry". What follows a
+        contradiction beyond the warning is the owner's to decide.
+      - **Entries one by one** (owner's request, 2026-11-24). A page holds
+        20 entries, about a screen of rows and one batch more. Once it is
+        read, each entry waits for its check as a ghost row of a row's
+        height, in its place among the rows (by its block), saying nothing of
+        it but, to a screen reader, that it is being checked; it opens
+        nothing. The checks run one block at a time, newest first, and each
+        verified entry's row takes its ghost's place as soon as its check
+        answers, whatever the others still take, so the list does not jump
+        as rows come in out of order. A ghost whose entry fails its check, or
+        whose transaction another row says already, goes. The footer counts
+        what is still being checked ("Checking 3 entries of the addr1 index
+        against the chain…"; simple mode "Checking 3 more entries of the
+        shared index…"), and no further page is read until they have
+        answered.
+      - An endless list: as the list nears its end, the next page is read,
+        but only while the page before added a row to the list. Each page
+        sets off up to 20 checks of old blocks against archive peers, so
+        after a page that added none (its entries unverified, or listed
+        already) the footer says what it left out and the next page is read
+        only on *Load older entries*; a page that adds rows lets the list
+        read on by itself again. The pages read stay while the account's
+        screen is open: back from a row's detail, or from another tab, they
+        are there and nothing is read again. A footer holds its room while a page is read and checked ("Reading
+        more of the addr1 index …"), and the end of its coverage is marked
+        ("The addr1 index starts at block 9,000,000: nothing older comes from
+        it"). Turned oldest first, the footer goes above the rows, in sight
+        from the start, so older entries load only on *Load older entries*.
+      - A refusal is said, never an empty list: this build's engine has no
+        Swarm reader, the setting is off in the engine, Tor routing is on,
+        the network is not served, the checkpoint table's alarm (in the
+        error's colour; the rows already shown go, since they rest on the
+        table, and so do its coverage and counts: for now when a read is
+        refused for it; #363 brings the alarm itself into the app, so that
+        they go the moment it is raised), a stale checkpoint, no
+        light client, an index signed by another key than the pinned one (its
+        rows go too), a request the engine rejected (a bug). Simple mode says
+        each in its own words, with no block number and no quote of the
+        engine; so are its footer and its counts ("Checking more of the
+        shared index…", "couldn't be confirmed"). The passing ones (still catching up, Swarm or the peers did not
+        deliver) offer Try again. The rows of the other sources stay.
 26. **Activity detail**: one row of 25 in full, under the Accounts tab like
     its list (`activity/{address}/tx/{hash}`, `?log=` the log index for an
     event). Its row's headline and status first, then every party it
@@ -1308,6 +1417,27 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       Safe received, is shown in full but not selectable and with no Copy,
       and the note says so (the requirements of #324, 2026-11-18): a
       planted look-alike is never one tap from the clipboard.
+    - A row of the addr1 index
+      (`activity/{address}/index-entry/{block}/{slot}?roles=…&hash=…`) is
+      checked again as it opens, only while the experimental setting is on
+      for the pinned key (off, it checks nothing and says so), and shown only
+      as the check finds it now: its headline and status as its row says
+      them, the transaction's hash, From, To (or none, a contract created),
+      its value, its outcome (succeeded or reverted, as its verified receipt
+      says; today "Not checked", since the engine does not report it yet, so
+      the value may not have moved), the token contract of its transfer, the
+      block, its hash, where in the block it
+      is ("Transaction 3", "The block itself"), the roles proven on chain,
+      and those on the importer's word alone (a trace). Its note says what
+      it rests on: the light client's check against the block's verified
+      header and receipts, finalized or not, and the checkpoint table for a
+      block older than the light client's window; and that the entry is
+      listed at all, and none missing, on the importer pinned in the
+      release, named in full. A cautioned sender has no Copy, as above. No
+      longer verified, contradicted now, not checkable right now, or a
+      check refused: it says why and shows nothing of the entry. A check that
+      could not be made now (the light client still catching up, a block no
+      peer served) offers Try again, which checks it once more.
     - One no longer there (a reorganisation replaced its block, once every
       block from the history's start is checked again) says so; while the
       blocks it is in are still being checked, or its history cannot be
@@ -1340,7 +1470,30 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     says so. While the outbox holds something, it says that turning it off
     leaves that queued: it is still checked and sent, or discarded by the
     user (decision 10). A network that is off is not syncing, in either
-    mode: nothing is drafted on it. Tokens opens the list of every token the wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
+    mode: nothing is drafted on it. On the desktop only, an *Experimental*
+    section holds *Account history from the addr1 index* (owner ruling,
+    2026-11-21, #334; a file of its own, `address-index.json`, which keeps
+    the importer key it was turned on for, or an explicit off): on by
+    default (owner's decision, 2026-11-22, #334, amending "off by default"
+    of 2026-11-21), the user may turn it off, and an explicit off stays off,
+    whatever key a later release pins. It names the importer key pinned in
+    the release, says what it does and what Swarm and archive peers learn
+    while it is on (docs/privacy-policy.md). A key is never typed in. A
+    choice to turn it on made for a key the release no longer pins does not
+    carry over: the key pinned now has no choice, so it is on by default
+    for it; only an explicit off carries across keys (owner's decision,
+    2026-11-22, #334). A choice that cannot be read is off and cannot be
+    changed until it can be read; one found damaged is set aside and an
+    explicit off written in its place, since it may have been one, so it
+    stays off after a restart, says so, and offers *Turn off*. While it is not in force
+    but would come on by itself (the default, or a choice to turn it on
+    made in another build), *Turn off* below the row stores an explicit off,
+    greyed out or not. It is greyed out, a tap saying what is
+    missing, while no importer key is pinned in the release (none was until
+    2026-11-24, owner's decision of 2026-11-21; `0xb11B…7241` since, the
+    owner's choice of 2026-11-24, #359) and while the build's engine has no Swarm
+    reader (no published Myotis build has it yet), both said when both hold.
+    Android and iOS have no such row. Tokens opens the list of every token the wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.
 19. **Display currency**: USD, EUR, GBP, CHF, JPY, ETH and BTC, limited to the

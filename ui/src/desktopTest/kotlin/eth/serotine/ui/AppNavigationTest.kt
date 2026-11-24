@@ -1229,7 +1229,9 @@ class AppNavigationTest {
         rule.onNodeWithText("Finalized in block 9,412,118").assertIsDisplayed()
         // Under the bar, as the account it is of.
         rule.onNodeWithText("Settings").assertIsDisplayed()
-        rule.onNodeWithText("Sent 0.1 ETH").performClick()
+        // The list names the asset and says the amount apart, signed.
+        rule.onNodeWithText("\u22120.1 ETH").assertIsDisplayed()
+        rule.onNodeWithText("Sent ETH").performClick()
 
         rule.waitUntil { rule.onAllNodesWithTag(ACTIVITY_DETAIL_FIELD_TAG).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText(sent.hash).performScrollTo().assertIsDisplayed()

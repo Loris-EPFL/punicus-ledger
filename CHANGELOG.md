@@ -12,6 +12,21 @@ and issues of this repository.
 
 ### Added
 
+- Account history from the addr1 index (desktop, experimental, on by
+  default in Settings → Experimental): an account's Activity also lists its
+  older transactions from the addr1 address index on Swarm, each entry
+  checked against the chain before it is shown, one by one as the list
+  scrolls. Which entries the index holds rests on its importer, whose key the
+  release pins and the list names; the list says what the index does not
+  cover, how many entries it left out, and warns when the chain contradicts
+  one. It reads nothing until the engine has a Swarm reader, which no
+  published engine has yet: until then the setting is greyed out, saying so
+  (#334).
+- Activity at a glance: the rows are grouped by day under a heading
+  ("Today", "Yesterday", then the date), each with its time in your time
+  zone; a green arrow for value in and a red one for value out, and the
+  amount on the right, signed and shortened for reading ("+250 USDC",
+  "−0.25 ETH", "1.23M"). The exact amount stays in the row's detail.
 - Buy an exact amount: type the amount to buy, on Uniswap or CoW, and the
   swap buys exactly that for at most its estimate plus your tolerance. The
   first screen says what it would cost, and when your balance cannot cover

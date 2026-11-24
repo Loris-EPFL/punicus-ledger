@@ -1,5 +1,5 @@
 ---
-description: "Data sources. The embedded engine is the only source of chain data; the three networks; Chainlink prices; the built-in token list; Safe co-signing without a service; history from the log index; an account's NFTs, on chain only; swaps on Uniswap and CoW; CoW's order API; dApp connections over WalletConnect."
+description: "Data sources. The embedded engine is the only source of chain data; the three networks; Chainlink prices; the built-in token list; Safe co-signing without a service; history from the log index, and verified addr1 rows from Swarm on the desktop; an account's NFTs, on chain only; swaps on Uniswap and CoW; CoW's order API; dApp connections over WalletConnect."
 paths:
   - "domain/**/*"
   - "data/**/*"
@@ -238,9 +238,76 @@ of a stale feed.)
   topic, walked back over verified headers.
 - An account not created here is walked from the block it was added at,
   never further back ("since added"), and the history says so.
+- One widening: on the desktop, Activity may also take verified rows of the
+  addr1 index, below. "Since added" binds the log index's walk, not those
+  rows (owner ruling, 2026-11-21, #334).
 - The walk fetches receipts only for the blocks whose bloom flags an account.
   That tells the serving peer which blocks matter to this device. Accepted
   as is: the log index makes that trade-off for any watch-list.
+
+## The history may also take the addr1 index from Swarm: verified rows only, on the desktop
+
+(Owner ruling, 2026-11-21, #334. It widens *An account's history comes from
+the engine's verified log index*, as #334 proposed, with verified rows only.
+The owner's decisions of the same day, on #335, settle its scope, the key,
+contradicted entries and what others learn.)
+
+- **The source is the engine's address history**, nothing else: the calls
+  of Myotis #899 (`myotis_getAddressHistory` and the per-entry check, through
+  `io.myotis.api`). The engine reads the addr1 address index from Swarm
+  through its own embedded light node, checks every chunk, and checks each
+  entry against verified chain data (Myotis's carve-out, 2026-11-19, and its
+  rule D1, 2026-11-20). Punicus adds no Swarm client, no gateway and no HTTP.
+- **Activity only** (owner's decision, 2026-11-21, on #335). The rows reach
+  the account's *Activity* list and its row detail, nothing else. NFTs, the
+  recipient check's planted-sender test (`CheckRecipient`) and CoW orders'
+  ends keep reading the log index alone.
+- **Verified rows only.** An addr1 entry becomes a row only once the engine
+  verified it. An entry that is unverified, contradicted or unavailable is
+  never shown as a row. An entry whose only role is `TRACE` is never
+  verified by the engine, so it is never shown.
+- **Completeness rests on the importer.** The index is signed by an importer
+  key, and that key alone vouches that no entry is missing. The list names
+  the key, says that entries may be missing, and states every range the
+  index does not cover: the newest blocks it has not reached yet, where its
+  coverage starts, and the gaps inside it.
+- **The importer key is pinned in the release** (owner's decision,
+  2026-11-21, on #335). The user does not type one in. Which key is pinned is
+  the owner's choice, named in the PR that pins it.
+- **A new key starts from the default** (owner's decision, 2026-11-22, #334).
+  When a release pins another key, only an explicit off carries over: a
+  choice to turn the setting on, made for the key pinned before, does not,
+  and the key pinned now is on by default, as on a fresh install.
+- **A contradicted entry is a warning against the key** (owner's decision,
+  2026-11-21, on #335). The chain proved that the key signed something false.
+  The row stays out; the list counts contradicted entries apart from the ones
+  it could not verify, and warns in plain words that the importer's index
+  contradicts the chain. What follows beyond that (no longer trusting the
+  key, reporting it) is open (*Open decisions*, below).
+- **What others learn** (owner's decision, 2026-11-21, on #335: accepted).
+  A lookup makes the engine's Swarm node fetch the account's part of the
+  index from Swarm peers: they see the device's IP address and which part it
+  asks for. That node does not go through Tor. The per-entry check fetches
+  old blocks and their receipts from archive peers: they learn which past
+  blocks matter to this device, older ones than the log index's walk
+  included. The privacy policy says so, and how to turn the setting off
+  (owner's decision, 2026-11-22, #334, amending "before the setting can be
+  turned on" of 2026-11-21).
+- **On the desktop, behind an experimental setting**, on by default, that
+  names the pinned key. The user may turn it off, and a choice to keep it
+  off stays (owner's decision, 2026-11-22, #334, amending "off by default"
+  of 2026-11-21). With no key pinned, or no Swarm reader, it reads nothing.
+  In its first version the engine's Swarm reader is in no published Myotis
+  build (Myotis #908), the desktop's included: an engine
+  without it refuses with the permanent `-32602`. There the setting is greyed
+  out, a tap saying this build's engine has no Swarm reader (`ui.md`, the
+  greyed-out rule), and the history stays the log index's. Android and iOS
+  have no such setting.
+- How it is applied, not part of the ruling: the list says how many entries
+  of the index it left out because they could not be verified, and,
+  separately, how many the chain contradicts. That follows from this ruling
+  and from Myotis's carve-out, which names every range nobody covered as a
+  gap, never a shorter list.
 
 ## Heavy downloads stay off a metered connection unless the user allows them
 
@@ -420,4 +487,6 @@ docs/walletconnect.md is the contract.)
 ## Open decisions
 
 Each is recorded here before its code lands. Today: each optional
-WalletConnect service above, and Swarm on Sepolia (docs/swarm.md).
+WalletConnect service above; Swarm on Sepolia (docs/swarm.md); and what follows a
+contradicted addr1 entry beyond the warning (no longer trusting the importer key,
+reporting it), the owner's to decide (2026-11-21, on #335).

@@ -245,6 +245,7 @@ fun AccountDetailRoute(
             onDerive = onDerive,
             onToggleAmounts = viewModel::toggleAmounts,
             onOrderActivity = viewModel::orderActivity,
+            onMoreActivity = viewModel::loadMoreActivity,
             onToggleUnlistedNfts = viewModel::toggleUnlistedNfts,
             nftActions = NftActions(
                 onOpenAdd = viewModel::openAddNft,
@@ -284,6 +285,7 @@ fun AccountDetailRoute(
             onDerive = onDerive,
             onToggleAmounts = viewModel::toggleAmounts,
             onOrderActivity = viewModel::orderActivity,
+            onMoreActivity = viewModel::loadMoreActivity,
             onToggleUnlistedNfts = viewModel::toggleUnlistedNfts,
             nftActions = NftActions(
                 onOpenAdd = viewModel::openAddNft,
@@ -317,7 +319,8 @@ fun AccountDetailRoute(
  * or simple mode's ([SimpleAccountDetailScreen]) pull-to-refresh. Once the account is read, the eye
  * beside Back hides or shows every amount ([onToggleAmounts]; docs/wallet-ux.md, *Hiding amounts*).
  * Below the assets are the account's NFTs, the unlisted collections' opened or collapsed by
- * [onToggleUnlistedNfts] (docs/wallet-ux.md, *NFTs*).
+ * [onToggleUnlistedNfts] (docs/wallet-ux.md, *NFTs*). Where the addr1 index adds rows to the Activity, the list
+ * nearing its end asks for the next page through [onMoreActivity], as does Try again.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -351,6 +354,7 @@ fun AccountDetailScreen(
     onOrderActivity: (ActivityOrder) -> Unit = {},
     onToggleUnlistedNfts: () -> Unit = {},
     nftActions: NftActions = NftActions(),
+    onMoreActivity: () -> Unit = {},
     onSendElsewhere: (contract: String?) -> Unit = {},
     perAppActions: PerAppActions = PerAppActions(),
 ) {
@@ -571,6 +575,7 @@ fun AccountDetailScreen(
                     nftActions = nftsShown,
                     onSendElsewhere = sendElsewhere,
                     perAppActions = perAppActions,
+                    onMoreActivity = onMoreActivity,
                 )
             }
         }
@@ -614,6 +619,7 @@ private fun Details(
     nftActions: NftActions,
     onSendElsewhere: (String?) -> Unit,
     perAppActions: PerAppActions,
+    onMoreActivity: () -> Unit,
 ) {
     // Each item ends with the space before the next, but an Activity's rows, which follow one another.
     val spaced = Modifier.padding(bottom = 16.dp)
@@ -760,6 +766,7 @@ private fun Details(
                 onContinue = onContinueSwap,
                 onDismiss = onDismissWaiting,
                 continueAvailable = state.canSwap,
+                onMore = onMoreActivity,
             )
             state.segment == DetailSegment.OWNERS -> item {
                 SafeOwners(

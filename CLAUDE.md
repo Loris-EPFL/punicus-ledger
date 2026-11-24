@@ -223,6 +223,8 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
 - **Peer-trusted is never an option.** Everything shown about the chain is
   verified by the embedded Myotis engine or shown as not available. No
   JSON-RPC provider, indexer or "temporary" fallback, in any build type.
+  The addr1 index's rows are shown only verified; its importer key vouches
+  for the list's completeness alone (owner ruling, 2026-11-21, #334).
 - One older answer is shown, labelled as one (owner's request, 2026-10-19):
   a balance proved earlier stays on screen, dated, out of totals, never acted
   on. Past the weak-subjectivity window only on the user's word (owner's
@@ -286,6 +288,13 @@ rulings to the screens.
   rulings, 2026-10-20, #85). Its walk back is a heavy download: it waits
   off a metered connection unless the user allows it in Settings (owner
   ruling, 2026-10-20).
+- *Activity* may also take the addr1 address index, which the engine reads
+  from Swarm: verified rows only, on the desktop, behind an experimental
+  setting that names the importer key pinned in the release, on by default
+  and the user's to turn off; an off survives a new key (owner's decisions,
+  2026-11-22, #334). Its completeness rests on that importer, and the list
+  says so; a contradicted entry warns against the key (owner ruling,
+  2026-11-21, #334, and decisions on #335).
 - Swaps: Uniswap first, then CoW Protocol; the user chooses the venue (owner's
   directions, 2026-10-18 and 2026-10-22). CoW's order API is used only for a
   swap the user sends to CoW (owner ruling, 2026-10-22), and, with CoW

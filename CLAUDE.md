@@ -245,6 +245,9 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
   2026-11-17). Such a key may also add or remove a member of that Delay the
   same way, never its last one, and never through a Delay whose entries never
   expire (owner ruling and decision, 2026-11-18).
+- A Swarm node is added as a watched address (no `swarm.key` import); its
+  batches and chequebook are managed through pinned contracts only (owner's
+  decisions, 2026-11-23; docs/swarm.md).
 - Network-upgrade warnings are peer reports and say so (owner's request,
   2026-10-17).
 - A parameter that can change the answer is APPLIED or REFUSED, never
@@ -303,3 +306,5 @@ rulings to the screens.
 - Send from another wallet hands a transfer to another wallet app as an
   `ethereum:` payment link; nothing comes back, and the outcome is read from
   verified blocks alone (owner rulings, 2026-11-05, #255).
+- Swarm: no Bee node or Swarm service is contacted (owner's decisions,
+  2026-11-23; docs/swarm.md).

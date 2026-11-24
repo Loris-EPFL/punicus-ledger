@@ -2,6 +2,7 @@ package eth.serotine.data.transfers
 
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.DelayMemberChange
 import eth.serotine.domain.model.DelayMemberChangePlan
@@ -250,7 +251,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(wrap, unwrap), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":13,"""), "written as format 13: $text")
+        assertTrue(text.startsWith("""{"version":14,"""), "written as format 14: $text")
     }
 
     @Test
@@ -274,7 +275,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(cancellation), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":13,"""), "written as format 13: $text")
+        assertTrue(text.startsWith("""{"version":14,"""), "written as format 14: $text")
     }
 
     @Test
@@ -290,7 +291,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(call), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":13,"""), "written as format 13: $text")
+        assertTrue(text.startsWith("""{"version":14,"""), "written as format 14: $text")
     }
 
     @Test
@@ -307,7 +308,7 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(queued, executed), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":13,"""), "written as format 13: $text")
+        assertTrue(text.startsWith("""{"version":14,"""), "written as format 14: $text")
     }
 
     @Test
@@ -329,7 +330,7 @@ class FileSentTransfersTest {
 
         assertEquals(calls, stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":13,"""), "written as format 13: $text")
+        assertTrue(text.startsWith("""{"version":14,"""), "written as format 14: $text")
         assertTrue(""""change":"remove","member":"${bob.hex}","previous":"${alice.hex}"""" in text, text)
     }
 
@@ -382,7 +383,52 @@ class FileSentTransfersTest {
 
         assertEquals(listOf(skipped), stored())
         val text = SystemFileSystem.source(file).buffered().use { it.readString() }
-        assertTrue(text.startsWith("""{"version":13,"""), "written as format 13: $text")
+        assertTrue(text.startsWith("""{"version":14,"""), "written as format 14: $text")
+    }
+
+    @Test
+    fun aSwarmNodesPostageBatchCallsAreRecordedAsTheCallsTheyAre() = runTest {
+        val stamp = Address.of("0x45a1502382541cd610cc9068e88727426b696293")
+        val id = BatchId.of("af132f8c833af8d2da19979a31603c6507435ea4ce1194adf14b45a54cc78db2")
+        val bzz =
+            Token(Address.of("0xdbf3ea6f5bee45c02255b2c26a16f300502f68da"), "BZZ", "BZZ on xDai", 16, icon = "bzz")
+        val calls = listOf(
+            transfer(9).copy(
+                action = SentAction.BatchPurchase(bzz, stamp, bob, id, 22, UInt256.of(3_578_031_360), true),
+            ),
+            transfer(10).copy(action = SentAction.BatchTopUp(bzz, stamp, bob, id, 22, UInt256.of(1_000))),
+            transfer(11).copy(action = SentAction.BatchDilution(stamp, id, 23)),
+            transfer(12).copy(
+                action = SentAction.ChequebookWithdrawal(
+                    bzz,
+                    Address.of("0x614f90324e7ac11a08c29f3313de9f4c7e047b77"),
+                    UInt256.of(10_000_000_000_000_000),
+                ),
+            ),
+        )
+        val recorder = record()
+        calls.forEach { recorder.record(it) }
+
+        assertEquals(calls, stored())
+    }
+
+    @Test
+    fun aPostageCallWithAnotherKindsFieldsIsDamaged() = runTest {
+        SystemFileSystem.createDirectories(directory)
+        val stamp = "0x45a1502382541cd610cc9068e88727426b696293"
+        val id = "ab".repeat(32)
+        val head = """{"account":"${alice.hex}","nonce":8,"raw":"0208ff","""
+        val tail = ""","maxCost":"1","sentAt":1800000008,"chain":100}"""
+        val entries = listOf(
+            // A dilution moves no amount; a top-up has no owner; no kind of the three.
+            """"postage":{"kind":"dilution","stamp":"$stamp","id":"$id","depth":23,"perChunk":"1"}""",
+            """"postage":{"kind":"top-up","stamp":"$stamp","id":"$id","depth":22,"perChunk":"1",""" +
+                """"owner":"${bob.hex}"}""",
+            """"postage":{"kind":"stake","stamp":"$stamp","id":"$id","depth":22}""",
+        ).joinToString(",") { head + it + tail }
+        SystemFileSystem.sink(file).buffered().use { it.writeString("""{"version":14,"transfers":[$entries]}""") }
+
+        assertEquals(emptyList(), stored())
     }
 
     @Test

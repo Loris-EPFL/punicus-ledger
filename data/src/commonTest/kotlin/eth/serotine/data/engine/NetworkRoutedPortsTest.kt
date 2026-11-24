@@ -120,6 +120,7 @@ class NetworkRoutedPortsTest {
             names = none.names,
             safeApprovals = none.safeApprovals,
             delayModules = none.delayModules,
+            swarmContracts = none.swarmContracts,
             uniswap = none.uniswap,
             cow = none.cow,
             logIndex = none.logIndex,

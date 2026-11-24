@@ -260,7 +260,8 @@ class ObserveSentTo(private val history: TransactionHistory) {
         // A dApp's call names no recipient the app decoded itself: it vouches for no sender.
         is SentAction.TokenApproval, is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap,
         is SentAction.SafeDeployment, is SentAction.CowCancellation, is SentAction.DappCall,
-        is SentAction.DelaySkip,
+        is SentAction.DelaySkip, is SentAction.BatchPurchase, is SentAction.BatchTopUp, is SentAction.BatchDilution,
+        is SentAction.ChequebookWithdrawal,
         -> null
     }
 
@@ -285,6 +286,10 @@ fun HistoryEntry.concerns(id: AccountId): Boolean {
         is SentAction.DelayQueue -> action.call.safe == id.address
         is SentAction.DelayExecution -> action.call.safe == id.address
         is SentAction.DelaySkip -> action.safe == id.address
+        // A batch bought here for a node: the node's too, whichever account paid (docs/swarm.md, *History*).
+        is SentAction.BatchPurchase -> action.owner == id.address
+        is SentAction.BatchTopUp -> action.node == id.address
+        is SentAction.BatchDilution, is SentAction.ChequebookWithdrawal -> false
     }
 }
 

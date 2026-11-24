@@ -668,7 +668,7 @@ class SettingsViewModelTest {
 
     @Test
     fun aHostWithoutTheAddressIndexShowsNoRowForIt() = runTest {
-        assertNull(viewModel().uiState.value.addressIndex, "Android and iOS have no such setting")
+        assertNull(viewModel().uiState.value.addressIndex, "iOS has no such setting")
     }
 
     @Test

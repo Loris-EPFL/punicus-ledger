@@ -68,7 +68,7 @@ import kotlinx.coroutines.flow.stateIn
  * account has queued in lenient mode ([ObserveOutbox]; docs/lenient-mode.md, *Where it shows*).
  * [formatTime] dates each in the user's own time zone, and the rows are grouped by the day they go by there
  * ([dates]), each timed to the minute. A row opens its detail, which is
- * navigation; a queued one, its status. On the desktop with its experimental setting on, the
+ * navigation; a queued one, its status. On the desktop and Android with its experimental setting on, the
  * verified rows of the addr1 index join them ([addressIndex]; owner ruling, 2026-11-21, #334),
  * page by page as the list nears its end, each once: a transaction the list holds already, sent
  * from here or in the log index, is that row alone.

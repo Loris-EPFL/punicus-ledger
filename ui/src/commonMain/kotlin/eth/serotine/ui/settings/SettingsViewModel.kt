@@ -71,7 +71,7 @@ import kotlinx.coroutines.sync.withLock
  * debug build, the switch that allows screen recordings of the protected screens. Turning a
  * network on asks nothing; turning off one with accounts asks first, and one without turns off at
  * once. The tokens are every network's, counted together; the currency is
- * the wallet's one. On the desktop, the experimental addr1 history's switch
+ * the wallet's one. On the desktop and Android, the experimental addr1 history's switch
  * ([useAddressIndex]), greyed out while no importer key is pinned in the
  * release or the engine has no Swarm reader.
  */
@@ -101,7 +101,7 @@ class SettingsViewModel(
     private val allowOnMetered: AllowHeavyDownloadsOnMetered,
     /** Now, in unix seconds: what the light clients' lines date the head block against. */
     private val clock: () -> Long = ::epochSecondsNow,
-    /** The desktop's experimental addr1 history; null where the host offers no such setting (Android, iOS). */
+    /** The experimental addr1 history (desktop, Android); null where the host offers no such setting (iOS). */
     observeAddressIndex: ObserveAddressIndexStatus? = null,
     /** Turns it on, for the key pinned in the release, or off; null with [observeAddressIndex]. */
     private val turnAddressIndex: TurnAddressIndex? = null,

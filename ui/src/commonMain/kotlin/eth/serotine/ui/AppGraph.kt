@@ -486,12 +486,13 @@ class AppGraph(
      */
     val dappConnectionsOff: Boolean,
     /**
-     * An account's history from the addr1 index on Swarm (owner ruling, 2026-11-21, #334): the desktop's alone, behind
-     * its experimental setting; null on a host that offers no such setting (Android, iOS), and nothing is shown of it.
+     * An account's history from the addr1 index on Swarm (owner ruling, 2026-11-21, #334): the desktop's and Android's
+     * (owner's decision, 2026-11-24), behind its experimental setting; null on a host that offers no such setting
+     * (iOS), and nothing is shown of it.
      */
     private val addressIndex: AddressIndexHistory? = null,
     /**
-     * The desktop's experimental setting for [addressIndex]: on by default, an explicit off kept (owner's decisions,
+     * The experimental setting for [addressIndex]: on by default, an explicit off kept (owner's decisions,
      * 2026-11-22, #334); null with it.
      */
     private val addressIndexSetting: AddressIndexSetting? = null,

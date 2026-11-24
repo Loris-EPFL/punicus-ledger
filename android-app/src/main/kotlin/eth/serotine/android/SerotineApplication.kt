@@ -26,6 +26,7 @@ import eth.serotine.data.cow.HttpCowApi
 import eth.serotine.data.engine.AndroidDnsServers
 import eth.serotine.data.engine.MyotisHost
 import eth.serotine.data.history.FileHistoryStarts
+import eth.serotine.data.history.PinnedAddressIndexImporter
 import eth.serotine.data.keys.AndroidBiometricKey
 import eth.serotine.data.keys.AndroidKeystoreSecret
 import eth.serotine.data.keys.EnvelopeKeyStore
@@ -42,6 +43,7 @@ import eth.serotine.data.rates.FileLastExchangeRate
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
+import eth.serotine.data.settings.FileAddressIndexSetting
 import eth.serotine.data.settings.FileAmountsHidden
 import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
@@ -67,6 +69,7 @@ import eth.serotine.domain.usecase.AnswerDappRequestsAtOnce
 import eth.serotine.domain.usecase.CheckHeldSignature
 import eth.serotine.domain.usecase.CheckQueued
 import eth.serotine.domain.usecase.FollowAccountLogs
+import eth.serotine.domain.usecase.FollowAddressIndexSetting
 import eth.serotine.domain.usecase.FollowDappAccounts
 import eth.serotine.domain.usecase.FollowDebugScreen
 import eth.serotine.domain.usecase.FollowExchangeRate
@@ -167,8 +170,30 @@ class SerotineApplication : Application() {
             scope.launch { followNetworks(host) }
             // Values proven on demand in simple mode, at every head in Detailed view (docs/simple-ui.md).
             scope.launch { followInterfaceMode(host) }
+            scope.launch { followAddressIndexSetting(host) }
         }
     }
+
+    /**
+     * Keeps the engine's addr1 reader to the experimental setting, for the life of the process (owner's decisions,
+     * 2026-11-24 and 2026-11-25: the addr1 history on Android as on the desktop): the pinned key while it is on, none
+     * otherwise, so nothing is read from Swarm or checked for it while it is off. Applied from the start, without
+     * waiting for the engine to say whether it reads Swarm; handing it the key does not make it dial out, its Swarm
+     * node starts on the first read, which an Activity asks (docs/privacy-policy.md). A failure ends it, never the
+     * wallet.
+     */
+    private suspend fun followAddressIndexSetting(host: MyotisHost) {
+        try {
+            FollowAddressIndexSetting(addressIndexSetting, PinnedAddressIndexImporter.KEY, host)()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("Punicus: following the addr1 history's setting stopped: ${e::class.simpleName}")
+        }
+    }
+
+    /** The experimental addr1 history's setting (Settings → Experimental): app-private, as every setting is. */
+    private val addressIndexSetting by lazy { FileAddressIndexSetting(filesDir.resolve("address-index.json").path) }
 
     /** Keeps the proving of values to the view the user chose, for the life of the process. */
     private suspend fun followInterfaceMode(host: MyotisHost) {
@@ -504,6 +529,13 @@ class SerotineApplication : Application() {
             dappSites = FileDappSites(filesDir.resolve("walletconnect/sites.json").path),
             perAppAliases = FileDappAliases(filesDir.resolve("walletconnect/aliases.json").path),
             dappConnectionsOff = WalletConnectDapps.projectIdFor(debuggable).isEmpty(),
+            // An account's history from the addr1 index on Swarm, on Android as on the desktop (owner's decisions,
+            // 2026-11-24 and 2026-11-25), behind its experimental setting, read and checked by the engine. An engine
+            // without the Swarm reader refuses it as not in this build, and the setting is greyed out saying so. The key
+            // the index rests on is pinned in the release (`0xb11B…7241`, owner's choice, 2026-11-24, #359).
+            addressIndex = node.addressIndex,
+            addressIndexSetting = addressIndexSetting,
+            addressIndexImporter = PinnedAddressIndexImporter.KEY,
         )
     }
 

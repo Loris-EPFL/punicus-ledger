@@ -12,8 +12,8 @@ and issues of this repository.
 
 ### Added
 
-- Account history from the addr1 index (desktop, experimental, on by
-  default in Settings → Experimental): an account's Activity also lists its
+- Account history from the addr1 index (desktop and Android, experimental,
+  on by default in Settings → Experimental): an account's Activity also lists its
   older transactions from the addr1 address index on Swarm, each entry
   checked against the chain before it is shown, one by one as the list
   scrolls. Which entries the index holds rests on its importer, whose key the
@@ -66,10 +66,10 @@ and issues of this repository.
 - The embedded Myotis engine is 0.1.23 (was 0.1.21-rc1). It brings the
   engine's address history with its Swarm reader on the desktop and Android,
   the mainnet checkpoint table up to block 26,485,995, and the embedded
-  checkpoints of 2026-11-24 for Ethereum, Gnosis Chain and Sepolia. Android
-  has no addr1 setting and never starts the reader, which runs only on a
-  read; it adds about 11 MB to the Android app, which carries the engine for
-  two processor types. On the desktop the reader runs inside the app: a
+  checkpoints of 2026-11-24 for Ethereum, Gnosis Chain and Sepolia. The
+  reader runs only on a read, while an account's Activity is open with the
+  addr1 setting on; it adds about 11 MB to the Android app, which carries
+  the engine for two processor types. The reader runs inside the app: a
   crash of the reader on what a Swarm peer sends ends the app, a limit Myotis
   accepts for now (freedom-hq/ant#271).
 - A CoW order no longer depends on Uniswap: its minimum is CoW's own

@@ -154,7 +154,7 @@ fun SettingsRoute(
  * turns lenient mode on or off through [onSignWhileSyncingChange] (docs/lenient-mode.md). The
  * switch for the heavy downloads on a metered connection calls [onMeteredDownloadsChange] with the
  * new choice; greyed out, a tap says why it cannot be changed (owner ruling, 2026-10-20). On the
- * desktop, under Experimental, the experimental addr1 history ([SettingsUiState.addressIndex]) turns on
+ * desktop and Android, under Experimental, the experimental addr1 history ([SettingsUiState.addressIndex]) turns on
  * or off through [onAddressIndexChange]; greyed out, a tap says what it needs (no importer key
  * pinned in this release, no Swarm reader in this build's engine).
  */

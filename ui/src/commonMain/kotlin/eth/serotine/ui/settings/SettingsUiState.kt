@@ -18,8 +18,8 @@ import eth.serotine.ui.components.StaleAnchorWarning
  * in place while the outbox holds something (decision 10), null otherwise.
  * [turningOff] is the confirmation asked before a network with accounts is turned off (N20), null
  * while none is asked. [meteredDownloads] is whether the heavy downloads may use a metered
- * connection. [addressIndex] is the desktop's experimental addr1 history (owner ruling, 2026-11-21,
- * #334), null where the host offers no such setting (Android, iOS), and Settings shows no row.
+ * connection. [addressIndex] is the experimental addr1 history (owner ruling, 2026-11-21, #334; the desktop
+ * and Android), null where the host offers no such setting (iOS), and Settings shows no row.
  *
  * [screenCaptureAllowed] is the debug build's switch for screen recordings of the protected
  * screens (`ScreenCaptureDebugSwitch`): whether it allows capture, or null where there is no

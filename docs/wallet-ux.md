@@ -1492,7 +1492,7 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     missing, while no importer key is pinned in the release (none was until
     2026-11-24, owner's decision of 2026-11-21; `0xb11B…7241` since, the
     owner's choice of 2026-11-24, #359) and while the build's engine has no Swarm
-    reader (no published Myotis build has it yet), both said when both hold.
+    reader (none had it before Myotis 0.1.23, whose desktop natives carry it), both said when both hold.
     Android and iOS have no such row. Tokens opens the list of every token the wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.

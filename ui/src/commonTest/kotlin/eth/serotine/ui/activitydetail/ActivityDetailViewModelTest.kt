@@ -13,6 +13,7 @@ import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TokenTransfers
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -456,6 +457,51 @@ class ActivityDetailViewModelTest {
         val note = checkNotNull(shown.note)
         assertTrue(note.contains(Eip55.format(FIXTURE_IMPORTER)), note)
         assertTrue(note.contains("finalized"), note)
+    }
+
+    @Test
+    fun anIndexRowTheAccountDidNotSendGivesNoAddressOfItsOtherSideCopy() = runTest {
+        val stranger = Address.of("0x" + "5a".repeat(20))
+        val lookAlike = Address.of("0x" + "5b".repeat(20))
+        // Named in a stranger's transaction to a look-alike (the account's address in its input), and a transfer a
+        // stranger sent from another address than the transaction's sender (a transferFrom).
+        val named = indexRow(9_300_000, 3, stranger, lookAlike, roles = setOf(AddressIndexRole.WORD))
+        val pulled = indexRow(
+            9_200_000,
+            2,
+            stranger,
+            usdc.address,
+            transfer = TokenTransfer.Fungible(usdc.address, lookAlike, alice.address, UInt256.of(1_000_000)),
+            roles = setOf(AddressIndexRole.TOPIC),
+        )
+        listOf(named, pulled).forEach { addressIndex.verifiedRows[it.entry] = it }
+
+        for (row in listOf(named, pulled)) {
+            val shown = assertIs<ActivityDetailUiState.Shown>(viewModel(indexKey(row), check = checkOn).uiState.value)
+            val addresses = shown.fields.filter { it.kind == DetailKind.ADDRESS && it.label in setOf("From", "To") }
+            assertTrue(addresses.isNotEmpty())
+            assertTrue(addresses.none { it.copyable }, "block ${row.entry.block}: ${shown.fields}")
+        }
+    }
+
+    @Test
+    fun anIndexRowOfATokenTheWalletDoesNotShowNamesItsContractAlone() = runTest {
+        val unlisted = Address.of("0x" + "7e".repeat(20))
+        val stranger = Address.of("0x" + "5a".repeat(20))
+        val row = indexRow(
+            9_300_000,
+            3,
+            stranger,
+            unlisted,
+            transfer = TokenTransfer.Fungible(unlisted, stranger, alice.address, UInt256.of(1)),
+            roles = setOf(AddressIndexRole.TOPIC),
+        )
+        addressIndex.verifiedRows[row.entry] = row
+
+        val shown = assertIs<ActivityDetailUiState.Shown>(viewModel(indexKey(row), check = checkOn).uiState.value)
+
+        assertEquals(listOf("Token contract"), shown.fields.filter { it.kind == DetailKind.ADDRESS }.map { it.label })
+        assertTrue(checkNotNull(shown.note).startsWith("A contract the wallet does not show"), shown.note)
     }
 
     @Test

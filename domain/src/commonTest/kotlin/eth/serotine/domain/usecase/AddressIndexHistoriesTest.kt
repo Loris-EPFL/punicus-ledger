@@ -229,17 +229,26 @@ class AddressIndexHistoriesTest {
     fun anEntryStillUnavailableAfterTheLastAttemptIsCountedApart() = runTest {
         val unread = entry(21_150_000, 1, FROM)
         val missing = entry(21_140_000, 1, TO)
-        index.pages[null] = page(listOf(unread, missing))
+        val read = entry(21_130_000, 1, FROM)
+        index.pages[null] = page(listOf(unread, missing, read))
         // No verdict at all for one entry counts as unavailable too.
         index.check = { entries, _ ->
-            AddressIndexCheck.Verdicts(entries.filter { it == unread }.map { AddressIndexVerdict.Unavailable(it, "x") })
+            AddressIndexCheck.Verdicts(
+                entries.mapNotNull {
+                    when (it) {
+                        unread -> AddressIndexVerdict.Unavailable(it, "x")
+                        read -> verified(it)
+                        else -> null
+                    }
+                },
+            )
         }
 
         val load = assertIs<AddressIndexLoad.Loaded>(loader(attempts = 3)(account).last())
 
-        // Two blocks, three attempts each.
-        assertEquals(6, index.checks.size)
-        assertEquals(emptyList(), load.rows)
+        // Three blocks: the two unanswered ones asked three times each, the verified one once.
+        assertEquals(7, index.checks.size)
+        assertEquals(listOf(rowOf(read)), load.rows)
         assertEquals(AddressIndexLeftOut(unavailable = 2), load.leftOut)
     }
 
@@ -247,20 +256,22 @@ class AddressIndexHistoriesTest {
     fun aVerdictForAnotherEntryOrTwoVerdictsForOneNeverMakeARow() = runTest {
         val asked = entry(21_150_000, 1, FROM)
         val torn = entry(21_140_000, 1, FROM)
-        index.pages[null] = page(listOf(asked, torn))
+        val plain = entry(21_130_000, 1, FROM)
+        index.pages[null] = page(listOf(asked, torn, plain))
         index.check = { _, _ ->
             AddressIndexCheck.Verdicts(
                 listOf(
                     verified(entry(21_150_000, 1, TO)),
                     verified(torn),
                     AddressIndexVerdict.Contradicted(torn, "0x" + "dd".repeat(32), true, setOf(FROM)),
+                    verified(plain),
                 ),
             )
         }
 
         val load = assertIs<AddressIndexLoad.Loaded>(loader(attempts = 1)(account).last())
 
-        assertEquals(emptyList(), load.rows)
+        assertEquals(listOf(rowOf(plain)), load.rows)
         assertEquals(AddressIndexLeftOut(unavailable = 2), load.leftOut)
     }
 
@@ -399,27 +410,33 @@ class AddressIndexHistoriesTest {
     }
 
     @Test
-    fun aBlockWhoseCheckOverrunsItsBoundIsAskedAgainAndTheOtherBlocksGoOn() = runTest {
+    fun aBlockWhoseCheckRunsToItsBoundIsNotAskedAgainAndTheOtherBlocksGoOn() = runTest {
         val slow = entry(21_150_000, 1, FROM)
         val quick = entry(21_140_000, 1, FROM)
         index.pages[null] = page(listOf(slow, quick), next = "7:21140000:1")
-        // The first check of the slow block takes longer than its bound; its second does not.
-        var slowAsked = 0
-        index.checkTimeOf = { entries ->
-            if (slow in entries && ++slowAsked == 1) 150.seconds else 10.seconds
-        }
+        index.checkTimeOf = { entries -> if (slow in entries) 150.seconds else 10.seconds }
         verifyingAll()
 
-        val load = assertIs<AddressIndexLoad.Loaded>(
-            loader(retryPause = 2.seconds, checkBudget = 100.seconds)(account).last(),
-        )
+        val load = assertIs<AddressIndexLoad.Loaded>(loader(checkBudget = 100.seconds)(account).last())
 
-        assertEquals(listOf(listOf(slow), listOf(quick), listOf(slow)), index.checks)
-        assertEquals(listOf(rowOf(slow), rowOf(quick)), load.rows, "the slow block's entry gets its next attempt")
-        assertEquals(AddressIndexLeftOut(), load.leftOut)
-        // 100 s cut, 10 s for the quick block, the 2 s pause, 10 s for the slow block again.
-        assertEquals(122_000, currentTime)
+        assertEquals(listOf(listOf(slow), listOf(quick)), index.checks, "the slow block is given up, not asked again")
+        assertEquals(listOf(rowOf(quick)), load.rows)
+        assertEquals(AddressIndexLeftOut(unavailable = 1), load.leftOut)
+        // 100 s cut, then 10 s for the quick block: the page is bounded by its blocks times the bound.
+        assertEquals(110_000, currentTime)
         assertEquals(AddressIndexContinuation(account, AddressIndexCursor("7:21140000:1")), load.next)
+    }
+
+    @Test
+    fun aPageNoneOfWhoseEntriesCouldBeCheckedNowIsAPassingRefusalWithTheChecksReason() = runTest {
+        index.pages[null] = page(listOf(entry(21_150_000, 1, FROM), entry(21_140_000, 1, TO)), next = "7:21140000:1")
+        val syncing = AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING)
+        index.check = { _, _ -> AddressIndexCheck.Refused(syncing) }
+
+        val load = loader(attempts = 2)(account).last()
+
+        assertEquals(AddressIndexLoad.Refused(syncing), load, "asking again reads this page again")
+        assertEquals(4, index.checks.size)
     }
 
     @Test

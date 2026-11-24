@@ -65,6 +65,8 @@ import kotlin.test.assertFalse
 import eth.serotine.domain.model.AddressIndexCoverage
 import eth.serotine.domain.model.AddressIndexHeadGap
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlin.time.Duration.Companion.minutes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -244,6 +246,28 @@ class AddressIndexActivityTest {
 
         assertEquals(listOf("index:9300000:3"), second.rows.map { it.key })
         assertIs<IndexFooter.Paused>(second.index?.footer, "a page that added no row reads on only on a tap")
+    }
+
+    @Test
+    fun aPageNoneOfWhoseEntriesCouldBeCheckedNowOffersTryAgainWhichReadsItAgain() = runTest {
+        index.page(null, listOf(indexRow(9_300_000, 3, alice.address, bob)), next = "p2")
+        index.checkRefusal = AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING)
+        val activity = activity()
+        // Past the checks' retries and their pauses.
+        advanceTimeBy(1.minutes)
+
+        val refused = shown(activity)
+        val footer = assertIs<IndexFooter.Refused>(refused.index?.footer)
+        assertTrue(footer.retry, "a passing refusal offers Try again")
+        assertEquals(emptyList<ActivityRow>(), refused.rows)
+
+        // The light client caught up: Try again reads the same page, not the one below it.
+        index.checkRefusal = null
+        more.value = 1
+        val again = shown(activity)
+
+        assertEquals(listOf<AddressIndexCursor?>(null, null), index.asked)
+        assertEquals(listOf("index:9300000:3"), again.rows.map { it.key })
     }
 
     @Test

@@ -69,9 +69,13 @@ import kotlin.time.Duration.Companion.seconds
  *   short that the engine would still answer.
  * - **A page not read within [budget]** refuses the load as passing ([AddressIndexRefusal.NotNow],
  *   [ReadUnavailable.UNPROVEN]: Swarm did not deliver it).
- * - **A block's check past [checkBudget]** gave its entries no verdict: they are asked again like an unavailable
- *   entry, and the other blocks go on. So a slow block costs its own entries their verdicts, never the rest of the
- *   page theirs: every entry gets its [attempts].
+ * - **A block's check past [checkBudget]** gave its entries no verdict, and they are not asked again in this load:
+ *   they count as unavailable, and the other blocks go on. So a slow block costs its own entries their verdicts,
+ *   never the rest of the page theirs, and a page takes at most its blocks times [checkBudget], with the retries of
+ *   the blocks that answered.
+ * - **A page none of whose entries could be checked now** (every check refused in passing, or unavailable, or past
+ *   its bound) refuses the load as passing, with the checks' reason: asking again reads the page again, instead of
+ *   moving on below entries that were never checked.
  *
  * Deterministic: everything it knows comes from [history], called from the load's own coroutine (the flow's
  * producer), one call at a time.
@@ -133,7 +137,11 @@ class LoadAddressIndexPage(
             val outcome = checkAll(account, toCheck, verdicts) { entry, verdict ->
                 send(AddressIndexProgress.Checked(entry, verdict))
             }
-            if (outcome is Lasting) refused = outcome.reason
+            when (outcome) {
+                is Lasting -> refused = outcome.reason
+                is Passing -> refused = outcome.reason
+                Done -> Unit
+            }
         }
         send(summary(account, readPage, refused, verdicts))
     }
@@ -178,16 +186,23 @@ class LoadAddressIndexPage(
         onVerdict: suspend (AddressIndexEntry, AddressIndexVerdict) -> Unit,
     ): Outcome {
         var pending = entries
+        // A block whose check ran to its bound is not asked again in this load: it is unlikely to answer moments later,
+        // and asking again would hold the page for another bound each time.
+        val givenUp = mutableSetOf<AddressIndexEntry>()
+        var passing: AddressIndexRefusal? = null
         for (attempt in 1..attempts) {
             if (pending.isEmpty()) break
             if (attempt > 1) delay(retryPause)
             for (chunk in byBlock(pending)) {
-                // A check past its budget answered nothing: its entries stay pending, as an unavailable one does.
                 val answer = withTimeoutOrNull(checkBudget) { history.verify(account.network, account.address, chunk) }
                 when (answer) {
-                    null -> Unit
+                    null -> givenUp += chunk
                     // A passing refusal leaves the chunk pending: asked again, or unavailable after the last attempt.
-                    is AddressIndexCheck.Refused -> if (!answer.reason.retryable) return Lasting(answer.reason)
+                    is AddressIndexCheck.Refused -> if (answer.reason.retryable) {
+                        passing = answer.reason
+                    } else {
+                        return Lasting(answer.reason)
+                    }
                     is AddressIndexCheck.Verdicts -> chunk.forEach { entry ->
                         verdictOf(entry, answer.verdicts)?.let {
                             verdicts[entry] = it
@@ -196,7 +211,12 @@ class LoadAddressIndexPage(
                     }
                 }
             }
-            pending = pending.filterNot { it in verdicts }
+            pending = pending.filterNot { it in verdicts || it in givenUp }
+        }
+        // Not one entry could be checked now (the light client catching up, no peer serving the blocks): the page is
+        // refused as passing, so that asking again reads it again, instead of moving on below entries never checked.
+        if (entries.isNotEmpty() && verdicts.isEmpty()) {
+            return Passing(passing ?: AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN))
         }
         return Done
     }
@@ -224,10 +244,14 @@ class LoadAddressIndexPage(
             .singleOrNull()
             ?.takeIf { it.entry.roles == entry.roles && it !is AddressIndexVerdict.Unavailable }
 
-    /** How [checkAll] ended: [Done], or refused for a [Lasting] reason. */
+    /**
+     * How [checkAll] ended: [Done]; refused for a [Lasting] reason; or [Passing], when not one entry could be checked
+     * now, for the passing reason the checks gave (or Swarm and the peers not delivering).
+     */
     private sealed interface Outcome
     private data object Done : Outcome
     private data class Lasting(val reason: AddressIndexRefusal) : Outcome
+    private data class Passing(val reason: AddressIndexRefusal) : Outcome
 
     private companion object {
         /** A first check and two more for what it could not read. */

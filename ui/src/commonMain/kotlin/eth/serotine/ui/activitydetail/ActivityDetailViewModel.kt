@@ -280,11 +280,24 @@ class ActivityDetailViewModel(
         val row = rows.indexRow(indexed, parties, tokens)
             ?: return ActivityDetailUiState.Unavailable(title, MOVED_NOTHING)
         val entry = indexed.entry
+        val tx = indexed.transaction
+        // A transaction this account did not send was made by someone else, who chose every address in it: anyone can
+        // name the account in one (a topic, a word of its input), from or to a look-alike planted for the user to copy.
+        // So no address of its other side gets Copy here (address poisoning protection, #324).
+        val othersChose = tx != null && tx.from != address
+        // A token the wallet does not show can log any transfer between any addresses: its contract alone is named,
+        // as the log index's detail of the same log names it, never the transaction's parties.
+        val unshownToken = tx?.transfer?.takeIf { tokens[it.token]?.shown != true }
         val fields = buildList {
-            indexed.transaction?.let { tx ->
+            tx?.let { tx ->
                 add(DetailField("Transaction hash", tx.hash, DetailKind.HASH))
-                add(addressOf("From", tx.from, names))
-                add(tx.to?.let { addressOf("To", it, names) } ?: DetailField("To", "None: it creates a contract"))
+                if (unshownToken == null) {
+                    add(addressOf("From", tx.from, names).withCopy(!othersChose || tx.from == address))
+                    add(
+                        tx.to?.let { addressOf("To", it, names).withCopy(!othersChose || it == address) }
+                            ?: DetailField("To", "None: it creates a contract"),
+                    )
+                }
                 // A fact of the transaction, not a claim that it moved: a reverted one keeps its value field.
                 tx.value.toUInt256OrNull()?.let { add(DetailField("Value", rows.amount(it, TransferAsset.Native))) }
                 add(
@@ -321,14 +334,26 @@ class ActivityDetailViewModel(
             "window is checked against the checkpoint table bundled with its engine. That the addr1 index lists " +
             "this entry at all, and that none is missing, rests on its importer" +
             (importer?.let { ", $it, pinned in this release." } ?: ".")
+        val claim = when {
+            unshownToken == null -> null
+            unshownToken is TokenTransfer.Nft -> "$CLAIM_NOTE $NFT_NOTE"
+            else -> CLAIM_NOTE
+        }
         return shownOf(
             title,
             row,
             fields,
-            note = listOfNotNull(SENDER_NOTE.takeIf { row.state == ActivityState.CAUTION }, restsOn)
-                .joinToString("\n\n"),
+            note = listOfNotNull(
+                claim,
+                SENDER_NOTE.takeIf { row.state == ActivityState.CAUTION },
+                OTHERS_CHOSE_NOTE.takeIf { othersChose && unshownToken == null && row.state != ActivityState.CAUTION },
+                restsOn,
+            ).joinToString("\n\n"),
         )
     }
+
+    /** This field with Copy only where [copy] says so. */
+    private fun DetailField.withCopy(copy: Boolean): DetailField = if (copy) this else copy(copyable = false)
 
     /** The event [key] names in this history, when it is read with it. */
     private fun <E : IndexedEvent> IndexedHistory<E>?.found(): E? = (this as? IndexedHistory.Read)?.events
@@ -634,6 +659,9 @@ class ActivityDetailViewModel(
             "your accounts. Anyone can send you a little from an address made to look like one you use, so that you " +
             "copy it from your history later: compare every character before you send anything to it. Copy is " +
             "off for it here, so that it is not pasted by mistake."
+        const val OTHERS_CHOSE_NOTE = "This transaction was not sent by this account: whoever sent it chose its " +
+            "addresses, and anyone can name your account in one. Copy is off for them here, so that a look-alike is " +
+            "not pasted by mistake."
         const val ZERO_NAME = "The zero address"
         const val CLAIM_NOTE = "A contract the wallet does not show can log any transfer it likes, between any " +
             "addresses, so only the contract is named here: an address it names could be a look-alike planted " +

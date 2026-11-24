@@ -122,9 +122,12 @@ internal data class IndexPaging(
     val started: Boolean
         get() = coverage != null
 
-    /** Whether the end of what the index covers was reached: no page lies below. */
+    /**
+     * Whether the end of what the index covers was reached: no page lies below. Not while a page is refused: its
+     * coverage came with its read, but where the list goes on comes with its end, so asking again reads it again.
+     */
     val ended: Boolean
-        get() = started && next == null
+        get() = started && next == null && refused == null
 
     /**
      * Whether another page may be asked for now: none is being read or checked, more lies below, nothing lasting
@@ -151,9 +154,10 @@ internal data class IndexPaging(
                 rows.any { it.entry.block == entry.block && it.entry.slot == entry.slot }
             },
             checking = true,
-            // What the index covers is said before any row of the page, never after its rows came in.
+            // What the index covers is said before any row of the page, never after its rows came in. Where the list
+            // goes on is taken at the page's end only: a page whose checks could not be made now is refused as
+            // passing, and asking again must read it again, not the page below it.
             coverage = load.coverage,
-            next = load.next,
             loading = false,
             refused = null,
             lastRows = emptyList(),
@@ -241,19 +245,31 @@ internal fun indexSection(paging: IndexPaging, network: Network, shownFromLast: 
     return IndexSection(
         lines = lines,
         simpleLines = simpleLines,
-        leftOut = leftOut.notVerified.takeIf { it > 0 }?.let { n ->
-            "${entries(n)} of the index ${if (n == 1) "is" else "are"} left out: " +
-                "${if (n == 1) "it" else "they"} could not be verified."
-        },
+        leftOut = listOfNotNull(
+            leftOut.cannotVerify.takeIf { it > 0 }?.let { n ->
+                "${entries(n)} of the index ${if (n == 1) "is" else "are"} left out: " +
+                    "${if (n == 1) "it" else "they"} could not be verified."
+            },
+            // Never checked, which is not "cannot be verified": the account's screen opened again checks them again.
+            leftOut.unavailable.takeIf { it > 0 }?.let { n ->
+                "${entries(n)} could not be checked right now (no peer served ${if (n == 1) "its" else "their"} " +
+                    "blocks in time): open the account again to check ${if (n == 1) "it" else "them"} again."
+            },
+        ).joinToString(" ").ifEmpty { null },
         contradicted = leftOut.contradicted.takeIf { it > 0 }?.let { n ->
             "Warning: the importer's index contradicts the chain in ${entries(n)}, left out. An index that says " +
                 "something the chain proves false may also leave entries out or be wrong elsewhere; its importer " +
                 "is ${shortAddress(key)}."
         },
-        simpleLeftOut = leftOut.notVerified.takeIf { it > 0 }?.let { n ->
-            val shown = if (n == 1) "it isn't" else "they aren't"
-            "${entries(n)} of the shared index couldn't be confirmed, so $shown shown."
-        },
+        simpleLeftOut = listOfNotNull(
+            leftOut.cannotVerify.takeIf { it > 0 }?.let { n ->
+                val shown = if (n == 1) "it isn't" else "they aren't"
+                "${entries(n)} of the shared index couldn't be confirmed, so $shown shown."
+            },
+            leftOut.unavailable.takeIf { it > 0 }?.let { n ->
+                "${entries(n)} couldn't be checked right now. Open the account again to try once more."
+            },
+        ).joinToString(" ").ifEmpty { null },
         simpleContradicted = leftOut.contradicted.takeIf { it > 0 }?.let { n ->
             "Warning: the shared index's publisher listed ${entries(n)} the chain shows to be wrong. " +
                 "${if (n == 1) "It isn't" else "They aren't"} shown, and the index may also miss or get others wrong."
@@ -325,7 +341,8 @@ private fun pausedText(paging: IndexPaging): String {
     val left = paging.lastLeftOut
     val listed = paging.lastRows.size
     val parts = listOfNotNull(
-        left.notVerified.takeIf { it > 0 }?.let { "${entries(it)} could not be verified" },
+        left.cannotVerify.takeIf { it > 0 }?.let { "${entries(it)} could not be verified" },
+        left.unavailable.takeIf { it > 0 }?.let { "${entries(it)} could not be checked right now" },
         left.contradicted.takeIf { it > 0 }?.let {
             "${entries(it)} ${if (it == 1) "contradicts" else "contradict"} the chain"
         },
@@ -347,7 +364,8 @@ private fun simplePausedText(paging: IndexPaging): String {
     val left = paging.lastLeftOut
     val listed = paging.lastRows.size
     val parts = listOfNotNull(
-        left.notVerified.takeIf { it > 0 }?.let { "${entries(it)} couldn't be confirmed" },
+        left.cannotVerify.takeIf { it > 0 }?.let { "${entries(it)} couldn't be confirmed" },
+        left.unavailable.takeIf { it > 0 }?.let { "${entries(it)} couldn't be checked right now" },
         left.contradicted.takeIf { it > 0 }?.let { "${entries(it)} the chain shows to be wrong" },
         listed.takeIf { it > 0 }?.let { "${entries(it)} ${if (it == 1) "is" else "are"} shown already" },
     )
@@ -355,6 +373,10 @@ private fun simplePausedText(paging: IndexPaging): String {
     return "The last part of the shared index $what. More is checked only when you ask, since each part means a " +
         "lot of downloading."
 }
+
+/** The entries that cannot be verified, asking again or not: the engine's unverified ones and the `TRACE`-only. */
+private val AddressIndexLeftOut.cannotVerify: Int
+    get() = unverified + traceOnly
 
 /** Simple mode's words while more of the index is read. */
 private const val CHECKING_MORE = "Checking more of the shared index…"

@@ -91,8 +91,8 @@ data class AddressIndexStatus(val pinned: Address?, val reader: Boolean?, val ch
  * The [AddressIndexStatus] now, re-emitted when the choice changes: [setting], the user's choice; [history], whose
  * engine says once whether it has a Swarm reader, which is not known ([AddressIndexStatus.reader] null) until it has
  * said, so that Settings draws the row greyed out meanwhile rather than none (owner ruling, 2026-10-18, #55);
- * [pinned], the importer key pinned in the release, null when this release pins none (owner's decision, 2026-11-21:
- * none is pinned yet).
+ * [pinned], the importer key pinned in the release, null when this release pins none (none was until 2026-11-24,
+ * owner's decision of 2026-11-21; `0xb11B…7241` since, owner's choice of 2026-11-24, #359).
  */
 class ObserveAddressIndexStatus(
     private val history: AddressIndexHistory,

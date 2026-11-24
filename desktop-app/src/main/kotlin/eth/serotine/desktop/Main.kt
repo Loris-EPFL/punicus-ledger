@@ -583,8 +583,8 @@ private fun openWallet(dataDir: File) {
                 dappConnectionsOff = dappProjectId.isEmpty(),
                 // An account's history from the addr1 index on Swarm, the desktop's alone, behind its experimental
                 // setting (owner ruling, 2026-11-21, #334), read and checked by the engine. An engine without the
-                // Swarm reader refuses it as not in this build, and no key is pinned in this release yet: the setting
-                // is greyed out for whichever holds.
+                // Swarm reader refuses it as not in this build, and the setting is greyed out saying so. The key the
+                // index rests on is pinned in the release (`0xb11B…7241`, owner's choice, 2026-11-24, #359).
                 addressIndex = node.addressIndex,
                 addressIndexSetting = addressIndexSetting,
                 addressIndexImporter = PinnedAddressIndexImporter.KEY,

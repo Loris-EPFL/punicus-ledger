@@ -1338,9 +1338,23 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
         and apart, in a warning card, how many the chain contradicts: "the
         importer's index contradicts the chain in 1 entry". What follows a
         contradiction beyond the warning is the owner's to decide.
+      - **Entries one by one** (owner's request, 2026-11-24). A page holds
+        20 entries, about a screen of rows and one batch more. Once it is
+        read, each entry waits for its check as a ghost row of a row's
+        height, in its place among the rows (by its block), saying nothing of
+        it but, to a screen reader, that it is being checked; it opens
+        nothing. The checks run one block at a time, newest first, and each
+        verified entry's row takes its ghost's place as soon as its check
+        answers, whatever the others still take, so the list does not jump
+        as rows come in out of order. A ghost whose entry fails its check, or
+        whose transaction another row says already, goes. The footer counts
+        what is still being checked ("Checking 3 entries of the addr1 index
+        against the chain…"; simple mode "Checking 3 more entries of the
+        shared index…"), and no further page is read until they have
+        answered.
       - An endless list: as the list nears its end, the next page is read,
         but only while the page before added a row to the list. Each page
-        sets off up to 50 checks of old blocks against archive peers, so
+        sets off up to 20 checks of old blocks against archive peers, so
         after a page that added none (its entries unverified, or listed
         already) the footer says what it left out and the next page is read
         only on *Load older entries*; a page that adds rows lets the list

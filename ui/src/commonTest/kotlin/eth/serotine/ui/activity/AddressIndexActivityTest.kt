@@ -59,6 +59,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CompletableDeferred
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -112,6 +113,48 @@ class AddressIndexActivityTest {
     private fun TestScope.shown(activity: StateFlow<ActivityUiState>): ActivityUiState.Shown {
         runCurrent()
         return assertIs<ActivityUiState.Shown>(activity.value)
+    }
+
+    @Test
+    fun eachEntryIsAGhostInItsPlaceUntilItsCheckAnswersAndItsRowTakesItsKey() = runTest {
+        val newer = indexRow(9_300_000, 3, alice.address, bob, wei = "250000000000000000")
+        val older = indexRow(9_200_000, 2, alice.address, bob, wei = "100000000000000000")
+        val unverified = AddressIndexEntry(9_250_000, 1, setOf(AddressIndexRole.FROM))
+        index.page(null, listOf(newer, older), next = null, others = listOf(unverified))
+        // Each block's check waits until the test lets it answer.
+        val gates = mutableMapOf<Long, CompletableDeferred<Unit>>()
+        fun gate(block: Long) = gates.getOrPut(block) { CompletableDeferred() }
+        index.checkGate = { entries -> gate(entries.first().block).await() }
+        val activity = activity()
+
+        val read = shown(activity)
+        val keys = listOf("index:9300000:3", "index:9250000:1", "index:9200000:2")
+        assertEquals(keys, read.rows.map { it.key }, "each entry in its place, newest first")
+        assertTrue(read.rows.all { it.pending }, "nothing of an entry is said before its check")
+        assertTrue(read.rows.all { it.title.isEmpty() && it.about.isEmpty() })
+        val checking = assertIs<IndexFooter.Checking>(read.index?.footer)
+        assertEquals("Checking 3 entries of the addr1 index against the chain…", checking.text)
+        assertEquals(listOf(listOf(newer.entry)), index.checked, "one block at a time, newest first")
+
+        gate(9_300_000).complete(Unit)
+        val one = shown(activity)
+        assertEquals(keys, one.rows.map { it.key }, "the row takes its ghost's place")
+        assertEquals(listOf(false, true, true), one.rows.map { it.pending })
+        assertEquals("Sent ETH", one.rows.first().headline)
+
+        gate(9_250_000).complete(Unit)
+        val two = shown(activity)
+        assertEquals(listOf("index:9300000:3", "index:9200000:2"), two.rows.map { it.key }, "an unverified one goes")
+        assertEquals(listOf(false, true), two.rows.map { it.pending })
+
+        gate(9_200_000).complete(Unit)
+        val done = shown(activity)
+        assertEquals(listOf(false, false), done.rows.map { it.pending })
+        assertIs<IndexFooter.End>(done.index?.footer)
+        assertEquals(
+            "1 entry of the index is left out: it could not be verified.",
+            done.index?.leftOut,
+        )
     }
 
     @Test

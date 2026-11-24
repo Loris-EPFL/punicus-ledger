@@ -2,6 +2,7 @@ package eth.serotine.ui.activity
 
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexEntry
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
@@ -326,7 +327,10 @@ class AccountActivity(
         /**
          * The verified rows of the addr1 index read so far ([index]), each with its block, newest first: none of a
          * transaction in [listed] (lower-case hashes), which another row says already, and none [rows] leaves out.
-         * Until the tokens are known ([tokens] null) no transfer's amount can be said, so none is listed yet.
+         * Until the tokens are known ([tokens] null) no transfer's amount can be said, so none is listed yet. Beside
+         * them, a ghost row for each entry still being checked ([IndexPaging.pending]), by its block, under the key
+         * its row takes once verified (owner's request, 2026-11-24): the row then replaces it in place. A ghost says
+         * nothing of its entry; one whose check fails, or whose transaction another row says already, goes.
          */
         private fun indexed(
             index: IndexPaging?,
@@ -335,11 +339,32 @@ class AccountActivity(
             tokens: Map<Address, KnownToken>?,
             rows: ActivityRows,
         ): List<Pair<ActivityRow, Long>> {
-            if (index == null || tokens == null) return emptyList()
-            return index.rows
+            if (index == null) return emptyList()
+            val ghosts = index.pending.map { pendingRow(it) to it.block }
+            if (tokens == null) return ghosts
+            val verified = index.rows
                 .filterNot { it.transaction?.hash?.lowercase() in listed }
                 .mapNotNull { indexed -> rows.indexRow(indexed, parties, tokens)?.let { it to indexed.entry.block } }
+            // Newest first, by block and slot, the ghosts among the rows.
+            return (verified + ghosts).sortedWith(
+                compareByDescending<Pair<ActivityRow, Long>> { it.second }
+                    .thenByDescending { it.first.opens.index?.slot ?: 0 },
+            )
         }
+
+        /** The ghost row of [entry], an entry of the addr1 index being checked: its key and nothing else of it. */
+        private fun pendingRow(entry: AddressIndexEntry): ActivityRow = ActivityRow(
+            key = "index:${entry.block}:${entry.slot}",
+            title = "",
+            detail = "",
+            about = "",
+            time = "",
+            simpleTime = null,
+            status = "",
+            state = ActivityState.WAITING,
+            opens = ActivityKey("", index = IndexEntryKey(entry.block, entry.slot, entry.roles)),
+            pending = true,
+        )
 
         /**
          * [swap] as its card: what it swaps, once the tokens are known, and where it stands, from its

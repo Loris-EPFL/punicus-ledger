@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.height
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.AddressIndexRole
 import eth.serotine.ui.activity.ACTIVITY_INDEX_FOOTER_TAG
+import eth.serotine.ui.activity.ACTIVITY_PENDING_TAG
 import eth.serotine.ui.activity.ACTIVITY_AMOUNT_TAG
 import eth.serotine.ui.activity.ACTIVITY_DAY_TAG
 import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
@@ -68,6 +69,7 @@ import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 
 /** Renders the stateless [AccountDetailScreen] headless for its states. */
@@ -994,6 +996,46 @@ class AccountDetailScreenTest {
 
         assertEquals(1, events.count { it == "more activity" }, "the footer composed asks once")
         assertEquals("open activity ${indexRow.opens}", events.last())
+    }
+
+    @Test
+    fun anEntryBeingCheckedIsAGhostInItsPlaceThatSaysNothingOpensNothingAndAsksForNothingMore() {
+        val pending = indexRow.copy(
+            key = "index:9412310:2",
+            title = "",
+            detail = "",
+            about = "",
+            time = "",
+            status = "",
+            state = ActivityState.WAITING,
+            opens = ActivityKey("", index = IndexEntryKey(9_412_310, 2, setOf(AddressIndexRole.FROM))),
+            pending = true,
+        )
+        show(
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(
+                    listOf(pending, indexRow),
+                    "Transactions sent from this device.",
+                    index = IndexSection(
+                        listOf("Also from the addr1 index on Swarm: entries may be missing."),
+                        IndexFooter.Checking("Checking 1 entry of the addr1 index against the chain…"),
+                    ),
+                ),
+            ),
+        )
+
+        rule.onAllNodesWithTag(ACTIVITY_PENDING_TAG, useUnmergedTree = true).assertCountEquals(1)
+        rule.onNodeWithContentDescription("Checking an entry against the chain").assertExists()
+        // The verified row beside it is a row like any other; the ghost is no row to open.
+        rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).assertCountEquals(1)
+        rule.onNodeWithTag(ACTIVITY_PENDING_TAG, useUnmergedTree = true).performClick()
+        rule.onNodeWithTag(ACTIVITY_INDEX_FOOTER_TAG).performScrollTo()
+        rule.onNodeWithText("Checking 1 entry of the addr1 index against the chain…").assertIsDisplayed()
+        rule.waitForIdle()
+
+        assertTrue(events.none { it.startsWith("open activity") }, "a ghost opens nothing")
+        assertEquals(0, events.count { it == "more activity" }, "nothing more is asked while entries are checked")
     }
 
     @Test

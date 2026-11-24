@@ -16,6 +16,8 @@ import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.AddressIndexSetting
 import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
@@ -29,6 +31,13 @@ import kotlin.time.Duration.Companion.seconds
  * them, and gives back the verified ones only, as rows, newest first, with what the index covers, the importer key
  * the list rests on, and how many entries it left out.
  *
+ * **As it goes** (owner's request, 2026-11-24: entries shown one by one, not the whole page at once): the load is a
+ * flow. Once the page is read it emits [AddressIndexProgress.Read], the entries it will check; then an
+ * [AddressIndexProgress.Checked] for each entry as soon as its check gives a lasting verdict, so that a list can put
+ * each verified row in place at once; and last, always, the [AddressIndexLoad] the whole load came to, whose counts
+ * are the ones to keep. Only a [AddressIndexVerdict.Verified] one is ever a row; a `Checked` of any other verdict says
+ * only that the entry is done with.
+ *
  * - **The pinned key only.** A page whose index is signed by any key but [pinnedImporter], the key pinned in the
  *   release, is refused ([AddressIndexRefusal.WrongImporter]) before anything of it is checked.
  * - **Verified rows only.** An entry becomes a row only on an [AddressIndexVerdict.Verified] of it. Every other
@@ -36,8 +45,10 @@ import kotlin.time.Duration.Companion.seconds
  * - **TRACE-only entries are not sent to the check**: the engine never verifies one, so asking would only spend a
  *   slot of the check. They are counted apart ([AddressIndexLeftOut.traceOnly]), among the entries that could not
  *   be verified.
- * - **The check runs in chunks** of at most [AddressIndexHistory.MAX_CHECKED] entries, one after the other, in page
- *   order. A verdict is matched to the entry asked by block and slot; one whose roles are not the roles asked, or
+ * - **The check runs block by block**, newest first (the page's order): one call for the entries of one block (in
+ *   chunks of at most [AddressIndexHistory.MAX_CHECKED] where a block holds more). The engine reads each block once
+ *   either way; one block at a time lets each verdict out as soon as it is known, instead of after the slowest
+ *   block of the page. A verdict is matched to the entry asked by block and slot; one whose roles are not the roles asked, or
  *   two different verdicts for one entry, count as no verdict. An entry that comes back
  *   [AddressIndexVerdict.Unavailable], or with no verdict, is asked again, up to [attempts] checks in all,
  *   [retryPause] apart. One still unavailable after that is left out and counted apart
@@ -78,13 +89,15 @@ class LoadAddressIndexPage(
     /**
      * The page of [account]'s addr1 history below [after] (the [AddressIndexLoad.Loaded.next] of the page before;
      * null: the newest page), of at most [limit] entries (1 to [AddressIndexHistory.MAX_PAGE]), read on
-     * [account]'s network and checked there. [after] of another account is the caller's error and throws.
+     * [account]'s network and checked there, as it goes (see the class): its last value is always the
+     * [AddressIndexLoad]. Nothing is read until it is collected. [after] of another account is the caller's error
+     * and throws when collected.
      */
-    suspend operator fun invoke(
+    operator fun invoke(
         account: AccountId,
         after: AddressIndexContinuation? = null,
         limit: Int = AddressIndexHistory.DEFAULT_PAGE,
-    ): AddressIndexLoad {
+    ): Flow<AddressIndexProgress> = flow {
         require(after == null || after.account == account) { "a continuation of another account's history" }
         val query = AddressIndexQuery(cursor = after?.cursor, limit = limit)
         var readPage: AddressIndexPage? = null
@@ -106,11 +119,25 @@ class LoadAddressIndexPage(
                 refused = AddressIndexRefusal.WrongImporter(pinnedImporter, importer)
                 return@withTimeoutOrNull
             }
-            val outcome = checkAll(account, read.entries.filterNot { it.traceOnly }, verdicts)
+            val toCheck = read.entries.filterNot { it.traceOnly }
+            emit(AddressIndexProgress.Read(account, toCheck))
+            val outcome = checkAll(account, toCheck, verdicts) { entry, verdict ->
+                emit(AddressIndexProgress.Checked(entry, verdict))
+            }
             if (outcome is Lasting) refused = outcome.reason
         }
+        emit(summary(account, readPage, refused, verdicts))
+    }
+
+    /** What a load came to: [refused] if it was, else [page] (null: not read in time) with its [verdicts]. */
+    private fun summary(
+        account: AccountId,
+        page: AddressIndexPage?,
+        refused: AddressIndexRefusal?,
+        verdicts: Map<AddressIndexEntry, AddressIndexVerdict>,
+    ): AddressIndexLoad {
         refused?.let { return AddressIndexLoad.Refused(it) }
-        val page = readPage ?: return AddressIndexLoad.Refused(AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN))
+        if (page == null) return AddressIndexLoad.Refused(AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN))
         val checked = page.entries.filterNot { it.traceOnly }
         val rows = page.entries.mapNotNull { (verdicts[it] as? AddressIndexVerdict.Verified)?.row }
         val leftOut = AddressIndexLeftOut(
@@ -129,30 +156,48 @@ class LoadAddressIndexPage(
     }
 
     /**
-     * Checks [entries], putting into [verdicts] the lasting verdict of each that gets one: all but those still
-     * unavailable after [attempts] checks. [Lasting] when a check is refused for a lasting reason, else [Done].
+     * Checks [entries] block by block, in their order, putting into [verdicts] the lasting verdict of each that gets
+     * one, all but those still unavailable after [attempts] checks, and telling [onVerdict] of each as it comes.
+     * [Lasting] when a check is refused for a lasting reason, else [Done].
      */
     private suspend fun checkAll(
         account: AccountId,
         entries: List<AddressIndexEntry>,
         verdicts: MutableMap<AddressIndexEntry, AddressIndexVerdict>,
+        onVerdict: suspend (AddressIndexEntry, AddressIndexVerdict) -> Unit,
     ): Outcome {
         var pending = entries
         for (attempt in 1..attempts) {
             if (pending.isEmpty()) break
             if (attempt > 1) delay(retryPause)
-            for (chunk in pending.chunked(AddressIndexHistory.MAX_CHECKED)) {
+            for (chunk in byBlock(pending)) {
                 when (val answer = history.verify(account.network, account.address, chunk)) {
                     // A passing refusal leaves the chunk pending: asked again, or unavailable after the last attempt.
                     is AddressIndexCheck.Refused -> if (!answer.reason.retryable) return Lasting(answer.reason)
                     is AddressIndexCheck.Verdicts -> chunk.forEach { entry ->
-                        verdictOf(entry, answer.verdicts)?.let { verdicts[entry] = it }
+                        verdictOf(entry, answer.verdicts)?.let {
+                            verdicts[entry] = it
+                            onVerdict(entry, it)
+                        }
                     }
                 }
             }
             pending = pending.filterNot { it in verdicts }
         }
         return Done
+    }
+
+    /**
+     * [entries] as the checks ask for them: the entries of one block together, in their order, a block of more than
+     * [AddressIndexHistory.MAX_CHECKED] in chunks of that many.
+     */
+    private fun byBlock(entries: List<AddressIndexEntry>): List<List<AddressIndexEntry>> {
+        val blocks = mutableListOf<MutableList<AddressIndexEntry>>()
+        for (entry in entries) {
+            val last = blocks.lastOrNull()
+            if (last != null && last.first().block == entry.block) last += entry else blocks += mutableListOf(entry)
+        }
+        return blocks.flatMap { it.chunked(AddressIndexHistory.MAX_CHECKED) }
     }
 
     /**
@@ -225,8 +270,28 @@ data class AddressIndexLeftOut(
     )
 }
 
-/** What [LoadAddressIndexPage] gives back. */
-sealed interface AddressIndexLoad {
+/**
+ * What [LoadAddressIndexPage] emits as it goes: the page [Read], each entry [Checked], and last, always, the
+ * [AddressIndexLoad] it came to.
+ */
+sealed interface AddressIndexProgress {
+
+    /**
+     * The page of [account]'s history is read, signed by the pinned key: [entries] are the ones it checks next,
+     * newest first (its `TRACE`-only entries are never checked, so not among them). Each is a candidate: the
+     * importer's word that an entry is there, nothing about the chain.
+     */
+    data class Read(val account: AccountId, val entries: List<AddressIndexEntry>) : AddressIndexProgress
+
+    /**
+     * The lasting [verdict] on [entry]. Only an [AddressIndexVerdict.Verified] one is a row; any other leaves the
+     * entry out, which the [AddressIndexLoad] at the end counts.
+     */
+    data class Checked(val entry: AddressIndexEntry, val verdict: AddressIndexVerdict) : AddressIndexProgress
+}
+
+/** What a [LoadAddressIndexPage] came to: the last value it emits. */
+sealed interface AddressIndexLoad : AddressIndexProgress {
 
     /**
      * One page of [account]'s history: its verified [rows], newest first, and nothing else of it; what the index

@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -52,6 +53,12 @@ const val WAITING_STEP_TAG = "waiting-step"
 
 /** What reads the addr1 index's next page on the user's tap. */
 private const val LOAD_OLDER = "Load older entries"
+
+/** Test tag of each ghost row of an addr1 entry still being checked, for UI tests. */
+const val ACTIVITY_PENDING_TAG = "activity-pending"
+
+/** What a screen reader says of a ghost row: an entry of the addr1 index being checked. */
+private const val CHECKING_ENTRY = "Checking an entry against the chain"
 
 /** Test tag of each day's heading between the rows, for UI tests. */
 const val ACTIVITY_DAY_TAG = "activity-day"
@@ -133,7 +140,11 @@ fun LazyListScope.activityItems(
                 val day = row.day
                 if (day != null && day != heading) item(key = "day:${row.key}") { DayHeading(day) }
                 heading = day
-                item(key = row.key) { ActivityItem(row, onClick = { onOpen(row.opens) }) }
+                item(key = row.key) {
+                    // An entry still being checked holds its row's room, so that its row, or its leaving, moves
+                    // nothing else when it comes.
+                    if (row.pending) PendingItem() else ActivityItem(row, onClick = { onOpen(row.opens) })
+                }
             }
             if (index != null && !index.footerFirst) {
                 item(key = "index-footer") { IndexFooterItem(index.footer, onMore) }
@@ -194,6 +205,12 @@ private fun IndexFooterItem(footer: IndexFooter, onMore: () -> Unit, automatic: 
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // The entries still being checked are ghost rows in their places: the footer only counts them.
+            is IndexFooter.Checking -> Text(
+                footer.text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             IndexFooter.More -> if (automatic) {
                 LaunchedEffect(Unit) { more() }
             } else {
@@ -247,6 +264,14 @@ private fun WaitingStepCard(step: WaitingStep, available: Boolean, onContinue: (
             }
         }
     }
+}
+
+/** An entry of the addr1 index being checked: a ghost of a row's height, named for a screen reader. */
+@Composable
+private fun PendingItem() {
+    Box(
+        Modifier.testTag(ACTIVITY_PENDING_TAG).semantics { contentDescription = CHECKING_ENTRY },
+    ) { ActivityGhost() }
 }
 
 /** An [ActivityItem] not read yet, of its height. */

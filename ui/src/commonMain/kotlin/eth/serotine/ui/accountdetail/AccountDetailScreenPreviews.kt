@@ -1130,6 +1130,37 @@ private fun AccountDetailActivityIndexLoadingPreview() = AccountDetailPreview(
     ),
 )
 
+/** Entries of the page read still being checked: ghost rows in their places among the verified rows. */
+@Preview
+@Composable
+private fun AccountDetailActivityIndexCheckingPreview() = AccountDetailPreview(
+    indexActivity(
+        IndexSection(
+            indexLines,
+            IndexFooter.Checking("Checking 2 entries of the addr1 index against the chain…"),
+        ),
+        // A verified row among two entries still being checked, each a ghost in its place (owner's request,
+        // 2026-11-24): their rows take these places as their checks answer.
+        rows = listOf(pendingIndexRow(9_412_310, 2), indexActivityRows[1], pendingIndexRow(9_400_120, 7)),
+    ),
+)
+
+/** The ghost row of an entry of the addr1 index being checked: its key, and nothing of it. */
+private fun pendingIndexRow(block: Long, slot: Int) = ActivityRow(
+    key = "index:$block:$slot",
+    title = "",
+    detail = "",
+    about = "",
+    time = "",
+    simpleTime = null,
+    status = "",
+    state = ActivityState.WAITING,
+    opens = ActivityKey("", index = IndexEntryKey(block, slot, setOf(AddressIndexRole.FROM))),
+    pending = true,
+    day = "Date not reported: in block order",
+    simpleDay = "Date not available",
+)
+
 /** The next page being read, below the rows. */
 @Preview
 @Composable
@@ -1371,6 +1402,7 @@ internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("activity-index-dark") { AccountDetailActivityIndexDarkPreview() },
     ScreenPreview("activity-index-loading") { AccountDetailActivityIndexLoadingPreview() },
     ScreenPreview("activity-index-loading-more") { AccountDetailActivityIndexLoadingMorePreview() },
+    ScreenPreview("activity-index-checking") { AccountDetailActivityIndexCheckingPreview() },
     ScreenPreview("activity-index-end") { AccountDetailActivityIndexEndPreview() },
     ScreenPreview("activity-index-gaps") { AccountDetailActivityIndexGapsPreview() },
     ScreenPreview("activity-index-left-out") { AccountDetailActivityIndexLeftOutPreview() },

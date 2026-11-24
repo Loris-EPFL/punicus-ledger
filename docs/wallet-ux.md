@@ -318,7 +318,9 @@ replaces the bar (Material's expanded window size class):
    proposal of a Safe transaction, 16) · Send from another wallet (7H; an
    EOA whose key is not on this device) · Receive · Copy address · Rename · New
    account from the same phrase (an EOA's; greyed out when watch-only, a tap
-   saying why) · Remove. Removing an account the user
+   saying why) · Remove. The account detail's top-bar menu (4) also offers
+   Swarm node… for an EOA on Gnosis Chain (*Swarm nodes* below). Removing
+   an account the user
    holds a key for says that only its recovery phrase brings it back, and
    asks for a confirmation, not the wallet password (owner ruling,
    2026-10-18, #17). The key store keeps one envelope per account, under its
@@ -1212,7 +1214,12 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       by its fill's or cancellation's block ("Swapped 40 USDC for 0.0161 ETH
       on CoW", "CoW order cancelled"), or by when it was signed when it
       never filled ("CoW order not filled"). A fill's transfer of what it sold is not listed
-      again. A tap opens the order's status, not 26.
+      again. A tap opens the order's status, not 26. A buy order (docs/swaps.md,
+      *Buying an exact amount*) names what it buys for at most its maximum,
+      while it may fill and when it did not ("CoW order: 4 LINK for at most
+      105 USDC", "CoW order cancelled: 4 LINK for at most 105 USDC"), and
+      once filled, what its trade sold ("Swapped 104.2 USDC for 4 LINK on
+      CoW").
     - And its events on chain, from the engine's verified log index
       (`ObserveSafeHistory`): ETH received ("Received 0.5 ETH", "From Bob ·
       …"), executions and failed ones, approvals, its set-up, owner,
@@ -1998,6 +2005,110 @@ opens **Gnosis Pay**, a screen of its own:
   Delay. Otherwise Send and Swap stay greyed out, since no owner can sign: a
   tap on Send says the transfers go through the Delay, and offers the Gnosis
   Pay screen.
+
+## Swarm nodes
+
+A Swarm node's EOA on Gnosis Chain, added as a watched address (or held
+here, where Bee runs on a key of this wallet), whose chequebook or postage
+batches are proven on chain (docs/swarm.md; owner's decisions, 2026-11-23).
+
+- **On the account's own screen** a **Swarm node** row ("Swarm node: a
+  chequebook and 3 postage batches") opens **Swarm node**, a screen of its
+  own. Every EOA on Gnosis Chain has **Swarm node…** in its account
+  screen's top-bar menu (4), which
+  opens the same screen, empty where nothing is proven yet, to add a
+  chequebook or a batch by hand. The account list shows nothing new. The
+  screen is the same in simple mode and in Detailed view for now.
+- **The node:** its name and address. Its xDAI and xBZZ are on the
+  account's own screen; xBZZ has no price: "no price", out of totals.
+- **Chequebook:** its address, balance, what is free to withdraw (its liquid
+  balance), what it has paid out, and "A cheque of this chequebook bounced"
+  where one did. **Withdraw** is greyed out unless the node's own key is held
+  here on Gnosis Chain, a tap saying that only the node's key can withdraw.
+  None found: "No chequebook found. The history of this account starts
+  when it was added here; add the chequebook by its address, as Bee shows
+  it." with **Add chequebook**.
+- **Postage batches:** each with its id (shortened, copyable), its depth and
+  capacity ("Depth 22 · 7.73 GB of 17.18 GB theoretical"), "Immutable"
+  where it is, and its time to live at the current price ("About 41 days
+  left at the current price"), or "Expired". The capacity is Swarm's
+  published effective figure, with the theoretical one beside it called
+  theoretical (docs/swarm.md, *What the Swarm screen shows*). **Top up** on
+  each; **Dilute** on each, greyed out unless the node's key is held here.
+  Both are greyed out on an expired batch, a tap saying to buy a new one.
+  **Buy a batch** and **Add a batch by id** under the list.
+- **A chequebook or a batch kept but not verified now** (Gnosis Chain off,
+  syncing, a read that found no proof) shows its Withdraw, Top up and Dilute
+  greyed out, a tap saying what it waits for, never hides them.
+- **Each chequebook and batch** has **Remove**, which is remembered: the
+  log index never adds it back, and adding it by hand keeps it again. One
+  not read yet says "Checking on chain…"; one that is not the node's says
+  whose it is; one whose reading did not answer says why, or, held as last
+  verified, names its block and says it may have changed since. A removal
+  that could not be saved says so.
+- **Adding by hand** is a dialog: the address (checked against its EIP-55
+  checksum) or the batch id, as Bee shows it. **Add** reads it on chain;
+  kept, the dialog closes; refused, it says why ("This batch is owned by
+  0x…, not this node.", "It could not be verified right now, so nothing was
+  kept."). With Gnosis Chain off, Add is greyed out, a tap saying that
+  nothing can be checked on chain, with **Turn on Gnosis Chain**.
+- **Buy a batch, Top up and Dilute** open **Postage batch**, a screen of
+  their own over the node's, under Gnosis Chain's light client strip or
+  sync line. Buy a batch and Top up are greyed out while no EOA of the
+  wallet on Gnosis Chain has its key here, a tap saying to create or import
+  one; Dilute while the node's own key is not here; all three while Gnosis
+  Chain is off, with **Turn on Gnosis Chain**.
+- **Buy a batch** is a form: the account that pays (any EOA whose key is
+  held here on Gnosis Chain; the node itself first where it is one), the
+  depth from 17 to 30, 20 at first, with its capacity, the time to live in
+  days (30 at first), and "Immutable", off at first, saying what it means.
+  The amount per chunk is worked out from the days at the price verified
+  when **Review** quotes it, so the total in xBZZ is said in the review,
+  before anything is signed. Its review is two steps, as a swap's: "Step 1
+  of 2: the approval", **Approve xBZZ for the postage contract**, for
+  exactly the total; then, once a block has it, "Step 2 of 2: the batch",
+  **Buy a postage batch**, with the node that owns it, who pays, what it
+  holds, its time to live, immutable or not, the total, the batch id, the
+  fee and the blocks it was read at. While the approval is on its way the
+  screen says so and offers its status. Each is signed with the unlock that
+  signs a send.
+- **Top up** takes the days to add; its review says what they add, the time
+  left after, and the total, and is the same two steps. **Dilute** takes
+  the new depth; its review shows what the batch holds and its time left,
+  before and after, and that no xBZZ moves, and says what immutable means
+  for an immutable batch.
+- **Where a Swarm node's key signs** (Dilute; Buy or Top up paid by this
+  node, or by another Swarm node of the wallet), the review warns: "This is the node's own key. If Bee is running,
+  stop it before you send: Bee signs with the same key, and one of the two
+  transactions can replace the other." A transaction not sent from here
+  that took the nonce since the quote signs nothing: the review is made
+  again, saying so.
+- **Refused at Review**, saying why: a paused postage contract, a time
+  below the contract's minimum (naming it), an expired or another's batch,
+  too little xBZZ, an earlier purchase or top-up from the account still on
+  its way (with its status), an upgraded xBZZ. The call sent opens its
+  status in the screen's place; back returns to the node.
+- **Withdraw** opens **Withdraw from the chequebook**, a screen of its own
+  over the node's. Greyed out where the node's own key is not here, while
+  nothing is free to withdraw, and while Gnosis Chain is off (with **Turn on
+  Gnosis Chain**). It takes an amount in BZZ, with **All that is free**;
+  more than is free is refused at Review, saying how much is. Its review
+  says the xBZZ goes to the node's own address, names the chequebook, the
+  fee and the blocks it was read at, warns of Bee on the same key as the
+  batches' reviews do, and warns: "Bee may have issued cheques
+  from this chequebook that are not cashed yet. Punicus cannot see them. If
+  one cannot be paid in full it bounces, the chequebook is marked as bounced
+  for good, and peers may stop serving the node."
+- Signed by the node's own key, each review warns: "This is the node's own
+  key. If Bee is running, stop it before you send: Bee signs with the same
+  key, and one of the two transactions can replace the other."
+- Every figure names its block: the screen is the same in simple mode for
+  now, block numbers included. A
+  reading that could not be verified at the latest block stays as last
+  verified, for an hour at most (owner's decisions, 2026-11-17), said as
+  such, and nothing is quoted on it.
+- The light client's strip (Detailed view) or sync line (simple mode) sits
+  above the screen.
 
 ## Co-signing a Safe transaction
 

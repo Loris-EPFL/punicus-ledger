@@ -25,18 +25,18 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -45,6 +45,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -71,10 +72,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import eth.serotine.domain.model.AccountKind
-import eth.serotine.ui.accounts.DERIVE_ACTION
-import eth.serotine.ui.accounts.deriveBlockedReason
 import eth.serotine.domain.model.InterfaceMode
+import eth.serotine.ui.accounts.DERIVE_ACTION
 import eth.serotine.ui.accounts.UnreachableNetwork
+import eth.serotine.ui.accounts.deriveBlockedReason
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityOrder
 import eth.serotine.ui.activity.ActivityUiState
@@ -92,14 +93,13 @@ import eth.serotine.ui.components.HideAmountsButton
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.MenuAction
 import eth.serotine.ui.components.NetworkMark
-import eth.serotine.ui.perapp.PerAppAddressRow
+import eth.serotine.ui.components.SEND_FROM_ANOTHER_WALLET
 import eth.serotine.ui.components.SerotineIcons
 import eth.serotine.ui.components.TokenIcon
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
-import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnavailableFix
-import eth.serotine.ui.components.SEND_FROM_ANOTHER_WALLET
+import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.UnderLightClientStrip
 import eth.serotine.ui.components.WithActionMenu
 import eth.serotine.ui.components.addOnNetworkOffReason
@@ -107,12 +107,16 @@ import eth.serotine.ui.components.networkOffNotice
 import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.mode.LocalInterfaceMode
+import eth.serotine.ui.perapp.PerAppAddressRow
 import eth.serotine.ui.platform.rememberCopyText
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /** Test tag of a Gnosis Pay account's entry in its Owners tab, for UI tests. */
 const val ACCOUNT_GNOSIS_PAY_TAG = "account-gnosis-pay"
+
+/** Test tag of a Swarm node's row, which opens its screen, for UI tests. */
+const val ACCOUNT_SWARM_TAG = "account-swarm"
 
 /** Test tag of the account's total, for UI tests. */
 const val ACCOUNT_TOTAL_TAG = "account-total"
@@ -191,6 +195,7 @@ fun AccountDetailRoute(
     onAddOnNetwork: () -> Unit = {},
     onSafeSettings: () -> Unit = {},
     onGnosisPay: () -> Unit = {},
+    onSwarm: () -> Unit = {},
     onDerive: () -> Unit = {},
     onContinueSwap: (sell: String) -> Unit = {},
     onSendElsewhere: (contract: String?) -> Unit = {},
@@ -233,6 +238,7 @@ fun AccountDetailRoute(
             onAddOnNetwork = onAddOnNetwork,
             onSafeSettings = onSafeSettings,
             onGnosisPay = onGnosisPay,
+            onSwarm = onSwarm,
             onContinueSwap = onContinueSwap,
             onSendElsewhere = onSendElsewhere,
             onDismissWaiting = viewModel::dismissWaiting,
@@ -272,6 +278,7 @@ fun AccountDetailRoute(
             onAddOnNetwork = onAddOnNetwork,
             onSafeSettings = onSafeSettings,
             onGnosisPay = onGnosisPay,
+            onSwarm = onSwarm,
             onContinueSwap = onContinueSwap,
             onSendElsewhere = onSendElsewhere,
             onDismissWaiting = viewModel::dismissWaiting,
@@ -339,6 +346,7 @@ fun AccountDetailScreen(
     onAddOnNetwork: () -> Unit = {},
     onSafeSettings: () -> Unit = {},
     onGnosisPay: () -> Unit = {},
+    onSwarm: () -> Unit = {},
     onContinueSwap: (sell: String) -> Unit = {},
     onDismissWaiting: (sell: String) -> Unit = {},
     onDerive: () -> Unit = {},
@@ -519,6 +527,9 @@ fun AccountDetailScreen(
                                         }
                                     }
                                 }.takeIf { state.kind == AccountKind.EOA },
+                                // An EOA on Gnosis Chain can be a Swarm node: its screen adds one by hand.
+                                MenuAction("Swarm node…", SerotineIcons.Key, onClick = onSwarm)
+                                    .takeIf { state.offersSwarm },
                                 MenuAction("Remove", Icons.Filled.Delete, destructive = true, onClick = onRemove),
                             ),
                             expanded = menu,
@@ -558,6 +569,7 @@ fun AccountDetailScreen(
                     onDismissWaiting = onDismissWaiting,
                     onSafeSettings = safeSettings,
                     onGnosisPay = onGnosisPay,
+                    onSwarm = onSwarm,
                     simple = chrome is AccountChrome.Refresh,
                     onToggleUnlistedNfts = onToggleUnlistedNfts,
                     nftActions = nftsShown,
@@ -600,6 +612,7 @@ private fun Details(
     onDismissWaiting: (String) -> Unit,
     onSafeSettings: () -> Unit,
     onGnosisPay: () -> Unit,
+    onSwarm: () -> Unit,
     /** Simple mode's chrome: the network on the blockie, the freshness line and the "can't check" banner. */
     simple: Boolean,
     onToggleUnlistedNfts: () -> Unit,
@@ -743,6 +756,7 @@ private fun Details(
         // The same predicate as the top bar's sort entry, so the menu sorts exactly when the rows are shown.
         when {
             state.showsAssets -> {
+                state.swarm?.let { text -> item { SwarmNodeRow(text, onSwarm) } }
                 item { Assets(state, onSend, onSwap, onCopyContract, onHideToken, onSendElsewhere) }
                 state.nfts?.let { nfts -> item { Nfts(nfts, onToggleUnlistedNfts, nftActions, spaced) } }
             }
@@ -1415,3 +1429,18 @@ private fun CantCheck(banner: UnreachableNetwork, modifier: Modifier) {
 
 /** The widest an asset row's amount and value may be. */
 private val TRAILING_MAX_WIDTH = 184.dp
+
+/** A Swarm node's row (docs/wallet-ux.md, *Swarm nodes*): what is proven its own, and its screen. */
+@Composable
+private fun SwarmNodeRow(text: String, onSwarm: () -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(text, Modifier.weight(1f))
+            OutlinedButton(onClick = onSwarm, modifier = Modifier.testTag(ACCOUNT_SWARM_TAG)) { Text("Swarm node") }
+        }
+    }
+}

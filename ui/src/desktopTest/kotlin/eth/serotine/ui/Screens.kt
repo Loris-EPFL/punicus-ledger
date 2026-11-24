@@ -30,6 +30,7 @@ import eth.serotine.ui.handoff.handoffScreenPreviews
 import eth.serotine.ui.mnemonicimport.mnemonicImportScreenPreviews
 import eth.serotine.ui.pairdapp.pairDappScreenPreviews
 import eth.serotine.ui.perapp.perAppScreenPreviews
+import eth.serotine.ui.postage.postageScreenPreviews
 import eth.serotine.ui.ratewidget.widgetPairScreenPreviews
 import eth.serotine.ui.receive.receiveScreenPreviews
 import eth.serotine.ui.removeaccount.removeAccountDialogPreviews
@@ -51,6 +52,7 @@ import eth.serotine.ui.settings.settingsScreenPreviews
 import eth.serotine.ui.settings.simpleSettingsScreenPreviews
 import eth.serotine.ui.swap.simpleSwapScreenPreviews
 import eth.serotine.ui.swap.swapScreenPreviews
+import eth.serotine.ui.swarm.swarmScreenPreviews
 import eth.serotine.ui.tokens.simpleTokensScreenPreviews
 import eth.serotine.ui.tokens.tokensScreenPreviews
 import eth.serotine.ui.transferstatus.simpleTransferStatusScreenPreviews
@@ -58,6 +60,7 @@ import eth.serotine.ui.transferstatus.transferStatusScreenPreviews
 import eth.serotine.ui.update.updateRequiredScreenPreviews
 import eth.serotine.ui.watch.simpleWatchScreenPreviews
 import eth.serotine.ui.watch.watchScreenPreviews
+import eth.serotine.ui.withdraw.withdrawScreenPreviews
 
 /**
  * The map of screens: every screen once, with the slug that is its folder under `docs/screenshots/`.
@@ -85,6 +88,9 @@ internal object Screens {
     val debug = Screen("debug", "Debug", debugScreenPreviews)
     val deriveAccount = Screen("derive-account", "Add account from the same phrase", deriveAccountScreenPreviews)
     val gnosisPay = Screen("gnosis-pay", "Gnosis Pay account", gnosisPayScreenPreviews)
+    val swarm = Screen("swarm", "Swarm node", swarmScreenPreviews)
+    val postage = Screen("postage", "Postage batch", postageScreenPreviews)
+    val withdraw = Screen("withdraw", "Withdraw from the chequebook", withdrawScreenPreviews)
     val handoff = Screen("handoff", "Send from another wallet", handoffScreenPreviews)
     val mnemonicImport = Screen("mnemonic-import", "Import recovery phrase", mnemonicImportScreenPreviews)
     val noAccountOpen = Screen("no-account-open", "No account open (wide window)", noAccountOpenScreenPreviews)
@@ -158,6 +164,7 @@ internal object Screens {
         noAccountOpen,
         pairDapp,
         perApp,
+        postage,
         receive,
         removeAccountDialog,
         renameAccountDialog,
@@ -189,10 +196,12 @@ internal object Screens {
         simpleTransferStatus,
         simpleWatch,
         swap,
+        swarm,
         tokens,
         transferStatus,
         updateRequired,
         watch,
         widgetPair,
+        withdraw,
     )
 }

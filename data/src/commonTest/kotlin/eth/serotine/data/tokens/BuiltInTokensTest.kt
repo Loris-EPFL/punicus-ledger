@@ -73,7 +73,7 @@ class BuiltInTokensTest {
         assertEquals(feeds.size, feeds.distinctBy { it.priceId }.size, "one Gnosis feed per price id")
         val quotes = feeds.associate { it.priceId to it.quote }
         // Each priced by a feed pinned on Gnosis Chain whose quote is USD; sDAI, a vault share, and the
-        // bridged COW, SAFE and BZZ, which have no feed there, by none.
+        // bridged COW, SAFE and BZZ (docs/swarm.md), which have no feed there, by none.
         assertEquals(listOf("sDAI", "COW", "SAFE", "BZZ"), tokens.filter { it.priceId == null }.map { it.symbol })
         tokens.mapNotNull { it.priceId }.forEach { assertEquals(PriceId.USD, quotes[it], "${it.id} on Gnosis Chain") }
         // xDAI itself, by DAI / USD's answer pinned under its own id.

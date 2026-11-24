@@ -42,10 +42,11 @@ import kotlinx.serialization.json.JsonElement
  * both, format 8 the dApps' transactions, format 9 the wraps and unwraps, format 10 the Gnosis
  * Pay accounts' Delay calls, format 11 their Delays' skips of expired entries (a Delay call of the
  * kind "skip", whose recipient is the Delay and whose amount is nothing), format 12 the changes of a
- * Delay's members (owner ruling, 2026-11-18), and format 13 the swaps that buy an exact amount (a
- * swap's kind, "buy"; none is a sell; owner's request, 2026-11-23). A file of an earlier format
- * reads as it is and is written as 13 at its next change, which a build that reads only an earlier
- * one then leaves alone.
+ * Delay's members (owner ruling, 2026-11-18), format 13 the swaps that buy an exact amount (a
+ * swap's kind, "buy"; none is a sell; owner's request, 2026-11-23), and format 14 a Swarm node's
+ * postage batches bought, topped up or diluted, and its chequebook's withdrawals (docs/swarm.md).
+ * A file of an earlier format reads as it is and is written as 14 at its next change, which a build
+ * that reads only an earlier one then leaves alone.
  */
 class FileSentTransfers(
     path: String,
@@ -96,7 +97,7 @@ class FileSentTransfers(
     private class StoredFile(val version: Int, val transfers: List<JsonElement>)
 
     private companion object {
-        const val FORMAT_VERSION = 13
+        const val FORMAT_VERSION = 14
         val JSON = Json
     }
 }

@@ -49,12 +49,17 @@ can prove, from verified figures alone.
 - **A balance and a nonce at the head: yes.** The light client proves them
   (`VerifiedNativeBalances`, the token balances), and the app keeps the last
   ones (`LastBalancesFile`).
-- **A balance at an old block: no.** No peer-to-peer protocol serves proofs
-  against old state (snap serves the newest blocks only), and an archive
-  node's JSON-RPC is a provider (`.claude/rules/trust.md`). So the only
-  balances a check can start from are the ones **this device proved, when it
-  proved them**. Before the first proof of an account there is no balance to
-  start from.
+- **A balance at an old block: no, on a network without block access
+  lists.** No peer-to-peer protocol serves proofs against old state (snap
+  serves the newest blocks only), and an archive node's JSON-RPC is a provider
+  (`.claude/rules/trust.md`). There the only balances a check can start from
+  are the ones **this device proved, when it proved them**. Before the first
+  proof of an account there is no balance to start from.
+- **On a network with block access lists** (EIP-7928: Sepolia today) a
+  block's BAL, committed in its header, gives an account's ETH balance after
+  each transaction of any block that touched it. A token's balance it gives
+  only where the token's balance storage slot is known. That makes ETH, at
+  least, provable at the blocks the account was touched in.
 - **Each movement in a verified row: yes, with what the engine reports.**
   Today Myotis's per-entry check reports a transaction's hash, sender,
   recipient, value, and **only the first** ERC-20 or ERC-721 `Transfer` the
@@ -67,15 +72,32 @@ can prove, from verified figures alone.
 
 - An EOA's nonce counts the transactions it sent, and each sent transaction
   carries the nonce it used. The light client proves the nonce at the head.
-- **Check:** the nonces of the sent transactions the list holds (from here,
-  from the log index, from the addr1 index) must run without a gap from the
-  first one listed to the proven nonce less one.
+- **But not only those, since EIP-7702.** The nonce also goes up when:
+  - another account's type-4 transaction carries an authorization this
+    account signed;
+  - a transaction authorizes its own sender, which adds 2;
+  - code the account delegates to runs `CREATE` or `CREATE2`.
+
+  So the check counts the verified authorizations too (the index's `AUTH`
+  role, each with its nonce, Part 0). It is not made for an account whose
+  proven code is a delegation (`0xef0100…`), since a CREATE by delegated code
+  leaves no entry of its own (D9).
+- **Where the sent transactions come from.** The log index holds logs only, so
+  it never sees a plain send, and its rows carry no nonce. The sources are the
+  addr1 index's rows (a `FROM` entry) and the transactions sent from here that
+  were mined; a dropped or replaced one does not count. So check A runs only
+  where the addr1 index is on (the desktop, its setting on) and claims to
+  cover the range checked. On Android and iOS it would flag every send made
+  from another wallet.
+- **Check:** the nonces of the sent transactions so listed must run without a
+  gap from the first one listed to the proven nonce less one.
 - **Each gap is a missing sent transaction, pinned exactly:** after the one
   with nonce n, in block X at its time, and before the one with nonce n + k,
   in block Y. That makes k − 1 transactions, each of an amount not known.
 - **Below the first one listed**, the count alone is known: the account sent
-  n transactions the list does not hold. When the index covers the account
-  from its first transaction, that count must be 0.
+  n transactions the list does not hold. It is shown only where the index
+  claims to cover the account from nonce 0 (its first transaction). Otherwise
+  an account with a past older than the index would always show a count.
 - It needs the transaction's nonce in the verified answer (Part 0). It is
   free otherwise: the nonce at the head is proven already.
 - It says nothing of what came **in**: no counter counts that.
@@ -85,11 +107,21 @@ can prove, from verified figures alone.
 - A standard ERC-20 balance changes only through `Transfer` logs. Between
   two proofs of it, at blocks a and b: balance(b) − balance(a) = Σ received −
   Σ sent, over the `Transfer`s naming the account in blocks a + 1 to b.
-- **A bracket always lies within the log index's coverage.** The first proof
+- **Not every token in the built-in list is standard in this.** WETH9 and
+  WXDAI change a balance through `Deposit` and `Withdrawal`, with no
+  `Transfer`, and every wrap the app offers is one. USDT's `issue`, `redeem`
+  and `destroyBlackFunds` change balances without a `Transfer` too. Such a
+  token is checked with those events decoded (the wrapped tokens), or marked
+  not reconcilable (D6).
+- **A bracket is checked only where the log index covers it.** The first proof
   of a balance is made when the account is added, and the log index walks from
   that block on ("since added"), reading every `Transfer` that names the
-  account. So a discrepancy points at the log index, the engine or the token,
-  never at the importer. Check B cannot reach the history before the account
+  account. But its walk can lag: a heavy download waits off a metered
+  connection, and blocks that passed while the app was closed are covered only
+  once it caught up. So a bracket from block a to b is checked only once the
+  coverage the engine reports holds blocks a + 1 to b. Until then nothing is
+  shown, never a warning. Within its coverage, a discrepancy points at the
+  log index, the engine or the token, never at the importer. Check B cannot reach the history before the account
   was added. Only check A can, since a nonce counts every transaction ever
   sent.
 - **The place is the bracket** between the two proofs. Where the app ran
@@ -99,14 +131,14 @@ can prove, from verified figures alone.
 - **Not reconcilable:** a token whose balance changes without a `Transfer`.
   That covers rebasing tokens such as stETH or aTokens, and a contract that
   mints or burns without the event. They are marked in the built-in list and
-  never checked. An added token is checked, and its warning says that its
-  contract may simply not log every change.
+  never checked. An added token cannot be known to be standard. Whether it is
+  checked is D10.
 - It needs nothing from Myotis: the log index reads every log. It needs a log
   of proven balances, below. Where an addr1 row repeats a transfer the log
   index holds, the transaction is counted once, as the Activity already lists
   it once.
 
-### C. The network's currency between two proofs: exact only where the network logs it
+### C. The network's currency: exact only where the network has block access lists
 
 - ETH also moves through what no listed row says:
   - **the fee** of every transaction the account sent (gas used × effective
@@ -116,15 +148,24 @@ can prove, from verified figures alone.
     engine never verifies;
   - **validator withdrawals and fee-recipient tips**, for a block the account
     is named by.
-- **Where the network logs every ETH transfer** (EIP-7708: Sepolia today),
-  internal transfers are logs like any other, and the check is as exact as
-  for a token, the fees subtracted.
-- **Elsewhere (Ethereum and Gnosis Chain today)** an internal transfer looks
-  like a missing transaction, so a warning there would mostly be noise. The
-  proposal: no ETH check on a network without EIP-7708, until the engine
-  reports internal transfers verified (D3).
-- It needs each sent transaction's receipt status and gas from the engine
-  (Part 0), for the transactions sent from here too.
+- **EIP-7708 alone is not enough.** It logs ETH transfers, internal ones
+  included, but not the fees, the validator withdrawals or the tips paid to a
+  block's fee recipient. The log index cannot find those blocks either: a
+  withdrawal or a fee recipient is in no bloom. Fees also take blob gas
+  (blob gas used × blob gas price).
+- **Where the network has block access lists** (EIP-7928: Sepolia today), the
+  BAL of each block gives the account's ETH balance after each transaction,
+  committed in the header. That makes check C exact, whatever moved the ETH:
+  every block's change is proven, so a listed transaction explains it or it
+  is a gap, pinned to its transaction.
+- **Elsewhere (Ethereum and Gnosis Chain today)** an internal transfer, a
+  withdrawal or a tip looks like a missing transaction, so a warning there
+  would mostly be noise. The proposal: no ETH check on a network without block
+  access lists (D3).
+- It needs, from the engine, each touched block's BAL entry for the account,
+  verified against its header (Part 0). That is the per-transaction balance
+  Myotis already carries balances forward by. Receipts' gas then serves the
+  detail ("of which 0.0021 ETH in fees"), not the check.
 
 ## The log of proven balances
 
@@ -137,8 +178,9 @@ can prove, from verified figures alone.
   dropped first (D4).
 - **On a network with block access lists** (EIP-7928: Sepolia today) the
   engine carries a balance forward by the BALs of every block in between
-  (Myotis 0.1.20, `verifyMethod` `blockAccessList`). There a change is known
-  to its block, and the bracket is that one block.
+  (Myotis 0.1.20, `verifyMethod` `blockAccessList`). There an ETH change is
+  known to its transaction (check C). A token's change narrows that way only
+  where its balance slot is known.
 
 ## How it is shown
 
@@ -166,16 +208,18 @@ can prove, from verified figures alone.
   that the figures are verified only, that a gap is the list's, and the log of
   proven balances and what it is.
 - `.claude/rules/trust.md`, *The addr1 history*: a line that a provable gap
-  is shown as one, beside the contradicted-entry warning.
-- docs/wallet-ux.md, screens 25 and 26, and docs/privacy-policy.md (the new
-  local log) with the parts that land them.
+  is shown as one, beside the contradicted-entry warning. That section comes
+  with `feature/addr1-activity`; it is not on `main` yet.
+- docs/privacy-policy.md, in Part 2: the new local log, what it holds and that
+  it stays on the device.
+- docs/wallet-ux.md, screens 25 and 26, with the parts that show the checks.
 - No change to the sources: nothing new is fetched.
 
 ## Decisions for the owner, each with a proposed answer
 
 1. **D1: which checks, in which order.** Proposed: B (tokens) first, since it
    needs nothing from Myotis; then A (nonces), the one check that reaches the
-   importer's past; then C (ETH) on EIP-7708 networks.
+   importer's past; then C (ETH) on networks with block access lists.
 2. **D2: the addr1 index's rows count.** Proposed: yes, each transaction once.
    A row is verified, and check A needs the sent transactions it lists. For
    checks B and C they only repeat what the log index read.
@@ -185,29 +229,47 @@ can prove, from verified figures alone.
 4. **D4: the log of proven balances.**
    - Proposed size: 10,000 entries in all, oldest dropped first.
    - Proposed lifetime: kept until the account is removed.
-5. **D5: who is warned against.** Proposed: the importer only for a nonce gap
-   (check A) in a range the addr1 index claims to cover, before the log
-   index's coverage. Anywhere else the warning names no one.
-6. **D6: rebasing tokens.** Proposed: a flag in the built-in token list,
-   proven like the rest of an entry, that marks a token as not reconcilable.
+5. **D5: who is warned against.** Proposed: the importer for a nonce gap
+   (check A), since that check runs only where its index claims to cover the
+   range, and a gap there is an entry its index lacks. Checks B and C name no
+   one.
+6. **D6: tokens that change balances without a `Transfer`.** Proposed:
+   - a flag in the built-in token list, pinned in the release by the PR that
+     sets it (whether a token rebases cannot be proven on chain), that marks a
+     token as not reconcilable: rebasing tokens, and USDT;
+   - the wrapped tokens (WETH9, WXDAI) checked with `Deposit` and
+     `Withdrawal` decoded.
 7. **D7: a Safe.** A Safe has its own nonce, and its executions are its own
    events in the log index. Proposed: check A for a Safe's nonce later, after
    the EOA.
 8. **D8: a threshold.** Proposed: none. Every discrepancy is shown, since it
    is exact. An amount too small to show reads "<0.0001", as elsewhere.
+9. **D9: an account delegated by EIP-7702.** Proposed: no check A for an
+   account whose proven code is a delegation, said in the detail. Code it
+   delegates to may create contracts, each a nonce with no entry.
+10. **D10: added tokens.** Proposed: not checked by default. An added
+    rebasing token would warn for ever, the noise D3 argues against.
 
 ## Delivery: `feature/balance-reconciliation`
+
+It builds on the addr1 history: its rows, its rules and the Activity's rows.
+So `feature/balance-reconciliation` is cut from `main` once
+`feature/addr1-activity` has landed there. Parts 0 (Myotis) and 2 (the log of
+proven balances) do not depend on it and may start before.
 
 Parts, each its own PR into the feature branch, through the Workflow:
 
 0. **Myotis** (a Myotis PR and release, then a bump in Punicus): the verified
    answer of `verifyAddressHistoryEntries` gains:
-   - the transaction's `nonce`;
+   - the transaction's `nonce`, and for an `AUTH` entry each authorization's
+     nonce;
    - the receipt's `status`, `gasUsed` and `effectiveGasPrice` (receipts
      fetched for a transaction entry, not only for its log roles);
    - **every** `Transfer` the address is a party of, so that a swap's row says
      both sides (only the first is reported today);
-   - the block's `timestamp`.
+   - the block's `timestamp`;
+   - on a network with block access lists, the account's balance after each
+     transaction of the block, from its BAL, verified against the header.
 
    The last also dates the addr1 rows, and `status` settles the "outcome not
    checked" values (#350).
@@ -217,8 +279,8 @@ Parts, each its own PR into the feature branch, through the Workflow:
 3. **Check B, tokens**: the use case and the warning rows in Activity and its
    detail, with previews.
 4. **Check A, nonces**: after Part 0's bump.
-5. **Check C, ETH**: on EIP-7708 networks, after Part 0's bump.
+5. **Check C, ETH**: on networks with block access lists, after Part 0's bump.
 6. The final PR, `feature/balance-reconciliation` → `main`.
 
 Parts 2 and 3 need nothing from Myotis and can start once the owner has decided
-D1, D4 and D6. Part 0 can run in Myotis alongside them.
+D1, D4, D6 and D10. Part 0 can run in Myotis alongside them.

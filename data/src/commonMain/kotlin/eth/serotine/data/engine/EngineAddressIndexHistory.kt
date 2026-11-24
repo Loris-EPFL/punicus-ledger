@@ -71,7 +71,7 @@ internal interface AddressHistoryChain {
  *
  * The engine's answers are read strictly, every one of them mapped to the port's terms or refused, never thrown:
  * - **A refusal** is the engine's `{"error","code":-32602}` (lasting) or an `{"error"}` without that code
- *   (passing, the engine's `-32000`): a build without the Swarm reader, or a phone, is
+ *   (passing, the engine's `-32000`): a build without the Swarm reader, or iOS, is
  *   [AddressIndexRefusal.NotInThisBuild]; no importer key set is [AddressIndexRefusal.SettingOff]; Tor routing is
  *   [AddressIndexRefusal.TorRouting]; the checkpoint table's alarm (a message starting "checkpoint table alarm:")
  *   is [AddressIndexRefusal.CheckpointAlarm]; any other lasting one is [AddressIndexRefusal.Rejected], with the
@@ -241,11 +241,13 @@ class EngineAddressIndexHistory internal constructor(
 
         /**
          * The engine's words for a build without the reader: the API's default (`ADDRESS_HISTORY_REFUSED`), a Rust
-         * engine built without `swarm`, and a phone (Myotis's `addrhist::build_refusal`).
+         * engine built without `swarm`, and iOS (Myotis's `addrhist::build_refusal`; before 0.1.23 Android too, "on
+         * mobile").
          */
         val NOT_IN_THIS_BUILD = listOf(
             "needs the Rust engine built with its Swarm reader",
             "needs the Swarm reader, which this build does not include",
+            "not available on iOS",
             "not available on mobile",
         )
 

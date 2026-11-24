@@ -68,7 +68,10 @@ and issues of this repository.
   the mainnet checkpoint table up to block 26,485,995, and the embedded
   checkpoints of 2026-11-24 for Ethereum, Gnosis Chain and Sepolia. Android
   has no addr1 setting and never starts the reader, which runs only on a
-  read; it adds about 5 MB to the Android app.
+  read; it adds about 11 MB to the Android app, which carries the engine for
+  two processor types. On the desktop the reader runs inside the app: a
+  crash of the reader on what a Swarm peer sends ends the app, a limit Myotis
+  accepts for now (freedom-hq/ant#271).
 - A CoW order no longer depends on Uniswap: its minimum is CoW's own
   estimate less your tolerance, and every pair CoW quotes is offered. The
   review says the minimum rests on CoW's estimate, which is not checked on

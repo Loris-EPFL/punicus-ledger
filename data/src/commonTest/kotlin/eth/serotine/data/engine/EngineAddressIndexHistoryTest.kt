@@ -212,6 +212,7 @@ class EngineAddressIndexHistoryTest {
                 AddressIndexRefusal.NotInThisBuild,
             "the address history needs the Swarm reader, which this build does not include" to
                 AddressIndexRefusal.NotInThisBuild,
+            "the address history is not available on iOS in this version" to AddressIndexRefusal.NotInThisBuild,
             "the address history is not available on mobile in this version" to AddressIndexRefusal.NotInThisBuild,
             "no importer key is set for the address history (an experimental setting)" to
                 AddressIndexRefusal.SettingOff,

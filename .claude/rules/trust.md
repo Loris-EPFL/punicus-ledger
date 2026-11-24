@@ -276,6 +276,40 @@ carve-out of 2026-11-10 and its rulings of 2026-11-11 and 2026-11-13 on #761;
   *Enabling a Safe module is refused* stands. On the Delay it enables a member
   only as the owner ruling of 2026-11-18 above allows.
 
+## A Swarm node's chequebook and postage batches
+
+(Owner's decisions, 2026-11-23: a node's account is watched, the four
+actions below, and how a chequebook and a batch are found. The detail is
+docs/swarm.md's, which is the contract.)
+
+- **A node's account is watched.** No `swarm.key` and no raw key is
+  imported. Where the node's address is an account held here, its key signs
+  what only the node may sign.
+- **Recognised on chain.** An EOA on Gnosis Chain is a Swarm node when a
+  chequebook or a postage batch is proven its own, with verified calls at
+  one block. A chequebook: its code hashes to the pinned EIP-1167 proxy of
+  the pinned master copy, the pinned factory's `deployedContracts` says it
+  deployed it, its `issuer()` is the node and its `token()` is BZZ. A batch:
+  the pinned PostageStamp's `batches(id)` names the node as its owner.
+- **Four actions, and nothing else**, each a transaction from an EOA whose
+  key is held here on Gnosis Chain, quoted, simulated and signed like any other, to the
+  pinned contracts only, after a fresh read proves their code:
+  - **Buy a batch** for the node: any such EOA pays, the node owns it.
+    `approve` of exactly the total, never unlimited, then `createBatch`.
+  - **Top up a batch**: any such EOA pays. `approve` of exactly the
+    total, then `topUp`.
+  - **Dilute a batch** (`increaseDepth`): the node's own key only. The review
+    shows the time to live halving with each step.
+  - **Withdraw from the chequebook** (`withdraw`): the node's own key only,
+    to the node's own address, up to the liquid balance. The review warns
+    that uncashed cheques may bounce, which marks the chequebook for good.
+- **The node's own key is also Bee's.** Where it signs, the review warns to
+  stop Bee first, and nothing is sent when the key's verified mined count
+  moved since the quote by a transaction not sent from here.
+- **Strict in both modes**: none is drafted in lenient mode for now.
+- **No cheque is cashed and no Bee node is called.** Cheques live in Bee,
+  off chain. Staking and the redistribution game are not part of this.
+
 ## Network-upgrade warnings are peer reports, and say so
 
 (Owner's request, 2026-10-17: warn ahead of a breaking hard fork, notify even

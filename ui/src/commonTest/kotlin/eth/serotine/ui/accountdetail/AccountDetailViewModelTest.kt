@@ -1,8 +1,6 @@
 package eth.serotine.ui.accountdetail
 
 import eth.serotine.domain.repository.CowVenueReading
-import eth.serotine.domain.repository.SafeDraftBasis
-import eth.serotine.domain.repository.HeldSafeSignature
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
@@ -11,13 +9,15 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AppHost
 import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.AppIsolation
+import eth.serotine.domain.model.BatchId
+import eth.serotine.domain.model.Chequebook
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.model.PerAppAccount
-import eth.serotine.domain.model.NftStandard
-import eth.serotine.domain.model.NftRef
 import eth.serotine.domain.model.NetworkUpgrade
+import eth.serotine.domain.model.NftRef
+import eth.serotine.domain.model.NftStandard
+import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.model.PinnedFallbackHandlers
 import eth.serotine.domain.model.PriceId
 import eth.serotine.domain.model.SafeOperation
@@ -33,23 +33,36 @@ import eth.serotine.domain.model.Wei
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.ChequebookFinding
+import eth.serotine.domain.repository.HeldSafeSignature
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NameResolution
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SafeDraftBasis
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.SwarmCandidate
+import eth.serotine.domain.repository.SwarmCandidateChange
+import eth.serotine.domain.repository.SwarmCandidateList
+import eth.serotine.domain.repository.SwarmCandidates
+import eth.serotine.domain.repository.SwarmContracts
+import eth.serotine.domain.repository.SwarmReading
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.UniswapV3Chain
 import eth.serotine.domain.repository.VenueReading
 import eth.serotine.domain.repository.WaitingSwap
+import eth.serotine.domain.usecase.AccountNames
+import eth.serotine.domain.usecase.AddEnsName
+import eth.serotine.domain.usecase.AddNft
 import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.HasSwapVenue
 import eth.serotine.domain.usecase.LoadAddressIndexPage
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountCowOrders
 import eth.serotine.domain.usecase.ObserveAccountHistory
+import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressIndexStatus
@@ -61,34 +74,33 @@ import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveNetworkLive
+import eth.serotine.domain.usecase.ObserveNfts
+import eth.serotine.domain.usecase.ObserveOutbox
+import eth.serotine.domain.usecase.ObservePerAppAddresses
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveSentTo
+import eth.serotine.domain.usecase.ObserveSwarmNode
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.ObserveWaitingSwaps
 import eth.serotine.domain.usecase.RefreshNetworkData
+import eth.serotine.domain.usecase.RemoveAddedNft
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.ToggleAmountsHidden
-import eth.serotine.domain.usecase.AccountNames
-import eth.serotine.domain.usecase.AddEnsName
-import eth.serotine.domain.usecase.ObserveAccountNames
-import eth.serotine.domain.usecase.AddNft
-import eth.serotine.domain.usecase.ObserveNfts
-import eth.serotine.domain.usecase.RemoveAddedNft
 import eth.serotine.domain.usecase.UnlinkPerAppAlias
 import eth.serotine.ui.FIXTURE_IMPORTER
 import eth.serotine.ui.FakeCowChain
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeAddressIndexHistory
 import eth.serotine.ui.FakeBalances
+import eth.serotine.ui.FakeEnsNfts
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeFreshness
 import eth.serotine.ui.FakeLogIndex
-import eth.serotine.ui.FakeEnsNfts
 import eth.serotine.ui.FakeNftContracts
 import eth.serotine.ui.FakePerAppKeys
 import eth.serotine.ui.MemoryAddedNfts
@@ -104,10 +116,10 @@ import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.FakeUpgradeReports
 import eth.serotine.ui.MemoryAmountsHidden
 import eth.serotine.ui.MemoryCowOrders
-import eth.serotine.ui.MemoryOutbox
 import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemoryHistoryStarts
 import eth.serotine.ui.MemoryNetworkSettings
+import eth.serotine.ui.MemoryOutbox
 import eth.serotine.ui.MemorySafeTxQueue
 import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
@@ -138,6 +150,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -145,8 +158,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import eth.serotine.domain.usecase.ObserveOutbox
-import eth.serotine.domain.usecase.ObservePerAppAddresses
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountDetailViewModelTest {
@@ -217,6 +228,7 @@ class AccountDetailViewModelTest {
         perApp: ObservePerAppAddresses? = null,
         network: Network = Network.SEPOLIA,
         activity: AccountActivity = activity(),
+        swarm: ObserveSwarmNode? = null,
     ) = AccountDetailViewModel(
         AccountId(network, address),
         ObserveAccount(accounts),
@@ -260,6 +272,7 @@ class AccountDetailViewModelTest {
         clock = { NOW },
         observePerAppAddresses = perApp,
         unlinkPerAppAlias = UnlinkPerAppAlias(aliases),
+        observeSwarmNode = swarm,
     )
 
     private val upgradeReports = FakeUpgradeReports()
@@ -349,6 +362,74 @@ class AccountDetailViewModelTest {
         backgroundScope.launch { other.uiState.collect {} }
         runCurrent()
         assertNull((other.uiState.value as AccountDetailUiState.Ready).perApp)
+    }
+
+    /** A Swarm node's candidates and proofs: one chequebook, proven the node's. */
+    private val swarmCandidates = object : SwarmCandidates {
+        val chequebook = Address.of("0x" + "cb".repeat(20))
+        val list = MutableStateFlow(SwarmCandidateList.Loaded(listOf(chequebook), emptyList()))
+        override fun observe(node: AccountId) = list
+        override fun observeNodes(network: Network) = flowOf(emptyMap<AccountId, SwarmCandidateList.Loaded>())
+        override suspend fun add(node: AccountId, candidate: SwarmCandidate, byHand: Boolean) =
+            SwarmCandidateChange.NOT_SAVED
+        override suspend fun remove(node: AccountId, candidate: SwarmCandidate) = SwarmCandidateChange.NOT_FOUND
+        override suspend fun forget(node: AccountId) = SwarmCandidateChange.NOT_FOUND
+    }
+    private var swarmReads = 0
+    private val swarmContracts = object : SwarmContracts {
+        override fun observeChequebook(network: Network, node: Address, chequebook: Address) = flowOf(
+            SwarmReading.Verified(
+                ChequebookFinding.Node(
+                    Chequebook(chequebook, node, UInt256.of(1), UInt256.of(1), UInt256.of(0), bounced = false),
+                ),
+                9,
+            ),
+        ).also { swarmReads++ }
+        override fun observeBatch(network: Network, node: Address, id: BatchId) = flowOf(SwarmReading.NotPinned)
+        override fun deployment(network: Network) = null
+
+        override suspend fun chequebook(
+            network: eth.serotine.domain.model.Network,
+            node: eth.serotine.domain.model.Address,
+            chequebook: eth.serotine.domain.model.Address,
+        ): eth.serotine.domain.repository.ChequebookReading =
+            eth.serotine.domain.repository.ChequebookReading.NotPinned
+
+        override suspend fun postage(network: Network, node: Address?, id: BatchId?) =
+            eth.serotine.domain.repository.PostageReading.NotPinned
+    }
+
+    @Test
+    fun aSwarmNodesRowAndMenuItemAreOfferedForAnEoaOnGnosisChainOnly() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val bee = daily.copy(network = Network.GNOSIS, label = "Bee node")
+        accounts.accounts.value = listOf(daily, bee)
+        val swarm = ObserveSwarmNode(swarmCandidates, swarmContracts)
+        val onGnosis = viewModel(network = Network.GNOSIS, swarm = swarm)
+        backgroundScope.launch { onGnosis.uiState.collect {} }
+        runCurrent()
+        val ready = onGnosis.uiState.value as AccountDetailUiState.Ready
+        assertEquals("Swarm node: a chequebook", ready.swarm)
+        assertEquals(true, ready.offersSwarm)
+
+        // A rename never restarts the reads.
+        val reads = swarmReads
+        accounts.accounts.value = listOf(daily, bee.copy(label = "Renamed"))
+        runCurrent()
+        assertEquals(reads, swarmReads)
+        assertEquals("Swarm node: a chequebook", (onGnosis.uiState.value as AccountDetailUiState.Ready).swarm)
+
+        // On Sepolia, and without the use case, neither is offered.
+        val onSepolia = viewModel(swarm = swarm)
+        backgroundScope.launch { onSepolia.uiState.collect {} }
+        val without = viewModel(network = Network.GNOSIS)
+        backgroundScope.launch { without.uiState.collect {} }
+        runCurrent()
+        for (other in listOf(onSepolia, without)) {
+            val state = other.uiState.value as AccountDetailUiState.Ready
+            assertEquals(null, state.swarm)
+            assertEquals(false, state.offersSwarm)
+        }
     }
 
     @Test

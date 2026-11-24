@@ -24,6 +24,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
+/** How a read of a Delay's getters stopped short ([OneBlockCalls]). */
+private typealias Ended = OneBlockCalls.Ended
+
 /**
  * [DelayModules] over a verified light client (docs/gnosis-pay.md, *Detection*). A module is a
  * Delay when its code, proven by [VerifiedChain.proveCode], is byte for byte a minimal proxy of a
@@ -88,7 +91,7 @@ class VerifiedDelayModules internal constructor(
                 is Read.Stopped -> when (read.ended) {
                     Ended.STRADDLED -> Unit
                     Ended.NO_ANSWER -> if (attempt < READ_TRIES) delay(RETRY_PAUSE)
-                    Ended.NOT_A_DELAYS_ANSWER -> return null
+                    Ended.NOT_THE_CONTRACTS_ANSWER -> return null
                     Ended.REFUSED -> return REFUSED
                 }
             }
@@ -105,76 +108,38 @@ class VerifiedDelayModules internal constructor(
     }
 
     /**
-     * One read of a Delay's getters, every call checked against the block of the first (its number,
-     * and its hash where the engine names one). Each step returns null once the read has ended,
-     * with [ended] saying how.
+     * One read of a Delay's getters at one block ([OneBlockCalls]: the first call at the head, every
+     * later one held to its block, each answer checked against its number and hash). Each step
+     * returns null once the read has ended, with [ended] saying how.
      */
-    private class Getters(private val chain: VerifiedChain, private val module: Address) {
-        private var block: Long? = null
-        private var hash: String? = null
-        private var first = true
+    private class Getters(chain: VerifiedChain, private val module: Address) {
+        private val calls = OneBlockCalls(chain)
 
-        /** How the read ended early; set with the null of the step that ended it. */
-        private var ended: Ended = Ended.NO_ANSWER
+        /** How the read ended early; meaningful once a step returned null. */
+        private val ended: Ended
+            get() = calls.ended
 
-        private fun <T> end(why: Ended): T? {
-            ended = why
-            return null
-        }
+        private fun <T> end(why: Ended): T? = calls.end(why)
 
-        private fun <T> done(value: T): Read<T> = Read.Done(value, checkNotNull(block), hash)
+        private fun <T> done(value: T): Read<T> = Read.Done(value, checkNotNull(calls.block), calls.hash)
 
         private val stopped: Read<Nothing> get() = Read.Stopped(ended)
 
         /**
-         * What [data] returned, at the one block of this read: the first call at the head, every
-         * later one at the block the first answered at ([VerifiedChain.callAt]), asked once more
-         * when it gives no answer, and then at the head, where the check below still throws away an
-         * answer of another block: an engine that serves no call at a named block reads as before.
-         * Eight calls of a second or more each never fit under one of Gnosis Chain's five-second
-         * heads, so calls at the head alone straddled two every time.
+         * What [data] returned, at the one block of this read. Eight calls of a second or more each
+         * never fit under one of Gnosis Chain's five-second heads, so calls at the head alone
+         * straddled two every time: the later ones are held to the first one's block.
          */
-        private fun answer(data: ByteArray): String? {
-            val pinned = block
-            val asked = if (pinned == null) {
-                chain.call(module, data)
-            } else {
-                held(data, pinned) ?: held(data, pinned) ?: chain.call(module, data)
-            }
-            val returned = when (val outcome = asked) {
-                null -> return end(Ended.NO_ANSWER)
-                is CallOutcome.Returned -> outcome
-                // A pinned Delay's getters never revert.
-                is CallOutcome.Reverted -> return end(Ended.NOT_A_DELAYS_ANSWER)
-                CallOutcome.Refused -> return end(Ended.REFUSED)
-            }
-            val at = returned.blockNumber ?: return end(Ended.NO_ANSWER)
-            if (first) {
-                first = false
-                block = at
-                hash = returned.blockHash
-            } else if (block != at || hash != returned.blockHash) {
-                return end(Ended.STRADDLED)
-            }
-            return returned.hex
-        }
-
-        /**
-         * [data] called at block [at]. A refusal there is no answer: the first call, at the head,
-         * showed that the engine runs these calls on this build, so it is that block it will not
-         * serve, which the next read's first call replaces.
-         */
-        private fun held(data: ByteArray, at: Long): CallOutcome? =
-            chain.callAt(module, data, at).takeUnless { it == CallOutcome.Refused }
+        private fun answer(data: ByteArray): String? = calls.call(module, data)
 
         private fun address(data: ByteArray): Address? {
             val hex = answer(data) ?: return null
-            return Abi.address(hex) ?: end(Ended.NOT_A_DELAYS_ANSWER)
+            return Abi.address(hex) ?: end(Ended.NOT_THE_CONTRACTS_ANSWER)
         }
 
         private fun number(data: ByteArray): Long? {
             val hex = answer(data) ?: return null
-            return Abi.uint256(hex)?.toLongOrNull() ?: end(Ended.NOT_A_DELAYS_ANSWER)
+            return Abi.uint256(hex)?.toLongOrNull() ?: end(Ended.NOT_THE_CONTRACTS_ANSWER)
         }
 
         /**
@@ -184,10 +149,10 @@ class VerifiedDelayModules internal constructor(
          */
         private fun members(): List<Address>? {
             val hex = answer(getModulesPaginated(SENTINEL, MAX_MEMBERS + 1)) ?: return null
-            val page = Abi.addressPage(hex) ?: return end(Ended.NOT_A_DELAYS_ANSWER)
+            val page = Abi.addressPage(hex) ?: return end(Ended.NOT_THE_CONTRACTS_ANSWER)
             val members = page.addresses
             if (members.size > MAX_MEMBERS || members.toSet().size != members.size || page.next != SENTINEL) {
-                return end(Ended.NOT_A_DELAYS_ANSWER)
+                return end(Ended.NOT_THE_CONTRACTS_ANSWER)
             }
             return members
         }
@@ -208,7 +173,7 @@ class VerifiedDelayModules internal constructor(
             val txNonce = number(TX_NONCE) ?: return stopped
             val queueNonce = number(QUEUE_NONCE) ?: return stopped
             // A pinned Delay keeps its next entry within its queue.
-            if (txNonce > queueNonce) return Read.Stopped(Ended.NOT_A_DELAYS_ANSWER)
+            if (txNonce > queueNonce) return Read.Stopped(Ended.NOT_THE_CONTRACTS_ANSWER)
             val cooldown = number(TX_COOLDOWN) ?: return stopped
             val expiration = number(TX_EXPIRATION) ?: return stopped
             val members = if (withMembers) members() ?: return stopped else null
@@ -218,7 +183,7 @@ class VerifiedDelayModules internal constructor(
             var nonce = txNonce
             while (nonce < last) {
                 val hex = answer(txHash(nonce)) ?: return stopped
-                val entryHash = Digest.parse(hex) ?: return Read.Stopped(Ended.NOT_A_DELAYS_ANSWER)
+                val entryHash = Digest.parse(hex) ?: return Read.Stopped(Ended.NOT_THE_CONTRACTS_ANSWER)
                 if (entryHash == wanted) {
                     val createdAt = (if (nonce == txNonce) headCreatedAt else number(txCreatedAt(nonce)))
                         ?: return stopped
@@ -249,7 +214,7 @@ class VerifiedDelayModules internal constructor(
             val txNonce = number(TX_NONCE) ?: return stopped
             val queueNonce = number(QUEUE_NONCE) ?: return stopped
             // A pinned Delay keeps its next entry within its queue.
-            if (txNonce > queueNonce) return Read.Stopped(Ended.NOT_A_DELAYS_ANSWER)
+            if (txNonce > queueNonce) return Read.Stopped(Ended.NOT_THE_CONTRACTS_ANSWER)
             val members = members() ?: return stopped
             return done(Settings.Own(cooldown, expiration, txNonce, queueNonce, members))
         }
@@ -276,20 +241,6 @@ class VerifiedDelayModules internal constructor(
         data class Stopped(val ended: Ended) : Read<Nothing>
     }
 
-    /** Why a read of the getters stopped short. */
-    private enum class Ended {
-        /** Two calls answered at two blocks: read again. */
-        STRADDLED,
-
-        /** A call gave no verified answer this time. */
-        NO_ANSWER,
-
-        /** A call answered what no pinned Delay's getter answers: unproven, not read again. */
-        NOT_A_DELAYS_ANSWER,
-
-        /** The engine refuses the calls on this build. */
-        REFUSED,
-    }
 
     /**
      * Where the call of hash [hash] stands in the queue of the Delay at [delay], read fresh: only a
@@ -348,7 +299,7 @@ class VerifiedDelayModules internal constructor(
             is Read.Stopped -> when (read.ended) {
                 Ended.STRADDLED -> QueueTry.Straddled
                 Ended.NO_ANSWER -> QueueTry.NoAnswer
-                Ended.NOT_A_DELAYS_ANSWER -> unproven
+                Ended.NOT_THE_CONTRACTS_ANSWER -> unproven
                 Ended.REFUSED -> QueueTry.Final(DelayQueueReading.Unavailable(ReadUnavailable.REFUSED))
             }
         }

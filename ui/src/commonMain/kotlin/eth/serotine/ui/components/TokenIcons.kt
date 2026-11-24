@@ -18,12 +18,14 @@ import androidx.compose.ui.unit.dp
  *   glyph on the pink of the common WETH logo (#EC1C79), so it is not taken for ether.
  *   `xdai`, `wxdai` and `sdai` are its `dai` glyph on colours of their own (xDAI's teal, Gnosis
  *   Chain's dark green and an amber), so none is taken for DAI or for another.
- * - `eurc`, `pyusd`, `gho`, `gno`, `eure`, `cow` and `safe`, which that set lacks:
+ * - `eurc`, `pyusd`, `gho`, `gno`, `eure`, `cow`, `safe` and `bzz`, which that set lacks:
  *   0xa3k5/web3icons, `raw-svgs/tokens/background/<KEY>.svg` at commit
  *   3cce0f390cf902f204a1b3d52f485bcc95d2fe9e (https://github.com/0xa3k5/web3icons), its
- *   square background drawn as a circle like the others'. The marks are the trademarks of
- *   their issuers (Circle, Paxos, Aave, Gnosis, Monerium, CoW DAO, Safe). Its licence, which
- *   these seven icons carry:
+ *   square background drawn as a circle like the others'; `bzz` is that repository's branded
+ *   drawing of the mark, drawn as there, on no disc (added to main by 24cc32be). The marks are
+ *   the trademarks of their issuers (Circle, Paxos, Aave, Gnosis, Monerium, CoW DAO, Safe, the
+ *   Swarm Foundation).
+ *   Its licence, which these eight icons carry:
  *
  *   MIT License. Copyright (c) 2024 0xa3k5.
  *

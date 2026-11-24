@@ -345,7 +345,7 @@ private fun SettingsMeteredSetAsidePreview() = SettingsPreview(
 /** A made-up importer key of the addr1 index: no release pins it. */
 private val sampleImporter = Eip55.format(Address.of("0x" + "1e".repeat(20)))
 
-/** What the desktop shows today: no importer key pinned in this release, and no Swarm reader in its engine. */
+/** A release that pins no importer key, on an engine with no Swarm reader: what the desktop showed until #359. */
 private const val ADDRESS_INDEX_GREYED_TEXT =
     "Off: no importer key is pinned in this release yet · This build's engine has no Swarm reader"
 
@@ -359,7 +359,7 @@ private val addressIndexGreyed = AddressIndexItem(
         "reader, so the index cannot be read here. The history stays the light client's log index.",
 )
 
-/** The desktop's experimental addr1 history, greyed out for both reasons it has today (owner ruling, #55). */
+/** The desktop's experimental addr1 history, greyed out for both reasons at once (owner ruling, #55). */
 @Preview
 @Composable
 private fun SettingsAddressIndexNoKeyPreview() =
@@ -370,7 +370,7 @@ private fun SettingsAddressIndexNoKeyPreview() =
 private fun SettingsAddressIndexNoKeyDarkPreview() =
     SettingsPreview(synced.copy(addressIndex = addressIndexGreyed), darkTheme = true, atTheEnd = true)
 
-/** A key pinned, but an engine without the Swarm reader: greyed out for that alone. */
+/** A key pinned, but an engine without the Swarm reader: greyed out for that alone, as the desktop shows since #359. */
 @Preview
 @Composable
 private fun SettingsAddressIndexNoReaderPreview() = SettingsPreview(

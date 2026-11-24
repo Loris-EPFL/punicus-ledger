@@ -1475,8 +1475,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     but would come on by itself (the default, or a choice to turn it on
     made in another build), *Turn off* below the row stores an explicit off,
     greyed out or not. It is greyed out, a tap saying what is
-    missing, while no importer key is pinned in the release (none is yet,
-    owner's decision, 2026-11-21) and while the build's engine has no Swarm
+    missing, while no importer key is pinned in the release (none was until
+    2026-11-24, owner's decision of 2026-11-21; `0xb11B…7241` since, the
+    owner's choice of 2026-11-24, #359) and while the build's engine has no Swarm
     reader (no published Myotis build has it yet), both said when both hold.
     Android and iOS have no such row. Tokens opens the list of every token the wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token

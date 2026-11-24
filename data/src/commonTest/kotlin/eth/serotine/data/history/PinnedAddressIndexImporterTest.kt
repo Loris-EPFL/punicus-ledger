@@ -1,13 +1,17 @@
 package eth.serotine.data.history
 
 import kotlin.test.Test
-import kotlin.test.assertNull
+import kotlin.test.assertEquals
 
-/** [PinnedAddressIndexImporter]: the key a release pins, none so far. */
+/** [PinnedAddressIndexImporter]: the key a release pins. */
 class PinnedAddressIndexImporterTest {
 
     @Test
-    fun noImporterKeyIsPinnedInThisRelease() {
-        assertNull(PinnedAddressIndexImporter.KEY, "owner's decision, 2026-11-21: none is pinned yet")
+    fun theReleasePinsTheOwnersImporterKey() {
+        assertEquals(
+            "0xb11b5f07feb04076c21092a64eb827f418087241",
+            PinnedAddressIndexImporter.KEY?.hex,
+            "owner's choice, 2026-11-24: the key of the one-year mainnet index",
+        )
     }
 }

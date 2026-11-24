@@ -109,6 +109,14 @@ sealed interface AccountDetailUiState {
          */
         val gnosisPayControlled: Boolean = false,
         /**
+         * For an EOA on Gnosis Chain, which can be a Swarm node (docs/swarm.md, *Recognition*): what
+         * its row says once a chequebook or a batch is proven its own ("Swarm node: a chequebook and 2
+         * postage batches"), opening the Swarm node screen; null while it is none, or not read yet.
+         * [offersSwarm] puts "Swarm node…" in the account's menu, to add one by hand.
+         */
+        val swarm: String? = null,
+        val offersSwarm: Boolean = false,
+        /**
          * For a per-app address (issue #252), what marks it as one under its name: the site it was made for, as
          * the dApp stated it, and its full path, so another wallet can find it ("Per-app address for uniswap.org ·
          * m/44'/60'/…"); null for any other account.

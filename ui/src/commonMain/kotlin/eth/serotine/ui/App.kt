@@ -15,9 +15,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -39,9 +39,11 @@ import androidx.navigation.navArgument
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexRole
+import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.accountdetail.AccountDetailRoute
@@ -85,6 +87,8 @@ import eth.serotine.ui.pairdapp.PairDappRoute
 import eth.serotine.ui.perapp.PerAppRoute
 import eth.serotine.ui.platform.LocalScreenCaptureDebugSwitch
 import eth.serotine.ui.platform.ScreenCaptureWarnings
+import eth.serotine.ui.postage.PostageAction
+import eth.serotine.ui.postage.PostageRoute
 import eth.serotine.ui.receive.ReceiveRoute
 import eth.serotine.ui.removeaccount.RemoveAccountRoute
 import eth.serotine.ui.renameaccount.RenameAccountRoute
@@ -101,6 +105,7 @@ import eth.serotine.ui.send.SendRoute
 import eth.serotine.ui.settings.SettingsRoute
 import eth.serotine.ui.swap.SwapFill
 import eth.serotine.ui.swap.SwapRoute
+import eth.serotine.ui.swarm.SwarmRoute
 import eth.serotine.ui.theme.SerotineTheme
 import eth.serotine.ui.tokens.TokensRoute
 import eth.serotine.ui.transferstatus.SafeTxAgain
@@ -110,6 +115,7 @@ import eth.serotine.ui.update.UpdateRequiredRoute
 import eth.serotine.ui.update.UpdateRequiredUiState
 import eth.serotine.ui.update.UpdateRequiredViewModel
 import eth.serotine.ui.watch.WatchRoute
+import eth.serotine.ui.withdraw.WithdrawRoute
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -464,6 +470,7 @@ private fun Destinations(
                     onImportRequest = { navController.importRequest(account) },
                     onSafeSettings = { navController.safeSettings(account) },
                     onGnosisPay = { navController.gnosisPay(account) },
+                    onSwarm = { navController.swarm(account) },
                     onOpenActivity = { key -> navController.openActivityDetail(account, key) },
                     onContinueSwap = { sell -> navController.continueSwap(account, sell) },
                     onSendElsewhere = { contract -> navController.sendElsewhere(account, contract) },
@@ -815,7 +822,7 @@ private fun Destinations(
         // Swap, and then where the swap stands: the transaction's flow, over the bar too.
         composable(
             SWAP_ROUTE,
-            arguments = listOf(ASSET, BUY, AMOUNT, VENUE, CONTINUE).map { name ->
+            arguments = listOf(ASSET, BUY, AMOUNT, VENUE, CONTINUE, KIND).map { name ->
                 navArgument(name) {
                     type = NavType.StringType
                     nullable = true
@@ -830,6 +837,7 @@ private fun Destinations(
                 entry.savedStateHandle.get<String>(BUY),
                 entry.savedStateHandle.get<String>(AMOUNT),
                 entry.savedStateHandle.get<String>(VENUE),
+                entry.savedStateHandle.get<String>(KIND),
             )
             val continuing = entry.savedStateHandle.get<String>(CONTINUE) == CONTINUING
             if (account != null && (asked == null || asset != null)) {
@@ -983,6 +991,79 @@ private fun Destinations(
                 )
             } else {
                 LaunchedEffect(Unit) { navController.popBackStack(GNOSIS_PAY_ROUTE, inclusive = true) }
+            }
+        }
+        composable(SWARM_ROUTE) { entry ->
+            val account = entry.account()
+            if (account != null) {
+                SwarmRoute(
+                    viewModel = viewModel { graph.swarmViewModel(account) },
+                    lightClient = lightClient.item(account.network),
+                    onBack = { navController.popBackStack(SWARM_ROUTE, inclusive = true) },
+                    onGone = { navController.popBackStack(SWARM_ROUTE, inclusive = true) },
+                    onBuy = { navController.postage(account, PostageAction.BUY) },
+                    onTopUp = { id -> navController.postage(account, PostageAction.TOP_UP, id) },
+                    onDilute = { id -> navController.postage(account, PostageAction.DILUTE, id) },
+                    onWithdraw = { chequebook -> navController.withdraw(account, chequebook) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(SWARM_ROUTE, inclusive = true) }
+            }
+        }
+        composable(WITHDRAW_ROUTE) { entry ->
+            val account = entry.account()
+            val chequebook = entry.savedStateHandle.get<String>(CHEQUEBOOK)?.let(Address::parse)
+            if (account != null && chequebook != null) {
+                WithdrawRoute(
+                    viewModel = viewModel { graph.withdrawViewModel(account, chequebook) },
+                    lightClient = lightClient.item(account.network),
+                    onBack = { navController.popBackStack(WITHDRAW_ROUTE, inclusive = true) },
+                    onGone = { navController.popBackStack(WITHDRAW_ROUTE, inclusive = true) },
+                    // Sent: its status in this screen's place, which back returns from to the node.
+                    onSent = { sent ->
+                        navController.navigate(transferRoute(account.network, sent)) {
+                            popUpTo(WITHDRAW_ROUTE) { inclusive = true }
+                        }
+                    },
+                    // An earlier withdrawal on its way: its status over this screen.
+                    onOpen = { hash -> navController.openTransfer(account.network, hash) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(WITHDRAW_ROUTE, inclusive = true) }
+            }
+        }
+        composable(
+            POSTAGE_ROUTE,
+            arguments = listOf(
+                navArgument(BATCH) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            val account = entry.account()
+            val action = entry.savedStateHandle.get<String>(POSTAGE_ACTION)
+                ?.let { name -> PostageAction.entries.firstOrNull { it.name == name } }
+            val batch = entry.savedStateHandle.get<String>(BATCH)?.removePrefix("0x")?.let(BatchId::parse)
+            // A purchase names no batch; a top-up or a dilution names its own.
+            if (account != null && action != null && (action == PostageAction.BUY) == (batch == null)) {
+                PostageRoute(
+                    viewModel = viewModel { graph.postageViewModel(account, action, batch) },
+                    lightClient = lightClient.item(account.network),
+                    onBack = { navController.popBackStack(POSTAGE_ROUTE, inclusive = true) },
+                    onGone = { navController.popBackStack(POSTAGE_ROUTE, inclusive = true) },
+                    // Sent: its status in this screen's place, which back returns from to the node.
+                    onSent = { sent ->
+                        navController.navigate(transferRoute(account.network, sent)) {
+                            popUpTo(POSTAGE_ROUTE) { inclusive = true }
+                        }
+                    },
+                    // A transaction on its way that holds this one back: its status over this screen.
+                    onOpen = { hash -> navController.openTransfer(account.network, hash) },
+                )
+            } else {
+                LaunchedEffect(Unit) { navController.popBackStack(POSTAGE_ROUTE, inclusive = true) }
             }
         }
         composable(SAFE_IMPORT_ROUTE) { entry ->
@@ -1241,7 +1322,10 @@ private fun NavController.swapAgain(network: Network, again: SwapAgain) {
     val amount = again.amount.takeIf(AMOUNT_TEXT::matches) ?: return
     popBackStack(COW_ORDER_ROUTE, inclusive = true)
     if (currentDestination?.route == SWAP_ROUTE) popBackStack()
-    navigate("${Destination.SWAP}/${from.route}?$ASSET=${sell.hex}&$BUY=$buy&$AMOUNT=$amount&$VENUE=$UNISWAP_VENUE")
+    val kind = if (again.kind == SwapKind.BUY) "&$KIND=$BUY_KIND" else ""
+    navigate(
+        "${Destination.SWAP}/${from.route}?$ASSET=${sell.hex}&$BUY=$buy&$AMOUNT=$amount&$VENUE=$UNISWAP_VENUE$kind",
+    )
 }
 
 /**
@@ -1320,9 +1404,10 @@ private fun sendFillOf(to: String?, amount: String?, fee: String?): SendFill? {
 
 /**
  * What Swap's route asks to be filled in: what it buys ([buy], a token's address or [NATIVE_PICK]),
- * the [amount] as text and the [venue]; null when it asks for none, or not in a form this build reads.
+ * the [amount] as text, the [venue], and [kind] ([BUY_KIND]: the amount is bought; none: sold);
+ * null when it asks for none, or not in a form this build reads.
  */
-private fun swapFillOf(buy: String?, amount: String?, venue: String?): SwapFill? {
+private fun swapFillOf(buy: String?, amount: String?, venue: String?, kind: String?): SwapFill? {
     if (buy == null || amount == null || venue == null) return null
     val token = if (buy == NATIVE_PICK) null else Address.parse(buy) ?: return null
     val chosen = when (venue) {
@@ -1330,7 +1415,12 @@ private fun swapFillOf(buy: String?, amount: String?, venue: String?): SwapFill?
         COW_VENUE -> SwapVenue.COW
         else -> return null
     }
-    return SwapFill(token, amount.takeIf(AMOUNT_TEXT::matches) ?: return null, chosen)
+    val exact = when (kind) {
+        null -> SwapKind.SELL
+        BUY_KIND -> SwapKind.BUY
+        else -> return null
+    }
+    return SwapFill(token, amount.takeIf(AMOUNT_TEXT::matches) ?: return null, chosen, exact)
 }
 
 /** Opens the status of the transaction [hash] (`0x` and 64 hex digits) on [network]. */
@@ -1353,6 +1443,28 @@ private fun NavController.safeSettings(safe: AccountId) {
     // A second tap while the first one's screen is opening: one screen, the first one asked for.
     if (currentDestination?.route == SAFE_SETTINGS_ROUTE) return
     navigate("${Destination.SAFE}/${safe.route}/${Destination.SAFE_SETTINGS}")
+}
+
+/** Opens the Swarm node screen of [node] (docs/swarm.md); a second tap while it opens does nothing. */
+private fun NavController.swarm(node: AccountId) {
+    if (currentDestination?.route == SWARM_ROUTE) return
+    navigate("${Destination.SWARM}/${node.route}")
+}
+
+/** Opens the withdrawal from [node]'s chequebook at [chequebook] (EIP-55); a second tap while it opens does nothing. */
+private fun NavController.withdraw(node: AccountId, chequebook: String) {
+    if (currentDestination?.route == WITHDRAW_ROUTE) return
+    navigate("${Destination.SWARM}/${node.route}/${Destination.WITHDRAW}/${chequebook.lowercase()}")
+}
+
+/**
+ * Opens the postage screen of [node] for [action], of the batch [batch] (`0x` and 64 hex digits) for a
+ * top-up or a dilution; a second tap while it opens does nothing.
+ */
+private fun NavController.postage(node: AccountId, action: PostageAction, batch: String? = null) {
+    if (currentDestination?.route == POSTAGE_ROUTE) return
+    val id = batch?.let { "?$BATCH=${it.lowercase()}" }.orEmpty()
+    navigate("${Destination.SWARM}/${node.route}/${Destination.POSTAGE}/${action.name}$id")
 }
 
 /**
@@ -1485,6 +1597,9 @@ private object Destination {
     const val IMPORT = "import"
     const val SAFE_SETTINGS = "settings"
     const val GNOSIS_PAY = "gnosis-pay"
+    const val SWARM = "swarm"
+    const val POSTAGE = "postage"
+    const val WITHDRAW = "withdraw"
     const val UPDATE_REQUIRED = "update-required"
     const val COW_ORDER = "cow-order"
 }
@@ -1559,6 +1674,12 @@ private const val HANDOFF_ROUTE = "${Destination.SEND_ELSEWHERE}/{$CHAIN}/{$ADDR
 
 /** Swap's route argument for a swap whose next step waits, opened from the account's Activity: [CONTINUING]. */
 private const val CONTINUE = "continue"
+
+/** Swap's route argument for which amount it fills in: [BUY_KIND] the amount bought, none the amount sold. */
+private const val KIND = "kind"
+
+/** [KIND]'s value for an amount bought (docs/swaps.md, *Buying an exact amount*). */
+private const val BUY_KIND = "buy"
 private const val CONTINUING = "waiting"
 
 /** How Swap's route names the network's currency bought, and the two venues. */
@@ -1572,7 +1693,7 @@ private val AMOUNT_TEXT = Regex("^[0-9]+(\\.[0-9]+)?$")
 /** Swap from an account, selling a token or the network's currency, filled in or not. */
 private const val SWAP_ROUTE =
     "${Destination.SWAP}/{$CHAIN}/{$ADDRESS}?$ASSET={$ASSET}&$BUY={$BUY}&$AMOUNT={$AMOUNT}&$VENUE={$VENUE}" +
-        "&$CONTINUE={$CONTINUE}"
+        "&$CONTINUE={$CONTINUE}&$KIND={$KIND}"
 
 /** A CoW order's route argument: its UID. */
 private const val UID = "uid"
@@ -1588,6 +1709,23 @@ private fun accountRoute(pattern: String): String = "$pattern/{$CHAIN}/{$ADDRESS
 
 /** An account's detail screen. */
 private val ACCOUNT_ROUTE = accountRoute(Destination.ACCOUNT)
+
+/** A Swarm node's chequebook and postage batches (docs/swarm.md). */
+private val SWARM_ROUTE = accountRoute(Destination.SWARM)
+
+/** The postage screen's arguments: what it does ([PostageAction]'s name), and of which batch. */
+private const val POSTAGE_ACTION = "action"
+private const val BATCH = "batch"
+
+/** The withdrawal route's argument: the chequebook's address. */
+private const val CHEQUEBOOK = "chequebook"
+
+/** xBZZ withdrawn from a Swarm node's chequebook (docs/swarm.md, *Withdraw from the chequebook*). */
+private const val WITHDRAW_ROUTE = "${Destination.SWARM}/{$CHAIN}/{$ADDRESS}/${Destination.WITHDRAW}/{$CHEQUEBOOK}"
+
+/** A postage batch bought, topped up or diluted for a Swarm node (docs/swarm.md, *The four actions*). */
+private const val POSTAGE_ROUTE =
+    "${Destination.SWARM}/{$CHAIN}/{$ADDRESS}/${Destination.POSTAGE}/{$POSTAGE_ACTION}?$BATCH={$BATCH}"
 
 /** The detail of a row of an account's Activity: a transaction by its hash, an event by its log too. */
 private const val ACTIVITY_DETAIL_ROUTE =

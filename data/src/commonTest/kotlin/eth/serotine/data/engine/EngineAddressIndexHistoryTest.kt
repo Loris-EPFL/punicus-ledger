@@ -151,6 +151,29 @@ class EngineAddressIndexHistoryTest {
     }
 
     @Test
+    fun everyRoleTravelsUnderTheEnginesOwnName() = runTest {
+        // Myotis v0.1.22, rust/myotis-addr1/src/records.rs `names` and addrhist.rs `role_names`, in bit order.
+        val engine = listOf("from", "to", "emitter", "topic", "word", "trace", "block", "auth")
+        val all = AddressIndexRole.entries.toSet()
+        chain.page = """
+            {"importer":"${fixtureImporter.hex}","headUpdate":7,"coveredFrom":0,"coveredTo":100,"gaps":[],
+             "fromBlock":0,"toBlock":null,"roles":[],
+             "entries":[{"block":50,"slot":1,"roles":${engine.joinToString(",", "[", "]") { "\"$it\"" }},
+                         "state":"unverified"}],
+             "next":null}
+        """.trimIndent()
+        val page = assertIs<AddressIndexReading.Page>(
+            history().page(Network.ETHEREUM, alice, AddressIndexQuery(limit = 1)),
+        ).page
+        assertEquals(all, page.entries.single().roles, "each of the engine's names reads as its role")
+
+        chain.check = "[]"
+        history().verify(Network.ETHEREUM, alice, listOf(AddressIndexEntry(50, 1, all)))
+        val sent = chain.checksAsked.single().second
+        assertTrue(sent.contains(engine.joinToString(",", "[", "]") { "\"$it\"" }), sent)
+    }
+
+    @Test
     fun anOpenHeadGapAndAnIndexThatCoversNothingRead() = runTest {
         chain.page = """{"importer":"${fixtureImporter.hex}","headUpdate":0,"coveredFrom":1,"coveredTo":0,
             "headGap":{"fromBlock":1,"toBlock":null},"tailGap":null,"gaps":[],"entries":[],"next":null}"""

@@ -12,72 +12,75 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeTxAction
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.repository.BalanceReading
+import eth.serotine.domain.repository.BatchFinding
+import eth.serotine.domain.repository.ChequebookFinding
+import eth.serotine.domain.repository.HeldConflict
+import eth.serotine.domain.repository.HeldSafeSignature
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.domain.repository.OutboxList
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.SwarmReading
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.TokenChange
 import eth.serotine.domain.usecase.AccountLookup
+import eth.serotine.domain.usecase.AccountNames
 import eth.serotine.domain.usecase.AccountValue
+import eth.serotine.domain.usecase.AddEnsName
+import eth.serotine.domain.usecase.AddNft
 import eth.serotine.domain.usecase.DecodedSafeTx
 import eth.serotine.domain.usecase.DropWaitingSwap
+import eth.serotine.domain.usecase.EnsNameAddition
 import eth.serotine.domain.usecase.EnsNameCheck
-import eth.serotine.domain.usecase.HasSwapVenue
 import eth.serotine.domain.usecase.GnosisPayReading
 import eth.serotine.domain.usecase.GnosisPaySending
+import eth.serotine.domain.usecase.HasSwapVenue
+import eth.serotine.domain.usecase.NftAddition
+import eth.serotine.domain.usecase.NftHoldings
 import eth.serotine.domain.usecase.ObserveAccount
-import eth.serotine.domain.usecase.ObserveGnosisPay
+import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAmountsHidden
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
-import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveEnsNames
+import eth.serotine.domain.usecase.ObserveGnosisPay
 import eth.serotine.domain.usecase.ObserveKnownTokens
 import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNetworkLive
-import eth.serotine.domain.usecase.AccountNames
-import eth.serotine.domain.usecase.AddEnsName
-import eth.serotine.domain.usecase.AddNft
-import eth.serotine.domain.usecase.EnsNameAddition
-import eth.serotine.domain.usecase.NftAddition
-import eth.serotine.domain.usecase.NftHoldings
-import eth.serotine.domain.usecase.RemoveAddedNft
 import eth.serotine.domain.usecase.ObserveNfts
-import eth.serotine.domain.usecase.ObserveSafe
-import eth.serotine.domain.usecase.ObserveSafeTxQueue
-import eth.serotine.domain.usecase.ObserveUpgradeWarnings
-import eth.serotine.domain.usecase.RefreshNetworkData
-import eth.serotine.domain.usecase.SafeReading
-import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.ObserveOutbox
 import eth.serotine.domain.usecase.ObservePerAppAddresses
+import eth.serotine.domain.usecase.ObserveSafe
+import eth.serotine.domain.usecase.ObserveSafeTxQueue
+import eth.serotine.domain.usecase.ObserveSwarmNode
+import eth.serotine.domain.usecase.ObserveUpgradeWarnings
+import eth.serotine.domain.usecase.OfferHandoff
 import eth.serotine.domain.usecase.PerAppOverview
-import eth.serotine.domain.usecase.restoreNetworks
-import eth.serotine.domain.repository.HeldConflict
-import eth.serotine.domain.repository.HeldSafeSignature
-import eth.serotine.domain.repository.OutboxList
+import eth.serotine.domain.usecase.RefreshNetworkData
+import eth.serotine.domain.usecase.RemoveAddedNft
+import eth.serotine.domain.usecase.SafeReading
+import eth.serotine.domain.usecase.SafeTxQueueReading
 import eth.serotine.domain.usecase.SafeTxRefusal
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
+import eth.serotine.domain.usecase.SwarmNodeReading
 import eth.serotine.domain.usecase.ToggleAmountsHidden
 import eth.serotine.domain.usecase.UnlinkPerAppAlias
 import eth.serotine.domain.usecase.UpgradeWarning
 import eth.serotine.domain.usecase.Valuation
-import eth.serotine.domain.usecase.OfferHandoff
+import eth.serotine.domain.usecase.restoreNetworks
 import eth.serotine.ui.accounts.UnreachableNetwork
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityOrder
 import eth.serotine.ui.activity.ActivityUiState
 import eth.serotine.ui.activity.ordered
 import eth.serotine.ui.components.AMOUNTS_NOT_SAVED
+import eth.serotine.ui.components.AddressInput
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.DecodingToken
-import eth.serotine.ui.components.AddressInput
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkLabel
-import eth.serotine.ui.perapp.PerAppViewModel
-import eth.serotine.ui.perapp.perAppRows
 import eth.serotine.ui.components.accountName
 import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.balanceText
@@ -88,26 +91,29 @@ import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.forDecoding
 import eth.serotine.ui.components.formatUnits
 import eth.serotine.ui.components.grouped
+import eth.serotine.ui.components.handoffChoice
 import eth.serotine.ui.components.lastKnownNote
 import eth.serotine.ui.components.maskAmount
 import eth.serotine.ui.components.notTurnedOn
 import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.safeTxActionItem
-import eth.serotine.ui.gnosispay.GnosisPayTexts
 import eth.serotine.ui.components.totalNote
 import eth.serotine.ui.components.totalText
 import eth.serotine.ui.components.valuationText
-import eth.serotine.ui.components.handoffChoice
+import eth.serotine.ui.gnosispay.GnosisPayTexts
+import eth.serotine.ui.perapp.PerAppViewModel
+import eth.serotine.ui.perapp.perAppRows
 import eth.serotine.ui.platform.formatDateTime
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -188,6 +194,8 @@ class AccountDetailViewModel(
     private val offerHandoff: OfferHandoff? = null,
     /** Whether a Safe is a Gnosis Pay account (docs/gnosis-pay.md), which its Owners tab opens. Null: never asked. */
     observeGnosisPay: ObserveGnosisPay? = null,
+    /** Whether an EOA is a Swarm node (docs/swarm.md), which its row opens. Null: never asked. */
+    observeSwarmNode: ObserveSwarmNode? = null,
     /**
      * The per-app addresses held here (issue #252): the account a recovery phrase is known by lists that phrase's in
      * its Per-app tab. Null: never asked, and no account has the tab.
@@ -287,6 +295,22 @@ class AccountDetailViewModel(
             flowOf(null)
         }
     }
+
+    /** A Swarm node's row: what it says, or null when the account is none (or not read yet). */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val swarm = lookup.map { (it as? AccountLookup.Found)?.account }
+        // Only what decides the reading: a rename never restarts it, nor drops a reading held.
+        .distinctUntilChangedBy { it?.id to it?.kind }
+        .flatMapLatest { found ->
+            if (found == null || observeSwarmNode == null) {
+                flowOf(SwarmRow(null, offered = false))
+            } else {
+                // Whether it can be a Swarm node is the use case's to say (an EOA on Gnosis Chain), never spelled here.
+                observeSwarmNode(found)
+                    .map { SwarmRow(swarmEntry(it), offered = it != SwarmNodeReading.NotASwarmAccount) }
+                    .onStart { emit(SwarmRow(null, offered = false)) }
+            }
+        }
 
     /** The check of the ENS name the account's name follows; none for a name of the user's, nor before the first. */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -518,6 +542,13 @@ class AccountDetailViewModel(
                 if (state is AccountDetailUiState.Ready) {
                     state.copy(gnosisPay = entry?.text, gnosisPayControlled = entry?.controlled == true)
                         .withGnosisPayOwner()
+                } else {
+                    state
+                }
+            }
+            .combine(swarm) { state, row ->
+                if (state is AccountDetailUiState.Ready) {
+                    state.copy(swarm = row.text, offersSwarm = row.offered)
                 } else {
                     state
                 }
@@ -1153,6 +1184,41 @@ internal const val GNOSIS_PAY_PLACEHOLDER_LABEL = "Placeholder: no key controls 
  * here controls it through its Delay ([controlled]; owner's request, 2026-11-17).
  */
 internal data class GnosisPayEntry(val text: String, val controlled: Boolean)
+
+/** A Swarm node's row on its account's screen: its [text] (null: none), and whether the menu [offered] its screen. */
+internal data class SwarmRow(val text: String?, val offered: Boolean)
+
+/**
+ * What a Swarm node's row says, from [reading]: its proven chequebooks and batches counted; null
+ * while none is proven, so the account is no Swarm node (docs/swarm.md, *Recognition*).
+ */
+internal fun swarmEntry(reading: SwarmNodeReading): String? {
+    val read = reading as? SwarmNodeReading.Read ?: return null
+    if (!read.recognised) return null
+    val chequebooks =
+        read.chequebooks.count { (it.reading as? SwarmReading.Verified)?.finding is ChequebookFinding.Node }
+    val batches = read.batches.count { (it.reading as? SwarmReading.Verified)?.finding is BatchFinding.Node }
+    val held = (read.chequebooks + read.batches).any { item ->
+        item.held && (item.reading as? SwarmReading.Verified)?.finding.let {
+            it is ChequebookFinding.Node || it is BatchFinding.Node
+        }
+    }
+    val parts = listOfNotNull(
+        when (chequebooks) {
+            0 -> null
+            1 -> "a chequebook"
+            else -> "$chequebooks chequebooks"
+        },
+        when (batches) {
+            0 -> null
+            1 -> "a postage batch"
+            else -> "$batches postage batches"
+        },
+    )
+    val text = "Swarm node: " + parts.joinToString(" and ")
+    // A reading held as last verified is said to be (owner's request, 2026-10-19; decisions, 2026-11-17).
+    return if (held) "$text, as last verified: it may have changed since" else text
+}
 
 /** What a Safe's Owners tab says of it as a Gnosis Pay account; null when it is none, or not read yet. */
 internal fun gnosisPayEntry(reading: GnosisPayReading): GnosisPayEntry? {

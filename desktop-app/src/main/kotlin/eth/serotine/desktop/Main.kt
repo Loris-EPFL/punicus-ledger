@@ -38,6 +38,7 @@ import eth.serotine.data.settings.FileMeteredDownloads
 import eth.serotine.data.settings.FileSwapVenue
 import eth.serotine.data.settings.FileSyncPolicy
 import eth.serotine.data.swaps.FileWaitingSwaps
+import eth.serotine.data.swarm.FileSwarmCandidates
 import eth.serotine.data.tokens.BuiltInTokenCatalog
 import eth.serotine.data.tokens.FileUserTokens
 import eth.serotine.data.transfers.FileSentTransfers
@@ -59,6 +60,7 @@ import eth.serotine.domain.usecase.FollowNetworks
 import eth.serotine.domain.usecase.FollowOutbox
 import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.FollowSentTransactions
+import eth.serotine.domain.usecase.FollowSwarmLogs
 import eth.serotine.domain.usecase.FollowUpgradeReports
 import eth.serotine.domain.usecase.HistoryNotingAccounts
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
@@ -204,6 +206,8 @@ private fun openWallet(dataDir: File) {
     // One instance each, which the graph and the followers share. Each account added is noted
     // where its history starts (issue #85): addresses with a block or a time, public data only.
     val historyStarts = FileHistoryStarts(dataDir.resolve("history-starts.json").path)
+    // What may be each Swarm node's chequebook and batches (docs/swarm.md): public data, app-private.
+    val swarmCandidates = FileSwarmCandidates(dataDir.resolve("swarm.json").path)
     val accounts =
         HistoryNotingAccounts(FileAccountRepository(dataDir.resolve("accounts.json").path), historyStarts)
     // The transactions signed here, with their signed bytes (public once broadcast), and every one
@@ -452,6 +456,26 @@ private fun openWallet(dataDir: File) {
                 }
             }
         }
+        // Swarm nodes' chequebooks and batches are found in the Gnosis Chain index, while the app
+        // runs (docs/swarm.md). A failure ends it, never the wallet.
+        LaunchedEffect(Unit) {
+            try {
+                FollowSwarmLogs(
+                    accounts,
+                    swarmCandidates,
+                    node.swarmContracts,
+                    node.lightClient,
+                    node.logIndex,
+                    ObserveHeavyDownloads(connectionMeter, meteredDownloads),
+                )()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println(
+                    "Punicus: finding Swarm nodes' chequebooks and batches stopped: ${e::class.simpleName}",
+                )
+            }
+        }
         // Each network's CoW orders' ends are proven from its accounts' log-index entries, while the
         // app runs (docs/swaps.md, *Proving an order's end*), after the ended ones signed over a week
         // ago are dropped. A failure ends it, never the wallet.
@@ -521,6 +545,8 @@ private fun openWallet(dataDir: File) {
                 signatureRecovery = signatureRecovery,
                 safeApprovals = node.safeApprovals,
                 delayModules = node.delayModules,
+                swarmContracts = node.swarmContracts,
+                swarmCandidates = swarmCandidates,
                 // Safe 1.4.1's singleton, factory and proxy code, pinned in code: what a new Safe is created from.
                 safeReleases = PinnedSafeReleases(),
                 // Uniswap v3 on each network that has it pinned, its contracts proven by their code before any quote.

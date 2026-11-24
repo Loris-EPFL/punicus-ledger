@@ -5,6 +5,8 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
+import eth.serotine.domain.model.SwapKind
+import eth.serotine.domain.model.SwarmCalls
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -31,6 +33,7 @@ import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveWaitingSwaps
 import eth.serotine.domain.usecase.SafeChainEvent
 import eth.serotine.domain.usecase.TokenTransferEvent
+import eth.serotine.ui.components.NATIVE_DECIMALS
 import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.outbox.redatedAtTheirHour
@@ -62,7 +65,8 @@ import kotlinx.coroutines.flow.stateIn
  * ([merged]). Above them, each swap whose next step waits for the user ([ObserveWaitingSwaps]),
  * said from its approval's outcome in the account's history; and before everything, what the
  * account has queued in lenient mode ([ObserveOutbox]; docs/lenient-mode.md, *Where it shows*).
- * [formatTime] dates each in the user's own time zone. A row opens its detail, which is
+ * [formatTime] dates each in the user's own time zone, and the rows are grouped by the day they go by there
+ * ([dates]), each timed to the minute. A row opens its detail, which is
  * navigation; a queued one, its status. On the desktop with its experimental setting on, the
  * verified rows of the addr1 index join them ([addressIndex]; owner ruling, 2026-11-21, #334),
  * page by page as the list nears its end, each once: a transaction the list holds already, sent
@@ -82,6 +86,8 @@ class AccountActivity(
     private val addressIndex: AddressIndexActivity? = null,
     /** Now, in unix seconds: whether a queued transaction is past its hour, and waits for the user's answer. */
     private val now: () -> Long = ::epochSecondsNow,
+    /** How the rows are grouped by day and timed: in the user's own time zone. */
+    private val dates: ActivityDates = ActivityDates(),
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) {
 
@@ -190,15 +196,19 @@ class AccountActivity(
             // came later).
             val sent = entries.map {
                 val block = it.outcome.blockNumberOrNull
+                val blockTime = block?.let(blockTimes::get)
                 Listed(
                     rows.row(it, names),
                     block,
                     pending = it.outcome == SentOutcome.NotSeen,
-                    moment = block?.let(blockTimes::get) ?: it.transfer.sentAt,
+                    moment = blockTime ?: it.transfer.sentAt,
+                    anchored = blockTime != null,
                 )
             } + orders.map {
                 val block = it.end?.placedAt
-                Listed(rows.orderRow(it), block, pending = it.live, moment = block?.let(blockTimes::get) ?: it.signedAt)
+                val blockTime = block?.let(blockTimes::get)
+                val moment = blockTime ?: it.signedAt
+                Listed(rows.orderRow(it), block, pending = it.live, moment = moment, anchored = blockTime != null)
             }
             // A transaction listed already, sent from here or as a CoW order's fill, is that row alone.
             val listedHere = entries.mapTo(HashSet()) { it.transfer.hash.lowercase() } +
@@ -206,7 +216,7 @@ class AccountActivity(
             if (transfers == null) {
                 val fromIndexHere = indexed(index, listedHere, parties, tokens, rows)
                 return ActivityUiState.Shown(
-                    merged(sent, fromIndexHere),
+                    merged(sent, fromIndexHere).byDay(dates, now()),
                     COVERAGE,
                     waiting = waiting,
                     queued = queued,
@@ -248,7 +258,9 @@ class AccountActivity(
                 )
             // An event the engine dated goes by its time like a sent row; one it did not by its block.
             val dated = events.mapNotNull { (row, event) ->
-                event.blockTimestamp?.let { Listed(row, event.blockNumber, pending = false, moment = it, event = true) }
+                event.blockTimestamp?.let {
+                    Listed(row, event.blockNumber, pending = false, moment = it, event = true, anchored = true)
+                }
             }
             // The addr1 index's rows go by their block, as an event the engine did not date: none of a transaction
             // the log index read, listed or deliberately left out (a transfer of nothing), is listed again.
@@ -287,7 +299,7 @@ class AccountActivity(
                 if (safe == null) notListedYet(account.network) else null,
             ).joinToString(" ")
             return ActivityUiState.Shown(
-                rows = merged(sent + dated, undated),
+                rows = merged(sent + dated, undated).byDay(dates, now()),
                 coverage = covered.joinToString(" "),
                 empty = "Nothing listed yet.",
                 simpleCoverage = simple,
@@ -342,8 +354,19 @@ class AccountActivity(
             WaitingStep(
                 title = tokens?.get(swap.sell)?.token?.let { sold ->
                     // Only no token bought is the network's currency: one no longer listed is not named.
-                    val bought = if (swap.buy == null) account.network.nativeSymbol else tokens[swap.buy]?.token?.symbol
-                    bought?.let { "Swap ${rows.figure(swap.amount, sold.decimals, sold.symbol)} → $it" }
+                    val bought = if (swap.buy == null) {
+                        KnownBuy(account.network.nativeSymbol, NATIVE_DECIMALS)
+                    } else {
+                        tokens[swap.buy]?.token?.let { KnownBuy(it.symbol, it.decimals) }
+                    }
+                    bought?.let {
+                        when (swap.kind) {
+                            SwapKind.SELL ->
+                                "Swap ${rows.figure(swap.amount, sold.decimals, sold.symbol)} → ${it.symbol}"
+                            SwapKind.BUY ->
+                                "Buy ${rows.figure(swap.amount, it.decimals, it.symbol)} with ${sold.symbol}"
+                        }
+                    }
                 } ?: "A swap",
                 message = waitingText(swap, entries.firstOrNull { it.transfer.hash.equals(swap.approval, true) }),
                 sell = swap.sell.hex,
@@ -417,7 +440,13 @@ class AccountActivity(
         val (asset, moved) = when (val action = entry.transfer.action) {
             is SentAction.Transfer ->
                 if (from == account && action.to == to) action.asset to action.amount else return false
-            is SentAction.Swap -> if (from == account) action.sell to action.amountIn else return false
+            // A buy takes at most its maximum: what it took is said by its row too.
+            is SentAction.Swap -> if (from == account) {
+                if (action.kind == SwapKind.BUY) return sells(action.sell) && amount <= action.amountIn
+                action.sell to action.amountIn
+            } else {
+                return false
+            }
             is SentAction.Wrap -> if (from == account && to == action.weth.address) {
                 TransferAsset.Native to action.amount
             } else {
@@ -425,6 +454,25 @@ class AccountActivity(
             }
             is SentAction.Unwrap -> if (to == account && from == action.weth.address) {
                 TransferAsset.Native to action.amount
+            } else {
+                return false
+            }
+            // A batch bought or topped up from here: the PostageStamp's pull of its total, exactly.
+            is SentAction.BatchPurchase -> if (from == account && to == action.stamp) {
+                val total = SwarmCalls.total(action.perChunk, action.depth) ?: return false
+                TransferAsset.Erc20Token(action.token) to total
+            } else {
+                return false
+            }
+            is SentAction.BatchTopUp -> if (from == account && to == action.stamp) {
+                val total = SwarmCalls.total(action.perChunk, action.depth) ?: return false
+                TransferAsset.Erc20Token(action.token) to total
+            } else {
+                return false
+            }
+            // A withdrawal from the node's chequebook: the xBZZ it pays the node, which sent it, exactly.
+            is SentAction.ChequebookWithdrawal -> if (to == account && from == action.chequebook) {
+                TransferAsset.Erc20Token(action.token) to action.amount
             } else {
                 return false
             }
@@ -439,16 +487,18 @@ class AccountActivity(
             }
             else -> return false
         }
-        val same = when (asset) {
-            TransferAsset.Native -> isEth
-            is TransferAsset.Erc20Token -> asset.token.address == token
-        }
-        return same && moved == amount
+        return sells(asset) && moved == amount
+    }
+
+    /** Whether this transfer is of [asset]: its token, or ETH by the network's own log of it. */
+    private fun TokenTransfer.Fungible.sells(asset: TransferAsset): Boolean = when (asset) {
+        TransferAsset.Native -> isEth
+        is TransferAsset.Erc20Token -> asset.token.address == token
     }
 
     /**
-     * Every row in one list, newest first: the [dated] rows by when each happened (a sent
-     * transaction by when its block was produced, where an event in that block says it, else by
+     * Every row in one list, newest first, each with when it goes by ([Placed]): the [dated] rows by when each
+     * happened (a sent transaction by when its block was produced, where an event in that block says it, else by
      * when a peer took it; a CoW order alike, by its fill's or cancellation's block, else by when
      * it was signed; an event by when its block was produced), the sent ones before the events of
      * the same moment; and the [undated] events (newest block first), from an engine that does not
@@ -461,7 +511,7 @@ class AccountActivity(
      * row's block; when none has, it counts as the block of the nearest dated row above it that
      * has one, and as newer than every block when none has.
      */
-    private fun merged(dated: List<Listed>, undated: List<Pair<ActivityRow, Long>>): List<ActivityRow> {
+    private fun merged(dated: List<Listed>, undated: List<Pair<ActivityRow, Long>>): List<Placed> {
         val sorted = dated.sortedWith(
             compareByDescending<Listed> { it.moment }
                 .thenBy { it.event }
@@ -476,14 +526,14 @@ class AccountActivity(
                 ?: blocks.lastOrNull { it != Long.MAX_VALUE }
                 ?: Long.MAX_VALUE
         }
-        val rows = ArrayList<ActivityRow>(sorted.size + undated.size)
+        val rows = ArrayList<Placed>(sorted.size + undated.size)
         var next = 0
         for ((at, listed) in sorted.withIndex()) {
             // The undated events of newer blocks than this row's go above it; of its own block, below.
-            while (next < undated.size && undated[next].second > blocks[at]) rows += undated[next++].first
-            rows += listed.row
+            while (next < undated.size && undated[next].second > blocks[at]) rows += Placed(undated[next++].first)
+            rows += Placed(listed.row, listed.moment, listed.anchored)
         }
-        while (next < undated.size) rows += undated[next++].first
+        while (next < undated.size) rows += Placed(undated[next++].first)
         return rows
     }
 
@@ -522,7 +572,7 @@ class AccountActivity(
      * A row that is dated: a sent transaction's, the [block] it was seen in (null: none seen),
      * whether it is [pending] (no block seen yet, nor its nonce used) and its [moment] (unix
      * seconds), when its block was produced where that is known, else when a peer took it; or an
-     * [event]'s, in its block, dated by the engine.
+     * [event]'s, in its block, dated by the engine. [anchored] when [moment] is its block's time.
      */
     private class Listed(
         val row: ActivityRow,
@@ -530,6 +580,7 @@ class AccountActivity(
         val pending: Boolean,
         val moment: Long,
         val event: Boolean = false,
+        val anchored: Boolean = false,
     )
 
     /**
@@ -544,10 +595,15 @@ class AccountActivity(
             CowOrderEnd.NotProvable -> null
         }
 
-    /** Whether this transfer is what the filled [order] sold: of its token, from its account, its whole sale. */
-    private fun TokenTransfer.soldIn(order: CowOrderRecord): Boolean =
-        this is TokenTransfer.Fungible && from == order.account && token == order.order.sellToken &&
-            amount == order.order.sellAmount
+    /**
+     * Whether this transfer is what the filled [order] sold: of its token, from its account, what its
+     * trade sold (a sell's whole amount; a buy's, up to its maximum).
+     */
+    private fun TokenTransfer.soldIn(order: CowOrderRecord): Boolean {
+        val sold = (order.end as? CowOrderEnd.Filled)?.trade?.sellAmount ?: order.order.sellAmount
+        return this is TokenTransfer.Fungible && from == order.account && token == order.order.sellToken &&
+            amount == sold
+    }
 
     /** Whether this transfer is what the filled [order] bought: its trade's buy, from its settlement to its account. */
     private fun TokenTransfer.boughtIn(order: CowOrderRecord): Boolean {
@@ -571,3 +627,6 @@ class AccountActivity(
         const val UNREADABLE = "The history of your transactions cannot be read right now. Punicus keeps trying."
     }
 }
+
+/** The asset a waiting swap buys, as its title names it: its [symbol], and its [decimals] for a buy's amount. */
+private data class KnownBuy(val symbol: String, val decimals: Int)

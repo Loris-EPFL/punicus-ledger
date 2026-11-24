@@ -1,6 +1,11 @@
 package eth.serotine.ui.activity
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -20,9 +26,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.GHOST_ROWS_UNKNOWN
@@ -31,6 +42,7 @@ import eth.serotine.ui.components.GhostLine
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.components.GhostRows
+import eth.serotine.ui.components.SerotineIcons
 
 /** Test tag of each transaction row, for UI tests. */
 const val ACTIVITY_ROW_TAG = "activity-row"
@@ -40,6 +52,12 @@ const val WAITING_STEP_TAG = "waiting-step"
 
 /** What reads the addr1 index's next page on the user's tap. */
 private const val LOAD_OLDER = "Load older entries"
+
+/** Test tag of each day's heading between the rows, for UI tests. */
+const val ACTIVITY_DAY_TAG = "activity-day"
+
+/** Test tag of each row's signed amount, for UI tests. */
+const val ACTIVITY_AMOUNT_TAG = "activity-amount"
 
 /** Test tag of the addr1 index's lines above the rows, for UI tests. */
 const val ACTIVITY_INDEX_TAG = "activity-index"
@@ -109,8 +127,13 @@ fun LazyListScope.activityItems(
             if (state.rows.isEmpty()) {
                 item { Text(state.empty, style = MaterialTheme.typography.bodyMedium) }
             }
-            items(state.rows, key = { it.key }) { row ->
-                ActivityItem(row, onClick = { onOpen(row.opens) })
+            // A heading wherever the day changes: the rows of a day are consecutive, whichever way they run.
+            var heading: String? = null
+            state.rows.forEach { row ->
+                val day = row.day
+                if (day != null && day != heading) item(key = "day:${row.key}") { DayHeading(day) }
+                heading = day
+                item(key = row.key) { ActivityItem(row, onClick = { onOpen(row.opens) }) }
             }
             if (index != null && !index.footerFirst) {
                 item(key = "index-footer") { IndexFooterItem(index.footer, onMore) }
@@ -242,23 +265,101 @@ private fun ActivityGhost() {
     )
 }
 
-/** One row; a tap opens its detail ([onClick]). */
+/** The heading of a day's rows: "Today · Monday, November 23, 2026". */
+@Composable
+private fun DayHeading(day: String) {
+    Text(
+        day,
+        Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp).testTag(ACTIVITY_DAY_TAG).semantics { heading() },
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+    )
+}
+
+/**
+ * One row; a tap opens its detail ([onClick]). Which way it moved value is an arrow on the blockie's corner, green in
+ * and red out, and what it moved is on the right, signed; its time of day where the list is grouped by day.
+ */
 @Composable
 private fun ActivityItem(row: ActivityRow, onClick: () -> Unit) {
     ListItem(
         modifier = Modifier.testTag(ACTIVITY_ROW_TAG).clickable(onClick = onClick),
-        leadingContent = { AccountAvatar(row.about) },
+        leadingContent = { DirectedAvatar(row.about, row.direction, muted = !row.settled) },
         // When, above what it did: beside it, the date would squeeze each row into narrow lines.
-        overlineContent = row.time.takeIf { it.isNotEmpty() }?.let { time -> { Text(time) } },
-        headlineContent = { Text(row.title) },
+        overlineContent = (row.clock ?: row.time).takeIf { it.isNotEmpty() }?.let { time -> { Text(time) } },
+        headlineContent = { Text(row.headline ?: row.title) },
         supportingContent = {
             Column {
                 Text(row.detail)
                 Text(row.status, style = MaterialTheme.typography.labelSmall, color = statusColor(row.state))
             }
         },
+        trailingContent = row.amount?.let { amount ->
+            {
+                Text(
+                    amount,
+                    Modifier.testTag(ACTIVITY_AMOUNT_TAG),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = amountColor(row.direction, settled = row.settled),
+                    textAlign = TextAlign.End,
+                )
+            }
+        },
     )
 }
+
+/**
+ * The blockie of a row's other side, with an arrow on its corner for the way value went ([direction]): green in and
+ * red out, or [muted] while what moved is not settled.
+ */
+@Composable
+private fun DirectedAvatar(about: String, direction: ActivityDirection, muted: Boolean) {
+    Box {
+        AccountAvatar(about)
+        if (direction != ActivityDirection.NONE) {
+            val incoming = direction == ActivityDirection.IN
+            Box(
+                Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp).size(20.dp)
+                    .background(MaterialTheme.colorScheme.surface, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (incoming) SerotineIcons.SouthWest else SerotineIcons.NorthEast,
+                    contentDescription = if (incoming) "Incoming" else "Outgoing",
+                    modifier = Modifier.size(16.dp),
+                    tint = when {
+                        muted -> MaterialTheme.colorScheme.onSurfaceVariant
+                        incoming -> incomingColor()
+                        else -> MaterialTheme.colorScheme.error
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Whether what this row moved is settled: done on chain, and proven to have moved. Not while it waits, is unconfirmed
+ * or unknown, calls for care (a caution, a warning), or its outcome is not checked: its amount and arrow are muted.
+ */
+private val ActivityRow.settled: Boolean
+    get() = state == ActivityState.DONE && !unchecked
+
+/**
+ * The colour a row's amount is said in: green for value that came in, the text's own for value that went out, both
+ * only once [settled]; muted while not.
+ */
+@Composable
+private fun amountColor(direction: ActivityDirection, settled: Boolean): Color = when {
+    !settled -> MaterialTheme.colorScheme.onSurfaceVariant
+    direction == ActivityDirection.IN -> incomingColor()
+    else -> MaterialTheme.colorScheme.onSurface
+}
+
+/** Green, for value that came in: darker on a light theme, lighter on a dark one, for contrast either way. */
+@Composable
+private fun incomingColor(): Color =
+    if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF81C995) else Color(0xFF1E7E34)
 
 /**
  * The colour a row's status is said in, here and on its detail: an error's for a revert or a

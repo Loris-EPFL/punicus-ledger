@@ -2,6 +2,7 @@ package eth.serotine.ui
 
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
@@ -56,6 +57,8 @@ import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.SigningRequestCodec
 import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.repository.SwapVenueSetting
+import eth.serotine.domain.repository.SwarmCandidates
+import eth.serotine.domain.repository.SwarmContracts
 import eth.serotine.domain.repository.SyncPolicySetting
 import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
@@ -70,6 +73,7 @@ import eth.serotine.domain.usecase.AcknowledgeLostOutbox
 import eth.serotine.domain.usecase.AddEnsName
 import eth.serotine.domain.usecase.AddNft
 import eth.serotine.domain.usecase.AddOnNetworks
+import eth.serotine.domain.usecase.AddSwarmCandidate
 import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.AllowHeavyDownloadsOnMetered
 import eth.serotine.domain.usecase.ApproveDappProposal
@@ -93,6 +97,7 @@ import eth.serotine.domain.usecase.DraftTransfer
 import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.EncodeSigningRequest
+import eth.serotine.domain.usecase.EstimateCowSwap
 import eth.serotine.domain.usecase.EstimateSwap
 import eth.serotine.domain.usecase.ExecuteSafeTx
 import eth.serotine.domain.usecase.ExtendDappSession
@@ -116,11 +121,13 @@ import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountCowOrders
 import eth.serotine.domain.usecase.ObserveAccountHistory
+import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressIndexStatus
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveAmountsHidden
+import eth.serotine.domain.usecase.ObserveChequebook
 import eth.serotine.domain.usecase.ObserveCowOrder
 import eth.serotine.domain.usecase.ObserveCowOrderLife
 import eth.serotine.domain.usecase.ObserveDappConnections
@@ -141,20 +148,22 @@ import eth.serotine.domain.usecase.ObserveLightClient
 import eth.serotine.domain.usecase.ObserveNativeBalance
 import eth.serotine.domain.usecase.ObserveNetworkLive
 import eth.serotine.domain.usecase.ObserveNetworkOverview
-import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveNfts
 import eth.serotine.domain.usecase.ObserveOutbox
 import eth.serotine.domain.usecase.ObservePerAppAddresses
 import eth.serotine.domain.usecase.ObservePerAppChoice
 import eth.serotine.domain.usecase.ObservePortfolio
+import eth.serotine.domain.usecase.ObservePostageBatch
+import eth.serotine.domain.usecase.ObserveRecipientCheck
 import eth.serotine.domain.usecase.ObserveSafe
 import eth.serotine.domain.usecase.ObserveSafeHistory
 import eth.serotine.domain.usecase.ObserveSafeTxQueue
 import eth.serotine.domain.usecase.ObserveSafes
-import eth.serotine.domain.usecase.ObserveRecipientCheck
 import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveSentTransfer
 import eth.serotine.domain.usecase.ObserveSwapVenue
+import eth.serotine.domain.usecase.ObserveSwarmNode
+import eth.serotine.domain.usecase.ObserveSwarmNodes
 import eth.serotine.domain.usecase.ObserveSyncPolicy
 import eth.serotine.domain.usecase.ObserveTokenHoldings
 import eth.serotine.domain.usecase.ObserveTokenMetadata
@@ -173,6 +182,10 @@ import eth.serotine.domain.usecase.ProposeSafeSwap
 import eth.serotine.domain.usecase.ProposeSafeTx
 import eth.serotine.domain.usecase.QueueSafeCall
 import eth.serotine.domain.usecase.QueueTransfer
+import eth.serotine.domain.usecase.QuoteBatchDilution
+import eth.serotine.domain.usecase.QuoteBatchPurchase
+import eth.serotine.domain.usecase.QuoteBatchTopUp
+import eth.serotine.domain.usecase.QuoteChequebookWithdrawal
 import eth.serotine.domain.usecase.QuoteCowCancellation
 import eth.serotine.domain.usecase.QuoteCowSwap
 import eth.serotine.domain.usecase.QuoteDappTransaction
@@ -197,11 +210,15 @@ import eth.serotine.domain.usecase.RememberResolvedNames
 import eth.serotine.domain.usecase.RemoveAccount
 import eth.serotine.domain.usecase.RemoveAddedNft
 import eth.serotine.domain.usecase.RemoveQueuedSafeTx
+import eth.serotine.domain.usecase.RemoveSwarmCandidate
 import eth.serotine.domain.usecase.RemoveToken
 import eth.serotine.domain.usecase.RenameAccount
 import eth.serotine.domain.usecase.ResolveRecipient
 import eth.serotine.domain.usecase.RestorePerAppAddress
 import eth.serotine.domain.usecase.RouteRanking
+import eth.serotine.domain.usecase.SendBatchApproval
+import eth.serotine.domain.usecase.SendBatchCall
+import eth.serotine.domain.usecase.SendChequebookWithdrawal
 import eth.serotine.domain.usecase.SendCowCancellation
 import eth.serotine.domain.usecase.SendDappTransaction
 import eth.serotine.domain.usecase.SendDelayCall
@@ -257,6 +274,8 @@ import eth.serotine.ui.pairdapp.IncomingDappLink
 import eth.serotine.ui.pairdapp.PairDappViewModel
 import eth.serotine.ui.perapp.PerAppViewModel
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
+import eth.serotine.ui.postage.PostageAction
+import eth.serotine.ui.postage.PostageViewModel
 import eth.serotine.ui.receive.ReceiveViewModel
 import eth.serotine.ui.removeaccount.RemoveAccountViewModel
 import eth.serotine.ui.renameaccount.RenameAccountViewModel
@@ -272,10 +291,12 @@ import eth.serotine.ui.send.SendViewModel
 import eth.serotine.ui.settings.SettingsViewModel
 import eth.serotine.ui.swap.SwapFill
 import eth.serotine.ui.swap.SwapViewModel
+import eth.serotine.ui.swarm.SwarmViewModel
 import eth.serotine.ui.tokens.TokensViewModel
 import eth.serotine.ui.transferstatus.TransferStatusViewModel
 import eth.serotine.ui.update.UpdateRequiredViewModel
 import eth.serotine.ui.watch.WatchViewModel
+import eth.serotine.ui.withdraw.WithdrawViewModel
 
 /**
  * The composition root's contract: everything the shared UI needs, handed in as the
@@ -370,6 +391,10 @@ class AppGraph(
     private val safeApprovals: SafeApprovals,
     /** A Gnosis Pay account's Delay modifier and its queue, verified by that light client (docs/gnosis-pay.md). */
     private val delayModules: DelayModules,
+    /** A Swarm node's chequebook and postage batches, verified by that light client (docs/swarm.md). */
+    private val swarmContracts: SwarmContracts,
+    /** What may be each Swarm node's chequebook and batches: public data kept on this device. */
+    private val swarmCandidates: SwarmCandidates,
     /** The Safe release a new Safe on a network is created from: pinned singleton, factory and proxy code. */
     private val safeReleases: SafeReleases,
     /** Uniswap v3 on each network: its pinned contracts, proven by their code, and verified calls of them. */
@@ -377,8 +402,8 @@ class AppGraph(
     /** CoW Protocol's settlement contracts on each network, proven by their code, and verified calls of them. */
     private val cowChain: CowChain,
     /**
-     * CoW Protocol's order API, an off-chain service, used only for a swap the user sends to CoW
-     * (CLAUDE.md, *Data sources*).
+     * CoW Protocol's order API, an off-chain service, used only while CoW is chosen for a swap: its
+     * estimate and the swap sent (CLAUDE.md, *Data sources*).
      */
     private val cowApi: CowApi,
     /** The CoW orders signed here, live until their end is proven: what Send and a swap hold back. */
@@ -528,7 +553,7 @@ class AppGraph(
             ObserveEnabledNetworks(networkSettings),
             SetNetworkEnabled(networkSettings),
             observeUpgradeWarnings(),
-            HasSwapVenue(uniswap),
+            HasSwapVenue(uniswap, cowChain),
             RefreshNetworkData(networkFreshness),
             ObserveNetworkLive(networkFreshness),
             ObserveLightClient(lightClient),
@@ -544,9 +569,84 @@ class AppGraph(
             ObserveOutbox(outbox),
             offerHandoff = OfferHandoff(walletHandoff),
             observeGnosisPay = observeGnosisPay(),
+            observeSwarmNode = ObserveSwarmNode(swarmCandidates, swarmContracts),
             observePerAppAddresses = ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases),
             unlinkPerAppAlias = UnlinkPerAppAlias(perAppAliases),
         )
+
+    /** The Swarm node screen of [node] (docs/swarm.md). */
+    fun swarmViewModel(node: AccountId): SwarmViewModel = SwarmViewModel(
+        node,
+        ObserveAccount(accounts),
+        ObserveSwarmNode(swarmCandidates, swarmContracts),
+        AddSwarmCandidate(swarmCandidates, swarmContracts),
+        RemoveSwarmCandidate(swarmCandidates),
+        ObserveEnabledNetworks(networkSettings),
+        SetNetworkEnabled(networkSettings),
+        ObserveAccounts(accounts),
+    )
+
+    /**
+     * The postage screen of the Swarm node [node] (docs/swarm.md, *The four actions*): [action], of
+     * its batch [batch] for a top-up or a dilution, null for a purchase.
+     */
+    fun postageViewModel(node: AccountId, action: PostageAction, batch: BatchId?): PostageViewModel =
+        PostageViewModel(
+            node,
+            action,
+            batch,
+            ObserveAccount(accounts),
+            ObserveAccounts(accounts),
+            ObservePostageBatch(swarmContracts),
+            ObserveSwarmNodes(swarmCandidates),
+            QuoteBatchPurchase(
+                swarmContracts,
+                transactionInputs,
+                nativeBalances,
+                tokenBalances,
+                sentTransfers,
+                outbox,
+                cowOrders,
+                cowChain,
+                lightClient,
+            ),
+            QuoteBatchTopUp(
+                swarmContracts,
+                transactionInputs,
+                nativeBalances,
+                tokenBalances,
+                sentTransfers,
+                outbox,
+                cowOrders,
+                cowChain,
+                lightClient,
+            ),
+            QuoteBatchDilution(
+                swarmContracts,
+                transactionInputs,
+                nativeBalances,
+                tokenBalances,
+                sentTransfers,
+                outbox,
+                cowOrders,
+                cowChain,
+                lightClient,
+            ),
+            SendBatchApproval(signer, broadcaster, sentTransfers, transactionInputs, swarmContracts),
+            SendBatchCall(signer, broadcaster, sentTransfers, transactionInputs, swarmCandidates, swarmContracts),
+            DescribeKeyStore(keys),
+        )
+
+    /** The withdrawal from the Swarm node [node]'s chequebook at [chequebook] (docs/swarm.md). */
+    fun withdrawViewModel(node: AccountId, chequebook: Address): WithdrawViewModel = WithdrawViewModel(
+        node,
+        chequebook,
+        ObserveAccount(accounts),
+        ObserveChequebook(swarmContracts),
+        QuoteChequebookWithdrawal(swarmContracts, transactionInputs, nativeBalances, sentTransfers, outbox),
+        SendChequebookWithdrawal(signer, broadcaster, sentTransfers, transactionInputs, swarmContracts),
+        DescribeKeyStore(keys),
+    )
 
     /** The Gnosis Pay account [safe]: its Delay module, its queued transfers and Send through it. */
     fun gnosisPayViewModel(safe: AccountId): GnosisPayViewModel = GnosisPayViewModel(
@@ -860,7 +960,6 @@ class AppGraph(
         QuoteCowSwap(
             cowChain,
             cowApi,
-            FindUniswapRoute(uniswap, transactionInputs),
             transactionInputs,
             tokenBalances,
             sentTransfers,
@@ -870,7 +969,8 @@ class AppGraph(
             from.network,
             outbox = outbox,
         ),
-        PlaceCowOrder(FindUniswapRoute(uniswap, transactionInputs), signer, cowOrders, cowApi, lightClient),
+        PlaceCowOrder(signer, cowOrders, cowApi, lightClient),
+        EstimateCowSwap(cowChain, cowApi, lightClient),
         KeepWaitingSwap(waitingSwaps),
         DropWaitingSwap(waitingSwaps),
         FindWaitingSwap(waitingSwaps),

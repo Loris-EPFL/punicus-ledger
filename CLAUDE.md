@@ -247,6 +247,9 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
   2026-11-17). Such a key may also add or remove a member of that Delay the
   same way, never its last one, and never through a Delay whose entries never
   expire (owner ruling and decision, 2026-11-18).
+- A Swarm node is added as a watched address (no `swarm.key` import); its
+  batches and chequebook are managed through pinned contracts only (owner's
+  decisions, 2026-11-23; docs/swarm.md).
 - Network-upgrade warnings are peer reports and say so (owner's request,
   2026-10-17).
 - A parameter that can change the answer is APPLIED or REFUSED, never
@@ -294,7 +297,10 @@ rulings to the screens.
   2026-11-21, #334, and decisions on #335).
 - Swaps: Uniswap first, then CoW Protocol; the user chooses the venue (owner's
   directions, 2026-10-18 and 2026-10-22). CoW's order API is used only for a
-  swap the user sends to CoW (owner ruling, 2026-10-22).
+  swap the user sends to CoW (owner ruling, 2026-10-22), and, with CoW
+  chosen, for the compose step's estimate (owner ruling, 2026-11-23). A CoW
+  order does not depend on Uniswap: its minimum is CoW's estimate less the
+  tolerance (owner ruling, 2026-11-23).
 - An account's NFTs are found in its verified log index and shown only once
   proven held; on-chain metadata only; unlisted collections collapsed; older
   NFTs added by contract and id (owner rulings, 2026-11-05, #246), and ENS
@@ -309,3 +315,5 @@ rulings to the screens.
 - Send from another wallet hands a transfer to another wallet app as an
   `ethereum:` payment link; nothing comes back, and the outcome is read from
   verified blocks alone (owner rulings, 2026-11-05, #255).
+- Swarm: no Bee node or Swarm service is contacted (owner's decisions,
+  2026-11-23; docs/swarm.md).

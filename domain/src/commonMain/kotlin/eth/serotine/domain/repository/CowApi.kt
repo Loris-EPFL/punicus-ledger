@@ -5,15 +5,19 @@ import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.UInt256
 
 /**
- * The port for CoW Protocol's order API (`api.cow.fi`), an off-chain service, used only for a
- * swap the user sends to CoW (owner ruling, 2026-10-22; CLAUDE.md, *Data sources*). Nothing it
- * answers is chain data, and nothing it answers is trusted:
+ * The port for CoW Protocol's order API (`api.cow.fi`), an off-chain service, used only while CoW
+ * is chosen: for a swap the user sends to CoW (owner ruling, 2026-10-22) and the compose step's
+ * estimate ([eth.serotine.domain.usecase.EstimateCowSwap]; owner ruling, 2026-11-23; CLAUDE.md,
+ * *Data sources*). Nothing it
+ * answers is chain data:
  *
- * - its quote is an estimate, shown as not verified, and the signed minimum never falls below
- *   the verified Uniswap floor ([eth.serotine.domain.model.CowMinimum]);
+ * - its quote is an estimate, shown as not verified. It is the one thing CoW is trusted with: the
+ *   signed minimum is that estimate less the tolerance ([eth.serotine.domain.model.CowMinimum];
+ *   owner ruling, 2026-11-23);
  * - the order is built, hashed and signed here, and the API only carries it;
  * - an order's fill is read from the chain, never from here ([life] says only how the order
  *   stands in CoW's order book).
@@ -24,15 +28,18 @@ import eth.serotine.domain.model.UInt256
 interface CowApi {
 
     /**
-     * CoW's estimate on [network] for selling exactly [sellAmount] of [sellToken] for [buyToken],
-     * from [from]: what an order may buy, net of the fee CoW takes out of the trade.
+     * CoW's estimate on [network] for an order of [kind] from [from] between [sellToken] and
+     * [buyToken]: selling exactly [amount] of [sellToken] ([SwapKind.SELL]), what it may buy, net of
+     * the fee CoW takes out of the trade; or buying exactly [amount] of [buyToken] ([SwapKind.BUY];
+     * docs/swaps.md, *Buying an exact amount*), what it would sell, that fee included.
      */
     suspend fun quote(
         network: Network,
         sellToken: Address,
         buyToken: Address,
-        sellAmount: UInt256,
+        amount: UInt256,
         from: Address,
+        kind: SwapKind = SwapKind.SELL,
     ): CowQuoteReading
 
     /**
@@ -59,10 +66,11 @@ interface CowApi {
 sealed interface CowQuoteReading {
 
     /**
-     * CoW's estimate: an order selling the whole amount may buy [buyAmount], net of the fee,
-     * [feeAmount] of the sold token, CoW takes out of the trade. Not verified.
+     * CoW's estimate: an order selling [sellAmount] of the sold token, the fee included, may buy
+     * [buyAmount], net of the fee, [feeAmount] of the sold token, CoW takes out of the trade. Of a
+     * sell, [sellAmount] is the amount asked; of a buy, [buyAmount] is. Not verified.
      */
-    data class Quoted(val buyAmount: UInt256, val feeAmount: UInt256) : CowQuoteReading
+    data class Quoted(val sellAmount: UInt256, val buyAmount: UInt256, val feeAmount: UInt256) : CowQuoteReading
 
     /** CoW refused to quote, saying why ([why]; [errorType] is CoW's own word for it). */
     data class Refused(val why: CowRefusal, val errorType: String) : CowQuoteReading

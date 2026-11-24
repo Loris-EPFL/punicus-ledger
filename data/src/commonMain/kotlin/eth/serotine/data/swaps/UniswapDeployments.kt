@@ -43,17 +43,36 @@ internal class PinnedUniswapV3(val deployment: UniswapV3Deployment, val codeHash
  * which the light client proves before any quote (`MyotisHostEthereumTest` does so on the real
  * chain). None of the four is a proxy.
  *
- * Gnosis Chain has none pinned: Swap is greyed out there until a venue is (owner ruling,
- * 2026-10-22; docs/networks.md, open question 7).
+ * Gnosis Chain's are the deployment Uniswap governance made there, as Uniswap's deployment list
+ * names it (developers.uniswap.org, `deployments.json`, chain 100), read 2026-11-23: the v3
+ * factory, QuoterV2 and SwapRouter02, with WXDAI, the wrapped xDAI both of the latter two name as
+ * their `WETH9()`, in WETH9's place (both also name this factory as their `factory()`). Their code
+ * hashes were read the same day at Gnosis block 49,421,347 (`eth_getProof`'s code hash) through
+ * two public nodes, which agreed, a debugging source only, as above: what is expected, which the
+ * light client proves before any quote. Each code was checked to dispatch the selectors the domain
+ * calls, as Sepolia's were. None of the four is a proxy. Uniswap v3 holds little on Gnosis Chain:
+ * that day only the WXDAI/USDC.e, USDC.e/EURe and USDC.e/sDAI pools at 0.01 % held funds that
+ * matter, so most pairs find no route there, and say so (docs/networks.md, open question 7).
  */
 internal object UniswapDeployments {
 
     /** The deployment pinned on [network], or null when none is. */
     fun of(network: Network): PinnedUniswapV3? = when (network) {
         Network.ETHEREUM -> ETHEREUM
-        Network.GNOSIS -> null
+        Network.GNOSIS -> GNOSIS
         Network.SEPOLIA -> SEPOLIA
     }
+
+    private val GNOSIS = pinned(
+        factory = "0xe32f7dd7e3f098d518ff19a22d5f028e076489b1" to
+            "1c34570f49479aaf31c55a3aa8209b64b3028b5d1bf8380ba887efb42e22875f",
+        quoterV2 = "0x7e9cb3499a6cee3babe5c8a3d328ea7fd36578f4" to
+            "3092cffe44375ae19008a0e6d2a6f42ee73d628ba0ce10bb7173682e97970a4a",
+        swapRouter02 = "0xc6d25285d5c5b62b7ca26d6092751a145d50e9be" to
+            "4d7621886df22214940ed9e069ac6e09b4dc0b30f03e30fe72eb9e97f622f40d",
+        weth9 = "0xe91d153e0b41518a2ce8dd3d7944fa863463a97d" to
+            "dfff0c54be05b5df7dc8f015f8c813825344770fee1ba1202130a4652b529ca9",
+    )
 
     private val ETHEREUM = pinned(
         factory = "0x1f98431c8ad98523631ae4a59f267346ea31f984" to

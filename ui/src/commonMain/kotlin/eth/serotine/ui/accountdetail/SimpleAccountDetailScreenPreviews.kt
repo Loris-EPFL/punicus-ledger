@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexRole
 import eth.serotine.ui.accounts.UnreachableNetwork
+import eth.serotine.ui.activity.ActivityDirection
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityRow
 import eth.serotine.ui.activity.ActivityState
@@ -190,6 +191,9 @@ private fun SimpleAccountActivityQueuedPreview() = SimpleAccountDetailPreview(
                     status = "Waiting to send",
                     state = ActivityState.WAITING,
                     opens = ActivityKey("0x" + "9a".repeat(32), queued = true),
+                    direction = ActivityDirection.OUT,
+                    amount = "\u2212250 USDC",
+                    headline = "Send USDC",
                 ),
             ),
         ),
@@ -214,6 +218,11 @@ private fun SimpleAccountActivityPreview() = SimpleAccountDetailPreview(
                     state = ActivityState.DONE,
                     opens = ActivityKey("0x" + "a1".repeat(32)),
                     simpleStatus = "Confirmed",
+                    day = "Today · Tuesday, October 27, 2026",
+                    clock = "2:02 PM",
+                    direction = ActivityDirection.OUT,
+                    amount = "\u2212250 USDC",
+                    headline = "Sent USDC",
                 ),
                 // Dated by its block's verified header, which the engine reported with it.
                 ActivityRow(
@@ -225,6 +234,11 @@ private fun SimpleAccountActivityPreview() = SimpleAccountDetailPreview(
                     status = "On chain",
                     state = ActivityState.DONE,
                     opens = ActivityKey("0x" + "b2".repeat(32), 4),
+                    day = "Sunday, October 25, 2026",
+                    clock = "9:15 AM",
+                    direction = ActivityDirection.IN,
+                    amount = "+0.5 ETH",
+                    headline = "Received ETH",
                 ),
                 // Dated by its block alone: in simple mode, with no time.
                 ActivityRow(
@@ -237,6 +251,11 @@ private fun SimpleAccountActivityPreview() = SimpleAccountDetailPreview(
                     state = ActivityState.DONE,
                     opens = ActivityKey("0x" + "c3".repeat(32), 0),
                     simpleTime = null,
+                    day = "Date not reported: in block order",
+                    simpleDay = "Date not available",
+                    direction = ActivityDirection.IN,
+                    amount = "+100 USDC",
+                    headline = "Received USDC",
                 ),
             ),
             coverage = "Transactions sent from this device. On chain from block 23,590,000 on, when it was added " +
@@ -260,7 +279,8 @@ private fun SimpleAccountActivityIndexPreview() = SimpleAccountDetailPreview(
             rows = listOf(
                 ActivityRow(
                     key = "index:23590120:7",
-                    title = "Received 0.5 ETH",
+                    // As today's engine reports it: no receipt status, its value muted, its outcome not checked.
+                    title = "Named in a transaction · recipient",
                     detail = "From Family Safe · 0xdbF0…C6FB",
                     about = FAMILY_SAFE,
                     time = "Block 23,590,120",
@@ -272,6 +292,12 @@ private fun SimpleAccountActivityIndexPreview() = SimpleAccountDetailPreview(
                     ),
                     simpleTime = null,
                     simpleStatus = "Final",
+                    day = "Date not reported: in block order",
+                    simpleDay = "Date not available",
+                    direction = ActivityDirection.IN,
+                    amount = "+0.5 ETH",
+                    headline = "Received ETH · outcome not checked",
+                    unchecked = true,
                 ),
             ),
             coverage = "Transactions sent from this device.",

@@ -87,7 +87,9 @@ What the app does today:
   pinned contracts, an exact-amount approval, a slippage tolerance (0.5 % by
   default) and the price impact, with the amount received read from the
   verified receipt. Or through **CoW Protocol**, when the user chooses it: its
-  order API is used only for an order sent to CoW (docs/swaps.md).
+  order API is used only while CoW is chosen: for the estimate on the swap
+  screen and for the order sent (docs/swaps.md). A swap can also buy an exact
+  amount, for at most a maximum.
 - **Activity.** Every transaction this device sent, kept for good with how it
   ended as the device saw it, and, from the engine's verified log index, an
   account's token transfers and a Safe's own events on chain, CoW orders
@@ -115,8 +117,8 @@ no RPC provider, no indexer. Three optional features use a third-party
 service. A fresh checkpoint, fetched only on the user's tap when a network's
 checkpoint is too old, comes from that network's public checkpoint-sync
 servers, which see the device's IP address and nothing about its accounts
-(docs/privacy-policy.md). A swap the user sends to CoW Protocol goes to
-CoW's order API (docs/swaps.md). dApp connections go through WalletConnect's relay: today a
+(docs/privacy-policy.md). With CoW Protocol chosen for a swap, the swap
+being composed and the one sent go to CoW's order API (docs/swaps.md). dApp connections go through WalletConnect's relay: today a
 centralised service, run by Reown and a selected group of operators. It
 carries end-to-end encrypted messages only. It sees the device's IP address
 and when it is connected, never what is signed, and it cannot sign anything

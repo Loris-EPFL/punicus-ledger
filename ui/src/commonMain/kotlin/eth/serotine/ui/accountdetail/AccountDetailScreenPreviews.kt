@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.dp
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexRole
+import eth.serotine.ui.activity.ActivityDirection
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityRow
 import eth.serotine.ui.activity.ActivityState
@@ -158,6 +159,8 @@ private val activityRows = listOf(
         status = "May fill until Oct 19, 2026, 4:27 PM",
         state = ActivityState.WAITING,
         opens = ActivityKey("0x" + "c0".repeat(56), cowOrder = true),
+        day = "Today · Monday, October 19, 2026",
+        clock = "4:22 PM",
     ),
     ActivityRow(
         key = "0x" + "6".repeat(64),
@@ -168,6 +171,8 @@ private val activityRows = listOf(
         status = "In block 9,412,190",
         state = ActivityState.DONE,
         opens = ActivityKey("0x" + "6".repeat(64)),
+        day = "Today · Monday, October 19, 2026",
+        clock = "4:10 PM",
     ),
     // A dApp's transaction, its name the dApp's own claim.
     ActivityRow(
@@ -179,6 +184,8 @@ private val activityRows = listOf(
         status = "In block 9,411,870",
         state = ActivityState.DONE,
         opens = ActivityKey("0x" + "d".repeat(64)),
+        day = "Today · Monday, October 19, 2026",
+        clock = "3:30 PM",
     ),
     ActivityRow(
         key = "0x" + "1".repeat(64),
@@ -189,6 +196,11 @@ private val activityRows = listOf(
         status = "No block seen to include it yet",
         state = ActivityState.WAITING,
         opens = ActivityKey("0x" + "1".repeat(64)),
+        day = "Today · Monday, October 19, 2026",
+        clock = "2:02 PM",
+        direction = ActivityDirection.OUT,
+        amount = "\u22120.25 ETH",
+        headline = "Sent ETH",
     ),
     ActivityRow(
         key = "0x" + "2".repeat(64),
@@ -199,6 +211,8 @@ private val activityRows = listOf(
         status = "Finalized in block 9,412,118",
         state = ActivityState.DONE,
         opens = ActivityKey("0x" + "2".repeat(64)),
+        day = "Yesterday · Sunday, October 18, 2026",
+        clock = "9:15 AM",
     ),
     ActivityRow(
         key = "0x" + "3".repeat(64),
@@ -209,6 +223,8 @@ private val activityRows = listOf(
         status = "Reverted in block 9,401,220",
         state = ActivityState.FAILED,
         opens = ActivityKey("0x" + "3".repeat(64)),
+        day = "Saturday, October 17, 2026",
+        clock = "9:40 PM",
     ),
     ActivityRow(
         key = "0x" + "4".repeat(64),
@@ -219,6 +235,11 @@ private val activityRows = listOf(
         status = "Mined while the app was not watching, unless another transaction took its nonce",
         state = ActivityState.UNKNOWN,
         opens = ActivityKey("0x" + "4".repeat(64)),
+        day = "Monday, October 12, 2026",
+        clock = "11:03 AM",
+        direction = ActivityDirection.OUT,
+        amount = "\u22121 ETH",
+        headline = "Sent ETH",
     ),
     ActivityRow(
         key = "0x" + "5".repeat(64),
@@ -229,6 +250,8 @@ private val activityRows = listOf(
         status = "No peer confirmed its broadcast",
         state = ActivityState.UNCONFIRMED,
         opens = ActivityKey("0x" + "5".repeat(64)),
+        day = "Saturday, October 10, 2026",
+        clock = "8:30 AM",
     ),
 )
 
@@ -253,6 +276,11 @@ private val tokenActivityRows = listOf(
         status = "From an address you have not sent to: compare every character before you copy it",
         state = ActivityState.CAUTION,
         opens = ActivityKey("0x" + "f".repeat(64), 1),
+        day = "Today · Monday, October 19, 2026",
+        clock = "6:48 PM",
+        direction = ActivityDirection.IN,
+        amount = "+0.01 USDC",
+        headline = "Received USDC",
     ),
     ActivityRow(
         key = "0x" + "b".repeat(64) + ":2",
@@ -263,6 +291,11 @@ private val tokenActivityRows = listOf(
         status = "On chain, from the token's verified logs",
         state = ActivityState.DONE,
         opens = ActivityKey("0x" + "b".repeat(64), 2),
+        day = "Today · Monday, October 19, 2026",
+        clock = "3:06 PM",
+        direction = ActivityDirection.IN,
+        amount = "+250 USDC",
+        headline = "Received USDC",
     ),
     ActivityRow(
         key = "0x" + "c".repeat(64),
@@ -273,6 +306,11 @@ private val tokenActivityRows = listOf(
         status = "Finalized in block 9,412,118",
         state = ActivityState.DONE,
         opens = ActivityKey("0x" + "c".repeat(64)),
+        day = "Today · Monday, October 19, 2026",
+        clock = "2:02 PM",
+        direction = ActivityDirection.OUT,
+        amount = "\u221240.5 USDC",
+        headline = "Sent USDC",
     ),
     // Dated by its block alone: the engine did not report when the block was produced.
     ActivityRow(
@@ -285,6 +323,8 @@ private val tokenActivityRows = listOf(
         status = "The claim of a contract the wallet does not list: open it to add it as a token and see what moved",
         state = ActivityState.UNKNOWN,
         opens = ActivityKey("0x" + "d".repeat(64), 0),
+        day = "Date not reported: in block order",
+        simpleDay = "Date not available",
     ),
     ActivityRow(
         key = "0x" + "e".repeat(64) + ":5",
@@ -295,6 +335,11 @@ private val tokenActivityRows = listOf(
         status = "On chain, from the token's verified logs",
         state = ActivityState.DONE,
         opens = ActivityKey("0x" + "e".repeat(64), 5),
+        day = "Saturday, October 17, 2026",
+        clock = "4:21 PM",
+        direction = ActivityDirection.IN,
+        amount = "+1.25 LINK",
+        headline = "Received LINK",
     ),
 )
 
@@ -312,6 +357,8 @@ private val safeActivityRows = listOf(
         status = "A module can move this Safe's funds without its owners",
         state = ActivityState.WARNING,
         opens = ActivityKey("0x" + "a".repeat(64), 0),
+        day = "Today · Monday, October 19, 2026",
+        clock = "5:42 PM",
     ),
     ActivityRow(
         key = "0x" + "6".repeat(64) + ":0",
@@ -322,6 +369,11 @@ private val safeActivityRows = listOf(
         status = "On chain, from the Safe's verified logs",
         state = ActivityState.DONE,
         opens = ActivityKey("0x" + "6".repeat(64), 0),
+        day = "Today · Monday, October 19, 2026",
+        clock = "2:38 PM",
+        direction = ActivityDirection.IN,
+        amount = "+0.5 ETH",
+        headline = "Received ETH",
     ),
     ActivityRow(
         key = "0x" + "7".repeat(64),
@@ -332,6 +384,8 @@ private val safeActivityRows = listOf(
         status = "In block 9,412,118",
         state = ActivityState.DONE,
         opens = ActivityKey("0x" + "7".repeat(64)),
+        day = "Today · Monday, October 19, 2026",
+        clock = "2:02 PM",
     ),
     ActivityRow(
         key = "0x" + "8".repeat(64) + ":3",
@@ -342,6 +396,8 @@ private val safeActivityRows = listOf(
         status = "On chain, from the Safe's verified logs",
         state = ActivityState.DONE,
         opens = ActivityKey("0x" + "8".repeat(64), 3),
+        day = "Today · Monday, October 19, 2026",
+        clock = "9:51 AM",
     ),
     ActivityRow(
         key = "0x" + "9".repeat(64) + ":1",
@@ -352,6 +408,8 @@ private val safeActivityRows = listOf(
         status = "Failed on chain: its call reverted",
         state = ActivityState.FAILED,
         opens = ActivityKey("0x" + "9".repeat(64), 1),
+        day = "Today · Monday, October 19, 2026",
+        clock = "7:32 AM",
     ),
 )
 
@@ -400,6 +458,28 @@ private fun AccountDetailAssetsPreview() = AccountDetailPreview(daily)
 @Preview
 @Composable
 private fun AccountDetailAssetsDarkPreview() = AccountDetailPreview(daily, darkTheme = true)
+
+/**
+ * A Swarm node's EOA on Gnosis Chain, watched (docs/swarm.md): its row says what is proven its own,
+ * and opens the Swarm node screen.
+ */
+@Preview
+@Composable
+private fun AccountDetailSwarmNodePreview() = AccountDetailPreview(
+    daily.copy(
+        label = "Bee node",
+        network = NetworkLabel(100, "Gnosis Chain", testnet = false),
+        control = Control.WATCH_ONLY,
+        total = "$0.40",
+        totalNote = null,
+        assets = listOf(
+            ether.copy(symbol = "XDAI", name = "xDAI", amount = "0.4 XDAI", icon = "xdai", value = "$0.40"),
+        ),
+        pricesNote = null,
+        swarm = "Swarm node: a chequebook and 2 postage batches",
+        offersSwarm = true,
+    ),
+)
 
 /** Amounts hidden: the eye beside Back closed, the total and each asset's amount and value masked. */
 @Preview
@@ -624,6 +704,9 @@ private val QUEUED_ROWS = listOf(
         status = "Waiting to send",
         state = ActivityState.WAITING,
         opens = ActivityKey("0x" + "9a".repeat(32), queued = true),
+        direction = ActivityDirection.OUT,
+        amount = "\u22120.1 ETH",
+        headline = "Send ETH",
     ),
 )
 
@@ -988,13 +1071,20 @@ private val indexActivityRows = listOf(
     activityRows[1],
     ActivityRow(
         key = "index:9412300:4",
-        title = "Received 0.5 ETH",
+        // As today's engine reports it: no receipt status, so its value is shown muted, its outcome not checked.
+        title = "Named in a transaction · recipient",
         detail = "From Treasury · 0xfB69…d359",
         about = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
         time = "Block 9,412,300",
         status = "Finalized in block 9,412,300 · checked against the chain",
         state = ActivityState.DONE,
         opens = ActivityKey("0x" + "4c".repeat(32), index = IndexEntryKey(9_412_300, 4, setOf(AddressIndexRole.TO))),
+        day = "Date not reported: in block order",
+        simpleDay = "Date not available",
+        direction = ActivityDirection.IN,
+        amount = "+0.5 ETH",
+        headline = "Received ETH · outcome not checked",
+        unchecked = true,
     ),
     ActivityRow(
         key = "index:9380102:12",
@@ -1008,6 +1098,8 @@ private val indexActivityRows = listOf(
             "0x" + "4d".repeat(32),
             index = IndexEntryKey(9_380_102, 12, setOf(AddressIndexRole.TOPIC)),
         ),
+        day = "Date not reported: in block order",
+        simpleDay = "Date not available",
     ),
 )
 
@@ -1225,6 +1317,7 @@ private fun AccountDetailActivityIndexUnprovenPreview() = AccountDetailActivityI
 internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("assets") { AccountDetailAssetsPreview() },
     ScreenPreview("assets-dark") { AccountDetailAssetsDarkPreview() },
+    ScreenPreview("swarm-node") { AccountDetailSwarmNodePreview() },
     ScreenPreview("checking") { AccountDetailCheckingPreview() },
     ScreenPreview("head-too-old") { AccountDetailHeadTooOldPreview() },
     ScreenPreview("by-name-with-impostor") { AccountDetailByNameWithImpostorPreview() },

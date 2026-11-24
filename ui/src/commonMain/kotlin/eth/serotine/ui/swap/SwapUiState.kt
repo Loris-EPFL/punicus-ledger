@@ -120,6 +120,8 @@ sealed interface SwapUiState {
         val receive: String,
         val ranAt: String,
         val minimum: String,
+        /** How simple mode leads to [minimum]: "for at least" a sell's, "for exactly" a buy's. */
+        val receiveLead: String = "for at least",
         val tolerance: String,
         val route: List<RouteStep>,
         val routeNote: String,
@@ -174,13 +176,12 @@ sealed interface SwapUiState {
 
     /**
      * Screen 23 for an order on CoW (docs/swaps.md, *The user's choice of venue*): [sold] exact in
-     * [sell]'s units; CoW's [estimate] of what it buys, not verified ([estimateNote]), beside the
-     * verified Uniswap net ([uniswapNet], [uniswapNote]), and which gives more ([comparison];
-     * [uniswapGivesMore] by CoW's own estimate, when the same swap on Uniswap is offered, one tap
-     * away); the [minimum] the order signs and how it is set
-     * ([minimumNote]); until when it may fill ([validUntil]); the contract that settles it
-     * ([settlement]); the verified [balances]; [pending] what earlier transactions not mined yet may
-     * still take; and what CoW learns of it ([disclosure]). An order costs no network fee here.
+     * [sell]'s units; CoW's [estimate] of what it buys, not verified ([estimateNote]); the [minimum]
+     * the order signs, CoW's estimate less the tolerance, and how it is set ([minimumNote]; no other
+     * venue is quoted for it, owner ruling, 2026-11-23); until when it may fill ([validUntil]); the
+     * contract that settles it ([settlement]); the verified [balances]; [pending] what earlier
+     * transactions not mined yet may still take; and what CoW learns of it ([disclosure]). An order
+     * costs no network fee here.
      */
     data class CowReview(
         override val network: String,
@@ -190,12 +191,17 @@ sealed interface SwapUiState {
         val buy: AssetChoice,
         val estimate: String,
         val estimateNote: String,
-        val uniswapNet: String,
-        val uniswapNote: String,
-        val comparison: String,
-        val uniswapGivesMore: Boolean,
         val minimum: String,
         val minimumNote: String,
+        /** How simple mode leads to [minimum]: "for at least" a sell's, "for exactly" a buy's. */
+        val receiveLead: String = "for at least",
+        /** The asset [estimate] is an amount of: the one bought for a sell, the one sold for a buy. */
+        val estimateAsset: AssetChoice = buy,
+        /** What simple mode says the settlement contract holds the order to. */
+        val simpleChecked: String = "Checked on chain: the settlement contract refuses any fill below the minimum",
+        /** What simple mode says the amount signed rests on: CoW's estimate, less or plus the tolerance. */
+        val simpleBasis: String =
+            "The minimum is CoW's estimate less your tolerance. CoW's estimate is not checked on chain.",
         val validUntil: String,
         val settlement: SpenderItem,
         val balances: List<BalanceChange>,

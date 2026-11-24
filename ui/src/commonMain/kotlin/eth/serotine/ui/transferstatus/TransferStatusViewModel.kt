@@ -6,8 +6,10 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DelayMemberChange
 import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.model.TransferAsset
+import eth.serotine.domain.model.SwapKind
+import eth.serotine.domain.model.SwarmCalls
 import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.LightClientStatus
@@ -32,7 +34,6 @@ import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.SentTransferStatus
 import eth.serotine.domain.usecase.TransferSending
 import eth.serotine.ui.components.Eip55
-import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.displaySymbol
@@ -40,6 +41,7 @@ import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.redatedWhile
+import eth.serotine.ui.components.shortAddress
 import eth.serotine.ui.outbox.conflictReason
 import eth.serotine.ui.platform.formatDateTime
 import kotlinx.coroutines.NonCancellable
@@ -526,9 +528,11 @@ class TransferStatusViewModel(
                 progress is TransactionProgress.Unavailable -> unavailable(progress.reason)
                 failed && transfer?.action is SentAction.Transfer ->
                     "It failed: the transfer reverted in its block, so nothing was moved. Its fee is paid all the same."
-                failed && transfer?.action is SentAction.Swap ->
+                failed && transfer?.action is SentAction.Swap -> {
+                    val bound = if ((transfer.action as SentAction.Swap).kind == SwapKind.BUY) "maximum" else "minimum"
                     "It failed: the swap reverted in its block, so nothing was swapped: the price moved past its " +
-                        "minimum, or its deadline passed. Its fee is paid all the same."
+                        "$bound, or its deadline passed. Its fee is paid all the same."
+                }
                 failed && (transfer?.action is SentAction.Wrap || transfer?.action is SentAction.Unwrap) ->
                     "It failed: the ${transfer?.let(::whatOf)} reverted in its block, so nothing was moved. Its fee " +
                         "is paid all the same."
@@ -569,8 +573,9 @@ class TransferStatusViewModel(
     /**
      * What [transfer] is called in a sentence: "transfer", "approval", "execution", "deployment",
      * "swap", "wrap", "unwrap", "cancellation", for a dApp's "transaction", or for a Gnosis Pay
-     * account's transfer through its Delay "queueing" or "execution", and for its Delay's skip of
-     * expired entries "skip".
+     * account's transfer through its Delay "queueing" or "execution", for its Delay's skip of
+     * expired entries "skip", for a Swarm node's postage batch "purchase", "top-up" or "dilution", and
+     * for its chequebook's "withdrawal".
      */
     private fun whatOf(transfer: SentTransfer): String = when (transfer.action) {
         is SentAction.Transfer -> "transfer"
@@ -586,6 +591,10 @@ class TransferStatusViewModel(
         is SentAction.DelayQueue -> "queueing"
         is SentAction.DelayExecution -> "execution"
         is SentAction.DelaySkip -> "skip"
+        is SentAction.BatchPurchase -> "purchase"
+        is SentAction.BatchTopUp -> "top-up"
+        is SentAction.BatchDilution -> "dilution"
+        is SentAction.ChequebookWithdrawal -> "withdrawal"
     }
 
     private fun maybeSentText(what: String) = "No peer answered when this $what was broadcast, so it may not have " +
@@ -684,7 +693,13 @@ class TransferStatusViewModel(
         )
     }
 
-    /** What [transfer] did through a Gnosis Pay account's Delay module, when it is a call of one. */
+    /** [amount] of [token], as a summary shows it: its units and symbol. */
+    private fun pulled(amount: UInt256, token: Token): String = "${amount.formatUnits(token.decimals)} ${token.symbol}"
+
+    /**
+     * What [transfer] did through a Gnosis Pay account's Delay module, or to a Swarm node's postage
+     * batch, when it is a call of either: drawn the same way, line by line.
+     */
     private fun delaySummary(transfer: SentTransfer): DelaySummary? {
         val from = Eip55.format(transfer.account)
         fun moved(delayed: DelayTransfer): String {
@@ -756,6 +771,49 @@ class TransferStatusViewModel(
                 ),
                 from,
             )
+            // A Swarm node's postage batch (docs/swarm.md, *History*): what was bought, topped up or diluted.
+            is SentAction.BatchPurchase -> DelaySummary(
+                "Bought a postage batch",
+                listOfNotNull(
+                    "For the node" to Eip55.format(action.owner),
+                    "Batch" to "0x" + action.id.hex,
+                    "Depth" to action.depth.toString(),
+                    SwarmCalls.total(action.perChunk, action.depth)?.let { "Paid" to pulled(it, action.token) },
+                    "Immutable" to if (action.immutable) "Yes" else "No",
+                    "Postage contract" to Eip55.format(action.stamp),
+                ),
+                from,
+            )
+            is SentAction.BatchTopUp -> DelaySummary(
+                "Topped up a postage batch",
+                listOfNotNull(
+                    "For the node" to Eip55.format(action.node),
+                    "Batch" to "0x" + action.id.hex,
+                    SwarmCalls.total(action.perChunk, action.depth)?.let { "Paid" to pulled(it, action.token) },
+                    "Postage contract" to Eip55.format(action.stamp),
+                ),
+                from,
+            )
+            is SentAction.BatchDilution -> DelaySummary(
+                "Diluted a postage batch",
+                listOf(
+                    "Batch" to "0x" + action.id.hex,
+                    "New depth" to action.depth.toString(),
+                    "What it does" to "Doubles the batch's capacity for each step of depth and halves its time to " +
+                        "live. It moves no xBZZ.",
+                    "Postage contract" to Eip55.format(action.stamp),
+                ),
+                from,
+            )
+            is SentAction.ChequebookWithdrawal -> DelaySummary(
+                "Withdrew from the chequebook",
+                listOf(
+                    "Chequebook" to Eip55.format(action.chequebook),
+                    "Withdrawn" to pulled(action.amount, action.token),
+                    "To" to "The node's own address, which sent it",
+                ),
+                from,
+            )
             else -> null
         }
     }
@@ -776,12 +834,17 @@ class TransferStatusViewModel(
         val swap = transfer.action as? SentAction.Swap ?: return null
         val (soldSymbol, soldDecimals, soldIcon) = shown(swap.sell)
         val (boughtSymbol, boughtDecimals, boughtIcon) = shown(swap.buy)
-        val minimum = "at least ${swap.minimumOut.formatUnits(boughtDecimals)} $boughtSymbol"
+        val buying = swap.kind == SwapKind.BUY
+        val minimum = (if (buying) "exactly " else "at least ") +
+            "${swap.minimumOut.formatUnits(boughtDecimals)} $boughtSymbol"
         // "At least" the minimum until the receipt's logs say what it paid (docs/swaps.md, *The record*).
         val bought = received?.let { "${it.formatUnits(boughtDecimals)} $boughtSymbol" } ?: minimum
+        // A buy keeps the most it may sell: what it took is in the receipt's logs (docs/swaps.md, *Buying an
+        // exact amount*).
+        val sold = (if (buying) "at most " else "") + "${swap.amountIn.formatUnits(soldDecimals)} $soldSymbol"
         return SwapSummary(
-            title = "Swap of ${swap.amountIn.formatUnits(soldDecimals)} $soldSymbol for $bought on Uniswap",
-            sold = "${swap.amountIn.formatUnits(soldDecimals)} $soldSymbol",
+            title = "Swap of $sold for $bought on Uniswap",
+            sold = sold,
             soldSymbol = soldSymbol,
             soldIcon = soldIcon,
             bought = bought,
@@ -858,7 +921,8 @@ class TransferStatusViewModel(
             is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
             is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap, is SentAction.CowCancellation,
             is SentAction.DappCall, is SentAction.DelayQueue, is SentAction.DelayExecution,
-            is SentAction.DelaySkip,
+            is SentAction.DelaySkip, is SentAction.BatchPurchase, is SentAction.BatchTopUp, is SentAction.BatchDilution,
+            is SentAction.ChequebookWithdrawal,
             -> return null
         }
         return SafeTxSummary(

@@ -40,7 +40,10 @@ import androidx.compose.ui.unit.height
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.AddressIndexRole
 import eth.serotine.ui.activity.ACTIVITY_INDEX_FOOTER_TAG
+import eth.serotine.ui.activity.ACTIVITY_AMOUNT_TAG
+import eth.serotine.ui.activity.ACTIVITY_DAY_TAG
 import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
+import eth.serotine.ui.activity.ActivityDirection
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityOrder
 import eth.serotine.ui.activity.ActivityRow
@@ -113,6 +116,7 @@ class AccountDetailScreenTest {
                 onTurnOnNetwork = { events += "turn on" },
                 onSafeSettings = { events += "safe settings" },
                 onGnosisPay = { events += "gnosis pay" },
+                onSwarm = { events += "swarm" },
                 onToggleUnlistedNfts = { events += "toggle unlisted nfts" },
                 onMoreActivity = { events += "more activity" },
                 perAppActions = PerAppActions(
@@ -617,6 +621,49 @@ class AccountDetailScreenTest {
     }
 
     @Test
+    fun theRowsAreGroupedByDayEachTimedWithAnArrowAndASignedAmount() {
+        val received = sent.copy(
+            key = "0x" + "3".repeat(64),
+            title = "Received 250 USDC",
+            state = ActivityState.DONE,
+            status = "On chain, from the token's verified logs",
+            direction = ActivityDirection.IN,
+            amount = "+250 USDC",
+            headline = "Received USDC",
+            day = "Today · Monday, October 19, 2026",
+            clock = "3:06 PM",
+        )
+        val alsoToday = sent.copy(
+            day = "Today · Monday, October 19, 2026",
+            clock = "2:02 PM",
+            direction = ActivityDirection.OUT,
+            amount = "\u22120.25 ETH",
+            headline = "Sent ETH",
+        )
+        val older = sent.copy(key = "0x" + "4".repeat(64), day = "Saturday, October 17, 2026", clock = "9:40 PM")
+        show(
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(listOf(received, alsoToday, older), "Covered."),
+            ),
+        )
+
+        // One heading per day, not per row.
+        rule.onAllNodesWithTag(ACTIVITY_DAY_TAG).assertCountEquals(2)
+        rule.onNodeWithText("Today · Monday, October 19, 2026").assertIsDisplayed()
+        rule.onNodeWithText("Saturday, October 17, 2026").assertExists()
+        // The time of day in place of the date, the headline without the amount, the amount signed on the right.
+        rule.onNodeWithText("3:06 PM").assertIsDisplayed()
+        rule.onAllNodesWithText(sent.time).assertCountEquals(0)
+        rule.onNodeWithText("Received USDC").assertIsDisplayed()
+        rule.onNodeWithText("+250 USDC").assertIsDisplayed()
+        rule.onNodeWithText("\u22120.25 ETH").assertIsDisplayed()
+        rule.onAllNodesWithTag(ACTIVITY_AMOUNT_TAG, useUnmergedTree = true).assertCountEquals(2)
+        rule.onNodeWithContentDescription("Incoming", useUnmergedTree = true).assertExists()
+        rule.onNodeWithContentDescription("Outgoing", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
     fun aSafesEventInItsActivityOpensTheDetailOfItsLog() {
         val opens = ActivityKey("0x" + "2".repeat(64), 0)
         val event = sent.copy(key = "0x" + "2".repeat(64) + ":0", title = "Received 1 ETH", opens = opens)
@@ -717,6 +764,24 @@ class AccountDetailScreenTest {
         rule.onNodeWithText("Modules: each can move this Safe's funds without the owners' signatures.").assertExists()
         rule.onNodeWithText("Assets").performClick()
         assertEquals(listOf("segment ASSETS"), events)
+    }
+
+    @Test
+    fun aSwarmNodesRowAndMenuItemOpenItsScreen() {
+        show(ready.copy(swarm = "Swarm node: a chequebook and 2 postage batches", offersSwarm = true))
+        rule.onNodeWithText("Swarm node: a chequebook and 2 postage batches").assertExists()
+        rule.onNodeWithTag(ACCOUNT_SWARM_TAG).performScrollTo().performClick()
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Swarm node…").performClick()
+        assertEquals(listOf("swarm", "swarm"), events)
+    }
+
+    @Test
+    fun noSwarmItemIsOfferedWhereTheAccountCannotBeANode() {
+        show(ready)
+        rule.onNodeWithTag(ACCOUNT_SWARM_TAG).assertDoesNotExist()
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Swarm node…").assertDoesNotExist()
     }
 
     @Test

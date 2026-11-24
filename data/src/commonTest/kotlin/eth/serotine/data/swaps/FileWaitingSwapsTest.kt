@@ -4,6 +4,7 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.WaitingSwap
@@ -75,6 +76,21 @@ class FileWaitingSwapsTest {
 
         assertTrue(swaps().drop(main, usdc))
         assertEquals(listOf(swap(sell = link, venue = SwapVenue.COW, step = 2, steps = 3)), swaps().observe().first())
+    }
+
+    @Test
+    fun aBuyIsKeptAsABuyAFormatOneEntryIsASellAndAnUnknownKindIsLeftOut() = runTest {
+        val buy = swap(sell = link).copy(kind = SwapKind.BUY)
+        assertTrue(swaps().keep(buy))
+        assertEquals(listOf(buy), swaps().observe().first())
+
+        // Format 1 wrote no kind: a sell, as every swap then was. A kind this build does not know is left out.
+        val sell = """{"chain":11155111,"account":"0x${"11".repeat(20)}","sell":"0x${"aa".repeat(20)}",""" +
+            """"buy":null,"amount":"40000000","toleranceBasisPoints":75,"venue":"uniswap",""" +
+            """"approval":"0x${"01".repeat(32)}","step":2,"steps":2}"""
+        val unknownKind = sell.replace("\"steps\":2}", "\"steps\":2,\"kind\":\"limit\"}")
+        write("""{"version":1,"swaps":[$sell,$unknownKind]}""")
+        assertEquals(listOf(swap()), swaps().observe().first())
     }
 
     @Test

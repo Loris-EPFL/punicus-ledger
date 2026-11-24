@@ -12,6 +12,21 @@ and issues of this repository.
 
 ### Added
 
+- Activity at a glance: the rows are grouped by day under a heading
+  ("Today", "Yesterday", then the date), each with its time in your time
+  zone; a green arrow for value in and a red one for value out, and the
+  amount on the right, signed and shortened for reading ("+250 USDC",
+  "−0.25 ETH", "1.23M"). The exact amount stays in the row's detail.
+- Buy an exact amount: type the amount to buy, on Uniswap or CoW, and the
+  swap buys exactly that for at most its estimate plus your tolerance. The
+  first screen says what it would cost, and when your balance cannot cover
+  the most it may take.
+- With CoW chosen, the first screen shows CoW's estimate and the rate, marked
+  as not checked on chain. CoW then learns the amounts you compose.
+- Swaps on Gnosis Chain: Uniswap v3's Gnosis deployment, with WXDAI as the
+  wrapped xDAI, and CoW Protocol. Uniswap holds little there, so most pairs
+  go to CoW. CoW Protocol is offered on Ethereum too.
+- Swarm's xBZZ (`BZZ`) is a built-in token on Gnosis Chain, with no price.
 - Address poisoning protection on Send. A recipient that starts and ends
   like an address you sent to from this device (or one of your accounts) but
   differs in the middle blocks the send, with both addresses shown and the
@@ -36,6 +51,13 @@ and issues of this repository.
   waits behind such an entry.
 - On a wide window (840 dp and wider: a desktop window, a tablet, an unfolded
   phone) the Accounts tab shows the list and the account chosen side by side.
+
+### Changed
+
+- A CoW order no longer depends on Uniswap: its minimum is CoW's own
+  estimate less your tolerance, and every pair CoW quotes is offered. The
+  review says the minimum rests on CoW's estimate, which is not checked on
+  chain, and shows no Uniswap figure beside it.
 
 ### Fixed
 

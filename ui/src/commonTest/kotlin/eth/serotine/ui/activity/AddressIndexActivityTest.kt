@@ -372,6 +372,13 @@ class AddressIndexActivityTest {
         assertEquals(ActivityState.FAILED, rows[1].state)
         assertEquals("Reverted in block 9,200,000 · checked against the chain", rows[1].status)
         assertEquals("It creates a contract", rows[2].detail)
+        // The list says its value at a glance (owner's request, 2026-11-23), saying the outcome is not checked; a
+        // reverted one moved nothing, and a contract creation names no recipient.
+        assertEquals(listOf("\u22120.25 ETH", null, null), rows.map { it.amount })
+        assertEquals(listOf("Sent ETH · outcome not checked", null, null), rows.map { it.headline })
+        assertEquals(ActivityDirection.OUT, rows[0].direction)
+        assertEquals(ActivityDirection.NONE, rows[1].direction)
+        assertEquals(listOf(true, false, false), rows.map { it.unchecked }, "not proven to have moved: muted")
     }
 
     @Test

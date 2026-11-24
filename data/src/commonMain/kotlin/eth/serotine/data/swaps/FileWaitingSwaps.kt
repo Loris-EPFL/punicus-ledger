@@ -6,6 +6,7 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SlippageTolerance
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.WaitingSwap
@@ -69,7 +70,10 @@ class FileWaitingSwaps(
     @Serializable
     private class StoredFile(val version: Int, val swaps: List<JsonElement>)
 
-    /** One swap: [buy] null for the network's currency, [amount] in the sold token's units, as decimal text. */
+    /**
+     * One swap: [buy] null for the network's currency, [amount] as decimal text, in the sold token's
+     * units for a sell and the bought one's for a buy ([kind], by a code of its own; none: a sell).
+     */
     @Serializable
     private class StoredSwap(
         val chain: Long,
@@ -82,11 +86,15 @@ class FileWaitingSwaps(
         val approval: String,
         val step: Int,
         val steps: Int,
+        val kind: String = SELL,
     )
 
     private companion object {
-        const val FORMAT_VERSION = 1
+        /** 2: a swap's kind, a buy among them, whose amount a build of format 1 would read as sold. */
+        const val FORMAT_VERSION = 2
         val JSON = Json
+        const val SELL = "sell"
+        const val BUY = "buy"
 
         /** How a venue is written: a name of its own, as the venue setting writes it. */
         val SwapVenue.code: String
@@ -106,6 +114,10 @@ class FileWaitingSwaps(
             approval = swap.approval,
             step = swap.step,
             steps = swap.steps,
+            kind = when (swap.kind) {
+                SwapKind.SELL -> SELL
+                SwapKind.BUY -> BUY
+            },
         )
 
         /** [entry] as the swap it keeps, or null for one this build cannot read: left out. */
@@ -131,6 +143,11 @@ class FileWaitingSwaps(
                 approval = stored.approval.takeIf(HASH::matches) ?: return null,
                 step = stored.step,
                 steps = stored.steps,
+                kind = when (stored.kind) {
+                    SELL -> SwapKind.SELL
+                    BUY -> SwapKind.BUY
+                    else -> return null
+                },
             )
         }
 

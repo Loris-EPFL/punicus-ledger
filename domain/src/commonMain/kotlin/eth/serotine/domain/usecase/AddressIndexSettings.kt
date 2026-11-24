@@ -3,11 +3,13 @@ package eth.serotine.domain.usecase
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.AddressIndexChoice
 import eth.serotine.domain.repository.AddressIndexHistory
+import eth.serotine.domain.repository.AddressIndexReaderSettings
 import eth.serotine.domain.repository.AddressIndexSetting
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 
 /**
  * What is missing for the addr1 history's setting to be turned on (owner ruling, 2026-10-18, #55: a missing
@@ -20,6 +22,12 @@ enum class AddressIndexMissing {
     /** This build's engine has no Swarm reader ([AddressIndexHistory.hasReader] false). */
     NO_READER,
 
+    /**
+     * The engine has not said yet whether it has a Swarm reader: it says so once Ethereum's light client runs
+     * ([AddressIndexHistory.hasReader] not answered yet).
+     */
+    READER_NOT_KNOWN,
+
     /** The choice stored cannot be read, so it cannot be changed until it can. */
     CHOICE_UNREADABLE,
 }
@@ -27,8 +35,9 @@ enum class AddressIndexMissing {
 /**
  * Where the experimental addr1 history stands (owner ruling, 2026-11-21, #334; the owner's decisions of that day on
  * #335; on by default, the owner's decision of 2026-11-22): [pinned], the importer key pinned in the release (null:
- * none pinned in this one), whether the engine has its Swarm [reader], and the user's [choice]. It is [on] when a key
- * is pinned, the engine reads Swarm, and the user did not turn it off:
+ * none pinned in this one), whether the engine has its Swarm [reader] (null: not known yet), and the user's [choice].
+ * It is [wanted] when a key is pinned and the user did not turn it off, and [on] when it is wanted and the engine reads
+ * Swarm:
  * - **no choice made** ([AddressIndexChoice.NotChosen]: a fresh install): on, by default;
  * - **an explicit off** (a stored choice of no key): off, whatever key is pinned, until the user turns it on again;
  * - **on for the key pinned now**: on;
@@ -38,13 +47,14 @@ enum class AddressIndexMissing {
  *   and nothing is read on a guess. Unreadable, it cannot be changed until it can be read; set aside, it is off until
  *   the user chooses again.
  */
-data class AddressIndexStatus(val pinned: Address?, val reader: Boolean, val choice: AddressIndexChoice) {
+data class AddressIndexStatus(val pinned: Address?, val reader: Boolean?, val choice: AddressIndexChoice) {
 
     /** What keeps the setting from being turned on, or changed at all; empty when it can be. */
     val missing: Set<AddressIndexMissing>
         get() = buildSet {
             if (pinned == null) add(AddressIndexMissing.NO_KEY_PINNED)
-            if (!reader) add(AddressIndexMissing.NO_READER)
+            if (reader == false) add(AddressIndexMissing.NO_READER)
+            if (reader == null) add(AddressIndexMissing.READER_NOT_KNOWN)
             if (choice is AddressIndexChoice.Unreadable) add(AddressIndexMissing.CHOICE_UNREADABLE)
         }
 
@@ -53,7 +63,15 @@ data class AddressIndexStatus(val pinned: Address?, val reader: Boolean, val cho
      * that cannot be read or was set aside (the cases above): on by default otherwise.
      */
     val on: Boolean
-        get() = missing.isEmpty() && when (choice) {
+        get() = wanted && reader == true
+
+    /**
+     * Whether the user's choice asks for the history of the key [pinned]: a key pinned, and no explicit off nor a
+     * choice that cannot be read or was set aside, whatever the engine's reader. What the engine is told to read
+     * ([FollowAddressIndexSetting]); an engine without the reader refuses every read on its own.
+     */
+    val wanted: Boolean
+        get() = pinned != null && when (choice) {
             AddressIndexChoice.NotChosen -> true
             // On for any key: for the key pinned now, or, for another one, no choice for this one (default on).
             is AddressIndexChoice.Chosen -> choice.importer != null
@@ -71,8 +89,10 @@ data class AddressIndexStatus(val pinned: Address?, val reader: Boolean, val cho
 
 /**
  * The [AddressIndexStatus] now, re-emitted when the choice changes: [setting], the user's choice; [history], whose
- * engine says once whether it has a Swarm reader; [pinned], the importer key pinned in the release, null when this
- * release pins none (owner's decision, 2026-11-21: none is pinned yet).
+ * engine says once whether it has a Swarm reader, which is not known ([AddressIndexStatus.reader] null) until it has
+ * said, so that Settings draws the row greyed out meanwhile rather than none (owner ruling, 2026-10-18, #55);
+ * [pinned], the importer key pinned in the release, null when this release pins none (owner's decision, 2026-11-21:
+ * none is pinned yet).
  */
 class ObserveAddressIndexStatus(
     private val history: AddressIndexHistory,
@@ -80,7 +100,7 @@ class ObserveAddressIndexStatus(
     private val pinned: Address?,
 ) {
     operator fun invoke(): Flow<AddressIndexStatus> =
-        combine(flow { emit(history.hasReader()) }, setting.observe()) { reader, choice ->
+        combine(flow { emit(null); emit(history.hasReader()) }, setting.observe()) { reader, choice ->
             AddressIndexStatus(pinned, reader, choice)
         }.distinctUntilChanged()
 }
@@ -116,5 +136,27 @@ class TurnAddressIndex(
             if (missing.isNotEmpty()) return AddressIndexSwitch.Unavailable(missing)
         }
         return if (setting.trust(if (on) pinned else null)) AddressIndexSwitch.Done else AddressIndexSwitch.NotSaved
+    }
+}
+
+/**
+ * Keeps the engine's addr1 reader to the user's choice, for as long as it runs (the composition root's app-wide work):
+ * the importer key [pinned] in the release while the user's choice ([setting]) wants it
+ * ([AddressIndexStatus.wanted]), and none otherwise, so that the engine reads nothing of the index, nor fetches
+ * anything for it, while the setting is off. It does not wait for the engine to say whether it has a Swarm reader: the
+ * setting is applied from the start, before any read, and an engine without the reader refuses it, and every read, on
+ * its own. Each change is applied once, in order, and waits until the engine took it or refused it; a value that did
+ * not change is not applied again. A refusal is the engine's to report on every read, so it is not acted on here.
+ */
+class FollowAddressIndexSetting(
+    private val setting: AddressIndexSetting,
+    private val pinned: Address?,
+    private val reader: AddressIndexReaderSettings,
+) {
+    suspend operator fun invoke() {
+        setting.observe()
+            .map { choice -> pinned.takeIf { AddressIndexStatus(pinned, null, choice).wanted } }
+            .distinctUntilChanged()
+            .collect { reader.apply(it) }
     }
 }

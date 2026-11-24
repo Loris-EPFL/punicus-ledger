@@ -254,8 +254,8 @@ sealed interface AddressIndexLoad {
  * Checks one entry of an account's addr1 history again, for the detail of its row (docs/wallet-ux.md, screen 26):
  * the detail never shows what the list once found, only what the engine's check finds now, against verified chain
  * data. [importer] is the key pinned in the release that the list rests on, which the detail names. Only while the
- * experimental setting is on ([AddressIndexStatus.on] for [importer], with a reader: [setting], [history]; on by
- * default, an explicit off kept): otherwise it is refused
+ * experimental setting is wanted ([AddressIndexStatus.wanted] for [importer]: [setting]; on by default, an explicit
+ * off kept; an engine without the reader refuses the check itself): otherwise it is refused
  * ([AddressIndexRefusal.SettingOff]) and nothing is fetched, as the privacy policy promises. A
  * `TRACE`-only entry is never sent to the check, since the engine never verifies one: it is unverified. A verdict is
  * matched to the entry asked by block, slot and roles, as [LoadAddressIndexPage] matches it; none matched is
@@ -263,14 +263,16 @@ sealed interface AddressIndexLoad {
  */
 class CheckAddressIndexEntry(
     private val history: AddressIndexHistory,
-    /** The user's choice: the check runs only while the setting is on ([AddressIndexStatus.on]). */
+    /** The user's choice: the check runs only while the setting is wanted ([AddressIndexStatus.wanted]). */
     private val setting: AddressIndexSetting,
     /** The importer key pinned in the release: what the list's completeness rests on. */
     val importer: Address,
 ) {
     /** [entry] of [account]'s history, checked on [account]'s network, while the setting is on. */
     suspend operator fun invoke(account: AccountId, entry: AddressIndexEntry): AddressIndexEntryCheck {
-        if (!ObserveAddressIndexStatus(history, setting, importer)().first().on) {
+        // The user's choice alone, without waiting for the engine's word on its reader: an engine without one refuses
+        // the check itself (AddressIndexRefusal.NotInThisBuild).
+        if (!AddressIndexStatus(importer, null, setting.observe().first()).wanted) {
             return AddressIndexEntryCheck.Refused(AddressIndexRefusal.SettingOff)
         }
         if (entry.traceOnly) {

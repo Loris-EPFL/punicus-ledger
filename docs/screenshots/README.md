@@ -44,7 +44,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Screen capture warning (dialog)](#screen-capture-warning-dialog) | `screen-capture-warning-dialog/` | 3 |
 | [Security](#security) | `security/` | 15 |
 | [Send](#send) | `send/` | 37 |
-| [Settings](#settings) | `settings/` | 36 |
+| [Settings](#settings) | `settings/` | 37 |
 | [Account detail (simple mode)](#simple-account-detail) | `simple-account-detail/` | 13 |
 | [Home (simple mode)](#simple-accounts) | `simple-accounts/` | 18 |
 | [Home on a tablet (simple mode)](#simple-accounts-tablet) | `simple-accounts-tablet/` | 3 |
@@ -856,7 +856,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="settings"></a>
 ## Settings
 
-`settings/`, 36 states: `synced`, `synced-dark`, `starting`, `unreadable`, `head-too-old`, `head-too-old-dark`, `debug-build`, `debug-build-capture-allowed`, `debug-screen`, `debug-screen-not-saved`, `idle`, `network-not-saved`, `turn-off`, `stale-anchor`, `checkpoint-applied`, `detailed-view`, `detailed-view-not-saved`, `connections-off`, `sign-while-syncing`, `sign-while-syncing-dark`, `sign-while-syncing-queued`, `sign-while-syncing-not-saved`, `metered-allowed`, `metered-paused`, `metered-not-reported`, `metered-not-reported-dark`, `metered-unreadable`, `metered-not-saved`, `metered-set-aside`, `address-index-no-key`, `address-index-no-key-dark`, `address-index-no-reader`, `address-index-on`, `address-index-turn-off`, `address-index-turn-off-dark`, `address-index-set-aside`
+`settings/`, 37 states: `synced`, `synced-dark`, `starting`, `unreadable`, `head-too-old`, `head-too-old-dark`, `debug-build`, `debug-build-capture-allowed`, `debug-screen`, `debug-screen-not-saved`, `idle`, `network-not-saved`, `turn-off`, `stale-anchor`, `checkpoint-applied`, `detailed-view`, `detailed-view-not-saved`, `connections-off`, `sign-while-syncing`, `sign-while-syncing-dark`, `sign-while-syncing-queued`, `sign-while-syncing-not-saved`, `metered-allowed`, `metered-paused`, `metered-not-reported`, `metered-not-reported-dark`, `metered-unreadable`, `metered-not-saved`, `metered-set-aside`, `address-index-no-key`, `address-index-no-key-dark`, `address-index-no-reader`, `address-index-reader-not-known`, `address-index-on`, `address-index-turn-off`, `address-index-turn-off-dark`, `address-index-set-aside`
 
 <a href="settings/synced.png"><img src="settings/synced.png" width="206" alt="synced"></a>
 <a href="settings/synced-dark.png"><img src="settings/synced-dark.png" width="206" alt="synced-dark"></a>
@@ -890,6 +890,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="settings/address-index-no-key.png"><img src="settings/address-index-no-key.png" width="206" alt="address-index-no-key"></a>
 <a href="settings/address-index-no-key-dark.png"><img src="settings/address-index-no-key-dark.png" width="206" alt="address-index-no-key-dark"></a>
 <a href="settings/address-index-no-reader.png"><img src="settings/address-index-no-reader.png" width="206" alt="address-index-no-reader"></a>
+<a href="settings/address-index-reader-not-known.png"><img src="settings/address-index-reader-not-known.png" width="206" alt="address-index-reader-not-known"></a>
 <a href="settings/address-index-on.png"><img src="settings/address-index-on.png" width="206" alt="address-index-on"></a>
 <a href="settings/address-index-turn-off.png"><img src="settings/address-index-turn-off.png" width="206" alt="address-index-turn-off"></a>
 <a href="settings/address-index-turn-off-dark.png"><img src="settings/address-index-turn-off-dark.png" width="206" alt="address-index-turn-off-dark"></a>

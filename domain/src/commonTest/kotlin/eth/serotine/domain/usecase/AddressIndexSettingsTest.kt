@@ -13,7 +13,9 @@ import eth.serotine.domain.repository.AddressIndexCheck
 import eth.serotine.domain.repository.AddressIndexChoice
 import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.ReadUnavailable
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,27 +34,30 @@ class AddressIndexSettingsTest {
     private val setting = MemoryAddressIndexSetting()
 
     private fun status(pinned: Address?) = ObserveAddressIndexStatus(index, setting, pinned)
+
+    /** The first status once the engine said whether it has a reader. */
+    private suspend fun Flow<AddressIndexStatus>.answered() = first { it.reader != null }
     private fun turn(pinned: Address?) = TurnAddressIndex(index, setting, pinned)
 
     @Test
     fun onByDefaultForThePinnedKeyWithAReaderAndAnExplicitOffStaysOff() = runTest {
-        val fresh = status(fixtureImporter)().first()
+        val fresh = status(fixtureImporter)().answered()
         assertTrue(fresh.on, "on by default (owner's decision, 2026-11-22)")
         assertEquals(emptySet(), fresh.missing)
 
         assertEquals(AddressIndexSwitch.Done, turn(fixtureImporter)(on = false))
         assertEquals(AddressIndexChoice.Chosen(null), setting.choice.value, "an explicit off is stored")
-        assertFalse(status(fixtureImporter)().first().on)
-        assertFalse(status(otherImporter)().first().on, "an explicit off stays off whatever key is pinned")
+        assertFalse(status(fixtureImporter)().answered().on)
+        assertFalse(status(otherImporter)().answered().on, "an explicit off stays off whatever key is pinned")
 
         assertEquals(AddressIndexSwitch.Done, turn(fixtureImporter)(on = true))
         assertEquals(AddressIndexChoice.Chosen(fixtureImporter), setting.choice.value, "the key accepted is kept")
-        assertTrue(status(fixtureImporter)().first().on)
+        assertTrue(status(fixtureImporter)().answered().on)
     }
 
     @Test
     fun withNoKeyPinnedItCannotBeTurnedOnAndIsGreyedOutForThat() = runTest {
-        val status = status(pinned = null)().first()
+        val status = status(pinned = null)().answered()
 
         assertFalse(status.on)
         assertEquals(setOf(AddressIndexMissing.NO_KEY_PINNED), status.missing)
@@ -66,9 +71,9 @@ class AddressIndexSettingsTest {
 
         assertEquals(
             setOf(AddressIndexMissing.NO_KEY_PINNED, AddressIndexMissing.NO_READER),
-            status(pinned = null)().first().missing,
+            status(pinned = null)().answered().missing,
         )
-        assertEquals(setOf(AddressIndexMissing.NO_READER), status(fixtureImporter)().first().missing)
+        assertEquals(setOf(AddressIndexMissing.NO_READER), status(fixtureImporter)().answered().missing)
         assertEquals(
             AddressIndexSwitch.Unavailable(setOf(AddressIndexMissing.NO_READER)),
             turn(fixtureImporter)(on = true),
@@ -80,7 +85,7 @@ class AddressIndexSettingsTest {
     fun aChoiceToTurnItOnForAnotherKeyDoesNotCarryOverAndTheDefaultHolds() = runTest {
         setting.choice.value = AddressIndexChoice.Chosen(otherImporter)
 
-        val status = status(fixtureImporter)().first()
+        val status = status(fixtureImporter)().answered()
 
         assertTrue(status.on, "no choice for the key pinned now: on by default")
         assertEquals(otherImporter, status.trustsAnotherKey)
@@ -90,7 +95,7 @@ class AddressIndexSettingsTest {
     fun aChoiceFoundDamagedIsOffSinceItMayHaveBeenAnOff() = runTest {
         setting.choice.value = AddressIndexChoice.Chosen(importer = null, setAside = true)
 
-        val status = status(fixtureImporter)().first()
+        val status = status(fixtureImporter)().answered()
 
         assertFalse(status.on)
         assertTrue(status.setAside)
@@ -100,7 +105,7 @@ class AddressIndexSettingsTest {
     fun aChoiceThatCannotBeReadIsOffAndCannotBeChanged() = runTest {
         setting.choice.value = AddressIndexChoice.Unreadable
 
-        val status = status(fixtureImporter)().first()
+        val status = status(fixtureImporter)().answered()
 
         assertFalse(status.on)
         assertEquals(setOf(AddressIndexMissing.CHOICE_UNREADABLE), status.missing)
@@ -112,7 +117,7 @@ class AddressIndexSettingsTest {
         setting.failSaves = true
 
         assertEquals(AddressIndexSwitch.NotSaved, turn(fixtureImporter)(on = false))
-        assertTrue(status(fixtureImporter)().first().on, "still the default")
+        assertTrue(status(fixtureImporter)().answered().on, "still the default")
     }
 
     private val account = AccountId(Network.ETHEREUM, Address.of("0x" + "11".repeat(20)))
@@ -143,9 +148,9 @@ class AddressIndexSettingsTest {
         setting.choice.value = AddressIndexChoice.Unreadable
         assertEquals(AddressIndexEntryCheck.Refused(AddressIndexRefusal.SettingOff), check(account, entry), "unread")
         turnedOn()
-        index.reader = false
-        assertEquals(AddressIndexEntryCheck.Refused(AddressIndexRefusal.SettingOff), check(account, entry), "no reader")
         assertTrue(index.checks.isEmpty(), "nothing fetched")
+        // Without a reader the engine refuses the check itself (NotInThisBuild): the use case does not wait for its
+        // word on the reader first.
     }
 
     @Test
@@ -196,5 +201,73 @@ class AddressIndexSettingsTest {
 
         assertEquals(AddressIndexEntryCheck.Refused(AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING)), refused)
         assertNull((refused as? AddressIndexEntryCheck.Checked)?.verdict)
+    }
+
+    @Test
+    fun theEngineReadsTheIndexOnlyWhileTheSettingIsOnForThePinnedKey() = runTest {
+        val reader = RecordingReaderSettings()
+        val follow = backgroundScope.launch { FollowAddressIndexSetting(setting, fixtureImporter, reader)() }
+        testScheduler.runCurrent()
+        assertEquals(listOf<Address?>(fixtureImporter), reader.applied, "on by default: the pinned key")
+
+        turn(fixtureImporter)(on = false)
+        testScheduler.runCurrent()
+        assertEquals(listOf(fixtureImporter, null), reader.applied, "an explicit off: no importer")
+
+        turn(fixtureImporter)(on = true)
+        testScheduler.runCurrent()
+        assertEquals(listOf(fixtureImporter, null, fixtureImporter), reader.applied)
+        follow.cancel()
+    }
+
+    @Test
+    fun withNoKeyPinnedTheEngineIsToldNone() = runTest {
+        setting.choice.value = AddressIndexChoice.Chosen(fixtureImporter)
+        val unpinned = RecordingReaderSettings()
+        val follow = backgroundScope.launch { FollowAddressIndexSetting(setting, null, unpinned)() }
+        testScheduler.runCurrent()
+
+        assertEquals(listOf<Address?>(null), unpinned.applied, "no key pinned, whatever the user once chose")
+        follow.cancel()
+    }
+
+    @Test
+    fun theEngineIsToldTheSettingWithoutWaitingForItsWordOnTheReader() = runTest {
+        index.readerAnswered = false
+        val reader = RecordingReaderSettings()
+        val follow = backgroundScope.launch { FollowAddressIndexSetting(setting, fixtureImporter, reader)() }
+        testScheduler.runCurrent()
+
+        assertEquals(listOf<Address?>(fixtureImporter), reader.applied, "applied before the engine said anything")
+        follow.cancel()
+    }
+
+    @Test
+    fun untilTheEngineSaysTheSettingIsGreyedOutNotLeftOut() = runTest {
+        index.readerAnswered = false
+        val statuses = mutableListOf<AddressIndexStatus>()
+        val observe = backgroundScope.launch { status(fixtureImporter)().collect { statuses += it } }
+        testScheduler.runCurrent()
+
+        val waiting = statuses.single()
+        assertNull(waiting.reader)
+        assertFalse(waiting.on)
+        assertTrue(waiting.wanted, "on by default, once the engine says it reads Swarm")
+        assertEquals(setOf(AddressIndexMissing.READER_NOT_KNOWN), waiting.missing)
+
+        index.readerAnswered = true
+        testScheduler.runCurrent()
+        assertTrue(statuses.last().on, "on once the engine said it reads Swarm")
+        observe.cancel()
+    }
+
+    @Test
+    fun aCheckDoesNotWaitForTheEnginesWordOnTheReader() = runTest {
+        index.readerAnswered = false
+        index.check = { _, _ -> AddressIndexCheck.Refused(AddressIndexRefusal.NotInThisBuild) }
+
+        val refused = CheckAddressIndexEntry(index, setting, fixtureImporter)(account, entry)
+
+        assertEquals(AddressIndexEntryCheck.Refused(AddressIndexRefusal.NotInThisBuild), refused, "the engine's own")
     }
 }

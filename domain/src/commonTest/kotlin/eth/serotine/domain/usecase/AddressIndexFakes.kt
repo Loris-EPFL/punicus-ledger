@@ -10,12 +10,14 @@ import eth.serotine.domain.repository.AddressIndexChoice
 import eth.serotine.domain.repository.AddressIndexHistory
 import eth.serotine.domain.repository.AddressIndexPage
 import eth.serotine.domain.repository.AddressIndexQuery
+import eth.serotine.domain.repository.AddressIndexReaderSettings
 import eth.serotine.domain.repository.AddressIndexReading
 import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.AddressIndexSetting
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlin.time.Duration
 
 /**
@@ -40,7 +42,19 @@ internal class FakeAddressIndexHistory(
     /** What [hasReader] answers: a reader, unless a test says this build has none. */
     var reader: Boolean = true
 
-    override suspend fun hasReader(): Boolean = reader
+    private val answered = MutableStateFlow(true)
+
+    /** Whether [hasReader] answers yet: false holds it, as an engine whose Ethereum light client does not run. */
+    var readerAnswered: Boolean
+        get() = answered.value
+        set(value) {
+            answered.value = value
+        }
+
+    override suspend fun hasReader(): Boolean {
+        answered.first { it }
+        return reader
+    }
 
     override suspend fun page(network: Network, address: Address, query: AddressIndexQuery): AddressIndexReading {
         queries += Triple(network, address, query)
@@ -76,6 +90,16 @@ internal class MemoryAddressIndexSetting : AddressIndexSetting {
     override suspend fun trust(importer: Address?): Boolean {
         if (failSaves || choice.value is AddressIndexChoice.Unreadable) return false
         choice.value = AddressIndexChoice.Chosen(importer)
+        return true
+    }
+}
+
+/** An [AddressIndexReaderSettings] that records what it was told. */
+internal class RecordingReaderSettings : AddressIndexReaderSettings {
+    val applied = mutableListOf<Address?>()
+
+    override suspend fun apply(importer: Address?): Boolean {
+        applied += importer
         return true
     }
 }

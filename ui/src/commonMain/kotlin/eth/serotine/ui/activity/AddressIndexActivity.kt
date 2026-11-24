@@ -105,7 +105,7 @@ internal data class IndexPaging(
      * on the checkpoint table's alarm, which withdraws the trust they rest on (`.claude/rules/trust.md`), and on an
      * index signed by another key than the pinned one, which the list may not rest on. With the alarm, what the
      * index said of its coverage and its counts go too. In this part the alarm reaches the list only this way, as a
-     * read refused for it; part 4 of the plan feeds the engine's alarm itself (`StatusSnapshot.checkpointAlarm`) in,
+     * read refused for it; part 5 of the plan feeds the engine's alarm itself (`StatusSnapshot.checkpointAlarm`) in,
      * so that the rows go the moment it is raised, whether or not a page is read.
      */
     fun after(load: AddressIndexLoad): IndexPaging = when (load) {

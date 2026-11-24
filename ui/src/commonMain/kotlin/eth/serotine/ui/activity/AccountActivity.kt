@@ -98,7 +98,7 @@ class AccountActivity(
      * [more] above the one it started with asks the addr1 index for its next page, when it is on. The
      * pages read are kept in [scope] (the screen's ViewModel's), from the first collection on, so that
      * leaving the Activity and coming back shows them again and reads nothing new: each page costs a
-     * Swarm lookup and up to 50 checks against archive peers. Without a scope they last while collected.
+     * Swarm lookup and up to 20 checks against archive peers. Without a scope they last while collected.
      */
     fun of(
         account: AccountId,
@@ -341,7 +341,16 @@ class AccountActivity(
         ): List<Pair<ActivityRow, Long>> {
             if (index == null) return emptyList()
             val ghosts = index.pending.map { pendingRow(it) to it.block }
-            if (tokens == null) return ghosts
+            // Until the tokens are read no row can be said: a verified entry keeps its ghost meanwhile, so that its
+            // place holds until its row takes it.
+            if (tokens == null) {
+                val verified = index.rows.filterNot { it.transaction?.hash?.lowercase() in listed }
+                    .map { pendingRow(it.entry) to it.entry.block }
+                return (verified + ghosts).sortedWith(
+                    compareByDescending<Pair<ActivityRow, Long>> { it.second }
+                        .thenByDescending { it.first.opens.index?.slot ?: 0 },
+                )
+            }
             val verified = index.rows
                 .filterNot { it.transaction?.hash?.lowercase() in listed }
                 .mapNotNull { indexed -> rows.indexRow(indexed, parties, tokens)?.let { it to indexed.entry.block } }

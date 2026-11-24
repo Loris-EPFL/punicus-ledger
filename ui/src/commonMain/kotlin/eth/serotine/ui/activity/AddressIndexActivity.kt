@@ -68,7 +68,13 @@ class AddressIndexActivity(
             if (value <= asked) return@collect
             asked = value
             if (!paging.canAsk) return@collect
-            paging = paging.copy(loading = true, refused = null)
+            // A new page: what the last one added is no longer this page's, so a refusal of it takes nothing away.
+            paging = paging.copy(
+                loading = true,
+                refused = null,
+                lastRows = emptyList(),
+                lastLeftOut = AddressIndexLeftOut(),
+            )
             emit(paging)
             load(account, paging.next, PAGE_SIZE).collect { progress ->
                 paging = paging.after(progress)
@@ -96,12 +102,14 @@ class AddressIndexActivity(
  * ([lastRows]) and what it left out ([lastLeftOut]): whether it added a row to the list decides whether the next page
  * is read by itself. [pending] are the entries of the page read whose check has not answered yet, newest first: the
  * importer's word that they are there, nothing more, so a list shows each as a ghost row in its place, with nothing
- * of it but that it is being checked.
+ * of it but that it is being checked. [checking] while a page read is not done with: from its read to the end of its
+ * load, its last check answered or not, so that nothing more is asked for in between.
  */
 internal data class IndexPaging(
     val pinned: Address,
     val rows: List<AddressIndexRow> = emptyList(),
     val pending: List<AddressIndexEntry> = emptyList(),
+    val checking: Boolean = false,
     val coverage: AddressIndexCoverage? = null,
     val leftOut: AddressIndexLeftOut = AddressIndexLeftOut(),
     val next: AddressIndexContinuation? = null,
@@ -117,10 +125,6 @@ internal data class IndexPaging(
     /** Whether the end of what the index covers was reached: no page lies below. */
     val ended: Boolean
         get() = started && next == null
-
-    /** Whether a page is read and some of its entries are still being checked. */
-    val checking: Boolean
-        get() = pending.isNotEmpty()
 
     /**
      * Whether another page may be asked for now: none is being read or checked, more lies below, nothing lasting
@@ -142,7 +146,11 @@ internal data class IndexPaging(
     fun after(load: AddressIndexProgress): IndexPaging = when (load) {
         // The page is read: its entries wait for their checks, each in its place.
         is AddressIndexProgress.Read -> copy(
-            pending = load.entries,
+            // An entry listed already (a page that repeats the one before at its edge) is that row alone.
+            pending = load.entries.distinct().filterNot { entry ->
+                rows.any { it.entry.block == entry.block && it.entry.slot == entry.slot }
+            },
+            checking = true,
             loading = false,
             refused = null,
             lastRows = emptyList(),
@@ -160,6 +168,7 @@ internal data class IndexPaging(
         is AddressIndexLoad.Loaded -> copy(
             rows = listed(rows + load.rows),
             pending = emptyList(),
+            checking = false,
             coverage = load.coverage,
             leftOut = leftOut + load.leftOut,
             next = load.next,
@@ -171,11 +180,18 @@ internal data class IndexPaging(
         is AddressIndexLoad.Refused -> when (load.reason) {
             is AddressIndexRefusal.CheckpointAlarm -> IndexPaging(pinned, loading = false, refused = load.reason)
             is AddressIndexRefusal.WrongImporter ->
-                copy(rows = emptyList(), pending = emptyList(), loading = false, refused = load.reason)
+                copy(
+                    rows = emptyList(),
+                    pending = emptyList(),
+                    checking = false,
+                    loading = false,
+                    refused = load.reason,
+                )
             // What this page verified before the refusal goes with it, as a page refused whole never added any.
             else -> copy(
                 rows = rows - lastRows.toSet(),
                 pending = emptyList(),
+                checking = false,
                 loading = false,
                 refused = load.reason,
                 lastRows = emptyList(),
@@ -240,7 +256,7 @@ internal fun indexSection(paging: IndexPaging, network: Network, shownFromLast: 
 
 /**
  * The footer below the index's rows: loading, more, the end of its coverage, or why nothing (more) comes. More is read
- * by itself only while the last page added a row to the list ([shownFromLast]): each page sets off up to 50 checks of
+ * by itself only while the last page added a row to the list ([shownFromLast]): each page sets off up to 20 checks of
  * old blocks against archive peers, so after a page that added none, the next is read only on the user's tap
  * ([IndexFooter.Paused]), which says what that page left out.
  */
@@ -266,10 +282,14 @@ private fun footerOf(paging: IndexPaging, network: Network, shownFromLast: Int?)
     // Entries of the page read still wait for their checks: each is a ghost row in its place; the footer counts them.
     if (paging.checking) {
         val n = paging.pending.size
-        return IndexFooter.Checking(
-            "Checking ${entries(n)} of the addr1 index against the chain…",
-            "Checking ${if (n == 1) "1 more entry" else "$n more entries"} of the shared index…",
-        )
+        return if (n == 0) {
+            IndexFooter.Checking("Checking the addr1 index's entries against the chain…", CHECKING_MORE)
+        } else {
+            IndexFooter.Checking(
+                "Checking ${entries(n)} of the addr1 index against the chain…",
+                "Checking ${if (n == 1) "1 more entry" else "$n more entries"} of the shared index…",
+            )
+        }
     }
     val covered = paging.coverage?.covered
     return when {

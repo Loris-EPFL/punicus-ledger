@@ -16,8 +16,10 @@ import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.AddressIndexSetting
 import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
@@ -48,8 +50,8 @@ import kotlin.time.Duration.Companion.seconds
  * - **The check runs block by block**, newest first (the page's order): one call for the entries of one block (in
  *   chunks of at most [AddressIndexHistory.MAX_CHECKED] where a block holds more). The engine reads each block once
  *   either way; one block at a time lets each verdict out as soon as it is known, instead of after the slowest
- *   block of the page. A verdict is matched to the entry asked by block and slot; one whose roles are not the roles asked, or
- *   two different verdicts for one entry, count as no verdict. An entry that comes back
+ *   block of the page. A verdict is matched to the entry asked by block and slot; one whose roles are not the
+ *   roles asked, or two different verdicts for one entry, count as no verdict. An entry that comes back
  *   [AddressIndexVerdict.Unavailable], or with no verdict, is asked again, up to [attempts] checks in all,
  *   [retryPause] apart. One still unavailable after that is left out and counted apart
  *   ([AddressIndexLeftOut.unavailable]), since a later load may verify it.
@@ -97,7 +99,7 @@ class LoadAddressIndexPage(
         account: AccountId,
         after: AddressIndexContinuation? = null,
         limit: Int = AddressIndexHistory.DEFAULT_PAGE,
-    ): Flow<AddressIndexProgress> = flow {
+    ): Flow<AddressIndexProgress> = channelFlow {
         require(after == null || after.account == account) { "a continuation of another account's history" }
         val query = AddressIndexQuery(cursor = after?.cursor, limit = limit)
         var readPage: AddressIndexPage? = null
@@ -120,14 +122,16 @@ class LoadAddressIndexPage(
                 return@withTimeoutOrNull
             }
             val toCheck = read.entries.filterNot { it.traceOnly }
-            emit(AddressIndexProgress.Read(account, toCheck))
+            send(AddressIndexProgress.Read(account, toCheck))
             val outcome = checkAll(account, toCheck, verdicts) { entry, verdict ->
-                emit(AddressIndexProgress.Checked(entry, verdict))
+                send(AddressIndexProgress.Checked(entry, verdict))
             }
             if (outcome is Lasting) refused = outcome.reason
         }
-        emit(summary(account, readPage, refused, verdicts))
+        send(summary(account, readPage, refused, verdicts))
     }
+        // Never waits on its collector: the budget is the reads' and the checks', not the time a list takes to draw.
+        .buffer(Channel.UNLIMITED)
 
     /** What a load came to: [refused] if it was, else [page] (null: not read in time) with its [verdicts]. */
     private fun summary(

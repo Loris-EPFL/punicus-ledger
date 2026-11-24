@@ -60,6 +60,8 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.CompletableDeferred
+import eth.serotine.domain.usecase.AddressIndexProgress
+import kotlin.test.assertFalse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -155,6 +157,42 @@ class AddressIndexActivityTest {
             "1 entry of the index is left out: it could not be verified.",
             done.index?.leftOut,
         )
+    }
+
+    @Test
+    fun aPageReadIsInFlightUntilItsLoadEndsAndAnEntryListedAlreadyGetsNoGhost() {
+        val account = AccountId(Network.ETHEREUM, alice.address)
+        val listed = indexRow(9_300_000, 3, alice.address, bob)
+        val again = listed.entry
+        val newer = AddressIndexEntry(9_200_000, 2, setOf(AddressIndexRole.FROM))
+        val first = IndexPaging(FIXTURE_IMPORTER).copy(rows = listOf(listed), loading = true)
+
+        // The next page repeats the entry it starts below, which is listed already: no ghost for it, nor twice.
+        val read = first.after(AddressIndexProgress.Read(account, listOf(again, newer, newer)))
+        assertEquals(listOf(newer), read.pending)
+        assertTrue(read.checking)
+
+        // Its last check answered, its load not ended yet: still in flight, so nothing more is asked meanwhile.
+        val answered = read.after(AddressIndexProgress.Checked(newer, AddressIndexVerdict.Unverified(newer)))
+        assertEquals(emptyList(), answered.pending)
+        assertTrue(answered.checking)
+        assertFalse(answered.canAsk)
+        assertIs<IndexFooter.Checking>(indexSection(answered, Network.ETHEREUM, 0).footer)
+    }
+
+    @Test
+    fun aNextPageRefusedBeforeItIsReadTakesNothingOfThePageBefore() = runTest {
+        index.page(null, listOf(indexRow(9_300_000, 3, alice.address, bob, wei = "250000000000000000")), next = "p2")
+        val activity = activity()
+        assertEquals(1, shown(activity).rows.size)
+
+        // Swarm does not deliver the next page.
+        index.pageRefusal = AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN)
+        more.value = 1
+        val refused = shown(activity)
+
+        assertEquals(listOf("index:9300000:3"), refused.rows.map { it.key }, "the first page's row stays")
+        assertIs<IndexFooter.Refused>(refused.index?.footer)
     }
 
     @Test

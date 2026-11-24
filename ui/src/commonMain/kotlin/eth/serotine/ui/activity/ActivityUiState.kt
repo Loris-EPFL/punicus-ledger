@@ -57,7 +57,8 @@ sealed interface ActivityUiState {
  * is [title]; [unchecked] when what the [amount] says is not proven to have moved (a transaction whose outcome the
  * engine does not report), which mutes it and its arrow. A [pending] row is an entry of the addr1 index whose check
  * has not answered yet: a ghost in its place, of a row's height, saying nothing of it; its [key] is the one its row
- * takes once verified, so the row replaces it in place (owner's request, 2026-11-24). Rows of a list grouped by day carry their [day]'s heading
+ * takes once verified, so the row replaces it in place (owner's request, 2026-11-24). Rows of a list grouped by day
+ * carry their [day]'s heading
  * ("Today · Monday, November 23, 2026"; for a row dated by its block alone, the day of the rows around it where that
  * can be told, else that its date is not reported) and its time of day in the user's time zone ([clock]: "3:00 PM";
  * none for a row dated by its block alone), which the list says in place of [time]; [simpleDay] is the heading in

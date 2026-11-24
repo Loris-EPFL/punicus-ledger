@@ -181,7 +181,8 @@ internal data class IndexPaging(
             next = load.next,
             loading = false,
             refused = null,
-            lastRows = load.rows,
+            // The page's own rows are those its checks added, as `Checked` kept them: a row it only repeats (the
+            // edge of the page before) is no row it added, so a page of repeats pauses the endless list.
             lastLeftOut = load.leftOut,
         )
         is AddressIndexLoad.Refused -> when (load.reason) {

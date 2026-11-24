@@ -477,17 +477,22 @@ class MyotisHost private constructor(
         /** The handle, unwrapped: what [activity] reads (in memory, so neither logged nor shared). */
         private val handleChain = HandleChain()
 
-        /**
-         * The handle's address history (Ethereum's alone is asked), each page and check written to [apiLog] when there
-         * is one: they are the heaviest requests the app makes (Swarm, archive peers, a check up to about 90 s).
-         */
-        val addressChain: AddressHistoryChain = apiLog?.let { LoggedChain(handleChain, it, history = handleChain) }
-            ?: handleChain
-
         /** The handle, each request written to [apiLog] when there is one, its status reads shared. */
         private val chain: EngineChain = handleChain.let { handle ->
             val logged = apiLog?.let { LoggedChain(handle, it) } ?: handle
             SharedSnapshots(FinalizedHeaders(logged, FinalizedTimes(headerScope)), SNAPSHOT_REUSE)
+        }
+
+        /**
+         * The handle's address history (Ethereum's alone is asked), each page and check written to [apiLog] when there
+         * is one: they are the heaviest requests the app makes (Swarm, archive peers, a check up to about 90 s). Its
+         * status reads are [chain]'s, shared and logged once, not a call and a log line of their own each time the
+         * adapter waits for the engine's word on its reader.
+         */
+        val addressChain: AddressHistoryChain = object : AddressHistoryChain by (
+            apiLog?.let { LoggedChain(handleChain, it, history = handleChain) } ?: handleChain
+            ) {
+            override fun snapshot(): EngineSnapshot = chain.snapshot()
         }
 
         /** Which accounts the verified blocks touched, so a proof stands until one did (Myotis #691). */

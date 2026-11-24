@@ -1071,7 +1071,8 @@ class AppGraph(
         ObserveSentTo(transactionHistory),
         ObserveAmountsHidden(amountsHidden),
         toggleAmountsHidden,
-        // Gated by the setting as the list is: nothing is checked while it is not on (AddressIndexStatus.on).
+        // Gated by the user's choice (AddressIndexStatus.wanted), not by the reader: an engine without one refuses
+        // the check itself (NotInThisBuild), which the detail says.
         checkIndexEntry = addressIndex?.let { history ->
             addressIndexSetting?.let { setting ->
                 addressIndexImporter?.let { CheckAddressIndexEntry(history, setting, it) }

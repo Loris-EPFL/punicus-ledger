@@ -63,11 +63,15 @@ import kotlin.time.Duration.Companion.seconds
  *   Tor, a network not served, the checkpoint table's alarm, a stale checkpoint, no engine), since it holds for
  *   every chunk, and the alarm withdraws the trust the rows rest on. [AddressIndexRefusal.Rejected] refuses it too:
  *   the engine refusing an argument this port checked is a bug, and no part of the page is shown over it.
- * - **The page's read takes at most [budget].** A page not read by then refuses the load as passing
- *   ([AddressIndexRefusal.NotNow], [ReadUnavailable.UNPROVEN]: Swarm did not deliver it).
- * - **Each block's check takes at most [checkBudget]** (the engine bounds one at about 90 seconds). One past it gave
- *   its entries no verdict: they are asked again like an unavailable entry, and the other blocks go on. So a slow
- *   block costs its own entries their verdicts, never the rest of the page theirs: every entry gets its [attempts].
+ * - **The engine bounds every call itself**: a page's read at about 140 seconds (its Swarm node's start and the
+ *   read's deadline), a check at 90 seconds. An adapter that blocks on the engine cannot be left earlier, so
+ *   [budget] and [checkBudget] are a bound for an adapter that can be: at least the engine's, they cut nothing
+ *   short that the engine would still answer.
+ * - **A page not read within [budget]** refuses the load as passing ([AddressIndexRefusal.NotNow],
+ *   [ReadUnavailable.UNPROVEN]: Swarm did not deliver it).
+ * - **A block's check past [checkBudget]** gave its entries no verdict: they are asked again like an unavailable
+ *   entry, and the other blocks go on. So a slow block costs its own entries their verdicts, never the rest of the
+ *   page theirs: every entry gets its [attempts].
  *
  * Deterministic: everything it knows comes from [history], called from the load's own coroutine (the flow's
  * producer), one call at a time.
@@ -232,10 +236,10 @@ class LoadAddressIndexPage(
         /** Long enough for the engine to try other peers for a block or its receipts. */
         val DEFAULT_RETRY_PAUSE = 2.seconds
 
-        /** Long enough for Swarm to deliver a page of the index. */
-        val DEFAULT_BUDGET = 2.minutes
+        /** The engine's bound on a page's read (about 140 seconds: its node's start and the read), with room. */
+        val DEFAULT_BUDGET = 3.minutes
 
-        /** The engine's bound on one check (about 90 seconds), with room to spare. */
+        /** The engine's bound on one check (90 seconds), with room to spare. */
         val DEFAULT_CHECK_BUDGET = 2.minutes
     }
 }

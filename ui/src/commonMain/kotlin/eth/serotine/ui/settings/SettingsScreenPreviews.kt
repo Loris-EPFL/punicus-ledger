@@ -421,12 +421,11 @@ private fun SettingsAddressIndexOnPreview() = SettingsPreview(
 )
 
 /**
- * A choice to turn it on, stored by another build, not in force here (no reader, no key pinned): greyed out, and
- * Turn off below the row takes it back.
+ * A choice to turn it on, stored, not in force yet (no reader, no key pinned): greyed out, and Turn off below the row
+ * stores an explicit off ahead.
  */
 private val addressIndexStored = addressIndexGreyed.copy(
-    text = "$ADDRESS_INDEX_GREYED_TEXT · Turned on in another build: it stays off here, and Turn off clears that " +
-        "choice",
+    text = ADDRESS_INDEX_GREYED_TEXT,
     turnOff = true,
 )
 

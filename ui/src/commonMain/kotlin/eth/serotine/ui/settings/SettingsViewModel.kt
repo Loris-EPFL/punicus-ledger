@@ -421,8 +421,6 @@ class SettingsViewModel(
                     " · It was turned on for another importer, ${shortAddress(Eip55.format(other))}: on by default " +
                         "for the one pinned now",
                 )
-                stored != null && !on ->
-                    append(" · Turned on in another build: it stays off here, and Turn off clears that choice")
                 // On by default (owner's decision, 2026-11-22), once nothing keeps it off.
                 choice == AddressIndexChoice.NotChosen && !on ->
                     append(" · On by default once it can be read: Turn off keeps it off")

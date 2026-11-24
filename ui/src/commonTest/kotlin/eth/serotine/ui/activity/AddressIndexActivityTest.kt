@@ -226,6 +226,27 @@ class AddressIndexActivityTest {
     }
 
     @Test
+    fun aPageWhoseOnlyVerifiedRowRepeatsTheOneBeforePausesTheEndlessList() = runTest {
+        val first = indexRow(9_300_000, 3, alice.address, bob, wei = "250000000000000000")
+        index.page(null, listOf(first), next = "p2")
+        // The next page repeats the first page's row at its edge; its other entry cannot be verified.
+        index.page(
+            "p2",
+            listOf(first),
+            next = "p3",
+            others = listOf(AddressIndexEntry(9_200_000, 2, setOf(AddressIndexRole.FROM))),
+        )
+        val activity = activity()
+        shown(activity)
+
+        more.value = 1
+        val second = shown(activity)
+
+        assertEquals(listOf("index:9300000:3"), second.rows.map { it.key })
+        assertIs<IndexFooter.Paused>(second.index?.footer, "a page that added no row reads on only on a tap")
+    }
+
+    @Test
     fun aNextPageRefusedBeforeItIsReadTakesNothingOfThePageBefore() = runTest {
         index.page(null, listOf(indexRow(9_300_000, 3, alice.address, bob, wei = "250000000000000000")), next = "p2")
         val activity = activity()

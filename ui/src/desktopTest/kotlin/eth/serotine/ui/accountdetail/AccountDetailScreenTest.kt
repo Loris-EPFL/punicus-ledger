@@ -107,6 +107,7 @@ class AccountDetailScreenTest {
                 onTurnOnNetwork = { events += "turn on" },
                 onSafeSettings = { events += "safe settings" },
                 onGnosisPay = { events += "gnosis pay" },
+                onSwarm = { events += "swarm" },
                 onToggleUnlistedNfts = { events += "toggle unlisted nfts" },
                 perAppActions = PerAppActions(
                     onOpen = { chain, address -> events += "open per-app $chain $address" },
@@ -710,6 +711,24 @@ class AccountDetailScreenTest {
         rule.onNodeWithText("Modules: each can move this Safe's funds without the owners' signatures.").assertExists()
         rule.onNodeWithText("Assets").performClick()
         assertEquals(listOf("segment ASSETS"), events)
+    }
+
+    @Test
+    fun aSwarmNodesRowAndMenuItemOpenItsScreen() {
+        show(ready.copy(swarm = "Swarm node: a chequebook and 2 postage batches", offersSwarm = true))
+        rule.onNodeWithText("Swarm node: a chequebook and 2 postage batches").assertExists()
+        rule.onNodeWithTag(ACCOUNT_SWARM_TAG).performScrollTo().performClick()
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Swarm node…").performClick()
+        assertEquals(listOf("swarm", "swarm"), events)
+    }
+
+    @Test
+    fun noSwarmItemIsOfferedWhereTheAccountCannotBeANode() {
+        show(ready)
+        rule.onNodeWithTag(ACCOUNT_SWARM_TAG).assertDoesNotExist()
+        rule.onNodeWithContentDescription("More actions").performClick()
+        rule.onNodeWithText("Swarm node…").assertDoesNotExist()
     }
 
     @Test

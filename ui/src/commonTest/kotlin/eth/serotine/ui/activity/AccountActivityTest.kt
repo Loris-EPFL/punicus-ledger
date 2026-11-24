@@ -19,6 +19,7 @@ import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenTransfers
 import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.DelayTransferPlan
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.CowOrderEnd
@@ -426,6 +427,45 @@ class AccountActivityTest {
         assertEquals("On CoW · 0x9008…ab41", shown.detail)
         assertEquals(ActivityKey(live.uid.hex, cowOrder = true), shown.opens)
         assertEquals("Not filled by block 9,412,200", rows[3].status)
+    }
+
+    @Test
+    fun aBuyOrderNamesWhatItBuysAndItsBoundUnlessItFilled() = runTest {
+        // Buys exactly 0.0159 ETH for at most 40 USDC.
+        fun buy(signedAt: Long) = order(signedAt).let {
+            val order = it.order.copy(kind = SwapKind.BUY)
+            it.copy(order = order, uid = order.uid(Network.SEPOLIA.chainId, settlement, alice.address))
+        }
+        val trade = CowTrade(
+            alice.address,
+            usdc.address,
+            CowOrder.NATIVE_BUY_TOKEN,
+            UInt256.of(39_000_000),
+            UInt256.of("15900000000000000"),
+            UInt256.ZERO,
+            buy(400).uid,
+        )
+        cowOrders.orders.value = listOf(
+            buy(400).copy(end = CowOrderEnd.Filled(trade, 9_412_300, "0x" + "f2".repeat(32))),
+            buy(350),
+            buy(300).copy(end = CowOrderEnd.Unfilled(9_412_200, cancelled = true)),
+            buy(250).copy(end = CowOrderEnd.Unfilled(9_412_100, cancelled = false)),
+            buy(200).copy(end = CowOrderEnd.NotProvable),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
+
+        assertEquals(
+            listOf(
+                // A fill sold what its trade says, not the bound.
+                "Swapped 39 USDC for 0.0159 ETH on CoW",
+                "CoW order: 0.0159 ETH for at most 40 USDC",
+                "CoW order cancelled: 0.0159 ETH for at most 40 USDC",
+                "CoW order not filled: 0.0159 ETH for at most 40 USDC",
+                "CoW order: 0.0159 ETH for at most 40 USDC",
+            ),
+            rows.map { it.title },
+        )
     }
 
     @Test
@@ -1104,6 +1144,48 @@ class AccountActivityTest {
 
         assertEquals(2, rows.size, rows.map { it.title }.toString())
         assertTrue(rows.none { it.status == "On chain, from the network's own verified log of ETH transfers" })
+    }
+
+    @Test
+    fun aChequebookWithdrawalsOwnXbzzIsSaidByItsRowNotAsAReceiptFromAnUnfamiliarSender() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val bzz = Token(Address.of("0x" + "db".repeat(20)), "BZZ", "BZZ on xDai", 16, "bzz")
+        val chequebook = Address.of("0x" + "cb".repeat(20))
+        val withdrawal = sent(10, SentAction.ChequebookWithdrawal(bzz, chequebook, UInt256.of(1_000_000)), 450)
+        history.entries.value = listOf(HistoryEntry(withdrawal, SentOutcome.Included(9_406_000, succeeded = true)))
+        index.logs = listOf(
+            tokenLog(bzz.address, 9_406_000, chequebook, alice.address, word("f4240"), withdrawal.hash),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
+
+        // The withdrawal's row alone: its own xBZZ is no receipt, cautioned, from an unfamiliar sender.
+        assertEquals(1, rows.size, rows.map { it.title }.toString())
+        assertTrue(rows.none { it.state == ActivityState.CAUTION })
+    }
+
+    @Test
+    fun aBatchPurchasesPullOfItsTotalIsSaidByItsRowAlone() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val bzz = Token(Address.of("0x" + "db".repeat(20)), "BZZ", "BZZ on xDai", 16, "bzz")
+        val stamp = Address.of("0x" + "45".repeat(20))
+        val id = eth.serotine.domain.model.BatchId.of("ab".repeat(32))
+        // 1,000 PLUR for each of 2^20 chunks: 1,048,576,000 PLUR.
+        val bought = sent(10, SentAction.BatchPurchase(bzz, stamp, bob, id, 20, UInt256.of(1_000), false), 450)
+        history.entries.value = listOf(HistoryEntry(bought, SentOutcome.Included(9_406_000, succeeded = true)))
+        index.logs = listOf(
+            tokenLog(bzz.address, 9_406_000, alice.address, stamp, word("3e800000"), bought.hash),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
+
+        assertEquals(1, rows.size, rows.map { it.title }.toString())
     }
 
     @Test

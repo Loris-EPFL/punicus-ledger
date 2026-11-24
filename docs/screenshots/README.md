@@ -10,7 +10,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 
 | Screen | Folder | States |
 |---|---|---|
-| [Account detail](#account-detail) | `account-detail/` | 51 |
+| [Account detail](#account-detail) | `account-detail/` | 52 |
 | [Accounts](#accounts) | `accounts/` | 41 |
 | [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 3 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 11 |
@@ -32,6 +32,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [No account open (wide window)](#no-account-open) | `no-account-open/` | 4 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
 | [Per-app addresses](#per-app) | `per-app/` | 12 |
+| [Postage batch](#postage) | `postage/` | 13 |
 | [Receive](#receive) | `receive/` | 7 |
 | [Remove account (dialog)](#remove-account-dialog) | `remove-account-dialog/` | 7 |
 | [Rename account (dialog)](#rename-account-dialog) | `rename-account-dialog/` | 6 |
@@ -58,24 +59,27 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Safe transaction (simple mode)](#simple-safe-tx) | `simple-safe-tx/` | 15 |
 | [Send (simple mode)](#simple-send) | `simple-send/` | 10 |
 | [Settings (simple mode)](#simple-settings) | `simple-settings/` | 10 |
-| [Swap (simple mode)](#simple-swap) | `simple-swap/` | 11 |
+| [Swap (simple mode)](#simple-swap) | `simple-swap/` | 14 |
 | [Tokens (simple mode)](#simple-tokens) | `simple-tokens/` | 2 |
 | [Transfer status (simple mode)](#simple-transfer-status) | `simple-transfer-status/` | 13 |
 | [Watch address (simple mode)](#simple-watch) | `simple-watch/` | 9 |
-| [Swap](#swap) | `swap/` | 38 |
+| [Swap](#swap) | `swap/` | 41 |
+| [Swarm node](#swarm) | `swarm/` | 14 |
 | [Tokens](#tokens) | `tokens/` | 7 |
 | [Transfer status](#transfer-status) | `transfer-status/` | 37 |
 | [Update required](#update-required) | `update-required/` | 2 |
 | [Watch address](#watch) | `watch/` | 26 |
 | [Widget setup](#widget-pair) | `widget-pair/` | 9 |
+| [Withdraw from the chequebook](#withdraw) | `withdraw/` | 13 |
 
 <a name="account-detail"></a>
 ## Account detail
 
-`account-detail/`, 51 states: `assets`, `assets-dark`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `per-app-tab-no-network`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`
+`account-detail/`, 52 states: `assets`, `assets-dark`, `swarm-node`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `per-app-tab-no-network`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`
 
 <a href="account-detail/assets.png"><img src="account-detail/assets.png" width="206" alt="assets"></a>
 <a href="account-detail/assets-dark.png"><img src="account-detail/assets-dark.png" width="206" alt="assets-dark"></a>
+<a href="account-detail/swarm-node.png"><img src="account-detail/swarm-node.png" width="206" alt="swarm-node"></a>
 <a href="account-detail/checking.png"><img src="account-detail/checking.png" width="206" alt="checking"></a>
 <a href="account-detail/head-too-old.png"><img src="account-detail/head-too-old.png" width="206" alt="head-too-old"></a>
 <a href="account-detail/by-name-with-impostor.png"><img src="account-detail/by-name-with-impostor.png" width="206" alt="by-name-with-impostor"></a>
@@ -564,6 +568,25 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="per-app/unreadable.png"><img src="per-app/unreadable.png" width="206" alt="unreadable"></a>
 <a href="per-app/loading.png"><img src="per-app/loading.png" width="206" alt="loading"></a>
 
+<a name="postage"></a>
+## Postage batch
+
+`postage/`, 13 states: `buy`, `buy-dark`, `refused`, `quoting`, `top-up`, `dilute`, `approval`, `awaiting`, `purchase`, `dilution`, `signing`, `loading`, `no-payer`
+
+<a href="postage/buy.png"><img src="postage/buy.png" width="206" alt="buy"></a>
+<a href="postage/buy-dark.png"><img src="postage/buy-dark.png" width="206" alt="buy-dark"></a>
+<a href="postage/refused.png"><img src="postage/refused.png" width="206" alt="refused"></a>
+<a href="postage/quoting.png"><img src="postage/quoting.png" width="206" alt="quoting"></a>
+<a href="postage/top-up.png"><img src="postage/top-up.png" width="206" alt="top-up"></a>
+<a href="postage/dilute.png"><img src="postage/dilute.png" width="206" alt="dilute"></a>
+<a href="postage/approval.png"><img src="postage/approval.png" width="206" alt="approval"></a>
+<a href="postage/awaiting.png"><img src="postage/awaiting.png" width="206" alt="awaiting"></a>
+<a href="postage/purchase.png"><img src="postage/purchase.png" width="206" alt="purchase"></a>
+<a href="postage/dilution.png"><img src="postage/dilution.png" width="206" alt="dilution"></a>
+<a href="postage/signing.png"><img src="postage/signing.png" width="206" alt="signing"></a>
+<a href="postage/loading.png"><img src="postage/loading.png" width="206" alt="loading"></a>
+<a href="postage/no-payer.png"><img src="postage/no-payer.png" width="206" alt="no-payer"></a>
+
 <a name="receive"></a>
 ## Receive
 
@@ -1027,15 +1050,18 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="simple-swap"></a>
 ## Swap (simple mode)
 
-`simple-swap/`, 11 states: `compose`, `compose-dark`, `approval`, `approval-dark`, `pending`, `step-two`, `cow`, `reset-first`, `earlier-failed`, `one-step`, `not-sent`
+`simple-swap/`, 14 states: `compose`, `compose-dark`, `compose-buy`, `approval`, `approval-dark`, `pending`, `step-two`, `cow`, `swap-buy`, `cow-buy`, `reset-first`, `earlier-failed`, `one-step`, `not-sent`
 
 <a href="simple-swap/compose.png"><img src="simple-swap/compose.png" width="206" alt="compose"></a>
 <a href="simple-swap/compose-dark.png"><img src="simple-swap/compose-dark.png" width="206" alt="compose-dark"></a>
+<a href="simple-swap/compose-buy.png"><img src="simple-swap/compose-buy.png" width="206" alt="compose-buy"></a>
 <a href="simple-swap/approval.png"><img src="simple-swap/approval.png" width="206" alt="approval"></a>
 <a href="simple-swap/approval-dark.png"><img src="simple-swap/approval-dark.png" width="206" alt="approval-dark"></a>
 <a href="simple-swap/pending.png"><img src="simple-swap/pending.png" width="206" alt="pending"></a>
 <a href="simple-swap/step-two.png"><img src="simple-swap/step-two.png" width="206" alt="step-two"></a>
 <a href="simple-swap/cow.png"><img src="simple-swap/cow.png" width="206" alt="cow"></a>
+<a href="simple-swap/swap-buy.png"><img src="simple-swap/swap-buy.png" width="206" alt="swap-buy"></a>
+<a href="simple-swap/cow-buy.png"><img src="simple-swap/cow-buy.png" width="206" alt="cow-buy"></a>
 <a href="simple-swap/reset-first.png"><img src="simple-swap/reset-first.png" width="206" alt="reset-first"></a>
 <a href="simple-swap/earlier-failed.png"><img src="simple-swap/earlier-failed.png" width="206" alt="earlier-failed"></a>
 <a href="simple-swap/one-step.png"><img src="simple-swap/one-step.png" width="206" alt="one-step"></a>
@@ -1086,7 +1112,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="swap"></a>
 ## Swap
 
-`swap/`, 38 states: `compose-empty`, `compose-empty-dark`, `composed`, `compose-estimate-checking`, `compose-estimate-unavailable`, `compose-high-impact`, `compose-quoting`, `compose-input-errors`, `compose-no-route`, `compose-cow-orders-unreadable`, `compose-on-cow`, `compose-cow-did-not-answer`, `compose-earlier-order-live`, `compose-approval-sent`, `compose-earlier-maybe-sent`, `compose-token-not-found`, `approval`, `approval-reset-first`, `review`, `review-dark`, `review-through-weth-with-biometrics`, `review-wrong-password`, `review-signing`, `review-refreshing`, `review-not-sent`, `cow-review`, `cow-review-dark`, `cow-review-uniswap-gives-more`, `order-placed`, `loading`, `watch-only`, `sent`, `approval-pending`, `review-step-two`, `approval-earlier-failed`, `wrap-review`, `wrap-review-dark`, `unwrap-review`
+`swap/`, 41 states: `compose-empty`, `compose-empty-dark`, `composed`, `compose-estimate-checking`, `compose-estimate-unavailable`, `compose-high-impact`, `compose-quoting`, `compose-input-errors`, `compose-no-route`, `compose-cow-orders-unreadable`, `compose-on-cow`, `compose-buy-exact`, `compose-buy-not-enough`, `compose-cow-did-not-answer`, `compose-earlier-order-live`, `compose-approval-sent`, `compose-earlier-maybe-sent`, `compose-token-not-found`, `approval`, `approval-reset-first`, `review`, `review-dark`, `review-buy`, `review-through-weth-with-biometrics`, `review-wrong-password`, `review-signing`, `review-refreshing`, `review-not-sent`, `cow-review`, `cow-review-dark`, `cow-review-buy`, `order-placed`, `loading`, `watch-only`, `sent`, `approval-pending`, `review-step-two`, `approval-earlier-failed`, `wrap-review`, `wrap-review-dark`, `unwrap-review`
 
 <a href="swap/compose-empty.png"><img src="swap/compose-empty.png" width="206" alt="compose-empty"></a>
 <a href="swap/compose-empty-dark.png"><img src="swap/compose-empty-dark.png" width="206" alt="compose-empty-dark"></a>
@@ -1099,6 +1125,8 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="swap/compose-no-route.png"><img src="swap/compose-no-route.png" width="206" alt="compose-no-route"></a>
 <a href="swap/compose-cow-orders-unreadable.png"><img src="swap/compose-cow-orders-unreadable.png" width="206" alt="compose-cow-orders-unreadable"></a>
 <a href="swap/compose-on-cow.png"><img src="swap/compose-on-cow.png" width="206" alt="compose-on-cow"></a>
+<a href="swap/compose-buy-exact.png"><img src="swap/compose-buy-exact.png" width="206" alt="compose-buy-exact"></a>
+<a href="swap/compose-buy-not-enough.png"><img src="swap/compose-buy-not-enough.png" width="206" alt="compose-buy-not-enough"></a>
 <a href="swap/compose-cow-did-not-answer.png"><img src="swap/compose-cow-did-not-answer.png" width="206" alt="compose-cow-did-not-answer"></a>
 <a href="swap/compose-earlier-order-live.png"><img src="swap/compose-earlier-order-live.png" width="206" alt="compose-earlier-order-live"></a>
 <a href="swap/compose-approval-sent.png"><img src="swap/compose-approval-sent.png" width="206" alt="compose-approval-sent"></a>
@@ -1108,6 +1136,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="swap/approval-reset-first.png"><img src="swap/approval-reset-first.png" width="206" alt="approval-reset-first"></a>
 <a href="swap/review.png"><img src="swap/review.png" width="206" alt="review"></a>
 <a href="swap/review-dark.png"><img src="swap/review-dark.png" width="206" alt="review-dark"></a>
+<a href="swap/review-buy.png"><img src="swap/review-buy.png" width="206" alt="review-buy"></a>
 <a href="swap/review-through-weth-with-biometrics.png"><img src="swap/review-through-weth-with-biometrics.png" width="206" alt="review-through-weth-with-biometrics"></a>
 <a href="swap/review-wrong-password.png"><img src="swap/review-wrong-password.png" width="206" alt="review-wrong-password"></a>
 <a href="swap/review-signing.png"><img src="swap/review-signing.png" width="206" alt="review-signing"></a>
@@ -1115,7 +1144,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="swap/review-not-sent.png"><img src="swap/review-not-sent.png" width="206" alt="review-not-sent"></a>
 <a href="swap/cow-review.png"><img src="swap/cow-review.png" width="206" alt="cow-review"></a>
 <a href="swap/cow-review-dark.png"><img src="swap/cow-review-dark.png" width="206" alt="cow-review-dark"></a>
-<a href="swap/cow-review-uniswap-gives-more.png"><img src="swap/cow-review-uniswap-gives-more.png" width="206" alt="cow-review-uniswap-gives-more"></a>
+<a href="swap/cow-review-buy.png"><img src="swap/cow-review-buy.png" width="206" alt="cow-review-buy"></a>
 <a href="swap/order-placed.png"><img src="swap/order-placed.png" width="206" alt="order-placed"></a>
 <a href="swap/loading.png"><img src="swap/loading.png" width="206" alt="loading"></a>
 <a href="swap/watch-only.png"><img src="swap/watch-only.png" width="206" alt="watch-only"></a>
@@ -1126,6 +1155,26 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="swap/wrap-review.png"><img src="swap/wrap-review.png" width="206" alt="wrap-review"></a>
 <a href="swap/wrap-review-dark.png"><img src="swap/wrap-review-dark.png" width="206" alt="wrap-review-dark"></a>
 <a href="swap/unwrap-review.png"><img src="swap/unwrap-review.png" width="206" alt="unwrap-review"></a>
+
+<a name="swarm"></a>
+## Swarm node
+
+`swarm/`, 14 states: `node`, `node-dark`, `empty`, `bounced-expired`, `held`, `add-chequebook`, `add-checking`, `add-refused`, `network-off`, `no-payer`, `not-removed`, `set-aside`, `loading`, `unavailable`
+
+<a href="swarm/node.png"><img src="swarm/node.png" width="206" alt="node"></a>
+<a href="swarm/node-dark.png"><img src="swarm/node-dark.png" width="206" alt="node-dark"></a>
+<a href="swarm/empty.png"><img src="swarm/empty.png" width="206" alt="empty"></a>
+<a href="swarm/bounced-expired.png"><img src="swarm/bounced-expired.png" width="206" alt="bounced-expired"></a>
+<a href="swarm/held.png"><img src="swarm/held.png" width="206" alt="held"></a>
+<a href="swarm/add-chequebook.png"><img src="swarm/add-chequebook.png" width="206" alt="add-chequebook"></a>
+<a href="swarm/add-checking.png"><img src="swarm/add-checking.png" width="206" alt="add-checking"></a>
+<a href="swarm/add-refused.png"><img src="swarm/add-refused.png" width="206" alt="add-refused"></a>
+<a href="swarm/network-off.png"><img src="swarm/network-off.png" width="206" alt="network-off"></a>
+<a href="swarm/no-payer.png"><img src="swarm/no-payer.png" width="206" alt="no-payer"></a>
+<a href="swarm/not-removed.png"><img src="swarm/not-removed.png" width="206" alt="not-removed"></a>
+<a href="swarm/set-aside.png"><img src="swarm/set-aside.png" width="206" alt="set-aside"></a>
+<a href="swarm/loading.png"><img src="swarm/loading.png" width="206" alt="loading"></a>
+<a href="swarm/unavailable.png"><img src="swarm/unavailable.png" width="206" alt="unavailable"></a>
 
 <a name="tokens"></a>
 ## Tokens
@@ -1237,3 +1286,22 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="widget-pair/bases-filtered-dark.png"><img src="widget-pair/bases-filtered-dark.png" width="206" alt="bases-filtered-dark"></a>
 <a href="widget-pair/quotes.png"><img src="widget-pair/quotes.png" width="206" alt="quotes"></a>
 <a href="widget-pair/quotes-dark.png"><img src="widget-pair/quotes-dark.png" width="206" alt="quotes-dark"></a>
+
+<a name="withdraw"></a>
+## Withdraw from the chequebook
+
+`withdraw/`, 13 states: `form`, `form-dark`, `refused`, `quoting`, `review`, `requoted`, `not-sent`, `wrong-password`, `checking`, `signing`, `not-verified`, `loading`, `no-key`
+
+<a href="withdraw/form.png"><img src="withdraw/form.png" width="206" alt="form"></a>
+<a href="withdraw/form-dark.png"><img src="withdraw/form-dark.png" width="206" alt="form-dark"></a>
+<a href="withdraw/refused.png"><img src="withdraw/refused.png" width="206" alt="refused"></a>
+<a href="withdraw/quoting.png"><img src="withdraw/quoting.png" width="206" alt="quoting"></a>
+<a href="withdraw/review.png"><img src="withdraw/review.png" width="206" alt="review"></a>
+<a href="withdraw/requoted.png"><img src="withdraw/requoted.png" width="206" alt="requoted"></a>
+<a href="withdraw/not-sent.png"><img src="withdraw/not-sent.png" width="206" alt="not-sent"></a>
+<a href="withdraw/wrong-password.png"><img src="withdraw/wrong-password.png" width="206" alt="wrong-password"></a>
+<a href="withdraw/checking.png"><img src="withdraw/checking.png" width="206" alt="checking"></a>
+<a href="withdraw/signing.png"><img src="withdraw/signing.png" width="206" alt="signing"></a>
+<a href="withdraw/not-verified.png"><img src="withdraw/not-verified.png" width="206" alt="not-verified"></a>
+<a href="withdraw/loading.png"><img src="withdraw/loading.png" width="206" alt="loading"></a>
+<a href="withdraw/no-key.png"><img src="withdraw/no-key.png" width="206" alt="no-key"></a>

@@ -58,7 +58,8 @@ only" of 2026-10-15.)
     section where one cannot;
   - SafeL2 1.4.1 created on Gnosis Chain, the L1 singleton on Ethereum and
     Sepolia;
-  - Swap greyed out on Gnosis Chain until a venue is pinned there;
+  - Swap greyed out on Gnosis Chain until a venue is pinned there (both
+    are since 2026-11-23, at the owner's request);
   - the network step starts with nothing ticked;
   - Sepolia off after an update from the Sepolia-only release;
   - Receive kept on a network that is off, saying arrivals show once it is
@@ -117,8 +118,8 @@ of a stale feed.)
   stale. It is never replaced by a pool's average.
 - Only where the network pins no feed for a price id, a Uniswap v3
   time-weighted average price (TWAP) of a pinned pool prices it. Today that
-  is Ethereum, for COW and SAFE. Gnosis Chain pins no Uniswap, and Sepolia has
-  no market.
+  is Ethereum, for COW and SAFE. Gnosis Chain pins no Uniswap pool for prices,
+  and Sepolia has no market.
 - The average is a verified call: `observe` of a pinned pool. The pool is a
   pool only when the pinned factory's `getPool(tokenA, tokenB, fee)` returns
   it in a verified call, as for swaps (docs/swaps.md, *Pins*). There is no
@@ -272,23 +273,41 @@ and #144.)
 - Uniswap's contracts are chain data like any other: pinned, read with
   verified calls, and sent to like any transaction.
 
-## CoW Protocol's order API is an off-chain service, used only for a swap the user sends to CoW
+## CoW Protocol's order API is an off-chain service, used only while CoW is chosen for a swap
 
-(Owner ruling, 2026-10-22.)
+(Owner ruling, 2026-10-22; amended 2026-11-23 for the compose step's estimate.)
 
-- CoW learns the swaps the user sends to it and no others: the account's
-  address, the pair, the amounts, the device's IP address and, for a signed
-  order, the order. With Uniswap chosen, CoW is never contacted.
+- CoW learns the swaps the user sends to it, and no others but those composed
+  with CoW chosen (below): the account's address, the pair, the amounts, the
+  device's IP address and, for a signed order, the order. With Uniswap
+  chosen, CoW is never contacted.
+- With CoW chosen, the compose step asks CoW for its estimate too, so that
+  the first screen shows the rate and the amount (owner ruling, 2026-11-23,
+  amending the line above): CoW then learns the account's address, the pair
+  and the amount composed, whether the swap is sent or not.
 - The app data carries nothing beyond the required fields. The IP address is
   not hidden for now.
 - Of CoW's answers about an order, only its off-chain life is shown. A fill,
   and every amount it moved, comes from the account's verified logs alone.
-- The swap's review also shows CoW's estimate, marked as not verified, to
-  compare the venues. This follows from #144's design point 3, not from the
-  ruling's words.
-- The order is built, hashed and checked here. Its signed minimum is never
-  below the verified Uniswap quote less the gas and the tolerance. A pair
-  with no Uniswap route is not offered on CoW.
+- The swap's review also shows CoW's estimate, marked as not verified. This
+  follows from #144's design point 3, not from the ruling's words.
+- The order is built, hashed and checked here.
+
+## A CoW order does not depend on Uniswap
+
+(Owner ruling, 2026-11-23: "cowswap should not depend on uniswap in any way".
+It replaces the verified Uniswap floor under a CoW order, and the refusal of a
+pair with no Uniswap route, of 2026-10-22, decision 1; docs/swaps.md, *The
+signed minimum*.)
+
+- A CoW order's signed minimum is CoW's own estimate less the tolerance, as
+  CoW's own app sets it. No Uniswap quote, route or fee enters a CoW order,
+  its compose step, its review or its signature.
+- Every pair CoW quotes is offered on CoW, whether Uniswap has a route for it
+  or not. A network with CoW pinned and no Uniswap offers Swap.
+- The minimum rests on CoW's word: the light client cannot prove CoW's
+  estimate. The review says so, in both views.
+- CoW is pinned on Ethereum, Gnosis Chain and Sepolia.
 
 ## dApps connect over WalletConnect v2; its relay is an off-chain service
 
@@ -353,6 +372,36 @@ docs/walletconnect.md is the contract.)
   yet, which is no ruling: the engine's iOS reads have no verified block body,
   and iOS opens an undefined one of several apps that claim `ethereum:`.
 
+## Swarm nodes: pinned contracts, found in the log index or added by hand
+
+(Owner's decisions, 2026-11-23; docs/swarm.md.)
+
+- **Gnosis Chain only.** Bee's contracts as Bee v2.8.3 names them, each
+  pinned by address and code hash: the PostageStamp, the chequebook factory
+  and its master copy, proven before they are read; and the BZZ token's
+  proxy and the implementation its EIP-1967 slot names, proven before an
+  approval is quoted or an action signed. xBZZ's balances are read like any
+  built-in token's.
+  Retired PostageStamps are not read. Swarm's testnet on Sepolia is open,
+  the owner's to decide.
+- **xBZZ joins Gnosis Chain's built-in token list.** No feed and no pool
+  prices it: "no price", out of totals.
+- **Found in the verified log index**, only as far back as it reaches
+  ("since added"): a chequebook as the recipient of an xBZZ `Transfer` from
+  the node; a batch from the pinned PostageStamp's `BatchCreated` logs,
+  followed as an emitter while a Swarm node is in the wallet or an account
+  of it paid the PostageStamp, whose owner, decoded from the data, is the
+  node.
+- **Only a batch the wallet paid for is found** (owner's decision,
+  2026-11-23, on #347). Its transaction must also hold an xBZZ `Transfer`
+  to the PostageStamp from an account of the wallet. Anyone can create a
+  batch naming any owner; a batch someone else bought is added by hand.
+- **Or bought here, or added by hand:** a chequebook by address, a batch by
+  id, kept once proven. The candidates are public data, kept in an
+  app-private file.
+- **No Swarm service is contacted.** Not a Bee node's API, not a gateway:
+  the user copies what Bee shows.
+
 ## Privacy Pools' circuit artifacts are bundled
 
 (Owner ruling, 2026-11-11, docs/privacy-pools.md D14.)
@@ -371,4 +420,4 @@ docs/walletconnect.md is the contract.)
 ## Open decisions
 
 Each is recorded here before its code lands. Today: each optional
-WalletConnect service above.
+WalletConnect service above, and Swarm on Sepolia (docs/swarm.md).

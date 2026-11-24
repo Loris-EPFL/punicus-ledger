@@ -44,10 +44,15 @@ class CowProtocolTest {
 
     @Test
     fun theDomainSeparatorIsTheSettlementsOwn() {
-        // Mainnet's, as CoW publishes it; Sepolia's, recomputed with cast.
+        // Mainnet's, as CoW publishes it and its settlement returns; Gnosis Chain's, as its settlement
+        // returns it (read 2026-11-23); Sepolia's, recomputed with cast.
         assertEquals(
             "c078f884a2676e1345748b1feace7b0abee5d00ecadb6e574dcdd109a63e8943",
-            GPv2Signing.domainSeparator(1, settlement).toHex(),
+            GPv2Signing.domainSeparator(Network.ETHEREUM.chainId, settlement).toHex(),
+        )
+        assertEquals(
+            "8f05589c4b810bc2f706854508d66d447cd971f8354a4bb0b3471ceb0a466bc7",
+            GPv2Signing.domainSeparator(Network.GNOSIS.chainId, settlement).toHex(),
         )
         assertEquals(
             "daee378bd0eb30ddf479272accf91761e697bc00e067a268f95f1d2732ed230b",
@@ -78,6 +83,30 @@ class CowProtocolTest {
                 )
             }
         }
+    }
+
+    @Test
+    fun aRealGnosisBuyOrdersDigestIsTheStartOfItsUid() {
+        // A buy order settled on Gnosis Chain, as CoW's order book lists it (read 2026-11-23); its UID
+        // starts with the order's EIP-712 digest, whatever the signing scheme.
+        val uid = CowOrderUid.of(
+            "0xda965cc1e9e6fa21b9c862de5fd4d0e1ea45b123f2e60880177ae3a061c82b44" +
+                "e7281f28ff496bca98c7440e37a7960a335c254b6b03cf7f",
+        )
+        val struct = GPv2Signing.structHash(
+            sellToken = Address.of("0xedbc7449a9b594ca4e053d9737ec5dc4cbccbfb2"),
+            buyToken = Address.of("0xcb444e90d8198415266c6a2724b7900fb12fc56e"),
+            receiver = Address.of("0xc919e0300edb2c61c3312dbcb5fda0bf16d78450"),
+            sellAmount = UInt256.of("6340000055327017624"),
+            buyAmount = UInt256.of("6340000000000000000"),
+            validTo = 1_795_411_839,
+            appData = "0xde82ffd7e3f6775553f6a5c24751a0296436a624eb8e981fa7b325eb5bcf41b5",
+            feeAmount = UInt256.ZERO,
+            partiallyFillable = true,
+            kind = SwapKind.BUY,
+        )
+        val digest = GPv2Signing.digest(GPv2Signing.domainSeparator(Network.GNOSIS.chainId, settlement), struct)
+        assertEquals(uid.digest, digest)
     }
 
     @Test

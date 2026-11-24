@@ -36,6 +36,9 @@ const val SWAP_BUY_TAG = "swap-buy"
 /** Test tag of the amount field, for UI tests. */
 const val SWAP_AMOUNT_TAG = "swap-amount"
 
+/** Test tag of the field of the amount bought, for UI tests. */
+const val SWAP_BUY_AMOUNT_TAG = "swap-buy-amount"
+
 /** Test tag of the tolerance field, for UI tests. */
 const val SWAP_TOLERANCE_TAG = "swap-tolerance"
 
@@ -60,6 +63,12 @@ const val SWAP_INVERT_RATE_TAG = "swap-invert-rate"
  * proposed again in place of one queued. [simpleError] is [error] in simple mode's words, with no
  * block, null where it is [error] itself. [estimate] is what the swap would return and its rate, from a
  * verified quote, once the pair and the amount are set; null until they are.
+ *
+ * [buyAmount] is the amount bought as typed, in [buy]'s units, or null where a swap sells only (a
+ * Safe's): typed last, it is the exact one, and [amount] is left to the estimate (docs/swaps.md,
+ * *Buying an exact amount*), with [buyAmountError] why it is no amount. [amountPlaceholder] and
+ * [buyAmountPlaceholder] are the estimate of the field that is not typed ("≈ 17.58 XDAI"), shown
+ * under it: a placeholder of a labelled field shows only once it is focused.
  */
 data class SwapForm(
     val network: String,
@@ -82,6 +91,10 @@ data class SwapForm(
     val fixed: Boolean = false,
     val simpleError: String? = null,
     val estimate: SwapEstimateItem? = null,
+    val buyAmount: String? = null,
+    val buyAmountError: String? = null,
+    val amountPlaceholder: String? = null,
+    val buyAmountPlaceholder: String? = null,
 )
 
 /**
@@ -92,8 +105,8 @@ data class SwapForm(
  * USDC") and [inverseRate] the other way round; [impact] a warning when the amount moves the pools'
  * price far; [note] where the figures come from (its block) or why there are none, and
  * [simpleNote] the same in simple mode's words, with no block, null where it is [note] itself.
- * [checking] while the quote is read. Display only: the review quotes the swap again, and only what
- * it shows is signed.
+ * [checking] while the quote is read, said as [checkingText]. Display only: the review quotes the
+ * swap again, and only what it shows is signed.
  */
 data class SwapEstimateItem(
     val label: String,
@@ -105,6 +118,7 @@ data class SwapEstimateItem(
     val impact: String? = null,
     val checking: Boolean = false,
     val simpleNote: String? = null,
+    val checkingText: String = "Checking on chain…",
 )
 
 /**
@@ -113,7 +127,8 @@ data class SwapEstimateItem(
  * Each asset is chosen from a dropdown menu, which takes one line of the screen however many
  * assets the wallet lists.
  * The keyboard's Next key on the amount goes to the tolerance, whose Done does what their Review
- * button does: [onReview].
+ * button does: [onReview]. The amount bought has its field only where [SwapForm.buyAmount] offers it
+ * ([onBuyAmountChange]).
  */
 @Composable
 internal fun SwapFormFields(
@@ -124,6 +139,7 @@ internal fun SwapFormFields(
     onMax: () -> Unit,
     onToleranceChange: (String) -> Unit,
     onReview: () -> Unit,
+    onBuyAmountChange: (String) -> Unit = {},
 ) {
     val toleranceField = remember { FocusRequester() }
     Heading("Sell")
@@ -148,7 +164,8 @@ internal fun SwapFormFields(
         singleLine = true,
         trailingIcon = { TextButton(onClick = onMax, enabled = form.canMax && !form.fixed) { Text("Max") } },
         isError = form.amountError != null,
-        supportingText = (form.amountError ?: form.amountHint)?.let { text -> { Text(text) } },
+        supportingText = (form.amountError ?: form.amountHint ?: form.amountPlaceholder)
+            ?.let { text -> { Text(text) } },
         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal).next(),
         keyboardActions = nextTo(toleranceField),
     )
@@ -163,6 +180,25 @@ internal fun SwapFormFields(
         ) { onBuyChange(it.contract) }
         Note("Only the assets your wallet lists: what a swap buys shows among the account's assets and can be sent.")
     }
+    form.buyAmount?.let { buyAmount ->
+        OutlinedTextField(
+            value = buyAmount,
+            onValueChange = onBuyAmountChange,
+            modifier = Modifier.fillMaxWidth().testTag(SWAP_BUY_AMOUNT_TAG),
+            enabled = !form.quoting && !form.fixed && form.buy != null,
+            label = { Text(form.buy?.let { "Amount of ${it.symbol} to buy" } ?: "Amount to buy") },
+            singleLine = true,
+            isError = form.buyAmountError != null,
+            supportingText = {
+                Text(
+                    form.buyAmountError ?: form.buyAmountPlaceholder
+                        ?: "Type the amount to buy to buy exactly it, or the amount to sell above.",
+                )
+            },
+            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal).next(),
+            keyboardActions = nextTo(toleranceField),
+        )
+    }
     form.estimate?.let { SwapEstimateFields(it, pair = form.sell?.contract to form.buy?.contract) }
     Heading("Slippage tolerance")
     OutlinedTextField(
@@ -174,7 +210,7 @@ internal fun SwapFormFields(
         singleLine = true,
         isError = form.toleranceError != null,
         supportingText = {
-            Text(form.toleranceError ?: "How far below the verified quote the swap may return: 0.1 % to 5 %.")
+            Text(form.toleranceError ?: "How far the swap may come out worse than its quote: 0.1 % to 5 %.")
         },
         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Decimal).done(),
         keyboardActions = submitOnDone(form.canReview, onReview),
@@ -194,7 +230,7 @@ private fun SwapEstimateFields(estimate: SwapEstimateItem, pair: Any?) {
         if (estimate.checking) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                Text("Checking on chain…", style = MaterialTheme.typography.bodyMedium)
+                Text(estimate.checkingText, style = MaterialTheme.typography.bodyMedium)
             }
         }
         estimate.receive?.let {

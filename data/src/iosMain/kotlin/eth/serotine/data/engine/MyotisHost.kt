@@ -31,6 +31,7 @@ import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.PriceHistory
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
+import eth.serotine.domain.repository.SwarmContracts
 import eth.serotine.domain.repository.DelayModules
 import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.repository.TokenBalances
@@ -183,6 +184,9 @@ class MyotisHost private constructor(
 
     /** A Gnosis Pay account's Delay modifier and its queue (docs/gnosis-pay.md), each a verified read. */
     val delayModules: DelayModules = routed.delayModules
+
+    /** A Swarm node's chequebook and postage batches (docs/swarm.md), each a verified read. */
+    val swarmContracts: SwarmContracts = routed.swarmContracts
 
     /** Uniswap v3 on each network: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = routed.uniswap
@@ -500,6 +504,7 @@ class MyotisHost private constructor(
             names = EngineNames(network, chain, Dispatchers.IO),
             safeApprovals = VerifiedSafeApprovals(network, chain, Dispatchers.IO),
             delayModules = VerifiedDelayModules(network, chain, Dispatchers.IO, POLL_INTERVAL),
+            swarmContracts = VerifiedSwarmContracts(network, chain, Dispatchers.IO, POLL_INTERVAL),
             uniswap = VerifiedUniswapV3(chain, Dispatchers.IO, network),
             cow = VerifiedCow(chain, Dispatchers.IO, network),
             logIndex = EngineLogIndex(network, chain, Dispatchers.IO, POLL_INTERVAL),

@@ -1,6 +1,7 @@
 package eth.serotine.ui.activity
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.DelayCall
 import eth.serotine.domain.model.DelayMemberChange
 import eth.serotine.domain.model.DelayTransfer
@@ -10,6 +11,7 @@ import eth.serotine.domain.model.PinnedFallbackHandlers
 import eth.serotine.domain.model.SafeEvent
 import eth.serotine.domain.model.SafeTxAction
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
@@ -300,6 +302,9 @@ internal class ActivityRows(
     /** [count] owners, as a sentence says it: "1 owner", "2 owners". */
     fun owners(count: Long): String = if (count == 1L) "1 owner" else "$count owners"
 
+    /** A batch id as the Swarm screen shortens it: "0xa1b2c3d4…c3d4". */
+    private fun batchShort(id: BatchId): String = "0x" + id.hex.take(8) + "…" + id.hex.takeLast(4)
+
     /** A 32-byte hash as screens shorten it, as they do an address: "0xab12…cd34". */
     fun shortHash(hash: String): String = shortAddress(hash)
 
@@ -321,8 +326,13 @@ internal class ActivityRows(
             }
             is SentAction.Swap -> {
                 val (symbol, decimals) = shown(action.buy)
-                val title = "Swapped ${amount(action.amountIn, action.sell)} for at least " +
-                    figure(action.minimumOut, decimals, symbol)
+                val bought = figure(action.minimumOut, decimals, symbol)
+                val sold = amount(action.amountIn, action.sell)
+                val title = if (action.kind == SwapKind.BUY) {
+                    "Bought $bought for at most $sold"
+                } else {
+                    "Swapped $sold for at least $bought"
+                }
                 Triple(title, action.router, "On Uniswap ·")
             }
             is SentAction.Wrap -> {
@@ -354,6 +364,29 @@ internal class ActivityRows(
             } else {
                 Triple("Skipped expired entries of the Delay", transfer.account, "Paid by")
             }
+            // A Swarm node's postage batch (docs/swarm.md, *History*): seen from the node, who paid.
+            is SentAction.BatchPurchase -> if (transfer.account == address && action.owner != address) {
+                Triple("Bought a postage batch", action.owner, "For")
+            } else if (transfer.account == address) {
+                Triple("Bought a postage batch", action.stamp, "At")
+            } else {
+                Triple("Postage batch bought", transfer.account, "Paid by")
+            }
+            is SentAction.BatchTopUp -> if (transfer.account == address && action.node != address) {
+                Triple("Topped up batch ${batchShort(action.id)}", action.node, "For")
+            } else if (transfer.account == address) {
+                Triple("Topped up batch ${batchShort(action.id)}", action.stamp, "At")
+            } else {
+                Triple("Batch ${batchShort(action.id)} topped up", transfer.account, "Paid by")
+            }
+            is SentAction.BatchDilution ->
+                Triple("Diluted batch ${batchShort(action.id)} to depth ${action.depth}", action.stamp, "At")
+            // The xBZZ comes to the node, which sent it: the row says how much, from which chequebook.
+            is SentAction.ChequebookWithdrawal -> Triple(
+                "Withdrew ${amount(action.amount, TransferAsset.Erc20Token(action.token))}",
+                action.chequebook,
+                "From chequebook",
+            )
         }
         val (status, state) = statusOf(entry)
         return ActivityRow(
@@ -418,7 +451,18 @@ internal class ActivityRows(
      * order's status.
      */
     fun orderRow(order: CowOrderRecord): ActivityRow {
-        val sells = amount(order.order.sellAmount, order.sell)
+        val buys = order.order.kind == SwapKind.BUY
+        // A filled order sold what its trade says: a buy's maximum is only its bound.
+        val sold = (order.end as? CowOrderEnd.Filled)?.trade?.sellAmount ?: order.order.sellAmount
+        val sells = amount(sold, order.sell)
+        // What an order offered, while it may fill and when it did not: a sell its exact amount, a buy what it buys for
+        // at most its bound (the bound alone would read as an amount the user never typed). Built from the order's own
+        // amounts, so it stays right whatever branch reads it.
+        val offered = if (buys) {
+            "${amount(order.order.buyAmount, order.buy)} for at most ${amount(order.order.sellAmount, order.sell)}"
+        } else {
+            amount(order.order.sellAmount, order.sell)
+        }
         val simple = when (val end = order.end) {
             is CowOrderEnd.Filled -> "Filled"
             is CowOrderEnd.Unfilled -> if (end.cancelled) "Cancelled" else "Not filled: it expired"
@@ -426,7 +470,11 @@ internal class ActivityRows(
         }
         val (title, status, state) = when (val end = order.end) {
             null -> Triple(
-                "CoW order: $sells for at least ${amount(order.order.buyAmount, order.buy)}",
+                if (buys) {
+                    "CoW order: $offered"
+                } else {
+                    "CoW order: $sells for at least ${amount(order.order.buyAmount, order.buy)}"
+                },
                 "May fill until ${formatTime(order.order.validTo)}",
                 ActivityState.WAITING,
             )
@@ -438,12 +486,12 @@ internal class ActivityRows(
             is CowOrderEnd.Unfilled -> {
                 val block = grouped(end.endBlock)
                 if (end.cancelled) {
-                    Triple("CoW order cancelled: $sells", "Cancelled in block $block", ActivityState.DONE)
+                    Triple("CoW order cancelled: $offered", "Cancelled in block $block", ActivityState.DONE)
                 } else {
-                    Triple("CoW order not filled: $sells", "Not filled by block $block", ActivityState.DONE)
+                    Triple("CoW order not filled: $offered", "Not filled by block $block", ActivityState.DONE)
                 }
             }
-            CowOrderEnd.NotProvable -> Triple("CoW order: $sells", "Its end cannot be proven", ActivityState.UNKNOWN)
+            CowOrderEnd.NotProvable -> Triple("CoW order: $offered", "Its end cannot be proven", ActivityState.UNKNOWN)
         }
         return ActivityRow(
             key = order.uid.hex,

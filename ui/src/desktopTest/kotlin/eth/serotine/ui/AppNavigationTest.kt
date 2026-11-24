@@ -62,6 +62,7 @@ import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenTransfers
@@ -413,6 +414,8 @@ class AppNavigationTest {
         signatureRecovery = recovery,
         safeApprovals = FakeApprovals(),
         delayModules = NoDelayModules,
+        swarmContracts = NoSwarm,
+        swarmCandidates = NoSwarmCandidates,
         safeReleases = FakeReleases(),
         uniswap = object : UniswapV3Chain {
             // Pinned and unproven here: Swap is offered, and no quote is ever proven.
@@ -433,8 +436,9 @@ class AppNavigationTest {
                 network: Network,
                 sellToken: Address,
                 buyToken: Address,
-                sellAmount: UInt256,
+                amount: UInt256,
                 from: Address,
+                kind: SwapKind,
             ): CowQuoteReading = CowQuoteReading.Unavailable(CowUnavailable.NOT_PINNED)
 
             override suspend fun place(
@@ -1166,7 +1170,8 @@ class AppNavigationTest {
         // Over the bar, as every flow that ends in a transaction.
         rule.onNodeWithText("Settings").assertDoesNotExist()
         rule.onNodeWithText("Slippage tolerance").assertExists()
-        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}&continue={continue}"
+        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}" +
+            "&continue={continue}&kind={kind}"
         assertEquals(listOf("accounts", "account/{chain}/{address}", swap), screens())
 
         rule.onNodeWithContentDescription("Back").performClick()
@@ -1280,7 +1285,8 @@ class AppNavigationTest {
 
         rule.onNodeWithTag(COW_ORDER_UNISWAP_TAG).performScrollTo().performClick()
         rule.waitUntil { rule.onAllNodesWithText("Slippage tolerance").fetchSemanticsNodes().isNotEmpty() }
-        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}&continue={continue}"
+        val swap = "swap/{chain}/{address}?asset={asset}&buy={buy}&amount={amount}&venue={venue}" +
+            "&continue={continue}&kind={kind}"
         assertEquals(listOf("accounts", "account/{chain}/{address}", swap), screens(), "in the order's place")
 
         rule.onNodeWithContentDescription("Back").performClick()
@@ -1554,6 +1560,62 @@ class AppNavigationTest {
 
 /** The route of an Activity detail, as the back stack names it. */
 private const val DETAIL_ROUTE = "activity/{chain}/{address}/tx/{hash}?log={log}"
+
+/** A wallet with no Swarm node: no Bee contracts are pinned. */
+private object NoSwarm : eth.serotine.domain.repository.SwarmContracts {
+    override fun observeChequebook(
+        network: eth.serotine.domain.model.Network,
+        node: eth.serotine.domain.model.Address,
+        chequebook: eth.serotine.domain.model.Address,
+    ) = kotlinx.coroutines.flow.flowOf(eth.serotine.domain.repository.SwarmReading.NotPinned)
+
+    override fun observeBatch(
+        network: eth.serotine.domain.model.Network,
+        node: eth.serotine.domain.model.Address,
+        id: eth.serotine.domain.model.BatchId,
+    ) = kotlinx.coroutines.flow.flowOf(eth.serotine.domain.repository.SwarmReading.NotPinned)
+
+    override fun deployment(network: eth.serotine.domain.model.Network) = null
+
+    override suspend fun chequebook(
+        network: eth.serotine.domain.model.Network,
+        node: eth.serotine.domain.model.Address,
+        chequebook: eth.serotine.domain.model.Address,
+    ): eth.serotine.domain.repository.ChequebookReading =
+        eth.serotine.domain.repository.ChequebookReading.NotPinned
+
+    override suspend fun postage(
+        network: eth.serotine.domain.model.Network,
+        node: eth.serotine.domain.model.Address?,
+        id: eth.serotine.domain.model.BatchId?,
+    ) = eth.serotine.domain.repository.PostageReading.NotPinned
+}
+
+/** No candidate kept for any node. */
+private object NoSwarmCandidates : eth.serotine.domain.repository.SwarmCandidates {
+    private val none = eth.serotine.domain.repository.SwarmCandidateList.Loaded(emptyList(), emptyList())
+
+    override fun observe(node: eth.serotine.domain.model.AccountId) = kotlinx.coroutines.flow.flowOf(none)
+
+    override fun observeNodes(network: eth.serotine.domain.model.Network) =
+        kotlinx.coroutines.flow.flowOf(
+            emptyMap<eth.serotine.domain.model.AccountId, eth.serotine.domain.repository.SwarmCandidateList.Loaded>(),
+        )
+
+    override suspend fun add(
+        node: eth.serotine.domain.model.AccountId,
+        candidate: eth.serotine.domain.repository.SwarmCandidate,
+        byHand: Boolean,
+    ) = eth.serotine.domain.repository.SwarmCandidateChange.NOT_SAVED
+
+    override suspend fun remove(
+        node: eth.serotine.domain.model.AccountId,
+        candidate: eth.serotine.domain.repository.SwarmCandidate,
+    ) = eth.serotine.domain.repository.SwarmCandidateChange.NOT_FOUND
+
+    override suspend fun forget(node: eth.serotine.domain.model.AccountId) =
+        eth.serotine.domain.repository.SwarmCandidateChange.NOT_FOUND
+}
 
 /** A wallet with no Gnosis Pay account: every module is some other module. */
 private object NoDelayModules : eth.serotine.domain.repository.DelayModules {

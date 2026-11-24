@@ -2,6 +2,7 @@ package eth.serotine.data.transfers
 
 import eth.serotine.data.safe.WireRequest
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.DelayCall
 import eth.serotine.domain.model.DelayMemberChange
@@ -10,12 +11,13 @@ import eth.serotine.domain.model.DelayTransferPlan
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.SigningRequest
+import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
-import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.DappRequestId
 import eth.serotine.domain.repository.DappSessionId
+import eth.serotine.domain.repository.SafeListing
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
 import kotlinx.serialization.Serializable
@@ -41,8 +43,9 @@ private const val SKIP = "skip"
  * Safe transaction's approval or execution ([safe]), a Safe's deployment ([deployment]), a
  * token approval ([approval]), a swap ([swap]), a wrap or unwrap ([wrap]), a CoW order's
  * cancellation on chain ([cancellation]), a dApp's transaction ([dappCall]) or a Gnosis Pay
- * account's transfer or member change queued or executed through its Delay ([delay]) — exactly one of the nine, else
- * the file is damaged.
+ * account's transfer or member change queued or executed through its Delay ([delay]), or a Swarm
+ * node's postage batch bought, topped up or diluted ([postage], format 14), or xBZZ withdrawn from a
+ * Swarm node's chequebook ([chequebook], format 14) — exactly one of the eleven, else the file is damaged.
  */
 @Serializable
 internal class StoredTransfer(
@@ -60,6 +63,8 @@ internal class StoredTransfer(
     val cancellation: StoredCowCancellation? = null,
     val dappCall: StoredDappCall? = null,
     val delay: StoredDelayCall? = null,
+    val postage: StoredPostageCall? = null,
+    val chequebook: StoredChequebookCall? = null,
     val maxCost: String,
     val sentAt: Long,
     val maybeSent: Boolean = false,
@@ -77,7 +82,8 @@ internal class StoredTransfer(
     )
 
     private fun action(): SentAction {
-        val kinds = listOfNotNull(deployment, safe, approval, swap, wrap, cancellation, dappCall, delay)
+        val kinds =
+            listOfNotNull(deployment, safe, approval, swap, wrap, cancellation, dappCall, delay, postage, chequebook)
         require(kinds.size <= 1) { "more than one kind of transaction" }
         val transferFields = to != null || token != null || amount != null
         require(kinds.isEmpty() || !transferFields) { "a transfer and another kind at once" }
@@ -89,6 +95,8 @@ internal class StoredTransfer(
         cancellation?.let { return it.toAction() }
         dappCall?.let { return it.toAction() }
         delay?.let { return it.toAction() }
+        postage?.let { return it.toAction() }
+        chequebook?.let { return it.toAction() }
         return SentAction.Transfer(
             to = Address.of(requireNotNull(to) { "a transfer without a recipient" }),
             asset = token?.let { TransferAsset.Erc20Token(it.toToken()) } ?: TransferAsset.Native,
@@ -204,6 +212,8 @@ internal class StoredApproval(val token: StoredToken, val spender: String, val a
 /**
  * A swap through [router]: [amountIn] of [sell] for at least [minimumOut] of [buy], each asset
  * a token, or the native currency (null); [weth] the WETH9 the router unwraps ETH bought from.
+ * [kind] is [BUY] for a swap that buys exactly [minimumOut] for at most [amountIn]; absent, as in
+ * every record older than it, a sell. Any other value is no record this version reads.
  */
 @Serializable
 internal class StoredSwap(
@@ -213,6 +223,7 @@ internal class StoredSwap(
     val buy: StoredToken? = null,
     val minimumOut: String,
     val weth: String? = null,
+    val kind: String? = null,
 ) {
     fun toAction() = SentAction.Swap(
         router = Address.of(router),
@@ -221,7 +232,17 @@ internal class StoredSwap(
         buy = buy.asset(),
         minimumOut = UInt256.of(minimumOut),
         weth = weth?.let(Address::of),
+        kind = when (kind) {
+            null -> SwapKind.SELL
+            BUY -> SwapKind.BUY
+            else -> throw IllegalArgumentException("a swap of kind '$kind'")
+        },
     )
+
+    companion object {
+        /** [kind] of a swap that buys an exact amount. */
+        const val BUY = "buy"
+    }
 }
 
 /** A wrap ([WRAP]) or an unwrap ([UNWRAP]) of [amount] through the WETH9 [weth]. */
@@ -314,7 +335,8 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
             is SentAction.Transfer, is SentAction.SafeDeployment, is SentAction.TokenApproval,
             is SentAction.Swap, is SentAction.Wrap, is SentAction.Unwrap, is SentAction.CowCancellation,
             is SentAction.DappCall, is SentAction.DelayQueue, is SentAction.DelayExecution,
-            is SentAction.DelaySkip,
+            is SentAction.DelaySkip, is SentAction.BatchPurchase, is SentAction.BatchTopUp, is SentAction.BatchDilution,
+            is SentAction.ChequebookWithdrawal,
             -> null
         },
         delay = when (action) {
@@ -339,12 +361,39 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
                 it.buy.storedToken(),
                 it.minimumOut.toDecimal(),
                 it.weth?.hex,
+                StoredSwap.BUY.takeIf { _ -> it.kind == SwapKind.BUY },
             )
         },
         wrap = when (action) {
             is SentAction.Wrap -> StoredWrap(WRAP, stored(action.weth), action.amount.toDecimal())
             is SentAction.Unwrap -> StoredWrap(UNWRAP, stored(action.weth), action.amount.toDecimal())
             else -> null
+        },
+        postage = when (action) {
+            is SentAction.BatchPurchase -> StoredPostageCall(
+                PURCHASE,
+                action.stamp.hex,
+                action.id.hex,
+                action.depth,
+                perChunk = action.perChunk.toDecimal(),
+                owner = action.owner.hex,
+                immutable = action.immutable,
+                token = stored(action.token),
+            )
+            is SentAction.BatchTopUp -> StoredPostageCall(
+                TOP_UP,
+                action.stamp.hex,
+                action.id.hex,
+                action.depth,
+                perChunk = action.perChunk.toDecimal(),
+                owner = action.node.hex,
+                token = stored(action.token),
+            )
+            is SentAction.BatchDilution -> StoredPostageCall(DILUTION, action.stamp.hex, action.id.hex, action.depth)
+            else -> null
+        },
+        chequebook = (action as? SentAction.ChequebookWithdrawal)?.let {
+            StoredChequebookCall(WITHDRAW, it.chequebook.hex, it.amount.toDecimal(), stored(it.token))
         },
         cancellation = (action as? SentAction.CowCancellation)?.let {
             StoredCowCancellation(it.settlement.hex, it.uid.hex)
@@ -365,6 +414,77 @@ internal fun storedTransfer(transfer: SentTransfer): StoredTransfer {
         chain = transfer.network.chainId,
     )
 }
+
+/**
+ * A Swarm node's postage batch call (format 14, docs/swarm.md): bought ([kind] `purchase`, with
+ * its [owner], [perChunk], [immutable] and the [token] it pulls, xBZZ), topped up (`top-up`, with
+ * the node as [owner], [perChunk] and [token]) or diluted
+ * (`dilution`), of the batch [id] at the PostageStamp [stamp], at [depth] (the new one for a
+ * dilution). A field its kind does not have, or one it lacks, makes the entry damaged.
+ */
+@Serializable
+internal class StoredPostageCall(
+    val kind: String,
+    val stamp: String,
+    val id: String,
+    val depth: Int,
+    val perChunk: String? = null,
+    val owner: String? = null,
+    val immutable: Boolean? = null,
+    val token: StoredToken? = null,
+) {
+    fun toAction(): SentAction {
+        val stamp = Address.of(stamp)
+        val id = BatchId.of(id)
+        return when (kind) {
+            PURCHASE -> SentAction.BatchPurchase(
+                requireNotNull(token) { "a purchase without its token" }.toToken(),
+                stamp,
+                Address.of(requireNotNull(owner) { "a purchase without its owner" }),
+                id,
+                depth,
+                UInt256.of(requireNotNull(perChunk) { "a purchase without its amount" }),
+                requireNotNull(immutable) { "a purchase without whether it is immutable" },
+            )
+            TOP_UP -> {
+                require(immutable == null) { "a top-up with a purchase's fields" }
+                val node = Address.of(requireNotNull(owner) { "a top-up without its node" })
+                val amount = requireNotNull(perChunk) { "a top-up without its amount" }
+                val pulled = requireNotNull(token) { "a top-up without its token" }.toToken()
+                SentAction.BatchTopUp(pulled, stamp, node, id, depth, UInt256.of(amount))
+            }
+            DILUTION -> {
+                require(owner == null && immutable == null && perChunk == null && token == null) {
+                    "a dilution with an amount"
+                }
+                SentAction.BatchDilution(stamp, id, depth)
+            }
+            else -> throw IllegalArgumentException("a postage call of no known kind")
+        }
+    }
+}
+
+/**
+ * xBZZ withdrawn from a Swarm node's chequebook (format 14, docs/swarm.md): [kind] `withdraw`, the
+ * chequebook at [chequebook], the [amount] and the [token] it pays out, xBZZ.
+ */
+@Serializable
+internal class StoredChequebookCall(
+    val kind: String,
+    val chequebook: String,
+    val amount: String,
+    val token: StoredToken,
+) {
+    fun toAction(): SentAction {
+        require(kind == WITHDRAW) { "a chequebook call of no known kind" }
+        return SentAction.ChequebookWithdrawal(token.toToken(), Address.of(chequebook), UInt256.of(amount))
+    }
+}
+
+private const val WITHDRAW = "withdraw"
+private const val PURCHASE = "purchase"
+private const val TOP_UP = "top-up"
+private const val DILUTION = "dilution"
 
 /** A Safe transaction's call of [kind] as stored, its [request] in the form a signing request travels in. */
 private fun safeCall(kind: String, request: SigningRequest) = StoredSafeCall(kind, WireRequest.of(request))

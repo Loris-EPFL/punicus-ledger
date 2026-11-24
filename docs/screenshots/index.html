@@ -20,12 +20,13 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 <p>Every screen of Punicus in every state its previews draw, rendered headless from the previews (<code>ui/src/commonMain/kotlin/eth/serotine/ui/**/&lt;Feature&gt;ScreenPreviews.kt</code>). CI renders them on every pull request and commits the ones the PR changes, so the images come from one environment and a diff of this folder shows only real changes. The same screen is always at the same path, <code>&lt;screen&gt;/&lt;state&gt;.png</code>; the map of screens is <code>ui/src/desktopTest/kotlin/eth/serotine/ui/Screens.kt</code>, and a state's name sits beside its preview in the screen's previews list. A state's dark twin ends in <code>-dark</code>.</p>
 <p>Clone without the images: <code>git clone --filter=blob:none https://github.com/VesperBats/punicus.git</code> fetches a file only when a command needs it, so the history of this folder costs nothing until it is looked at. <code>git sparse-checkout set --no-cone '/*' '!/docs/screenshots/'</code> leaves it out of the working tree as well.</p>
 <p>If the folder grows too much, there are two levers, both the owner's. Deleting the folder stops the growth and keeps every past image in the history. Rewriting the history with <code>git filter-repo --path docs/screenshots --invert-paths</code> drops them for good, but changes the SHA of every commit since the first screenshot: tags, links to commits and every existing clone must follow. CI fails a pull request once the folder, or one image, passes its size budget (<code>scripts/screenshots.py</code>).</p>
-<nav><a href="#account-detail">Account detail</a> <a href="#accounts">Accounts</a> <a href="#accounts-tablet">Accounts on a tablet</a> <a href="#activity-detail">Activity detail</a> <a href="#add-on-networks-dialog">Add on networks (dialog)</a> <a href="#add-token">Add token</a> <a href="#connections">Connected dApps</a> <a href="#cow-order">CoW order</a> <a href="#create-account">Create account</a> <a href="#create-safe">Create Safe</a> <a href="#currency">Display currency</a> <a href="#dapp-proposal">dApp connection request</a> <a href="#dapp-request">dApp signing request</a> <a href="#dapp-transaction">dApp transaction</a> <a href="#debug">Debug</a> <a href="#derive-account">Add account from the same phrase</a> <a href="#gnosis-pay">Gnosis Pay account</a> <a href="#handoff">Send from another wallet</a> <a href="#mnemonic-import">Import recovery phrase</a> <a href="#no-account-open">No account open (wide window)</a> <a href="#pair-dapp">Connect a dApp</a> <a href="#per-app">Per-app addresses</a> <a href="#receive">Receive</a> <a href="#remove-account-dialog">Remove account (dialog)</a> <a href="#rename-account-dialog">Rename account (dialog)</a> <a href="#safe-import">Import Safe</a> <a href="#safe-propose">Propose Safe transaction</a> <a href="#safe-settings">Safe settings</a> <a href="#safe-swap">Safe swap</a> <a href="#safe-tx">Safe transaction</a> <a href="#screen-capture-warning-dialog">Screen capture warning (dialog)</a> <a href="#security">Security</a> <a href="#send">Send</a> <a href="#settings">Settings</a> <a href="#simple-account-detail">Account detail (simple mode)</a> <a href="#simple-accounts">Home (simple mode)</a> <a href="#simple-accounts-tablet">Home on a tablet (simple mode)</a> <a href="#simple-activity-detail">Activity detail (simple mode)</a> <a href="#simple-add-token">Add token (simple mode)</a> <a href="#simple-cow-order">CoW order (simple mode)</a> <a href="#simple-create-safe">Create Safe (simple mode)</a> <a href="#simple-safe-import">Import Safe (simple mode)</a> <a href="#simple-safe-propose">Propose Safe transaction (simple mode)</a> <a href="#simple-safe-settings">Safe settings (simple mode)</a> <a href="#simple-safe-swap">Safe swap (simple mode)</a> <a href="#simple-safe-tx">Safe transaction (simple mode)</a> <a href="#simple-send">Send (simple mode)</a> <a href="#simple-settings">Settings (simple mode)</a> <a href="#simple-swap">Swap (simple mode)</a> <a href="#simple-tokens">Tokens (simple mode)</a> <a href="#simple-transfer-status">Transfer status (simple mode)</a> <a href="#simple-watch">Watch address (simple mode)</a> <a href="#swap">Swap</a> <a href="#tokens">Tokens</a> <a href="#transfer-status">Transfer status</a> <a href="#update-required">Update required</a> <a href="#watch">Watch address</a> <a href="#widget-pair">Widget setup</a> </nav>
+<nav><a href="#account-detail">Account detail</a> <a href="#accounts">Accounts</a> <a href="#accounts-tablet">Accounts on a tablet</a> <a href="#activity-detail">Activity detail</a> <a href="#add-on-networks-dialog">Add on networks (dialog)</a> <a href="#add-token">Add token</a> <a href="#connections">Connected dApps</a> <a href="#cow-order">CoW order</a> <a href="#create-account">Create account</a> <a href="#create-safe">Create Safe</a> <a href="#currency">Display currency</a> <a href="#dapp-proposal">dApp connection request</a> <a href="#dapp-request">dApp signing request</a> <a href="#dapp-transaction">dApp transaction</a> <a href="#debug">Debug</a> <a href="#derive-account">Add account from the same phrase</a> <a href="#gnosis-pay">Gnosis Pay account</a> <a href="#handoff">Send from another wallet</a> <a href="#mnemonic-import">Import recovery phrase</a> <a href="#no-account-open">No account open (wide window)</a> <a href="#pair-dapp">Connect a dApp</a> <a href="#per-app">Per-app addresses</a> <a href="#postage">Postage batch</a> <a href="#receive">Receive</a> <a href="#remove-account-dialog">Remove account (dialog)</a> <a href="#rename-account-dialog">Rename account (dialog)</a> <a href="#safe-import">Import Safe</a> <a href="#safe-propose">Propose Safe transaction</a> <a href="#safe-settings">Safe settings</a> <a href="#safe-swap">Safe swap</a> <a href="#safe-tx">Safe transaction</a> <a href="#screen-capture-warning-dialog">Screen capture warning (dialog)</a> <a href="#security">Security</a> <a href="#send">Send</a> <a href="#settings">Settings</a> <a href="#simple-account-detail">Account detail (simple mode)</a> <a href="#simple-accounts">Home (simple mode)</a> <a href="#simple-accounts-tablet">Home on a tablet (simple mode)</a> <a href="#simple-activity-detail">Activity detail (simple mode)</a> <a href="#simple-add-token">Add token (simple mode)</a> <a href="#simple-cow-order">CoW order (simple mode)</a> <a href="#simple-create-safe">Create Safe (simple mode)</a> <a href="#simple-safe-import">Import Safe (simple mode)</a> <a href="#simple-safe-propose">Propose Safe transaction (simple mode)</a> <a href="#simple-safe-settings">Safe settings (simple mode)</a> <a href="#simple-safe-swap">Safe swap (simple mode)</a> <a href="#simple-safe-tx">Safe transaction (simple mode)</a> <a href="#simple-send">Send (simple mode)</a> <a href="#simple-settings">Settings (simple mode)</a> <a href="#simple-swap">Swap (simple mode)</a> <a href="#simple-tokens">Tokens (simple mode)</a> <a href="#simple-transfer-status">Transfer status (simple mode)</a> <a href="#simple-watch">Watch address (simple mode)</a> <a href="#swap">Swap</a> <a href="#swarm">Swarm node</a> <a href="#tokens">Tokens</a> <a href="#transfer-status">Transfer status</a> <a href="#update-required">Update required</a> <a href="#watch">Watch address</a> <a href="#widget-pair">Widget setup</a> <a href="#withdraw">Withdraw from the chequebook</a> </nav>
 <section id="account-detail">
-<h2>Account detail <small>account-detail/ · 51 states</small></h2>
+<h2>Account detail <small>account-detail/ · 52 states</small></h2>
 <div class="shots">
 <figure style="width: 206px"><a href="account-detail/assets.png"><img src="account-detail/assets.png" loading="lazy" alt="assets"></a><figcaption>assets</figcaption></figure>
 <figure style="width: 206px"><a href="account-detail/assets-dark.png"><img src="account-detail/assets-dark.png" loading="lazy" alt="assets-dark"></a><figcaption>assets-dark</figcaption></figure>
+<figure style="width: 206px"><a href="account-detail/swarm-node.png"><img src="account-detail/swarm-node.png" loading="lazy" alt="swarm-node"></a><figcaption>swarm-node</figcaption></figure>
 <figure style="width: 206px"><a href="account-detail/checking.png"><img src="account-detail/checking.png" loading="lazy" alt="checking"></a><figcaption>checking</figcaption></figure>
 <figure style="width: 206px"><a href="account-detail/head-too-old.png"><img src="account-detail/head-too-old.png" loading="lazy" alt="head-too-old"></a><figcaption>head-too-old</figcaption></figure>
 <figure style="width: 206px"><a href="account-detail/by-name-with-impostor.png"><img src="account-detail/by-name-with-impostor.png" loading="lazy" alt="by-name-with-impostor"></a><figcaption>by-name-with-impostor</figcaption></figure>
@@ -494,6 +495,24 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 <figure style="width: 206px"><a href="per-app/loading.png"><img src="per-app/loading.png" loading="lazy" alt="loading"></a><figcaption>loading</figcaption></figure>
 </div>
 </section>
+<section id="postage">
+<h2>Postage batch <small>postage/ · 13 states</small></h2>
+<div class="shots">
+<figure style="width: 206px"><a href="postage/buy.png"><img src="postage/buy.png" loading="lazy" alt="buy"></a><figcaption>buy</figcaption></figure>
+<figure style="width: 206px"><a href="postage/buy-dark.png"><img src="postage/buy-dark.png" loading="lazy" alt="buy-dark"></a><figcaption>buy-dark</figcaption></figure>
+<figure style="width: 206px"><a href="postage/refused.png"><img src="postage/refused.png" loading="lazy" alt="refused"></a><figcaption>refused</figcaption></figure>
+<figure style="width: 206px"><a href="postage/quoting.png"><img src="postage/quoting.png" loading="lazy" alt="quoting"></a><figcaption>quoting</figcaption></figure>
+<figure style="width: 206px"><a href="postage/top-up.png"><img src="postage/top-up.png" loading="lazy" alt="top-up"></a><figcaption>top-up</figcaption></figure>
+<figure style="width: 206px"><a href="postage/dilute.png"><img src="postage/dilute.png" loading="lazy" alt="dilute"></a><figcaption>dilute</figcaption></figure>
+<figure style="width: 206px"><a href="postage/approval.png"><img src="postage/approval.png" loading="lazy" alt="approval"></a><figcaption>approval</figcaption></figure>
+<figure style="width: 206px"><a href="postage/awaiting.png"><img src="postage/awaiting.png" loading="lazy" alt="awaiting"></a><figcaption>awaiting</figcaption></figure>
+<figure style="width: 206px"><a href="postage/purchase.png"><img src="postage/purchase.png" loading="lazy" alt="purchase"></a><figcaption>purchase</figcaption></figure>
+<figure style="width: 206px"><a href="postage/dilution.png"><img src="postage/dilution.png" loading="lazy" alt="dilution"></a><figcaption>dilution</figcaption></figure>
+<figure style="width: 206px"><a href="postage/signing.png"><img src="postage/signing.png" loading="lazy" alt="signing"></a><figcaption>signing</figcaption></figure>
+<figure style="width: 206px"><a href="postage/loading.png"><img src="postage/loading.png" loading="lazy" alt="loading"></a><figcaption>loading</figcaption></figure>
+<figure style="width: 206px"><a href="postage/no-payer.png"><img src="postage/no-payer.png" loading="lazy" alt="no-payer"></a><figcaption>no-payer</figcaption></figure>
+</div>
+</section>
 <section id="receive">
 <h2>Receive <small>receive/ · 7 states</small></h2>
 <div class="shots">
@@ -929,15 +948,18 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 </div>
 </section>
 <section id="simple-swap">
-<h2>Swap (simple mode) <small>simple-swap/ · 11 states</small></h2>
+<h2>Swap (simple mode) <small>simple-swap/ · 14 states</small></h2>
 <div class="shots">
 <figure style="width: 206px"><a href="simple-swap/compose.png"><img src="simple-swap/compose.png" loading="lazy" alt="compose"></a><figcaption>compose</figcaption></figure>
 <figure style="width: 206px"><a href="simple-swap/compose-dark.png"><img src="simple-swap/compose-dark.png" loading="lazy" alt="compose-dark"></a><figcaption>compose-dark</figcaption></figure>
+<figure style="width: 206px"><a href="simple-swap/compose-buy.png"><img src="simple-swap/compose-buy.png" loading="lazy" alt="compose-buy"></a><figcaption>compose-buy</figcaption></figure>
 <figure style="width: 206px"><a href="simple-swap/approval.png"><img src="simple-swap/approval.png" loading="lazy" alt="approval"></a><figcaption>approval</figcaption></figure>
 <figure style="width: 206px"><a href="simple-swap/approval-dark.png"><img src="simple-swap/approval-dark.png" loading="lazy" alt="approval-dark"></a><figcaption>approval-dark</figcaption></figure>
 <figure style="width: 206px"><a href="simple-swap/pending.png"><img src="simple-swap/pending.png" loading="lazy" alt="pending"></a><figcaption>pending</figcaption></figure>
 <figure style="width: 206px"><a href="simple-swap/step-two.png"><img src="simple-swap/step-two.png" loading="lazy" alt="step-two"></a><figcaption>step-two</figcaption></figure>
 <figure style="width: 206px"><a href="simple-swap/cow.png"><img src="simple-swap/cow.png" loading="lazy" alt="cow"></a><figcaption>cow</figcaption></figure>
+<figure style="width: 206px"><a href="simple-swap/swap-buy.png"><img src="simple-swap/swap-buy.png" loading="lazy" alt="swap-buy"></a><figcaption>swap-buy</figcaption></figure>
+<figure style="width: 206px"><a href="simple-swap/cow-buy.png"><img src="simple-swap/cow-buy.png" loading="lazy" alt="cow-buy"></a><figcaption>cow-buy</figcaption></figure>
 <figure style="width: 206px"><a href="simple-swap/reset-first.png"><img src="simple-swap/reset-first.png" loading="lazy" alt="reset-first"></a><figcaption>reset-first</figcaption></figure>
 <figure style="width: 206px"><a href="simple-swap/earlier-failed.png"><img src="simple-swap/earlier-failed.png" loading="lazy" alt="earlier-failed"></a><figcaption>earlier-failed</figcaption></figure>
 <figure style="width: 206px"><a href="simple-swap/one-step.png"><img src="simple-swap/one-step.png" loading="lazy" alt="one-step"></a><figcaption>one-step</figcaption></figure>
@@ -984,7 +1006,7 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 </div>
 </section>
 <section id="swap">
-<h2>Swap <small>swap/ · 38 states</small></h2>
+<h2>Swap <small>swap/ · 41 states</small></h2>
 <div class="shots">
 <figure style="width: 206px"><a href="swap/compose-empty.png"><img src="swap/compose-empty.png" loading="lazy" alt="compose-empty"></a><figcaption>compose-empty</figcaption></figure>
 <figure style="width: 206px"><a href="swap/compose-empty-dark.png"><img src="swap/compose-empty-dark.png" loading="lazy" alt="compose-empty-dark"></a><figcaption>compose-empty-dark</figcaption></figure>
@@ -997,6 +1019,8 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 <figure style="width: 206px"><a href="swap/compose-no-route.png"><img src="swap/compose-no-route.png" loading="lazy" alt="compose-no-route"></a><figcaption>compose-no-route</figcaption></figure>
 <figure style="width: 206px"><a href="swap/compose-cow-orders-unreadable.png"><img src="swap/compose-cow-orders-unreadable.png" loading="lazy" alt="compose-cow-orders-unreadable"></a><figcaption>compose-cow-orders-unreadable</figcaption></figure>
 <figure style="width: 206px"><a href="swap/compose-on-cow.png"><img src="swap/compose-on-cow.png" loading="lazy" alt="compose-on-cow"></a><figcaption>compose-on-cow</figcaption></figure>
+<figure style="width: 206px"><a href="swap/compose-buy-exact.png"><img src="swap/compose-buy-exact.png" loading="lazy" alt="compose-buy-exact"></a><figcaption>compose-buy-exact</figcaption></figure>
+<figure style="width: 206px"><a href="swap/compose-buy-not-enough.png"><img src="swap/compose-buy-not-enough.png" loading="lazy" alt="compose-buy-not-enough"></a><figcaption>compose-buy-not-enough</figcaption></figure>
 <figure style="width: 206px"><a href="swap/compose-cow-did-not-answer.png"><img src="swap/compose-cow-did-not-answer.png" loading="lazy" alt="compose-cow-did-not-answer"></a><figcaption>compose-cow-did-not-answer</figcaption></figure>
 <figure style="width: 206px"><a href="swap/compose-earlier-order-live.png"><img src="swap/compose-earlier-order-live.png" loading="lazy" alt="compose-earlier-order-live"></a><figcaption>compose-earlier-order-live</figcaption></figure>
 <figure style="width: 206px"><a href="swap/compose-approval-sent.png"><img src="swap/compose-approval-sent.png" loading="lazy" alt="compose-approval-sent"></a><figcaption>compose-approval-sent</figcaption></figure>
@@ -1006,6 +1030,7 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 <figure style="width: 206px"><a href="swap/approval-reset-first.png"><img src="swap/approval-reset-first.png" loading="lazy" alt="approval-reset-first"></a><figcaption>approval-reset-first</figcaption></figure>
 <figure style="width: 206px"><a href="swap/review.png"><img src="swap/review.png" loading="lazy" alt="review"></a><figcaption>review</figcaption></figure>
 <figure style="width: 206px"><a href="swap/review-dark.png"><img src="swap/review-dark.png" loading="lazy" alt="review-dark"></a><figcaption>review-dark</figcaption></figure>
+<figure style="width: 206px"><a href="swap/review-buy.png"><img src="swap/review-buy.png" loading="lazy" alt="review-buy"></a><figcaption>review-buy</figcaption></figure>
 <figure style="width: 206px"><a href="swap/review-through-weth-with-biometrics.png"><img src="swap/review-through-weth-with-biometrics.png" loading="lazy" alt="review-through-weth-with-biometrics"></a><figcaption>review-through-weth-with-biometrics</figcaption></figure>
 <figure style="width: 206px"><a href="swap/review-wrong-password.png"><img src="swap/review-wrong-password.png" loading="lazy" alt="review-wrong-password"></a><figcaption>review-wrong-password</figcaption></figure>
 <figure style="width: 206px"><a href="swap/review-signing.png"><img src="swap/review-signing.png" loading="lazy" alt="review-signing"></a><figcaption>review-signing</figcaption></figure>
@@ -1013,7 +1038,7 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 <figure style="width: 206px"><a href="swap/review-not-sent.png"><img src="swap/review-not-sent.png" loading="lazy" alt="review-not-sent"></a><figcaption>review-not-sent</figcaption></figure>
 <figure style="width: 206px"><a href="swap/cow-review.png"><img src="swap/cow-review.png" loading="lazy" alt="cow-review"></a><figcaption>cow-review</figcaption></figure>
 <figure style="width: 206px"><a href="swap/cow-review-dark.png"><img src="swap/cow-review-dark.png" loading="lazy" alt="cow-review-dark"></a><figcaption>cow-review-dark</figcaption></figure>
-<figure style="width: 206px"><a href="swap/cow-review-uniswap-gives-more.png"><img src="swap/cow-review-uniswap-gives-more.png" loading="lazy" alt="cow-review-uniswap-gives-more"></a><figcaption>cow-review-uniswap-gives-more</figcaption></figure>
+<figure style="width: 206px"><a href="swap/cow-review-buy.png"><img src="swap/cow-review-buy.png" loading="lazy" alt="cow-review-buy"></a><figcaption>cow-review-buy</figcaption></figure>
 <figure style="width: 206px"><a href="swap/order-placed.png"><img src="swap/order-placed.png" loading="lazy" alt="order-placed"></a><figcaption>order-placed</figcaption></figure>
 <figure style="width: 206px"><a href="swap/loading.png"><img src="swap/loading.png" loading="lazy" alt="loading"></a><figcaption>loading</figcaption></figure>
 <figure style="width: 206px"><a href="swap/watch-only.png"><img src="swap/watch-only.png" loading="lazy" alt="watch-only"></a><figcaption>watch-only</figcaption></figure>
@@ -1024,6 +1049,25 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 <figure style="width: 206px"><a href="swap/wrap-review.png"><img src="swap/wrap-review.png" loading="lazy" alt="wrap-review"></a><figcaption>wrap-review</figcaption></figure>
 <figure style="width: 206px"><a href="swap/wrap-review-dark.png"><img src="swap/wrap-review-dark.png" loading="lazy" alt="wrap-review-dark"></a><figcaption>wrap-review-dark</figcaption></figure>
 <figure style="width: 206px"><a href="swap/unwrap-review.png"><img src="swap/unwrap-review.png" loading="lazy" alt="unwrap-review"></a><figcaption>unwrap-review</figcaption></figure>
+</div>
+</section>
+<section id="swarm">
+<h2>Swarm node <small>swarm/ · 14 states</small></h2>
+<div class="shots">
+<figure style="width: 206px"><a href="swarm/node.png"><img src="swarm/node.png" loading="lazy" alt="node"></a><figcaption>node</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/node-dark.png"><img src="swarm/node-dark.png" loading="lazy" alt="node-dark"></a><figcaption>node-dark</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/empty.png"><img src="swarm/empty.png" loading="lazy" alt="empty"></a><figcaption>empty</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/bounced-expired.png"><img src="swarm/bounced-expired.png" loading="lazy" alt="bounced-expired"></a><figcaption>bounced-expired</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/held.png"><img src="swarm/held.png" loading="lazy" alt="held"></a><figcaption>held</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/add-chequebook.png"><img src="swarm/add-chequebook.png" loading="lazy" alt="add-chequebook"></a><figcaption>add-chequebook</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/add-checking.png"><img src="swarm/add-checking.png" loading="lazy" alt="add-checking"></a><figcaption>add-checking</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/add-refused.png"><img src="swarm/add-refused.png" loading="lazy" alt="add-refused"></a><figcaption>add-refused</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/network-off.png"><img src="swarm/network-off.png" loading="lazy" alt="network-off"></a><figcaption>network-off</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/no-payer.png"><img src="swarm/no-payer.png" loading="lazy" alt="no-payer"></a><figcaption>no-payer</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/not-removed.png"><img src="swarm/not-removed.png" loading="lazy" alt="not-removed"></a><figcaption>not-removed</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/set-aside.png"><img src="swarm/set-aside.png" loading="lazy" alt="set-aside"></a><figcaption>set-aside</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/loading.png"><img src="swarm/loading.png" loading="lazy" alt="loading"></a><figcaption>loading</figcaption></figure>
+<figure style="width: 206px"><a href="swarm/unavailable.png"><img src="swarm/unavailable.png" loading="lazy" alt="unavailable"></a><figcaption>unavailable</figcaption></figure>
 </div>
 </section>
 <section id="tokens">
@@ -1130,6 +1174,24 @@ figcaption { font: .75rem/1.3 monospace; text-align: center; word-break: break-w
 <figure style="width: 206px"><a href="widget-pair/bases-filtered-dark.png"><img src="widget-pair/bases-filtered-dark.png" loading="lazy" alt="bases-filtered-dark"></a><figcaption>bases-filtered-dark</figcaption></figure>
 <figure style="width: 206px"><a href="widget-pair/quotes.png"><img src="widget-pair/quotes.png" loading="lazy" alt="quotes"></a><figcaption>quotes</figcaption></figure>
 <figure style="width: 206px"><a href="widget-pair/quotes-dark.png"><img src="widget-pair/quotes-dark.png" loading="lazy" alt="quotes-dark"></a><figcaption>quotes-dark</figcaption></figure>
+</div>
+</section>
+<section id="withdraw">
+<h2>Withdraw from the chequebook <small>withdraw/ · 13 states</small></h2>
+<div class="shots">
+<figure style="width: 206px"><a href="withdraw/form.png"><img src="withdraw/form.png" loading="lazy" alt="form"></a><figcaption>form</figcaption></figure>
+<figure style="width: 206px"><a href="withdraw/form-dark.png"><img src="withdraw/form-dark.png" loading="lazy" alt="form-dark"></a><figcaption>form-dark</figcaption></figure>
+<figure style="width: 206px"><a href="withdraw/refused.png"><img src="withdraw/refused.png" loading="lazy" alt="refused"></a><figcaption>refused</figcaption></figure>
+<figure style="width: 206px"><a href="withdraw/quoting.png"><img src="withdraw/quoting.png" loading="lazy" alt="quoting"></a><figcaption>quoting</figcaption></figure>
+<figure style="width: 206px"><a href="withdraw/review.png"><img src="withdraw/review.png" loading="lazy" alt="review"></a><figcaption>review</figcaption></figure>
+<figure style="width: 206px"><a href="withdraw/requoted.png"><img src="withdraw/requoted.png" loading="lazy" alt="requoted"></a><figcaption>requoted</figcaption></figure>
+<figure style="width: 206px"><a href="withdraw/not-sent.png"><img src="withdraw/not-sent.png" loading="lazy" alt="not-sent"></a><figcaption>not-sent</figcaption></figure>
+<figure style="width: 206px"><a href="withdraw/wrong-password.png"><img src="withdraw/wrong-password.png" loading="lazy" alt="wrong-password"></a><figcaption>wrong-password</figcaption></figure>
+<figure style="width: 206px"><a href="withdraw/checking.png"><img src="withdraw/checking.png" loading="lazy" alt="checking"></a><figcaption>checking</figcaption></figure>
+<figure style="width: 206px"><a href="withdraw/signing.png"><img src="withdraw/signing.png" loading="lazy" alt="signing"></a><figcaption>signing</figcaption></figure>
+<figure style="width: 206px"><a href="withdraw/not-verified.png"><img src="withdraw/not-verified.png" loading="lazy" alt="not-verified"></a><figcaption>not-verified</figcaption></figure>
+<figure style="width: 206px"><a href="withdraw/loading.png"><img src="withdraw/loading.png" loading="lazy" alt="loading"></a><figcaption>loading</figcaption></figure>
+<figure style="width: 206px"><a href="withdraw/no-key.png"><img src="withdraw/no-key.png" loading="lazy" alt="no-key"></a><figcaption>no-key</figcaption></figure>
 </div>
 </section>
 </body>

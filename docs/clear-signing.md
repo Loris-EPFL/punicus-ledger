@@ -224,8 +224,9 @@ part of the decisions:
   (chain id, `to`, `from`, value and calldata, or the typed data) and lookups
   through ports: a token's metadata from the built-in list alone, as the dApp
   review's hand-written decoders name tokens today; an address's name from
-  the wallet's accounts, the built-in tokens and the pinned contracts; and
-  the binding check of A4, for a nested call's callee.
+  the built-in tokens and the pinned contracts (the wallet's own accounts
+  join with part 5's wiring); an address's verified kind; and the binding
+  check of A4, for a nested call's callee.
   It returns `ClearSigned` (the intent, the interpolated intent, the fields
   shown, the other parameters, the nested calls) or `NotCovered(reason)`.
 - **Strict decoding.** The ABI is decoded exactly: lengths and offsets
@@ -268,7 +269,8 @@ part of the decisions:
   beside the address, never an ENS name (`sources` other than `local` are
   not looked up); a value among its `senderAddress` reads "Sender", the
   decoded address kept as its raw value; an address whose verified kind is
-  not among its `types` is flagged.
+  not among its `types` is flagged, and so is one whose kind could not be
+  read in time ("not verified"), never taken for the kind expected.
 - **NFTs.** An `nftName` names a collection only when it is a built-in one
   (`.claude/rules/data-sources.md`, *An account's NFTs*); any other is shown
   as "#id of <address>", marked as not built in, never by the name its own
@@ -300,7 +302,10 @@ A descriptor applies only when every step holds; otherwise it fails closed:
    slot at a given block), and the implementation's code is proven in
    turn. An upgrade between two reads either shows in one of them, and the
    call is not described, or is caught at the next check: the transaction is
-   included later than any read in any case.
+   included later than any read in any case. A declared library of an
+   implementation (A1, step 4) is pinned at build time only: its address is
+   fixed in the implementation's code, which the binding pins, and code at an
+   address does not change.
 4. The selector, or the typed data's `encodeType` hash and domain, matches a
    format.
 
@@ -344,7 +349,7 @@ the five steps of docs/architecture.md:
    registry's vectors written out by hand.
 4. **`:data`** (A4): reading the catalog, the verified code reads for the
    binding check (`ContractCodes`), the use case `DescribeClearSigning`, and
-   the conformance tests over every vendored vector: 55 of the 56 that run
+   the conformance tests over every vendored vector: 56 of the 57 that run
    read as the registry expects; the one other is refused on purpose
    (trailing bytes).
 5. **`:ui`** (A5): the wiring in the composition roots and `AppGraph`, D6

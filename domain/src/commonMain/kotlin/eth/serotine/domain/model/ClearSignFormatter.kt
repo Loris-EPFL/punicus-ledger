@@ -123,7 +123,7 @@ interface ClearSigningLookups {
     /** [token] on [network] as the built-in list pins it, or null: the list alone (`.claude/rules/trust.md`). */
     fun token(network: Network, token: Address): ClearSigningToken?
 
-    /** The wallet's name for [address] (an account, a built-in token, a pinned contract), or null. */
+    /** The wallet's name for [address] (a built-in token, a pinned contract), or null. */
     fun addressName(network: Network, address: Address): String?
 
     /**
@@ -141,7 +141,7 @@ interface ClearSigningLookups {
     /**
      * A call nested at [depth] to [callee] with [data], sent by [from] with [value] (null when the bytes do not
      * say: the parent calling out), formatted with the callee's own built-in descriptor after its binding check,
-     * at the same block as its parent (A3, *A nested call*).
+     * read as its parent's are, verified at a fresh head (A3, *A nested call*; A4, step 3).
      */
     suspend fun nested(network: Network, from: Address, callee: Address, value: UInt256?, data: ByteArray, depth: Int): ClearSignResult
 }
@@ -349,8 +349,13 @@ object ClearSignFormatter {
                     if (address in format.senderAddress) return shown(SENDER)
                     val checksum = checksummed(address)
                     val name = if (format.sources.isEmpty() || "local" in format.sources) lookups.addressName(network, address) else null
-                    val kind = if (format.types.isEmpty()) null else lookups.addressKind(network, address)
-                    val mismatch = kind?.takeUnless { kindMatches(it, format.types) }?.let { AddressTypeMismatch(format.types, it) }
+                    val mismatch = if (format.types.isEmpty()) {
+                        null
+                    } else {
+                        // A kind that could not be read is said so, never taken for the one expected.
+                        val kind = lookups.addressKind(network, address) ?: KIND_NOT_VERIFIED
+                        kind.takeUnless { kindMatches(it, format.types) }?.let { AddressTypeMismatch(format.types, it) }
+                    }
                     shown(name?.let { "$it ($checksum)" } ?: checksum, mismatch = mismatch)
                 }
                 is FieldFormat.Date -> shown(
@@ -533,6 +538,9 @@ object ClearSignFormatter {
 
     // Every brace escaped: Android's ICU refuses a bare `}` (its java.util.regex reference, API 10 on).
     private val PLACEHOLDER = Regex("\\{([^\\{\\}]*)\\}")
+
+    /** The [AddressTypeMismatch.actual] of an address whose kind could not be read verified. */
+    const val KIND_NOT_VERIFIED = "not verified"
 
     /** What an `addressName` shows for one of its `senderAddress` values, as the registry's vectors write it. */
     const val SENDER = "Sender"

@@ -69,14 +69,15 @@ class ClearSigningConformanceTest {
                 } ?: continue
                 ran++
                 val expected = vector.getValue("expected").jsonObject
-                val difference = compare(expected, result)
-                if (difference != null && DIFFERENCES.none { (prefix, _) -> name.startsWith(prefix) }) {
-                    outcomes += "$name\n    $difference"
+                val excused = DIFFERENCES[name]
+                when {
+                    excused != null -> if (result != excused) outcomes += "$name\n    $result, expected $excused (excused)"
+                    else -> compare(expected, result)?.let { outcomes += "$name\n    $it" }
                 }
             }
         }
         println("clear-signing conformance: $ran vectors run, $skipped skipped (deployments not shipped)")
-        assertTrue(ran >= MIN_VECTORS, "only $ran vectors ran")
+        assertEquals(EXPECTED_RUN, ran, "a vector of a shipped deployment no longer runs, or one more does")
         assertEquals(emptyList(), outcomes, outcomes.joinToString("\n"))
     }
 
@@ -206,6 +207,8 @@ class ClearSigningConformanceTest {
                 fun bytes(i: Int) = items[i] as? ByteArray ?: ByteArray(0)
                 fun long(i: Int) = bytes(i).fold(0L) { acc, b -> (acc shl 8) or (b.toLong() and 0xff) }
                 val (chainId, to, value, data) = when {
+                    // Unsigned (EIP-155's payload, r and s empty): v is the chain id; signed: v = id * 2 + 35 or 36.
+                    !typed && bytes(7).isEmpty() && bytes(8).isEmpty() -> listOf(long(6), bytes(3), bytes(4), bytes(5))
                     !typed -> listOf((long(6) - 35) / 2, bytes(3), bytes(4), bytes(5))
                     raw[0].toInt() == 1 -> listOf(long(0), bytes(4), bytes(5), bytes(6))
                     raw[0].toInt() == 2 -> listOf(long(0), bytes(5), bytes(6), bytes(7))
@@ -255,14 +258,14 @@ class ClearSigningConformanceTest {
     private fun String.hexBytes(): ByteArray = chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
     private companion object {
-        /** Fewer vectors than this run means the catalog or the vectors went missing. */
-        const val MIN_VECTORS = 30
+        /** How many vectors run: a refresh that changes it says why in its PR. */
+        const val EXPECTED_RUN = 57
 
-        /** Vectors Punicus reads otherwise on purpose: the start of their name, and the rule that makes it so. */
-        val DIFFERENCES: List<Pair<String, String>> = listOf(
+        /** Vectors Punicus reads otherwise on purpose, by their exact name, with what it reads instead. */
+        val DIFFERENCES: Map<String, ClearSignResult> = mapOf(
             // Its call data is `deposit()` and one byte more (`d0e30db076`): Solidity ignores trailing bytes, the
             // strict decoding refuses them (docs/clear-signing.md, A3, *Strict decoding*).
-            "calldata-weth.json: Wrap - chain 1" to "trailing bytes are refused",
+            "calldata-weth.json: Wrap - chain 1" to ClearSignResult.NotCovered(eth.serotine.domain.model.NotCoveredReason.NotDecodable),
         )
     }
 }

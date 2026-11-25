@@ -474,7 +474,11 @@ def check_field(field: dict, descriptor: dict, where: str, root) -> None:
     only(field, FIELD_KEYS, where)
     if "path" in field and "fields" in field:
         refuse(where, "a group with a path of its own is not implemented")
+    if "fields" in field and ("visible" in field or "format" in field or "params" in field):
+        refuse(where, "a group's visibility or format is not implemented: it would apply to nothing")
     if "path" in field:
+        if field["path"].startswith("$."):
+            refuse(where, "a field's path is in the call or the message, not a constant")
         check_path(field["path"], where + ".path")
         resolve_path(field["path"], root, descriptor, where + ".path")
         if not isinstance(field.get("label"), str) or not field["label"].strip():

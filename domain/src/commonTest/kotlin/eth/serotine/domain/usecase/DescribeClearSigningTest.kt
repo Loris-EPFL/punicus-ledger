@@ -19,6 +19,9 @@ import eth.serotine.domain.model.FieldFormat
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.NotCoveredReason
 import eth.serotine.domain.model.Token
+import eth.serotine.domain.model.TypedData
+import eth.serotine.domain.model.TypedField
+import eth.serotine.domain.model.TypedValue
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.Visibility
 import eth.serotine.domain.model.hexToBytes
@@ -139,6 +142,104 @@ class DescribeClearSigningTest {
         val signed = assertIs<ClearSignResult.ClearSigned>(describe.call(Network.ETHEREUM, user, pool, UInt256.ZERO, supplyData(usdc)))
         assertEquals("Supply", signed.intent)
         assertEquals("1.5 USDC", (signed.fields[0] as ClearSignedField.Value).shown)
+    }
+
+    @Test
+    fun aClaimedSelectorStaysClaimedWhenNested() = runTest {
+        val signed = assertIs<ClearSignResult.ClearSigned>(
+            describe.call(Network.ETHEREUM, user, pool, UInt256.ZERO, supplyData(usdc, then = Erc20.approveData(other, UInt256.MAX))),
+        )
+        val nested = signed.fields[1] as ClearSignedField.Nested
+        assertEquals(ClearSignResult.NotCovered(NotCoveredReason.ClaimedByAppDecoder), nested.result)
+        assertEquals(true, nested.grantsApproval)
+        assertEquals(true, signed.grantsApproval)
+    }
+
+    private fun typed(primary: String, verifier: String?): TypedData = TypedData(
+        types = mapOf(
+            "EIP712Domain" to listOfNotNull(TypedField("name", "string"), TypedField("chainId", "uint256"),
+                verifier?.let { TypedField("verifyingContract", "address") }),
+            "Mail" to listOf(TypedField("to", "address")),
+            "PermitDetails" to listOf(
+                TypedField("token", "address"), TypedField("amount", "uint160"),
+                TypedField("expiration", "uint48"), TypedField("nonce", "uint48"),
+            ),
+            "PermitSingle" to listOf(TypedField("details", "PermitDetails"), TypedField("spender", "address"), TypedField("sigDeadline", "uint256")),
+        ).filterKeys { it == "EIP712Domain" || it == primary || primary == "PermitSingle" && it == "PermitDetails" },
+        primaryType = primary,
+        domain = buildMap {
+            put("name", TypedValue.Text("Permit2"))
+            put("chainId", TypedValue.Number("1"))
+            verifier?.let { put("verifyingContract", TypedValue.Text(it)) }
+        },
+        message = if (primary == "Mail") {
+            mapOf("to" to TypedValue.Text(other.hex))
+        } else {
+            mapOf(
+                "details" to TypedValue.Struct(
+                    mapOf(
+                        "token" to TypedValue.Text(usdc.hex), "amount" to TypedValue.Number("1"),
+                        "expiration" to TypedValue.Number("1"), "nonce" to TypedValue.Number("0"),
+                    ),
+                ),
+                "spender" to TypedValue.Text(other.hex),
+                "sigDeadline" to TypedValue.Number("1"),
+            )
+        },
+    )
+
+    @Test
+    fun typedDataIsClaimedBoundAndMatchedLikeACall() = runTest {
+        val permit2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+        assertEquals(
+            ClearSignResult.NotCovered(NotCoveredReason.ClaimedByAppDecoder),
+            describe.typedData(Network.ETHEREUM, user, typed("PermitSingle", permit2)),
+        )
+        assertEquals(
+            ClearSignResult.NotCovered(NotCoveredReason.DomainWithoutVerifyingContract),
+            describe.typedData(Network.ETHEREUM, user, typed("Mail", null)),
+        )
+        assertEquals(
+            ClearSignResult.NotCovered(NotCoveredReason.NoDescriptor),
+            describe.typedData(Network.ETHEREUM, user, typed("Mail", other.hex)),
+        )
+        codeHashes[pool] = CodeReading.Read(ClearSigningCodeReads("0x" + "22".repeat(32), null, null))
+        assertEquals(
+            ClearSignResult.NotCovered(NotCoveredReason.ContractChanged),
+            describe.typedData(Network.ETHEREUM, user, typed("Mail", pool.hex)),
+        )
+        codeHashes.remove(pool)
+        assertEquals(
+            ClearSignResult.NotCovered(NotCoveredReason.NoFormat(null)),
+            describe.typedData(Network.ETHEREUM, user, typed("Mail", pool.hex)),
+            "the pool's one descriptor is a calldata one",
+        )
+    }
+
+    @Test
+    fun anAddressWhoseKindCannotBeReadIsFlaggedAsNotVerified() = runTest {
+        val typedField = descriptor.copy(
+            formats = listOf(
+                descriptor.formats.single().copy(
+                    fields = listOf(
+                        ClearSigningField(
+                            ClearSigningPath.parse("asset"), "Asset",
+                            FieldFormat.AddressName(emptySet(), setOf("contract"), setOf("local")), Visibility.Shown,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val catalog = object : ClearSigningCatalog {
+            override fun deployment(network: Network, address: Address) =
+                if (address == pool) deployment(pool).copy(descriptors = listOf(typedField)) else null
+        }
+        val signed = assertIs<ClearSignResult.ClearSigned>(
+            DescribeClearSigning(catalog, codes, tokens, kinds).call(Network.ETHEREUM, user, pool, UInt256.ZERO, supplyData(usdc)),
+        )
+        val asset = signed.fields.single() as ClearSignedField.Value
+        assertEquals("not verified", asset.addressType?.actual)
+        assertEquals("USD Coin (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)", asset.shown)
     }
 
     @Test

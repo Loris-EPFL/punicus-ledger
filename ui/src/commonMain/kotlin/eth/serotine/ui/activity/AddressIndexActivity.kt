@@ -30,9 +30,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 
 /**
- * What an account's Activity reads of the addr1 index, on the desktop with its experimental setting on (owner
- * ruling, 2026-11-21, #334; the owner's decisions of that day on #335): whether the setting is on ([status]), and its
- * pages of verified rows ([load]). A host that offers no such setting (Android, iOS), or a release that pins no
+ * What an account's Activity reads of the addr1 index, on the desktop and Android with its experimental setting on
+ * (owner ruling, 2026-11-21, #334; the owner's decisions of that day on #335): whether the setting is on ([status]),
+ * and its pages of verified rows ([load]). A host that offers no such setting (iOS), or a release that pins no
  * importer key, hands none to [AccountActivity], and the Activity is the log index's alone.
  */
 class AddressIndexActivity(

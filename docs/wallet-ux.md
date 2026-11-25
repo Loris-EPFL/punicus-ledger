@@ -1294,8 +1294,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       nonce is used, by this transaction or by one that took its place,
       which the device cannot tell apart. The status screen (9) reads the
       same history once the record has forgotten a transaction.
-    - **And, on the desktop, the addr1 index** (owner ruling, 2026-11-21,
-      #334, and the owner's decisions of that day on #335;
+    - **And, on the desktop and Android, the addr1 index** (owner ruling,
+      2026-11-21, #334, and the owner's decisions of that day on #335; Android
+      since the owner's decisions of 2026-11-24 and 2026-11-25;
       `.claude/rules/data-sources.md`, *The history may also take the addr1
       index from Swarm*), while its experimental setting is on (18; on by
       default since 2026-11-22, #334): the engine reads the account's part
@@ -1470,8 +1471,8 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     says so. While the outbox holds something, it says that turning it off
     leaves that queued: it is still checked and sent, or discarded by the
     user (decision 10). A network that is off is not syncing, in either
-    mode: nothing is drafted on it. On the desktop only, an *Experimental*
-    section holds *Account history from the addr1 index* (owner ruling,
+    mode: nothing is drafted on it. On the desktop and Android (owner's
+    decision, 2026-11-24), an *Experimental* section holds *Account history from the addr1 index* (owner ruling,
     2026-11-21, #334; a file of its own, `address-index.json`, which keeps
     the importer key it was turned on for, or an explicit off): on by
     default (owner's decision, 2026-11-22, #334, amending "off by default"
@@ -1492,8 +1493,8 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     missing, while no importer key is pinned in the release (none was until
     2026-11-24, owner's decision of 2026-11-21; `0xb11B…7241` since, the
     owner's choice of 2026-11-24, #359) and while the build's engine has no Swarm
-    reader (none had it before Myotis 0.1.23, whose desktop natives carry it), both said when both hold.
-    Android and iOS have no such row. Tokens opens the list of every token the wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
+    reader (none had it before Myotis 0.1.23, whose desktop natives and Android AAR carry it), both said when both hold.
+    iOS has no such row. Tokens opens the list of every token the wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token
     opens 20.
 19. **Display currency**: USD, EUR, GBP, CHF, JPY, ETH and BTC, limited to the

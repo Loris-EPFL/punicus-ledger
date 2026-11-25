@@ -1,5 +1,5 @@
 ---
-description: "Data sources. The embedded engine is the only source of chain data; the three networks; Chainlink prices; the built-in token list; Safe co-signing without a service; history from the log index, and verified addr1 rows from Swarm on the desktop; an account's NFTs, on chain only; swaps on Uniswap and CoW; CoW's order API; dApp connections over WalletConnect."
+description: "Data sources. The embedded engine is the only source of chain data; the three networks; Chainlink prices; the built-in token list; Safe co-signing without a service; history from the log index, and verified addr1 rows from Swarm on the desktop and Android; an account's NFTs, on chain only; swaps on Uniswap and CoW; CoW's order API; dApp connections over WalletConnect."
 paths:
   - "domain/**/*"
   - "data/**/*"
@@ -238,14 +238,14 @@ of a stale feed.)
   topic, walked back over verified headers.
 - An account not created here is walked from the block it was added at,
   never further back ("since added"), and the history says so.
-- One widening: on the desktop, Activity may also take verified rows of the
-  addr1 index, below. "Since added" binds the log index's walk, not those
+- One widening: on the desktop and Android, Activity may also take verified
+  rows of the addr1 index, below. "Since added" binds the log index's walk, not those
   rows (owner ruling, 2026-11-21, #334).
 - The walk fetches receipts only for the blocks whose bloom flags an account.
   That tells the serving peer which blocks matter to this device. Accepted
   as is: the log index makes that trade-off for any watch-list.
 
-## The history may also take the addr1 index from Swarm: verified rows only, on the desktop
+## The history may also take the addr1 index from Swarm: verified rows only, on the desktop and Android
 
 (Owner ruling, 2026-11-21, #334. It widens *An account's history comes from
 the engine's verified log index*, as #334 proposed, with verified rows only.
@@ -293,25 +293,34 @@ contradicted entries and what others learn.)
   included. The privacy policy says so, and how to turn the setting off
   (owner's decision, 2026-11-22, #334, amending "before the setting can be
   turned on" of 2026-11-21).
-- **On the desktop, behind an experimental setting**, on by default, that
-  names the pinned key. The user may turn it off, and a choice to keep it
-  off stays (owner's decision, 2026-11-22, #334, amending "off by default"
-  of 2026-11-21). With no key pinned, or no Swarm reader, it reads nothing.
-  The engine's Swarm reader ships from Myotis 0.1.23 on, in its desktop
-  natives and its Android AAR (Myotis #920), so the desktop reads the index.
-  An engine without the reader (iOS, a build without its `swarm` feature)
-  refuses with the permanent `-32602`, as every engine does while Tor
-  routing is on. There the setting is greyed out, a tap saying why
-  (`ui.md`, the greyed-out rule), and the history stays the log index's.
-  Android and iOS have no such setting. Android's AAR carries the reader,
-  but its composition root sets no importer, and the engine starts its
-  Swarm node only on a read, so Android contacts no Swarm peer.
+- **On the desktop and on Android, behind an experimental setting**, on by
+  default, that names the pinned key. The user may turn it off, and a choice
+  to keep it off stays (owner's decision, 2026-11-22, #334, amending "off by
+  default" of 2026-11-21). Android takes it as the desktop does (owner's
+  decisions, 2026-11-24: "make it work on Android ASAP", and 2026-11-25:
+  "Enable addr1 on android and desktop", amending "Android and iOS have no
+  such setting" of 2026-11-21); iOS has no such setting. With no key pinned,
+  or no Swarm reader, it reads nothing. The engine's Swarm reader ships from
+  Myotis 0.1.23 on, in its desktop natives and its Android AAR (Myotis #920),
+  so both read the index. An engine without the reader (iOS, a build without
+  its `swarm` feature) refuses with the permanent `-32602`, as every engine
+  does while Tor routing is on. There the setting is greyed out, a tap saying
+  why (`ui.md`, the greyed-out rule), and the history stays the log index's.
+- How it is applied on Android, not part of the ruling, and open for the
+  owner to confirm: a page of the index (up to 20 entries, each checked
+  against old blocks and their receipts) starts only when the user opens or
+  scrolls an account's Activity, a read the user waits on, so it is taken as
+  no heavy download in the sense of the ruling of 2026-10-20 and is not held
+  off a metered connection. A page started finishes after the user leaves;
+  once the app's light clients pause (a minute in the background) the engine
+  refuses every read and stops its Swarm node (Myotis v0.1.23, `host.rs`,
+  `pause` and `snapshot_reader_evm`). Turning the setting off stops it.
 - **A panic in the reader ends the app** (recorded at the owner's request,
   2026-11-24). Myotis accepted for now that a panic inside `ant`, its
   embedded Swarm node, ends the host process (2026-11-24,
-  freedom-hq/ant#271). On the desktop the host process is the wallet. The
-  node runs only for a read, so with the setting off it never runs. The
-  changelog says so.
+  freedom-hq/ant#271). On the desktop and on Android the host process is the
+  wallet. The node runs only for a read, so with the setting off it never
+  runs. The changelog says so.
 - How it is applied, not part of the ruling: the list says how many entries
   of the index it left out because they could not be verified, and,
   separately, how many the chain contradicts. That follows from this ruling

@@ -20,8 +20,9 @@ sealed interface ActivityUiState {
      * Continue, in the same place whichever way the rows run; and first of all, what the account has
      * [queued] in lenient mode ("Waiting to send", "Needs your signature again";
      * docs/lenient-mode.md, *Where it shows*), each opening its status. [index] is what the addr1 index adds, on the
-     * desktop with its experimental setting on (owner ruling, 2026-11-21, #334): its lines, and its footer below the
-     * rows; null where it adds nothing (the setting off, or not offered here). Its verified rows are among [rows].
+     * desktop and Android with its experimental setting on (owner ruling, 2026-11-21, #334): its lines, and its
+     * footer below the rows; null where it adds nothing (the setting off, or not offered here). Its verified rows are
+     * among [rows].
      */
     data class Shown(
         val rows: List<ActivityRow>,

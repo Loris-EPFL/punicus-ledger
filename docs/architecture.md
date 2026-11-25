@@ -65,8 +65,8 @@ rule in code.
   account's history `TransactionHistory`, `HistoryStarts`
   (`eth.serotine.data.history`) and `LogIndex`, over the engine; for when the
   heavy downloads may run `ConnectionMeter` (`eth.serotine.data.network`) and
-  `MeteredDownloadsSetting` (`eth.serotine.data.settings`); and on the desktop,
-  for an account's history from the addr1 index, `AddressIndexHistory`
+  `MeteredDownloadsSetting` (`eth.serotine.data.settings`); and on the desktop
+  and Android, for an account's history from the addr1 index, `AddressIndexHistory`
   (`EngineAddressIndexHistory`, over the engine's address history; an engine without the
   Swarm reader refuses every read on its own, which the adapter says),
   `AddressIndexReaderSettings` (the engine's own setting of the reader, which `MyotisHost`

@@ -5,7 +5,8 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * The port for the experimental setting that lets an account's *Activity* also take the addr1 index from Swarm, on
- * the desktop only (owner ruling, 2026-11-21, #334, and the owner's decisions of that day on #335;
+ * the desktop and Android (owner ruling, 2026-11-21, #334, the owner's decisions of that day on #335, and of
+ * 2026-11-24 and 2026-11-25 for Android;
  * `.claude/rules/data-sources.md`, *The history may also take the addr1 index from Swarm*). On by default (owner's
  * decision, 2026-11-22): until the user chooses, it holds no choice ([AddressIndexChoice.NotChosen]), which
  * `eth.serotine.domain.usecase.AddressIndexStatus` reads as on. A choice is the importer key the user turned it on

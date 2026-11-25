@@ -315,7 +315,8 @@ private fun openWallet(dataDir: File) {
             // nothing is read from Swarm or checked for it while it is off. Applied from the start, without waiting
             // for the engine to say whether it reads Swarm. Handing the engine the key does not make it dial out:
             // its Swarm node starts on the first read (Myotis's addrhist.rs: "the node starts on the first read"),
-            // which an Activity asks, as docs/privacy-policy.md says. A failure ends it, never the wallet.
+            // which an account's Activity tab asks, as docs/privacy-policy.md says. A failure ends it, never the
+            // wallet.
             try {
                 FollowAddressIndexSetting(addressIndexSetting, PinnedAddressIndexImporter.KEY, node)()
             } catch (e: CancellationException) {
@@ -581,10 +582,11 @@ private fun openWallet(dataDir: File) {
                 dappSites = FileDappSites(dataDir.resolve("walletconnect/sites.json").path),
                 perAppAliases = FileDappAliases(dataDir.resolve("walletconnect/aliases.json").path),
                 dappConnectionsOff = dappProjectId.isEmpty(),
-                // An account's history from the addr1 index on Swarm, the desktop's alone, behind its experimental
-                // setting (owner ruling, 2026-11-21, #334), read and checked by the engine. An engine without the
-                // Swarm reader refuses it as not in this build, and the setting is greyed out saying so. The key the
-                // index rests on is pinned in the release (`0xb11B…7241`, owner's choice, 2026-11-24, #359).
+                // An account's history from the addr1 index on Swarm, the desktop's and Android's, behind its
+                // experimental setting (owner ruling, 2026-11-21, #334), read and checked by the engine. An engine
+                // without the Swarm reader refuses it as not in this build, and the setting is greyed out saying so.
+                // The key the index rests on is pinned in the release (`0xb11B…7241`, owner's choice, 2026-11-24,
+                // #359).
                 addressIndex = node.addressIndex,
                 addressIndexSetting = addressIndexSetting,
                 addressIndexImporter = PinnedAddressIndexImporter.KEY,

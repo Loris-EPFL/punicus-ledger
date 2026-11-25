@@ -61,7 +61,7 @@ const val SETTINGS_SIGN_WHILE_SYNCING_TAG = "settings-sign-while-syncing"
 /** Test tag of the row that switches the heavy downloads on a metered connection, for UI tests. */
 const val SETTINGS_METERED_TAG = "settings-metered"
 
-/** Test tag of the desktop's experimental addr1 history switch, for UI tests. */
+/** Test tag of the experimental addr1 history switch (the desktop and Android), for UI tests. */
 const val SETTINGS_ADDRESS_INDEX_TAG = "settings-address-index"
 
 /**
@@ -154,7 +154,7 @@ fun SettingsRoute(
  * turns lenient mode on or off through [onSignWhileSyncingChange] (docs/lenient-mode.md). The
  * switch for the heavy downloads on a metered connection calls [onMeteredDownloadsChange] with the
  * new choice; greyed out, a tap says why it cannot be changed (owner ruling, 2026-10-20). On the
- * desktop, under Experimental, the experimental addr1 history ([SettingsUiState.addressIndex]) turns on
+ * desktop and Android, under Experimental, the experimental addr1 history ([SettingsUiState.addressIndex]) turns on
  * or off through [onAddressIndexChange]; greyed out, a tap says what it needs (no importer key
  * pinned in this release, no Swarm reader in this build's engine).
  */

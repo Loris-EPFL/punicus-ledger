@@ -1,28 +1,28 @@
 name: Android APK
 
 on:
-  # Scope push to main + release tags so a branch push that also has an open PR
-  # doesn't build twice (the PR is covered by pull_request below). Tags still
-  # build the release .apk.
+  # Scope push to main + release tags: a branch builds the APKs only in the
+  # merge queue or on dispatch. Tags still build the release .apk.
   push:
     branches: [ "main" ]
     tags: [ "v*" ]
-  # pull_request stays unscoped (any base branch) so every PR shows this
-  # workflow's checks — but the JOBS below skip a PR whose base is not main
-  # (CLAUDE.md, "Multi-PR plans"): a part PR of a multi-PR plan targets its
-  # feature branch, and building two APKs for each part costs more than it
-  # tells; the final feature → main PR builds everything. Tests and the Claude
-  # review stay on every PR (ci.yml, claude-review.yml). A part that touches
-  # the minSdk budget can still run this on demand from the Actions tab
-  # (workflow_dispatch) — note that check_apk_min_api.py, the minSdk-29
-  # enforcement, runs in this workflow and nowhere else.
-  # A PR into main that changes only docs (pr-scope.yml's `code` output; owner's
+  # The APKs are built in the merge queue, not on a PR (owner's request,
+  # 2026-11-25): the queue tests the commit that lands on main, and holds the PR
+  # out of main until it builds. pull_request stays, unscoped (any base branch),
+  # so every PR shows this workflow's check as skipped, which the queue's
+  # ruleset takes as passed; a check that is absent it would wait for. Tests and
+  # the Claude review stay on every PR (ci.yml, claude-review.yml). A PR that
+  # touches the minSdk budget can run this on demand from the Actions tab
+  # (workflow_dispatch) before it is queued — note that check_apk_min_api.py,
+  # the minSdk-29 enforcement, runs in this workflow and nowhere else.
+  # A queue entry that changes only docs (pr-scope.yml's `code` output; owner's
   # request, 2026-11-18) skips the build too: no APK can differ.
   pull_request:
+  merge_group:
   workflow_dispatch:
 
-# Cancel a superseded run when new commits land on the same branch/PR. The
-# event is part of the group because a dispatch shares refs with push runs
+# Cancel a superseded run when new commits land on the same branch. (Each
+# queue entry has a branch of its own.) The event is part of the group because a dispatch shares refs with push runs
 # (the Actions UI offers main and the tags): without it, a dispatch on main
 # cancels an in-flight merge-to-main run, and one on a v* tag cancels that
 # tag's run mid-release-upload. A dispatch on a v* tag is the release-republish
@@ -32,32 +32,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # What the PR changes (pr-scope.yml). Every output is 'true' on every event but pull_request.
+  # What the queue entry changes (pr-scope.yml). Every output is 'true' on every event but
+  # pull_request and merge_group. Not run on a PR, where nothing below builds.
   scope:
     name: PR scope
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/pr-scope.yml
     permissions:
+      contents: read
       pull-requests: read
-
-  # Holds the build until this PR's Claude review has finished, so it does not
-  # run on a commit the review might still ask to change. It passes straight
-  # through on every other event — see wait-for-claude-review.yml.
-  review-gate:
-    name: Review gate
-    # Everything below needs this job, so skipping it here skips the build too
-    # (a dependent job is skipped when a needed job was, unless its `if` uses
-    # always()) — and on a tag the release uploads. So an `if:` on this job
-    # MUST be true on every non-pull_request event (push to main, v* tags,
-    # dispatch); the safe tests are the PR's base branch and pr-scope.yml's
-    # outputs, which are 'true' on every other event. The release jobs only run
-    # on tags. `!= 'false'`: a scope job that failed leaves the output empty,
-    # and empty builds. `!cancelled()` runs this job after a failed scope job;
-    # the jobs behind it rely on pr-scope.yml's continue-on-error.
-    needs: scope
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.base_ref == 'main' && needs.scope.outputs.code != 'false')) }}
-    uses: ./.github/workflows/wait-for-claude-review.yml
-    permissions:
-      actions: read
 
   # Builds BOTH apps every run: the debug one (eth.serotine.debug, public debug
   # key) and the UNSIGNED release one (eth.serotine). The release APK is signed
@@ -67,7 +50,15 @@ jobs:
   # that actually ship and a signing rehearsal.
   build:
     name: Build APKs (debug + unsigned release)
-    needs: review-gate
+    needs: scope
+    # Everything below needs this job, so skipping it skips the release jobs
+    # too, and on a tag the release uploads. So this `if:` MUST be true on
+    # every event but pull_request and merge_group (push to main, v* tags,
+    # dispatch); pr-scope.yml's outputs are 'true' there. `!= 'false'`: a scope
+    # job that failed leaves the output empty, and empty builds. `!cancelled()`
+    # runs this job after a failed scope job; the jobs behind it rely on
+    # pr-scope.yml's continue-on-error.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.scope.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -83,11 +74,8 @@ jobs:
           # Full history: :ui stamps the app's on-screen version from the nearest
           # v* tag, and `git tag --merged HEAD` needs HEAD's history to REACH that tag.
           #
-          # KNOWN GAP on pull_request: checkout defaults to github.ref, which for
-          # that event is the ephemeral refs/pull/<n>/merge commit — so a PR-built
-          # artifact stamps a sha that resolves nowhere. Deliberately not pinned to
-          # the PR head: that would change WHAT is built (head, not head-merged-into-
-          # base) and lose the integration signal.
+          # In the merge queue, checkout defaults to the commit the queue tests,
+          # which is the commit that lands on main.
           fetch-depth: 0
 
       - name: Set up JDK 21

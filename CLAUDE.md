@@ -148,9 +148,10 @@ neutral wording until the advisory is published (owner's request,
 2026-11-15, on Myotis #870).
 
 **MERGING IS THE OWNER'S ACTION. NEVER MERGE A PR YOURSELF** (owner ruling,
-2026-08-31). Green CI plus every comment answered means: report "ready to
-merge" and keep watching. The one exception is a part PR into a feature
-branch when the owner said yes for that plan (the `feature-branch` skill).
+2026-08-31). Adding a PR to `main`'s merge queue merges it. Green CI plus
+every comment answered means: report "ready to merge" and keep watching.
+The one exception is a part PR into a feature branch when the owner said
+yes for that plan (the `feature-branch` skill).
 In the Claude Code desktop app the session renames itself (owner's request,
 2026-10-09): `IS#<n>: <title>` once the issue is known, `PR#<n>: <title>`
 once the PR exists (the `pr` skill).

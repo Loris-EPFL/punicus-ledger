@@ -10,6 +10,11 @@ on:
   # of a multi-PR plan targets its feature branch and still needs Build and Test
   # (CLAUDE.md, "Multi-PR plans").
   pull_request:
+  # The merge queue (owner's request, 2026-11-25): Build and Test runs again on
+  # the commit the queue tests, which is the PR merged onto main and onto the
+  # PRs queued ahead of it, and the queue holds the PR out of main until it is
+  # green. Each entry runs in a group of its own (below), so none is cancelled.
+  merge_group:
 
 # A new push to a PR cancels that PR's run still building the commit it replaced
 # (owner's request, 2026-11-18): only the head's result counts, and the
@@ -69,7 +74,8 @@ jobs:
       - name: Test the pins guard
         run: python3 -I scripts/test_check_pins_additive.py
 
-      # The rules pr-scope.yml decides by, which paths build which macOS and APK legs on a PR.
+      # The rules pr-scope.yml decides by, which paths build which image legs in the merge
+      # queue, and ios.yml's targets job on a PR.
       # A slip there shows as a green, skipped check, so they are tested here, on every PR.
       - name: Test the PR scope rules
         run: python3 -I scripts/test_pr_scope.py

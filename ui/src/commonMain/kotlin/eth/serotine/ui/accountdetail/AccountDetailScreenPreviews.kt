@@ -1083,7 +1083,10 @@ private val indexLines = listOf(
     "It has not reached the newest blocks yet, blocks 9,412,801 to 9,412,950.",
 )
 
-/** Two verified rows of the addr1 index, among a transaction sent from here, by block. */
+/**
+ * Two verified rows of the addr1 index, among a transaction sent from here, each dated by its block's verified time as
+ * the engine reports it (Myotis 0.1.24 on).
+ */
 private val indexActivityRows = listOf(
     activityRows[1],
     ActivityRow(
@@ -1092,12 +1095,12 @@ private val indexActivityRows = listOf(
         title = "Named in a transaction · recipient",
         detail = "From Treasury · 0xfB69…d359",
         about = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
-        time = "Block 9,412,300",
+        time = "Oct 19, 2026, 1:48 PM",
         status = "Finalized in block 9,412,300 · checked against the chain",
         state = ActivityState.DONE,
         opens = ActivityKey("0x" + "4c".repeat(32), index = IndexEntryKey(9_412_300, 4, setOf(AddressIndexRole.TO))),
-        day = "Date not reported: in block order",
-        simpleDay = "Date not available",
+        day = "Today · Monday, October 19, 2026",
+        clock = "1:48 PM",
         direction = ActivityDirection.IN,
         amount = "+0.5 ETH",
         headline = "Received ETH · outcome not checked",
@@ -1108,15 +1111,15 @@ private val indexActivityRows = listOf(
         title = "Named in a transaction",
         detail = "By Bob · 0x5aAe…eAed · a log's topic",
         about = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
-        time = "Block 9,380,102",
+        time = "Oct 15, 2026, 7:05 AM",
         status = "In block 9,380,102 · checked against the chain, not final yet",
         state = ActivityState.DONE,
         opens = ActivityKey(
             "0x" + "4d".repeat(32),
             index = IndexEntryKey(9_380_102, 12, setOf(AddressIndexRole.TOPIC)),
         ),
-        day = "Date not reported: in block order",
-        simpleDay = "Date not available",
+        day = "Thursday, October 15, 2026",
+        clock = "7:05 AM",
     ),
 )
 
@@ -1157,25 +1160,31 @@ private fun AccountDetailActivityIndexCheckingPreview() = AccountDetailPreview(
             IndexFooter.Checking("Checking 2 entries of the addr1 index against the chain…"),
         ),
         // A verified row among two entries still being checked, each a ghost in its place (owner's request,
-        // 2026-11-24): their rows take these places as their checks answer.
-        rows = listOf(pendingIndexRow(9_412_310, 2), indexActivityRows[1], pendingIndexRow(9_400_120, 7)),
+        // 2026-11-24): their rows take these places as their checks answer. Neither's date can be told yet, so each
+        // goes under its neighbour's day: the first below the top, the row above the other.
+        rows = listOf(
+            pendingIndexRow(9_412_310, 2, "Block 9,412,310", day = indexActivityRows[1].day),
+            indexActivityRows[1],
+            pendingIndexRow(9_400_120, 7, "Block 9,400,120", day = indexActivityRows[1].day),
+        ),
     ),
 )
 
-/** The ghost row of an entry of the addr1 index being checked: its key, and nothing of it. */
-private fun pendingIndexRow(block: Long, slot: Int) = ActivityRow(
+/**
+ * The ghost row of an entry of the addr1 index being checked: its key, the [time] line its row will have (drawn as
+ * a line of that height only), and the [day] it goes under; nothing of it.
+ */
+private fun pendingIndexRow(block: Long, slot: Int, time: String, day: String?) = ActivityRow(
     key = "index:$block:$slot",
     title = "",
     detail = "",
     about = "",
-    time = "",
-    simpleTime = null,
+    time = time,
     status = "",
     state = ActivityState.WAITING,
     opens = ActivityKey("", index = IndexEntryKey(block, slot, setOf(AddressIndexRole.FROM))),
     pending = true,
-    day = "Date not reported: in block order",
-    simpleDay = "Date not available",
+    day = day,
 )
 
 /** The next page being read, below the rows. */

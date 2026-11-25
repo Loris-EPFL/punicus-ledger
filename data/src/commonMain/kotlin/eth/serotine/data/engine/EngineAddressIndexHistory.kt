@@ -407,9 +407,10 @@ class EngineAddressIndexHistory internal constructor(
                 }
             }
             val transaction = if (entry.slot == 0) null else transactionOf(json) ?: return null
+            // The verified header's time, a JSON number from Myotis 0.1.24 on (`b.header.timestamp`); absent from an
+            // older engine, and then no time.
+            val blockTimestamp = number(json["blockTimestamp"])
             return try {
-                // The verified header's time, from Myotis 0.1.24 on; absent from an older engine, and then no time.
-                val blockTimestamp = (json["blockTimestamp"] as? JsonPrimitive)?.longOrNull?.takeIf { it >= 0 }
                 val row = AddressIndexRow(entry, blockHash, final, confirmed, unchecked, transaction, blockTimestamp)
                 AddressIndexVerdict.Verified(row)
             } catch (e: IllegalArgumentException) {

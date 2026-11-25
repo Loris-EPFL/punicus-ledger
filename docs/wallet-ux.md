@@ -1385,9 +1385,19 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       - **Entries one by one** (owner's request, 2026-11-24). A page holds
         20 entries, about a screen of rows and one batch more. Once it is
         read, each entry waits for its check as a ghost row of a row's
-        height, in its place among the rows (by its block), saying nothing of
-        it but, to a screen reader, that it is being checked; it opens
-        nothing. The checks run one block at a time, newest first, and each
+        height (its time line too, in both views), in its place among the
+        rows (by its block), saying nothing of it but, to a screen reader,
+        that it is being checked; it opens nothing. Its own date cannot be
+        told before its check (the engine reports the block's time with the
+        verdict), so where the rows around it do not tell its day (*At a
+        glance*), it goes under the day of the row just above it, or at the
+        top under that of the first row below whose day is told, never
+        under "Date not reported": its row, dated once checked, then takes
+        its place without that heading coming and going around it. That
+        heading is its neighbour's, not provably its own: a newer entry read
+        above a kept list sits under the newest kept row's day until its row
+        brings its own. With only rows of no reported date around it, it goes
+        under their heading. The checks run one block at a time, newest first, and each
         verified entry's row takes its ghost's place as soon as its check
         answers, whatever the others still take, so the list does not jump
         as rows come in out of order. A ghost whose entry fails its check, or
@@ -1477,8 +1487,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       them, the transaction's hash, From, To (or none, a contract created),
       its value, its outcome (succeeded or reverted, as its verified receipt
       says; today "Not checked", since the engine does not report it yet, so
-      the value may not have moved), the token contract of its transfer, the
-      block, its hash, where in the block it
+      the value may not have moved), the token contract of its transfer, when
+      its block was produced (where the engine reports it, Myotis 0.1.24 on,
+      as the row says it), the block, its hash, where in the block it
       is ("Transaction 3", "The block itself"), the roles proven on chain,
       and those on the importer's word alone (a trace). Its note says what
       it rests on: the light client's check against the block's verified

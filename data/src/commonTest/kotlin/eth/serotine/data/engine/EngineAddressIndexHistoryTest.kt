@@ -282,6 +282,23 @@ class EngineAddressIndexHistoryTest {
     }
 
     @Test
+    fun aBlockTimeInAnotherShapeThanAJsonNumberIsNoTime() = runTest {
+        val asked = listOf(AddressIndexEntry(26_300_000, 3, setOf(AddressIndexRole.FROM)))
+        for (time in listOf("\"1795600000\"", "\"0x6b05c400\"", "-1")) {
+            chain.check = """[
+                {"block":26300000,"slot":3,"roles":["from"],"state":"verified","final":true,
+                 "blockHash":"0x${"bb".repeat(32)}","blockTimestamp":$time,
+                 "confirmed":["from"],"contradicted":[],"unchecked":[],
+                 "txHash":"0x${"ab".repeat(32)}","from":"${alice.hex}","to":"${bob.hex}","value":"0x0","transfer":null}
+            ]"""
+
+            val verdicts = assertIs<AddressIndexCheck.Verdicts>(history().verify(Network.ETHEREUM, alice, asked)).verdicts
+
+            assertNull(assertIs<AddressIndexVerdict.Verified>(verdicts.single()).row.blockTimestamp, time)
+        }
+    }
+
+    @Test
     fun eachVerdictIsTheEnginesAndARowNeedsEveryRoleButTraceProven() = runTest {
         val hash = "0x" + "ab".repeat(32)
         val blockHash = "0x" + "bb".repeat(32)

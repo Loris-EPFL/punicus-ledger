@@ -490,6 +490,12 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     request is refused.
   - A token is named by the built-in list (its pinned symbol and decimals);
     any other is shown by its address, its amount in raw units.
+- A struct no hand-written decoder knows is clear-signed where a built-in
+  ERC-7730 descriptor covers its `encodeType` and domain, bound to the
+  verifying contract's verified code (owner's decisions, 2026-11-25, #240;
+  docs/clear-signing.md). The descriptor's intent and labels are shown as its
+  claim; every field it does not show is listed under "Other parameters". It
+  never replaces the decoders above.
 - Any other struct is shown field by field and marked as not decoded, with a
   warning that the app cannot say what signing it lets someone do.
 - The domain is shown too, and every field of the message, decoded or not.
@@ -522,8 +528,15 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
 - **The review shows only what Punicus works out itself:**
   - the recipient, the value, and the calldata decoded for the ABIs the app
     knows (ERC-20 `transfer` and `approve`, Safe's own methods, the Uniswap
-    calls it already builds). Anything else is shown raw, marked as not
-    decoded;
+    calls it already builds);
+  - for a call to a contract a built-in ERC-7730 descriptor covers, bound to
+    its verified code, its intent on top and its fields in the descriptor's
+    order, then "Other parameters" with every parameter it does not show; the
+    intent and labels as the descriptor's claim, the values as what is
+    signed; an approval flagged whatever its description (owner's decisions,
+    2026-11-25, #240; docs/clear-signing.md). A contract whose code no longer
+    matches its pin is not decoded, saying why;
+  - anything else shown raw, marked as not decoded;
   - a simulation: the verified `call` and `estimateGasDetailed` at the
     verified head. A call that would revert is shown so and not sent;
   - a token's symbol and decimals as the built-in list pins them, or as the
@@ -805,11 +818,12 @@ their mockups come with the PR that builds each.
   made for, or the alias it matched through;
   how long the dApp waits; the unlock, and Refuse. D1 lists the requests
   waiting, each opening D4.
-- **D5 Typed-data request**: the decoded struct or its fields; the domain;
-  the unlock. Drawn by D4's screen, which shows typed data in place of the
-  message.
-- **D6 Transaction request**: the decoded call, the simulation, the fee; for
-  a Safe, its signatures so far and who executes. The EOA's half comes with
+- **D5 Typed-data request**: the decoded struct, the clear-signed one
+  (docs/clear-signing.md), or its fields; the domain; the unlock. Drawn by
+  D4's screen, which shows typed data in place of the message.
+- **D6 Transaction request**: the decoded call or the clear-signed one
+  (docs/clear-signing.md), the simulation, the fee; for a Safe, its
+  signatures so far and who executes. The EOA's half comes with
   part 1.4b: who asks, the account and the recipient in full, the value, the
   call decoded (a payment, an ERC-20 `transfer` or `approve`) or its data
   raw and marked not decoded, the fee at most, the balance left at least,

@@ -1,5 +1,5 @@
 ---
-description: "Trust. Everything about the chain is verified by the embedded Myotis engine or shown as not available; the Safe refusals; network-upgrade warnings; a parameter is applied or refused; what a dApp sends; key material and how keys are held."
+description: "Trust. Everything about the chain is verified by the embedded Myotis engine or shown as not available; the Safe refusals; network-upgrade warnings; a parameter is applied or refused; what a dApp sends; what a clear-signed line proves; key material and how keys are held."
 paths:
   - "domain/**/*"
   - "data/**/*"
@@ -365,8 +365,11 @@ fails the call.
   chain, or a `from` or an address that is not one of the session's accounts,
   is refused, never ignored.
 - **The review shows only what Punicus works out itself:** the calldata
-  decoded for the ABIs it knows, anything else raw and marked as not
-  decoded, and a simulation through the verified `call` and gas estimate.
+  decoded for the ABIs it knows and the built-in ERC-7730 descriptors, bound
+  to verified code; the descriptor's words labelled as its claim, every
+  parameter still shown; anything else raw and marked as not decoded; and a
+  simulation through the verified `call` and gas estimate (owner's
+  decisions, 2026-11-25, #240, widening "the ABIs it knows" of 2026-11-03).
 - **A dApp's `eth_sendTransaction` is answered only with an Ethereum
   transaction hash.** For a Safe, the hash of the `execTransaction` sent,
   never the `safeTxHash`. A request that cannot be met before it expires gets
@@ -377,6 +380,38 @@ fails the call.
 - **Session secrets are not key material**, since they cannot move funds:
   an app-private file, out of backups and device transfers, never logged,
   and not under the wallet password.
+
+## A clear-signed line: the values proven, the words the descriptor's claim
+
+(Owner's decisions, 2026-11-25, #240; docs/clear-signing.md, *What a
+clear-signed line proves*.)
+
+- **Bound to verified code.** A built-in descriptor applies only when the
+  request's network is the pin's, `to` is a pinned deployment, the code at
+  `to`, read with a verified `getCode` at the verified head, hashes to the
+  pinned hash, and for a proxy its EIP-1967 slot holds the pinned
+  implementation, whose code hashes to its own pin. ERC-7730 itself binds by
+  address alone; that was declined.
+- **A contract changed after the release is not decoded**, and the review
+  says why, until a release moves the pin. Any other failed step is not
+  decoded either, with its reason. Never a partial display.
+- **The values are what is signed**, decoded here from the exact bytes, the
+  ABI strictly (lengths and offsets checked, no trailing bytes).
+- **The words are the descriptor's claim**: its intent and labels shown as
+  described by its owner, reviewed for this release, with an auditor's
+  attestation where one exists. Simple mode keeps that label too.
+- **A descriptor hides nothing.** Every parameter no field shows, and every
+  field it marks as not visible, is listed raw under "Other parameters".
+- **An unlisted token's own symbol is never shown as real**: a token
+  neither built in nor added by the user shows its amount raw, with its
+  address.
+- **The hand-written decoders stay authoritative** (`TypedDataMeaning`'s
+  Permit, Permit2 and CoW, Safe's own methods). A descriptor never replaces
+  one.
+- **The refusals come first.** Every Safe refusal (`SafeTxRefusal`;
+  docs/wallet-ux.md, screen 17), those above among them, holds whatever a
+  descriptor says, and an approval is flagged loudly whatever its
+  description.
 
 ## Send from another wallet signs nothing here
 

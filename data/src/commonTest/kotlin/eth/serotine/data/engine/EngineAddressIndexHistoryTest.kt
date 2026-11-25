@@ -268,12 +268,27 @@ class EngineAddressIndexHistoryTest {
     }
 
     @Test
+    fun aVerdictFromAnEngineThatReportsNoBlockTimeIsARowWithoutOne() = runTest {
+        chain.check = """[
+            {"block":26300000,"slot":3,"roles":["from"],"state":"verified","final":true,
+             "blockHash":"0x${"bb".repeat(32)}","confirmed":["from"],"contradicted":[],"unchecked":[],
+             "txHash":"0x${"ab".repeat(32)}","from":"${alice.hex}","to":"${bob.hex}","value":"0x0","transfer":null}
+        ]"""
+        val asked = listOf(AddressIndexEntry(26_300_000, 3, setOf(AddressIndexRole.FROM)))
+
+        val verdicts = assertIs<AddressIndexCheck.Verdicts>(history().verify(Network.ETHEREUM, alice, asked)).verdicts
+
+        assertNull(assertIs<AddressIndexVerdict.Verified>(verdicts.single()).row.blockTimestamp)
+    }
+
+    @Test
     fun eachVerdictIsTheEnginesAndARowNeedsEveryRoleButTraceProven() = runTest {
         val hash = "0x" + "ab".repeat(32)
         val blockHash = "0x" + "bb".repeat(32)
         chain.check = """[
             {"block":26300000,"slot":3,"roles":["from","trace"],"state":"verified","final":true,
-             "blockHash":"$blockHash","confirmed":["from"],"contradicted":[],"unchecked":["trace"],
+             "blockHash":"$blockHash","blockTimestamp":1795600000,
+             "confirmed":["from"],"contradicted":[],"unchecked":["trace"],
              "txHash":"$hash","from":"${alice.hex}","to":"${bob.hex}","value":"0xde0b6b3a7640000",
              "transfer":{"token":"0x${"cc".repeat(20)}","from":"${alice.hex}","to":"${bob.hex}","amount":"0xf4240",
                          "tokenId":null}},
@@ -304,6 +319,7 @@ class EngineAddressIndexHistoryTest {
         val token = Address.of("0x" + "cc".repeat(20))
         assertEquals(TokenTransfer.Fungible(token, alice, bob, UInt256.of(1_000_000)), tx.transfer)
         assertNull(tx.succeeded, "the engine does not report the outcome")
+        assertEquals(1_795_600_000, row.blockTimestamp, "the verified block's time, from Myotis 0.1.24 on")
         assertIs<AddressIndexVerdict.Unverified>(verdicts[1], "a role but TRACE left unchecked is no row")
         assertEquals(setOf(AddressIndexRole.TO), assertIs<AddressIndexVerdict.Contradicted>(verdicts[2]).contradicted)
         val unavailable = assertIs<AddressIndexVerdict.Unavailable>(verdicts[3])

@@ -255,8 +255,8 @@ internal class ActivityRows(
      * does not report it yet), its title says how the account is named in it, and the list shows the value apart,
      * muted and marked as not checked ([valueMoved]). Its
      * status
-     * says it was checked against the chain, and in which block; dated by that block alone, like an event the engine
-     * did not date: the index carries no time.
+     * says it was checked against the chain, and in which block; dated by that block's verified time where the engine
+     * reports it (Myotis 0.1.24 on), else by the block alone, like an event the engine did not date.
      */
     fun indexRow(indexed: AddressIndexRow, parties: Parties, tokens: Map<Address, KnownToken>): ActivityRow? {
         val entry = indexed.entry
@@ -271,8 +271,9 @@ internal class ActivityRows(
             title = "",
             detail = "",
             about = Eip55.format(address),
-            time = "Block $block",
-            simpleTime = null,
+            // Its block's verified time where the engine reports it (Myotis 0.1.24 on), as a dated event's; else its block.
+            time = indexed.blockTimestamp?.let(formatTime) ?: "Block $block",
+            simpleTime = indexed.blockTimestamp?.let(formatTime),
             status = status,
             simpleStatus = simpleStatus,
             state = ActivityState.DONE,

@@ -24,7 +24,9 @@ and issues of this repository.
   kept between runs: opening an account's Activity again shows its verified
   rows at once and reads only the newer entries, which come in at the top.
   Only rows of finalized blocks are kept; the newest blocks, and any range
-  Swarm did not deliver, are read again.
+  Swarm did not deliver, are read again. With Myotis 0.1.24, each row
+  shows the date and time of its block, from the block the engine verified
+  it in, instead of "Date not available".
 - Activity at a glance: the rows are grouped by day under a heading
   ("Today", "Yesterday", then the date), each with its time in your time
   zone; a green arrow for value in and a red one for value out, and the

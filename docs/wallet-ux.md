@@ -1332,7 +1332,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       entry against verified chain data.
       **Verified rows only**: an entry unverified, contradicted, unavailable
       or whose only role is `TRACE` is never a row. Each row goes by its
-      block, as an event the engine did not date ("Block 9,412,300"), and
+      block, as an event the engine did not date ("Block 9,412,300"), or,
+      where the engine reports its verified block's time (Myotis 0.1.24 on,
+      Myotis #924), by that time, dated and timed like a dated event, and
       says it was checked ("Finalized in block 9,412,300 · checked against
       the chain", "… not final yet"; simple mode "Final", "Confirmed"). A
       token's transfer, from its logs, is said in the log index's words

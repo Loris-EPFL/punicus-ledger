@@ -137,6 +137,7 @@ internal fun indexRow(
     roles: Set<AddressIndexRole> = setOf(AddressIndexRole.FROM),
     final: Boolean = true,
     succeeded: Boolean? = true,
+    blockTimestamp: Long? = null,
 ) = AddressIndexRow(
     entry = AddressIndexEntry(block, slot, roles),
     blockHash = "0x" + "bb".repeat(32),
@@ -144,6 +145,7 @@ internal fun indexRow(
     confirmed = roles - AddressIndexRole.TRACE,
     unchecked = roles intersect setOf(AddressIndexRole.TRACE),
     transaction = AddressIndexTransaction(hash, from, to, Wei.of(wei), transfer, succeeded),
+    blockTimestamp = blockTimestamp,
 )
 
 /**

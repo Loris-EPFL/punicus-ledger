@@ -313,6 +313,8 @@ class ActivityDetailViewModel(
                 )
                 tx.transfer?.let { add(addressOf("Token contract", it.token, names, tokens[it.token]?.token?.symbol)) }
             }
+            // When its block was produced, from the block's verified header (Myotis 0.1.24 on), as the list says it.
+            indexed.blockTimestamp?.let { add(DetailField("Time", formatTime(it))) }
             add(DetailField("Block", grouped(entry.block), DetailKind.BLOCK))
             add(DetailField("Block hash", indexed.blockHash, DetailKind.HASH))
             val position = entry.transactionIndex?.let { "Transaction ${it + 1}" } ?: "The block itself"

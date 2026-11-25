@@ -231,6 +231,7 @@ private val indexed = ActivityDetailUiState.Shown(
             "Outcome",
             "Not checked: whether it succeeded is not reported by the engine yet, so its value may not have moved",
         ),
+        DetailField("Time", "Oct 19, 2026, 1:48 PM"),
         DetailField("Block", "9,300,000", DetailKind.BLOCK),
         DetailField("Block hash", "0x" + "b7".repeat(32), DetailKind.HASH),
         DetailField("In the block", "Transaction 3"),

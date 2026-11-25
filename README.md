@@ -24,7 +24,7 @@ guide to adding accounts and Safes: <https://punicus.eth.limo/>
 
 ## Status
 
-Early, with pre-releases only (the version is `0.5.0-SNAPSHOT`; every `v*` tag
+Early, with pre-releases only (the version is `0.6.0-SNAPSHOT`; every `v*` tag
 publishes a pre-release).
 What the app does today:
 

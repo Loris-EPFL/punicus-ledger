@@ -62,8 +62,9 @@ sealed interface AccountsUiState {
      * what it leaves out ("1 asset without a price · Sepolia not included"). [message] is said once,
      * until the screen has ([AccountsViewModel.messageShown]): a network that could not be turned on.
      *
-     * What simple mode draws instead of the sections' strips (docs/simple-ui.md, H1 to H3):
-     * [freshness], how fresh the values shown are ("Updated 2 min ago · pull down to refresh",
+     * What simple mode draws instead of the sections' strips (docs/simple-ui.md, H1 to H3): a header per
+     * network over its accounts, with its sync state in a few words ([NetworkSection.simpleStatus]; owner's request,
+     * 2026-11-25); [freshness], how fresh the values shown are ("Updated 2 min ago · pull down to refresh",
      * "Live", "Checking Ethereum and Gnosis Chain…", or "Syncing Ethereum · 2 of 6 periods" while a
      * network catches up, with the age of the rest beside it; null while nothing is proven yet);
      * [unreachable], a banner per network that cannot be checked right now while it shows balances
@@ -195,8 +196,11 @@ data class NetworkSection(
     val blocked: String? = null,
     val staleAnchor: StaleAnchorWarning? = null,
     val queued: String? = null,
-    val network: NetworkLabel = NetworkLabel(chainId, name, testnet),
 ) {
+    /** This network as its icon takes it: from the section's own fields, so that it never names another. */
+    val network: NetworkLabel
+        get() = NetworkLabel(chainId, name, testnet)
+
     /** The network's sync state in a few words: what blocks it first, then its light client's state. */
     val simpleStatus: String
         get() = when {

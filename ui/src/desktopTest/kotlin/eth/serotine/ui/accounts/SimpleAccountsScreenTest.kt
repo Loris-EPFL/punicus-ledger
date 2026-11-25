@@ -1,9 +1,8 @@
 package eth.serotine.ui.accounts
 
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -11,11 +10,13 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
@@ -124,6 +125,27 @@ class SimpleAccountsScreenTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
         rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + gnosis.chainId).performClick()
         rule.onNodeWithText("Card").assertExists()
+    }
+
+    @Test
+    fun aTapOnAPinnedHeaderFoldsItsNetworkAndNeverOpensTheRowUnderIt() {
+        val many = (0 until 30).map { n ->
+            main.copy(label = "Account $n", address = "0x" + n.toString(16).padStart(40, '0'))
+        }
+        show(ready(*many.toTypedArray()))
+
+        // Scrolled until rows have passed under the header pinned on top.
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).performScrollToNode(hasText("Account 20"))
+        rule.onNodeWithText("Account 0").assertDoesNotExist()
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + ethereum.chainId).performClick()
+
+        assertEquals(emptyList(), actions, "the tap is the header's: it folds, and opens no account")
+        rule.onNodeWithText("Account 20").assertDoesNotExist()
+        // A row's own tap still opens its account.
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + ethereum.chainId).performClick()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).performScrollToNode(hasText("Account 20"))
+        rule.onNodeWithText("Account 20").performClick()
+        assertEquals(1, actions.size)
     }
 
     @Test

@@ -43,7 +43,6 @@ import eth.serotine.ui.components.FreshCheckpointFetches
 import eth.serotine.ui.components.handoffChoice
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
-import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.asItems
@@ -558,7 +557,6 @@ class AccountsViewModel(
                         totalNote = sectionNote(total, network, currency, portfolio).takeIf { isOn }?.ifEmpty { null },
                         blocked = blocked,
                         staleAnchor = staleAnchors[i].takeIf { isOn },
-                        network = NetworkLabel.of(network),
                     )
                 }
                 // The top total adds the real networks that are on; a testnet only when the wallet has

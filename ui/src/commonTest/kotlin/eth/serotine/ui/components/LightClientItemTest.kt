@@ -165,10 +165,39 @@ class LightClientItemTest {
     fun eachStateHasAFewWordsForTheHeaderOfItsNetworksAccounts() {
         fun header(status: LightClientStatus) = LightClientItem.from(status, NOW).simpleHeader
 
-        assertEquals("Up to date", header(LightClientStatus.Synced(100, NOW - 8, finalized = null)))
-        assertEquals("Syncing · 3 of 12 periods", header(LightClientStatus.CatchingUp(3, 12)))
-        assertEquals("Syncing · starting", header(LightClientStatus.Starting))
-        assertEquals("Paused in the background", header(LightClientStatus.Sleeping))
-        assertEquals("Off", header(LightClientStatus.Off))
+        assertEquals(
+            listOf(
+                "Syncing · starting",
+                "Syncing · starting",
+                "Syncing · 3 of 12 periods",
+                "Syncing",
+                "Syncing",
+                "Syncing",
+                "Waiting for a new block",
+                "Looking for peers",
+                "Up to date",
+                "Paused in the background",
+                "Checkpoint too old",
+                "Not running on this device",
+                "Off",
+                "Starts when needed",
+            ),
+            listOf(
+                LightClientStatus.Starting,
+                LightClientStatus.Bootstrapping(lookingForServers = true),
+                LightClientStatus.CatchingUp(3, 12),
+                LightClientStatus.CatchingUp(0, 0),
+                LightClientStatus.CatchingUp(12, 12),
+                LightClientStatus.WaitingForHead(headAgeSeconds = null),
+                LightClientStatus.WaitingForHead(headAgeSeconds = 90),
+                LightClientStatus.WaitingForProofPeers(100, NOW - 8),
+                LightClientStatus.Synced(100, NOW - 8, finalized = null),
+                LightClientStatus.Sleeping,
+                LightClientStatus.StaleAnchor(6, 3),
+                LightClientStatus.Unavailable,
+                LightClientStatus.Off,
+                LightClientStatus.Idle,
+            ).map(::header),
+        )
     }
 }

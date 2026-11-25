@@ -55,8 +55,9 @@ the text wins.
   nothing verified draws none: Receive (6), Rename and Remove, the recovery phrase screens (11, 12),
   Security (21) and Display currency (19). Settings itself (18) keeps its
   own Light client row instead of the strip. Simple mode draws no strip: a
-  freshness line, a banner when a network cannot be checked, and each
-  network's state in Settings take its place (docs/simple-ui.md).
+  freshness line, a banner when a network cannot be checked, each network's
+  state in its header on the account list (owner's request, 2026-11-25) and
+  in Settings take its place (docs/simple-ui.md).
 - **A balance last verified is shown as such** (owner's request,
   2026-10-19). While the light client has no head it can read at (asleep,
   catching up, its verified head too old, or no peer serving state proofs),

@@ -142,8 +142,9 @@ change what it trusts.
 - **The light client's state.** Detailed view keeps the status strip on
   every screen whose content or actions depend on it (owner's request,
   2026-10-20). Simple mode replaces it with the freshness line, a banner
-  when a network cannot be checked (H3), each network's state in Settings
-  (T1), and a sync line (below). An action the light client blocks is
+  when a network cannot be checked (H3), each network's state in its header
+  on Home (H1; owner's request, 2026-11-25) and in Settings (T1), and a sync
+  line (below). An action the light client blocks is
   greyed out and says why, in both views.
 - **The sync line** (owner's requests, 2026-10-29: the sync status visible
   on every screen where it decides what the user can see or do). Every

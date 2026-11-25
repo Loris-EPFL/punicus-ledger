@@ -75,10 +75,11 @@ const val ACCOUNTS_UNREACHABLE_TAG = "accounts-unreachable-"
 
 /**
  * The Accounts screen in simple mode (docs/simple-ui.md, H1 to H3), a pure function of the same
- * [state] as [AccountsScreen]: the total with how fresh the values are under it, and one list of
- * the accounts, each with its network's icon on its blockie and its network named under its name.
- * No section per network and no light-client strip: a network that cannot be checked while it shows
- * balances from before gets a banner, and those rows are dimmed with their age. Pulling the list
+ * [state] as [AccountsScreen]: the total with how fresh the values are under it, and the accounts
+ * under a header per network that says its sync state in a few words and folds its accounts away on a tap (owner's
+ * requests, 2026-11-25), each with its network's icon on its blockie and its network named under its name. No
+ * light-client strip: a network that cannot be checked while it shows balances from before gets a banner, and those
+ * rows are dimmed with their age. Pulling the list
  * down, or the Refresh button, asks [onRefresh]. Everything else is as [AccountsScreen] has it: the
  * + button, a row's tap and long-press menu, the greyed-out actions and their reasons, the upgrade
  * banners and a stale checkpoint's warning with its "Catch up…", and the eye at the top left
@@ -302,7 +303,12 @@ private fun NetworkHeader(section: NetworkSection, folded: Boolean, onToggle: ()
     ) {
         NetworkIcon(section.network)
         Text(
-            if (folded) "${section.name} · ${if (count == 1) "1 account" else "$count accounts"}" else section.name,
+            // A testnet named as one, as its rows and Detailed view's section are (owner ruling, 2026-10-22).
+            listOfNotNull(
+                section.name,
+                "test network".takeIf { section.testnet },
+                (if (count == 1) "1 account" else "$count accounts").takeIf { folded },
+            ).joinToString(" · "),
             Modifier.padding(start = 8.dp).weight(1f),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.primary,

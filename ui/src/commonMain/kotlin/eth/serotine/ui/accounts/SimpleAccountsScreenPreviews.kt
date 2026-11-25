@@ -4,14 +4,17 @@ import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.ui.ScreenPreview
 import eth.serotine.ui.components.Control
+import eth.serotine.ui.components.LightClientHealth.NOT_RUNNING
+import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
+import eth.serotine.ui.components.LightClientHealth.STALE
 import eth.serotine.ui.components.LightClientHealth.VERIFIED
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.catchingUpStripSample
 import eth.serotine.ui.components.verifiedStripSample
-import eth.serotine.ui.ScreenPreview
 import eth.serotine.ui.theme.SerotineTheme
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -25,8 +28,34 @@ private val ethereum = NetworkLabel.of(Network.ETHEREUM)
 private val gnosis = NetworkLabel.of(Network.GNOSIS)
 private val sepolia = NetworkLabel.of(Network.SEPOLIA)
 
-/** Never drawn by simple mode: the sections' strips are Detailed view's. */
-private val strip = LightClientItem("Verified at block 23,614,077 · 8 s ago", null, false, VERIFIED)
+/**
+ * A network's light client as its header in simple mode says it ([LightClientItem.simpleHeader]); the strip's own
+ * text, with its block, is Detailed view's and never drawn here.
+ */
+private val strip =
+    LightClientItem("Verified at block 23,614,077 · 8 s ago", null, false, VERIFIED, simpleHeader = "Up to date")
+
+/** Still catching up: its header says how far, beside a red dot. */
+private val syncing = LightClientItem(
+    "Verifying sync committees · 2 of 6 periods",
+    2f / 6,
+    true,
+    NOT_VERIFIED,
+    simpleHeader = "Syncing · 2 of 6 periods",
+)
+
+/** Synced, but no fresh head to read at: yellow. */
+private val waiting = LightClientItem(
+    "Synced · the verified head is 3 h old, waiting for a fresh one",
+    null,
+    true,
+    STALE,
+    simpleHeader = "Waiting for a new block",
+)
+
+/** Turned off in this wallet: grey. */
+private val off =
+    LightClientItem("Off in this wallet · nothing is checked", null, false, NOT_RUNNING, simpleHeader = "Off")
 
 private val main = AccountItem(
     "Main",
@@ -156,7 +185,7 @@ private fun SimpleAccountsUnreachablePreview() = SimpleAccountsPreview(
                 "Ethereum",
                 false,
                 true,
-                strip,
+                waiting,
                 listOf(
                     main.copy(balanceVerified = false, accountTotal = null, ageNote = "3 h ago · may have changed"),
                     savings.copy(balanceVerified = false, accountTotal = null, ageNote = "3 h ago · may have changed"),
@@ -190,7 +219,7 @@ private fun SimpleAccountsSyncingPreview() = SimpleAccountsPreview(
                 "Ethereum",
                 false,
                 true,
-                strip,
+                syncing,
                 listOf(
                     main.copy(balanceVerified = false, accountTotal = null, ageNote = "3 h ago · may have changed"),
                     savings.copy(balanceVerified = false, accountTotal = null, ageNote = "3 h ago · may have changed"),
@@ -236,6 +265,40 @@ private fun SimpleAccountsStaleAnchorPreview() = SimpleAccountsPreview(
                 it
             } else {
                 it.copy(staleAnchor = StaleAnchorWarning.of(Network.GNOSIS, LightClientStatus.StaleAnchor(6, 3)))
+            }
+        },
+    ),
+)
+
+/** Gnosis Chain turned off in this wallet: its header says so in grey, its rows dimmed. */
+@Preview
+@Composable
+private fun SimpleAccountsNetworkOffPreview() = SimpleAccountsPreview(
+    everyday.copy(
+        sections = everyday.sections.map {
+            if (it.chainId != gnosis.chainId) {
+                it
+            } else {
+                it.copy(
+                    on = false,
+                    status = off,
+                    accounts = it.accounts.map { account -> account.copy(ageNote = "Gnosis Chain is off") },
+                )
+            }
+        },
+    ),
+)
+
+/** This version can no longer follow Gnosis Chain: its header says it needs an update, in red. */
+@Preview
+@Composable
+private fun SimpleAccountsNeedsUpdatePreview() = SimpleAccountsPreview(
+    everyday.copy(
+        sections = everyday.sections.map {
+            if (it.chainId != gnosis.chainId) {
+                it
+            } else {
+                it.copy(blocked = "This version of Punicus can no longer follow Gnosis Chain. Update the app.")
             }
         },
     ),
@@ -318,6 +381,7 @@ private fun SimpleAccountsLoadingPreview() = SimpleAccountsPreview(AccountsUiSta
 
 /** Lenient mode: what each network has queued, under the freshness line. */
 private val queued = everyday.copy(
+    sections = everyday.sections.map { if (it.chainId == ethereum.chainId) it.copy(status = syncing) else it },
     freshness = "Syncing Ethereum · 2 of 6 periods · updated 40 s ago",
     queued = listOf(
         "Ethereum: 1 waiting to send · Keep Punicus open to send it sooner",
@@ -353,6 +417,8 @@ internal val simpleAccountsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("unreachable") { SimpleAccountsUnreachablePreview() },
     ScreenPreview("live") { SimpleAccountsLivePreview() },
     ScreenPreview("stale-anchor") { SimpleAccountsStaleAnchorPreview() },
+    ScreenPreview("network-off") { SimpleAccountsNetworkOffPreview() },
+    ScreenPreview("needs-update") { SimpleAccountsNeedsUpdatePreview() },
     ScreenPreview("empty") { SimpleAccountsEmptyPreview() },
     ScreenPreview("empty-syncing") { SimpleAccountsEmptySyncingPreview() },
     ScreenPreview("empty-stale-anchor") { SimpleAccountsEmptyStaleAnchorPreview() },

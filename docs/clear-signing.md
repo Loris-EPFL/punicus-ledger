@@ -85,7 +85,10 @@ that, and nothing it adds narrows what is already shown.
   name in the descriptor's `metadata.owner`, which its author wrote and the
   registry does not prove: "Described by <name>, as the descriptor states
   (ERC-7730 registry, reviewed for this release)", with the auditor's
-  attestation where one exists.
+  attestation where one exists. An attestation (`sigs/`, an EAS off-chain
+  attestation over the descriptor's ERC-8176 hash) is shown only once its
+  signature recovers to the auditor its file names and its hash is that of
+  the descriptor shipped; part 4 checks both. Revocation is not read.
 - **How a value is formatted is the descriptor's claim too.** The raw words
   are proven; which token an amount is in (`tokenPath`, a constant `token`),
   a `unit`'s decimals and base, an `enum`'s names, a `threshold` word
@@ -113,41 +116,50 @@ that, and nothing it adds narrows what is already shown.
 1. **Pinned source.** A snapshot of the chosen descriptor files, committed
    under `scripts/clear-signing/registry/`, pinned by the registry's commit id
    and each file's sha256 in `PINNED`. A file whose hash differs is refused.
-2. **Curated list.** `scripts/clear-signing/contracts.toml` says which
+2. **Curated list.** `scripts/clear-signing/contracts.json` says which
    descriptor applies to which deployment, per network (Ethereum, Gnosis
    Chain, Sepolia). The registry's `deployments` are intersected with it:
    nothing outside it ships, even where a descriptor names more chains.
 3. **Validation.** Each file is checked against the pinned
-   `erc7730-v2.schema.json`, and by the pinned `erc7730 lint` in CI (the app
-   never runs Python). Every selector is unique. Every key and value of a
+   `erc7730-v2.schema.json`, and by the registry's pinned `erc7730 lint`, in
+   a CI job of their own (the app never runs Python; the linter reads
+   Sourcify, and its warnings do not fail the job). Every selector is unique. Every key and value of a
    descriptor must be one the runtime implements (A3), not `format` and
    `params` alone: an unsupported one fails the build, and is never dropped
    silently.
 4. **Code hashes, and how the code can change.** For every deployment
-   `contracts.toml` pins the keccak256 of its runtime code, and records how
+   `contracts.json` pins the keccak256 of its runtime code, and records how
    the code it runs can change: not at all; through a named storage slot
    (EIP-1967's, the ZeppelinOS slot of Circle's `FiatTokenProxy`), with the
    implementation it holds and that implementation's code hash; or through a
    verified call (an Aragon `AppProxyUpgradeable` such as Lido's stETH asks
    its Kernel; USDT's `deprecated`/`upgradedAddress` forwards every call),
    with the value it must return. An empty EIP-1967 slot never means "not a
-   proxy". A deployment whose pointer cannot be named and read this way
+   proxy": code that can DELEGATECALL (PUSH data and solc's metadata trailer
+   skipped) and names no implementation is refused, unless `contracts.json`
+   says by hand what it delegates to (a multicall into its own code, such as
+   SwapRouter02's), which the PR's reviewer checks against the verified
+   source. A deployment whose pointer cannot be named and read this way
    stays off the list. The values are read through Myotis, never from an RPC
-   provider: `scripts/clear-signing/pin_code_hashes.sh` asks a local Myotis
-   daemon (`get-account` for the verified `codeHash`, `get-storage` for a
-   slot), at one block. The reviewer sees them in the PR's diff.
-5. **Output.** A compact resource for `:data`, a generated Kotlin file as
-   `PublicSuffixRules.kt` is, or a JSON resource with its sha256 pinned in
-   code: `includes` resolved, paths parsed, selectors computed. The runtime
-   parses no ERC-7730 JSON from outside the build.
+   provider: `scripts/clear-signing/pin_code_hashes.py` asks a local
+   `myotis-rpcd` (the Myotis repository's daemon over its verified light
+   client, on loopback only) for the code, the proxy slots and the call, at
+   one block, hashes the code here and checks it against the account proof's
+   `codeHash`. The reviewer sees the values in the PR's diff.
+5. **Output.** `data/.../clearsigning/ClearSigningCatalog.kt`, generated as
+   `PublicSuffixRules.kt` is: the catalog as compact JSON with its sha256
+   beside it, `includes` resolved, paths checked, every selector and EIP-712
+   type hash computed. The runtime parses no ERC-7730 JSON from outside the
+   build. Build and Test regenerates it and fails on a difference.
 6. **Conformance tests.** The registry's `testsv2/*.tests.json` for the chosen
-   files become tests of the runtime formatter (A3). A descriptor the
+   files, vendored and pinned with them, become tests of the runtime
+   formatter (A3). A descriptor the
    formatter cannot render as its own tests expect fails the build.
 
 **Refresh** (decision 6): only through a PR that moves `PINNED`, the commit
 id and the hashes, its diff reviewed like code, as a step of every release
-PR. Part 2, which brings the generator, adds that step to
-`.claude/skills/release/SKILL.md`. Never something the app does.
+PR (`.claude/skills/release/SKILL.md`, *The clear-signing descriptors*).
+Never something the app does.
 
 ### The first list
 
@@ -161,6 +173,26 @@ PR. Part 2, which brings the generator, adds that step to
 
 A contract the registry does not describe is left out, until the part of
 decision 5 writes its descriptor.
+
+**What part 2 ships** (registry commit `225ecc69`, 2026-11-25). The registry
+describes less of the list than the plan assumed. How it is applied, not
+part of the decisions:
+
+- **Ethereum:** WETH, Permit2 (its `approve`, and its `PermitBatch`, since
+  `TypedDataMeaning` claims the other two structs), SwapRouter02, Seaport
+  1.6, Lido stETH and wstETH, the Aave v3 Pool, and the ENS ETH registrar
+  controller the registry names (`0x59E1…E547`).
+- **Gnosis Chain:** Permit2 and the Aave v3 Pool.
+- **Sepolia:** WETH and Permit2.
+- **Left out, not in the registry at that commit:** the Universal Router,
+  CoW's GPv2Settlement (the registry describes only another deployment of
+  it), Safe's MultiSend and MultiSendCallOnly, WXDAI, and Seaport's EIP-712
+  order (`eip712-opensea.json` describes Wyvern). CoW's order stays with
+  `TypedDataMeaning`.
+- **The ERC-20 descriptor is not shipped**: its two functions, `transfer` and
+  `approve`, are the ones `Erc20` already claims, so it could apply to
+  nothing (*The hand-written decoders take precedence, by type*), and
+  shipping it would mean pinning the code of every built-in token.
 
 ### A3. `:domain`: the model and a pure formatter
 
@@ -180,10 +212,13 @@ decision 5 writes its descriptor.
   `NotCovered`, never a partial display.
 - **The formats v1 supports:** `raw`, `amount`, `tokenAmount`,
   `addressName`, `date`, `duration`, `unit`, `enum`, `chainId`, `calldata`,
-  `nftName` and `tokenTicker`. Refused at build time: the
-  `interoperableAddressName` format, the `encryption` field attribute, the
-  object forms of `visible` (`ifNotIn`, `mustMatch`) and a `factory`
-  context, which binds by a deploy event rather than a listed deployment.
+  `nftName` and `tokenTicker`; `visible` as a word (`always`, `never`,
+  `optional`) or a rule: `ifNotIn` shows a field unless its value is listed,
+  and `mustMatch` makes any other value `NotCovered`, never a field hidden.
+  Refused at build time: the `interoperableAddressName` format, the
+  `encryption` field attribute, an object intent, `display.definitions`,
+  `metadata.maps` and a `factory` context, which binds by a deploy event
+  rather than a listed deployment.
 - **A token outside the built-in list in a `tokenAmount`** shows the raw
   amount and the contract's address, marked as not in the built-in list. Its
   own symbol is never shown as if it were real, as the dApp review and

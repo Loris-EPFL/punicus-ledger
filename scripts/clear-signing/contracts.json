@@ -1,0 +1,178 @@
+{
+  "registry": {
+    "repository": "ethereum/clear-signing-erc7730-registry",
+    "commit": "225ecc69f050cfb255d86203ed54c9cbbba4c71e"
+  },
+  "deployments": [
+    {
+      "network": "ETHEREUM",
+      "name": "WETH",
+      "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "codeHash": "0xd0a06b12ac47863b5c7be4185c2deaad1c61557033f56c7d4ea74429cbb25e23",
+      "upgrade": {
+        "kind": "none",
+        "why": "no DELEGATECALL in its code, every proxy slot empty"
+      },
+      "descriptors": [
+        "registry/weth/calldata-weth.json"
+      ]
+    },
+    {
+      "network": "ETHEREUM",
+      "name": "Permit2",
+      "address": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+      "codeHash": "0xc67d1657868aa5146eaf24fb879fb1fdec3d2d493b3683a61c9c2f4fb2851131",
+      "upgrade": {
+        "kind": "none",
+        "why": "no DELEGATECALL in its code, every proxy slot empty"
+      },
+      "descriptors": [
+        "registry/uniswap/calldata-Permit2.json",
+        "registry/uniswap/eip712-uniswap-permit2.json"
+      ]
+    },
+    {
+      "network": "ETHEREUM",
+      "name": "Uniswap SwapRouter02",
+      "address": "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+      "codeHash": "0x6ec798e80f3a19de650826338677604e54d6664f44a33b53a20b22b1939f402e",
+      "upgrade": {
+        "kind": "none",
+        "delegatecall": "multicall: address(this).delegatecall, into its own code (MulticallExtended)",
+        "why": "every proxy slot empty; its DELEGATECALL is declared by hand"
+      },
+      "descriptors": [
+        "registry/uniswap/calldata-UniswapV3Router02.json"
+      ]
+    },
+    {
+      "network": "ETHEREUM",
+      "name": "Seaport 1.6",
+      "address": "0x0000000000000068F116a894984e2DB1123eB395",
+      "codeHash": "0x74499ac0cce14428e4b41541d5e44f28f5a6882a1051d0118867c2a93cd5aec0",
+      "upgrade": {
+        "kind": "none",
+        "why": "no DELEGATECALL in its code, every proxy slot empty"
+      },
+      "descriptors": [
+        "registry/opensea/calldata-Seaport-1.6.json"
+      ]
+    },
+    {
+      "network": "ETHEREUM",
+      "name": "Lido stETH",
+      "address": "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84",
+      "codeHash": "0xb9c1c929064cd21734c102a698e68bf617feefcfa5a9f62407c45401546736bf",
+      "upgrade": {
+        "kind": "call",
+        "why": "an Aragon AppProxyUpgradeable: it asks its Kernel for the implementation on every call",
+        "call": "implementation()",
+        "selector": "0x5c60da1b",
+        "returns": "0x000000000000000000000000028271e30a695c0527a0c50ca30603fed004cdb0",
+        "implementationCodeHash": "0xb74d1082863f9295e1691cb1c609062dbfd0e388ae52f0243017801b7556e488"
+      },
+      "descriptors": [
+        "registry/lido/calldata-stETH.json"
+      ]
+    },
+    {
+      "network": "ETHEREUM",
+      "name": "Lido wstETH",
+      "address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+      "codeHash": "0x630181884786c962140041cffa3acffbf39d8c93bde1a62b7b55046e57400557",
+      "upgrade": {
+        "kind": "none",
+        "why": "no DELEGATECALL in its code, every proxy slot empty"
+      },
+      "descriptors": [
+        "registry/lido/calldata-wstETH.json"
+      ]
+    },
+    {
+      "network": "ETHEREUM",
+      "name": "Aave v3 Pool",
+      "address": "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+      "codeHash": "0x96107dc4006b4c7fecd1827cfb275ffeef31e6194cd50466f85f8eb24ccf2679",
+      "upgrade": {
+        "kind": "slot",
+        "why": "the EIP-1967 implementation slot",
+        "slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+        "implementation": "0x4295fe69b3e978eb511e4558b4407ad871612fcb",
+        "implementationCodeHash": "0xe334f592d8ff872871487568216f48dfbe98822bbf8c9c2ec55242db3a07028e"
+      },
+      "descriptors": [
+        "registry/aave/calldata-lpv3.json"
+      ]
+    },
+    {
+      "network": "ETHEREUM",
+      "name": "ENS ETH registrar controller",
+      "address": "0x59E16fcCd424Cc24e280Be16E11Bcd56fb0CE547",
+      "codeHash": "0x64051f251ade7a7b7def7b199339ab1e6d44c28fabd824fe6523a658a0b9c93d",
+      "upgrade": {
+        "kind": "none",
+        "why": "no DELEGATECALL in its code, every proxy slot empty"
+      },
+      "descriptors": [
+        "registry/ens/calldata-ETHRegistrarController.json"
+      ]
+    },
+    {
+      "network": "GNOSIS",
+      "name": "Permit2",
+      "address": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+      "codeHash": "0xa21b2c704aafbd8a156da90014bd636f718cb83505b84eb71144ab8216aacce8",
+      "upgrade": {
+        "kind": "none",
+        "why": "no DELEGATECALL in its code, every proxy slot empty"
+      },
+      "descriptors": [
+        "registry/uniswap/calldata-Permit2.json",
+        "registry/uniswap/eip712-uniswap-permit2.json"
+      ]
+    },
+    {
+      "network": "GNOSIS",
+      "name": "Aave v3 Pool",
+      "address": "0xb50201558B00496A145fE76f7424749556E326D8",
+      "codeHash": "0xed8afcb3b68dd86177d5b2d6bf9396aade5153154396ef0e48c161e55d8c2fe4",
+      "upgrade": {
+        "kind": "slot",
+        "why": "the EIP-1967 implementation slot",
+        "slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+        "implementation": "0x7f0d7d67683c30e5aefc9a13b35cd3db181a5889",
+        "implementationCodeHash": "0xc3a933761fd4c9ed935abdb8bc91ee20711f1a152e40cd92f1ebf2970d3422a2"
+      },
+      "descriptors": [
+        "registry/aave/calldata-lpv3.json"
+      ]
+    },
+    {
+      "network": "SEPOLIA",
+      "name": "WETH",
+      "address": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+      "codeHash": "0xc864e10689f2da18833652a3b075d43106e87f0f90d95ee64f6f0b33bc026083",
+      "upgrade": {
+        "kind": "none",
+        "why": "no DELEGATECALL in its code, every proxy slot empty"
+      },
+      "descriptors": [
+        "registry/weth/calldata-weth.json"
+      ]
+    },
+    {
+      "network": "SEPOLIA",
+      "name": "Permit2",
+      "address": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+      "codeHash": "0x96d9f5c3f0fb0423426b7f970186235b7347027f4e5c19c40c412b7d97fc3751",
+      "upgrade": {
+        "kind": "none",
+        "why": "no DELEGATECALL in its code, every proxy slot empty"
+      },
+      "descriptors": [
+        "registry/uniswap/calldata-Permit2.json",
+        "registry/uniswap/eip712-uniswap-permit2.json"
+      ]
+    }
+  ]
+}

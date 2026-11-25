@@ -306,11 +306,15 @@ contradicted entries and what others learn.)
   its `swarm` feature) refuses with the permanent `-32602`, as every engine
   does while Tor routing is on. There the setting is greyed out, a tap saying
   why (`ui.md`, the greyed-out rule), and the history stays the log index's.
-- How it is applied on Android, not part of the ruling: a page of the index
-  is read and checked while the user opens or scrolls an account's Activity,
-  a read the user waits on, so it is no heavy download in the sense of the
-  ruling of 2026-10-20 and is not held off a metered connection. Turning the
-  setting off stops it.
+- How it is applied on Android, not part of the ruling, and open for the
+  owner to confirm: a page of the index (up to 20 entries, each checked
+  against old blocks and their receipts) starts only when the user opens or
+  scrolls an account's Activity, a read the user waits on, so it is taken as
+  no heavy download in the sense of the ruling of 2026-10-20 and is not held
+  off a metered connection. A page started finishes after the user leaves;
+  once the app's light clients pause (a minute in the background) the engine
+  refuses every read and stops its Swarm node (Myotis v0.1.23, `host.rs`,
+  `pause` and `snapshot_reader_evm`). Turning the setting off stops it.
 - **A panic in the reader ends the app** (recorded at the owner's request,
   2026-11-24). Myotis accepted for now that a panic inside `ant`, its
   embedded Swarm node, ends the host process (2026-11-24,

@@ -179,8 +179,8 @@ class SerotineApplication : Application() {
      * 2026-11-24 and 2026-11-25: the addr1 history on Android as on the desktop): the pinned key while it is on, none
      * otherwise, so nothing is read from Swarm or checked for it while it is off. Applied from the start, without
      * waiting for the engine to say whether it reads Swarm; handing it the key does not make it dial out, its Swarm
-     * node starts on the first read, which an Activity asks (docs/privacy-policy.md). A failure ends it, never the
-     * wallet.
+     * node starts on the first read, which an account's Activity tab asks (docs/privacy-policy.md). A failure ends
+     * it, never the wallet.
      */
     private suspend fun followAddressIndexSetting(host: MyotisHost) {
         try {
@@ -531,8 +531,8 @@ class SerotineApplication : Application() {
             dappConnectionsOff = WalletConnectDapps.projectIdFor(debuggable).isEmpty(),
             // An account's history from the addr1 index on Swarm, on Android as on the desktop (owner's decisions,
             // 2026-11-24 and 2026-11-25), behind its experimental setting, read and checked by the engine. An engine
-            // without the Swarm reader refuses it as not in this build, and the setting is greyed out saying so. The key
-            // the index rests on is pinned in the release (`0xb11B…7241`, owner's choice, 2026-11-24, #359).
+            // without the Swarm reader refuses it as not in this build, and the setting is greyed out saying so.
+            // The key the index rests on is pinned in the release (`0xb11B…7241`, owner's choice, 2026-11-24, #359).
             addressIndex = node.addressIndex,
             addressIndexSetting = addressIndexSetting,
             addressIndexImporter = PinnedAddressIndexImporter.KEY,

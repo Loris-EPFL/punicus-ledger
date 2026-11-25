@@ -17,8 +17,8 @@ Last updated: 2026-11-25.
   of its users anywhere.
 - **No RPC provider, no indexer, no price API.** Balances, prices, names and
   history come from the light client built into the app (Myotis), which
-  verifies what it reads (docs/embedding-myotis.md). On the desktop, an
-  experimental setting, on by default, lets it also read an address index
+  verifies what it reads (docs/embedding-myotis.md). On the desktop and on
+  Android, an experimental setting, on by default, lets it also read an address index
   from Swarm, each entry checked against the chain before it is shown
   (below); you can turn it off.
 - **No ads, and nothing sold or shared.** The app shows no ads and has no
@@ -118,8 +118,10 @@ Activity: turned off, it stays off.
   network. They learn which past blocks matter to you, older ones than the
   history above reaches included.
 - On Android this runs on whatever connection the phone has, mobile data
-  included, while you look at an account's Activity: each page of the index
-  checks up to 20 old blocks.
+  included, when you open or scroll an account's Activity: each page of the
+  index checks up to 20 old blocks, and a page started finishes even if you
+  leave the screen. Once the app is in the background for a minute, nothing
+  more is read.
 - The Swarm peers and archive peers are not run by Punicus. With the setting
   turned off, none of this happens.
 

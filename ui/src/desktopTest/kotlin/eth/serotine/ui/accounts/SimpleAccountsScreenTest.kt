@@ -149,6 +149,28 @@ class SimpleAccountsScreenTest {
     }
 
     @Test
+    fun aFoldedNetworkKeepsTheAccountOpenBesideTheListAndAQuickSecondTapUnfoldsIt() {
+        val spare = main.copy(label = "Spare", address = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
+        show(ready(main, spare), SelectedAccount(ethereum.chainId, "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"))
+        val header = rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + ethereum.chainId)
+
+        header.performClick()
+        rule.onNodeWithText("Main").assertExists()
+        rule.onNodeWithText("Spare").assertDoesNotExist()
+        header.assert(hasText("Ethereum · 1 account"))
+
+        // Two taps before the screen draws again: unfolded, then folded again, never stored twice.
+        rule.mainClock.autoAdvance = false
+        header.performClick()
+        header.performClick()
+        rule.mainClock.autoAdvance = true
+        rule.onNodeWithText("Spare").assertDoesNotExist()
+        // So one more tap unfolds it.
+        header.performClick()
+        rule.onNodeWithText("Spare").assertExists()
+    }
+
+    @Test
     fun theAccountShownBesideTheListIsTheOneRowSelected() {
         // Its address in lower case, as a route carries it: the row's is EIP-55.
         show(

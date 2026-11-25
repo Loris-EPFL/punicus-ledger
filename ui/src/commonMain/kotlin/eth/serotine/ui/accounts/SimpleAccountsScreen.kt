@@ -120,6 +120,9 @@ fun SimpleAccountsScreen(
     var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
     unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
     var asking by remember { mutableStateOf<StaleAnchorWarning?>(null) }
+    // The networks whose accounts are folded away under their header (owner's request, 2026-11-25): kept with the
+    // screen, back from an account included, and while its list reloads.
+    var collapsed by rememberSaveable { mutableStateOf(listOf<Long>()) }
     StaleAnchorQuestion(
         asking,
         current = { state.staleAnchorOf(it) },
@@ -206,6 +209,11 @@ fun SimpleAccountsScreen(
                         onTurnOnNetwork,
                         onCatchUp = { asking = it },
                         onDismissLost = onDismissLost,
+                        collapsed = collapsed,
+                        // Read at the tap, so that a quick second tap undoes the first instead of repeating it.
+                        onToggle = { chainId ->
+                            collapsed = if (chainId in collapsed) collapsed - chainId else collapsed + chainId
+                        },
                     ) { unavailable = it }
                 }
             }
@@ -221,11 +229,10 @@ private fun SimpleAccountList(
     onTurnOnNetwork: (Long) -> Unit,
     onCatchUp: (StaleAnchorWarning) -> Unit,
     onDismissLost: () -> Unit,
+    collapsed: List<Long>,
+    onToggle: (chainId: Long) -> Unit,
     onUnavailable: (UnavailableNotice) -> Unit,
 ) {
-    // The networks whose accounts are folded away under their header: kept while the screen is, back from an account
-    // included.
-    var collapsed by rememberSaveable { mutableStateOf(listOf<Long>()) }
     LazyColumn(Modifier.fillMaxSize().testTag(ACCOUNTS_LIST_TAG)) {
         items(state.upgrades) { UpgradeBanner(it) }
         state.lostNotice?.let { lost -> item(key = "lost") { LostQueuedNotice(lost, onDismissLost) } }
@@ -253,13 +260,13 @@ private fun SimpleAccountList(
         // tap on it folds them away and back (owner's requests, 2026-11-25).
         state.sections.filter { it.accounts.isNotEmpty() }.forEach { section ->
             val folded = section.chainId in collapsed
+            // Folded, its accounts go but the one open beside the list, which stays in sight with its row selected.
+            val listed = if (folded) section.accounts.filter { selected?.matches(it) == true } else section.accounts
             stickyHeader(key = "network/${section.chainId}") {
-                NetworkHeader(section, folded) {
-                    collapsed = if (folded) collapsed - section.chainId else collapsed + section.chainId
-                }
+                val hidden = section.accounts.size - listed.size
+                NetworkHeader(section, folded, hidden) { onToggle(section.chainId) }
             }
-            if (folded) return@forEach
-            items(section.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
+            items(listed, key = { "${it.chainId}/${it.address}" }) { account ->
                 val shown = selected?.matches(account) == true
                 WithActionMenu(
                     actions = accountMenu(account, onAccountAction, onTurnOnNetwork, onUnavailable),
@@ -280,12 +287,12 @@ private fun SimpleAccountList(
 /**
  * The header of a network's accounts: its icon and name, and its sync state in a few words beside a dot of its
  * colour ([NetworkSection.simpleStatus], [NetworkSection.simpleHealth]); the words say it, the colour never alone.
- * A tap folds its accounts away, or back ([onToggle]); [folded], it says how many it hides, and its arrow points to
- * the side. Opaque, in the screen's background colour, since the accounts scroll under it, and the tap is its own.
+ * A tap folds its accounts away, or back ([onToggle]); [folded], it says how many it hides ([hidden]), and its arrow
+ * points to the side. Opaque, in the screen's background colour, since the accounts scroll under it, and the tap is its own.
  */
 @Composable
-private fun NetworkHeader(section: NetworkSection, folded: Boolean, onToggle: () -> Unit) {
-    val count = section.accounts.size
+private fun NetworkHeader(section: NetworkSection, folded: Boolean, hidden: Int, onToggle: () -> Unit) {
+    val count = hidden
     Row(
         Modifier.fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)

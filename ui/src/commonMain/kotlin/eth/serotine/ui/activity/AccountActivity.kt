@@ -264,8 +264,8 @@ class AccountActivity(
                     Listed(row, event.blockNumber, pending = false, moment = it, event = true, anchored = true)
                 }
             }
-            // The addr1 index's rows go by their block, as an event the engine did not date: none of a transaction
-            // the log index read, listed or deliberately left out (a transfer of nothing), is listed again.
+            // The addr1 index's rows: none of a transaction the log index read, listed or deliberately left out (a
+            // transfer of nothing), is listed again.
             val fromIndex = indexed(
                 index,
                 listedHere + allEvents.map { it.transactionHash.lowercase() },
@@ -366,8 +366,9 @@ class AccountActivity(
 
         /**
          * [shown], rows of the addr1 index with their blocks, split by whether the engine reported their block's
-         * verified time (Myotis 0.1.24 on): those that have it, as rows dated by it, like a dated event; and the
-         * others, ghosts among them, by their block alone.
+         * verified time (Myotis 0.1.24 on): those that have it, as rows dated by it, like a dated event (a verified
+         * entry's ghost too, while the tokens are read, so that it holds its row's place); and the others, the
+         * ghosts of entries still being checked among them, by their block alone.
          */
         private fun byTime(
             index: IndexPaging?,
@@ -385,8 +386,9 @@ class AccountActivity(
 
         /**
          * The ghost row of [entry], an entry of the addr1 index being checked: its key, and the time its row will say
-         * (its block in Detailed view, none in simple mode), which the ghost draws as a line of that height only, so
-         * that it is as tall as its row; nothing else of it.
+         * (its block's), which the ghost draws as a line of that height only, so that it is as tall as its row;
+         * nothing else of it. In simple mode too: the pinned engine (Myotis 0.1.24 on) dates every checked entry, so
+         * its row has a time line there as well.
          */
         private fun pendingRow(entry: AddressIndexEntry): ActivityRow = ActivityRow(
             key = "index:${entry.block}:${entry.slot}",
@@ -394,7 +396,6 @@ class AccountActivity(
             detail = "",
             about = "",
             time = "Block ${grouped(entry.block)}",
-            simpleTime = null,
             status = "",
             state = ActivityState.WAITING,
             opens = ActivityKey("", index = IndexEntryKey(entry.block, entry.slot, entry.roles)),

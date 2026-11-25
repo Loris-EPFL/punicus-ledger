@@ -21,8 +21,8 @@ The pages are plain HTML and CSS and open from a checkout as they are. What the 
    starts at the server's root;
    the Android certificate digest on the page is the one pinned in
    `android-app/release-signing-cert.sha256`. Together they keep the site hostable under any path
-   with no server behind it: GitHub Pages' project path today, a Swarm hash or an ENS gateway
-   later (`website/README.md`).
+   with no server behind it: GitHub Pages' project path, a Swarm hash or an ENS gateway such as
+   `punicus.eth.limo`, the public address (`website/README.md`).
 
 `--base-url` (the site's public address) makes the social preview image's URL absolute, as the
 Open Graph protocol asks. Exit status 1 with a message per problem when a check fails.

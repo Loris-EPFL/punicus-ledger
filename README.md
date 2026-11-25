@@ -19,7 +19,7 @@ Sepolia off, a debug build with Sepolia alone, and each network can be turned
 on or off in Settings.
 
 The website, for people who are not developers, with the downloads and a
-guide to adding accounts and Safes: <https://biafra23.github.io/punicus/>
+guide to adding accounts and Safes: <https://punicus.eth.limo/>
 (its source: [website/](website/)).
 
 ## Status

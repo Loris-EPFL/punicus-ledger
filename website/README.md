@@ -2,9 +2,10 @@
 
 The public site of Punicus: what the wallet is, in plain words, for people who
 are not developers; where to download it; and a guide to adding accounts and
-Safes. Published to GitHub Pages by `.github/workflows/website.yml`. It is
-built so that it can also be published to Swarm and reached through
-`punicus.eth` (below).
+Safes. Its public address is <https://punicus.eth.limo/> (the owner's,
+2026-11-25: `punicus.eth` through the eth.limo gateway), which the
+repository's links to the site use. Published to GitHub Pages by
+`.github/workflows/website.yml`; how `punicus.eth` gets each build is below.
 
 | File | What it is |
 |---|---|
@@ -104,12 +105,17 @@ other release is: the page is for people who are not developers. Whether a
 candidate should be offered there is open, and the owner's to decide. The
 run names each newer release it did not link, with the reason, as a warning.
 
-**Swarm and `punicus.eth`: planned, not set up.** `build/website/` is the
-whole site, so it is what gets uploaded. A sketch of the steps, to be checked
-against the tools' current documentation when it is done:
+**`punicus.eth`: how the name gets each build is not recorded here; open,
+and the owner's.** It is the site's public address (the owner's, 2026-11-25),
+but the workflow publishes to GitHub Pages alone (`vesperbats.github.io/punicus`).
+Until the name is fed from the workflow's artifact, or by hand after every
+release, its copy may name an older release than the Pages copy. A build for
+it takes `--base-url https://punicus.eth.limo/`, so that its preview image's
+URL is absolute. If it is fed through Swarm, a sketch of the steps, to be
+checked against the tools' current documentation:
 
 ```bash
-python3 scripts/build_website.py --releases r.json
+python3 scripts/build_website.py --releases r.json --base-url https://punicus.eth.limo/
 swarm-cli upload build/website --stamp <postage batch id> \
   --index-document index.html --error-document 404.html
 # then set the content hash of punicus.eth to the Swarm reference it prints

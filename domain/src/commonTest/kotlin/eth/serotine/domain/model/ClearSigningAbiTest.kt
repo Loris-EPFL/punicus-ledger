@@ -79,6 +79,23 @@ class ClearSigningAbiTest {
     }
 
     @Test
+    fun offsetsThatShareBytesAreRefusedWithoutReadingThemAgain() {
+        // multicall(bytes[]) with every element's offset at one 64 KiB blob: refused, and fast.
+        val params = AbiFunction.parse("multicall(bytes[] data)")!!.params
+        val items = 1024
+        val blob = UInt256.of(65_536).toBytes32() + ByteArray(65_536)
+        val head = UInt256.of(32).toBytes32() + UInt256.of(items.toLong()).toBytes32() +
+            (0 until items).fold(ByteArray(0)) { acc, _ -> acc + UInt256.of(items * 32L).toBytes32() }
+        assertNull(AbiDecoder.decode(params, head + blob))
+    }
+
+    @Test
+    fun aNameThatRepeatsIsRefused() {
+        assertNull(AbiFunction.parse("f(uint256 amount,uint256 amount)"))
+        assertNull(AbiFunction.parse("f((uint256 a,bool a) t)"))
+    }
+
+    @Test
     fun anArrayLongerThanTheDataIsRefusedBeforeItIsRead() {
         val array = AbiFunction.parse("f(uint256[] x)")!!.params
         val data = UInt256.of(32).toBytes32() + UInt256.of(1_000_000).toBytes32()

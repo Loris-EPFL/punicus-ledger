@@ -89,8 +89,12 @@ data class AbiFunction(val name: String, val params: List<AbiParam>) {
             is AbiType.ArrayType -> canonical(type.element) + "[${type.length ?: ""}]"
         }
 
+        /** The parameters of [text]; two of one name are refused, since a path could reach only the first. */
         private fun params(text: String): List<AbiParam> =
-            if (text.isBlank()) emptyList() else splitTop(text).map(::param)
+            (if (text.isBlank()) emptyList() else splitTop(text).map(::param)).also { params ->
+                val names = params.mapNotNull { it.name }
+                require(names.size == names.toSet().size) { "a name repeats" }
+            }
 
         private fun param(text: String): AbiParam {
             var rest = text.trim().removePrefix("tuple")
@@ -207,12 +211,28 @@ object AbiDecoder {
     /** The most levels of tuples and arrays. */
     const val MAX_DEPTH = 16
 
-    /** [arguments] (the call data after its selector) decoded as [params], or null when it is not exactly that. */
-    fun decode(params: List<AbiParam>, arguments: ByteArray): AbiValue.TupleValue? = runCatching {
+    /**
+     * [arguments] (the call data after its selector) decoded as [params], or null when it is not exactly that.
+     * Each dynamic value must sit at the canonical next position of its sequence's tail, so no two offsets
+     * share bytes and what is decoded is never larger than [arguments].
+     */
+    fun decode(params: List<AbiParam>, arguments: ByteArray): AbiValue.TupleValue? = try {
         val type = AbiType.TupleType(params)
-        val value = Reader(arguments).tuple(type, 0, 0)
-        value.takeIf { encode(type, it).contentEquals(arguments) }
-    }.getOrNull()
+        val (value, end) = Reader(arguments).value(type, 0, 0)
+        (value as AbiValue.TupleValue).takeIf { end == arguments.size && encode(type, it).contentEquals(arguments) }
+    } catch (_: IllegalArgumentException) {
+        null
+    } catch (_: IllegalStateException) {
+        null
+    } catch (_: IndexOutOfBoundsException) {
+        null
+    } catch (_: CharacterCodingException) {
+        null
+    } catch (_: ClassCastException) {
+        null
+    } catch (_: ArithmeticException) {
+        null
+    }
 
     /** The canonical ABI encoding of [value] as [type]. */
     fun encode(type: AbiType, value: AbiValue): ByteArray = when (type) {
@@ -237,7 +257,7 @@ object AbiDecoder {
     private fun sequence(types: List<AbiType>, values: List<AbiValue>): ByteArray {
         val heads = mutableListOf<ByteArray>()
         val tails = mutableListOf<ByteArray>()
-        var tailOffset = types.sumOf { headSize(it) }.toLong()
+        var tailOffset = types.sumOf { headSize(it) }
         types.zip(values).forEach { (type, value) ->
             val encoded = encode(type, value)
             if (type.isDynamic) {
@@ -248,74 +268,94 @@ object AbiDecoder {
                 heads += encoded
             }
         }
-        return (heads + tails).fold(ByteArray(0)) { acc, bytes -> acc + bytes }
+        return concat(heads + tails)
     }
 
-    private fun headSize(type: AbiType): Int = when {
-        type.isDynamic -> WORD
+    private fun concat(parts: List<ByteArray>): ByteArray {
+        val out = ByteArray(parts.sumOf { it.size })
+        var at = 0
+        for (part in parts) {
+            part.copyInto(out, at)
+            at += part.size
+        }
+        return out
+    }
+
+    /** The bytes [type] takes in its sequence's head; refused past [Int.MAX_VALUE] (a deep fixed array). */
+    private fun headSize(type: AbiType): Long = when {
+        type.isDynamic -> WORD.toLong()
         type is AbiType.TupleType -> type.members.sumOf { headSize(it.type) }
         type is AbiType.ArrayType -> type.length!! * headSize(type.element)
-        else -> WORD
-    }
+        else -> WORD.toLong()
+    }.also { require(it <= Int.MAX_VALUE) }
 
     private fun twosComplement(value: AbiValue.IntValue): UInt256 =
         if (!value.negative || value.magnitude.isZero) value.magnitude else UInt256.MAX - value.magnitude + UInt256.ONE
 
+    /** Reads values, each with the position just past it. */
     private class Reader(private val data: ByteArray) {
         fun word(at: Int): ByteArray {
             require(at >= 0 && at + WORD <= data.size)
             return data.copyOfRange(at, at + WORD)
         }
 
-        fun offset(at: Int, base: Int): Int {
-            val offset = AbiWords.long(word(at)) ?: throw IllegalArgumentException("offset too large")
-            require(offset <= data.size)
-            return (base + offset).toInt().also { require(it <= data.size) }
-        }
-
-        fun tuple(type: AbiType.TupleType, at: Int, depth: Int): AbiValue.TupleValue {
-            val values = sequence(type.members.map { it.type }, at, depth)
-            return AbiValue.TupleValue(type.members.map { it.name }.zip(values))
-        }
-
-        fun sequence(types: List<AbiType>, base: Int, depth: Int): List<AbiValue> {
+        fun sequence(types: List<AbiType>, base: Int, depth: Int): Pair<List<AbiValue>, Int> {
             require(depth <= MAX_DEPTH)
-            var head = base
-            return types.map { type ->
-                val value = if (type.isDynamic) value(type, offset(head, base), depth + 1) else value(type, head, depth + 1)
+            var head = base.toLong()
+            var tail = base + types.sumOf { headSize(it) }
+            require(tail <= data.size)
+            val values = types.map { type ->
+                val value = if (type.isDynamic) {
+                    val offset = AbiWords.long(word(head.toInt())) ?: throw IllegalArgumentException("offset")
+                    // The canonical tail: each dynamic value right after the one before it, none shared.
+                    require(base + offset == tail)
+                    val (value, end) = value(type, tail.toInt(), depth + 1)
+                    tail = end.toLong()
+                    value
+                } else {
+                    value(type, head.toInt(), depth + 1).first
+                }
                 head += headSize(type)
                 value
             }
+            return values to tail.toInt()
         }
 
-        fun value(type: AbiType, at: Int, depth: Int): AbiValue = when (type) {
-            is AbiType.TupleType -> tuple(type, at, depth)
+        fun value(type: AbiType, at: Int, depth: Int): Pair<AbiValue, Int> = when (type) {
+            is AbiType.TupleType -> {
+                val (values, end) = sequence(type.members.map { it.type }, at, depth)
+                AbiValue.TupleValue(type.members.map { it.name }.zip(values)) to end
+            }
             is AbiType.ArrayType -> {
-                val length = type.length ?: (AbiWords.long(word(at))?.toInt() ?: throw IllegalArgumentException("length"))
+                val length = type.length ?: (AbiWords.long(word(at))?.takeIf { it <= MAX_ITEMS }?.toInt()
+                    ?: throw IllegalArgumentException("length"))
                 require(length in 0..MAX_ITEMS)
                 val start = if (type.length == null) at + WORD else at
-                require(start + length.toLong() * minOf(headSize(type.element), WORD) <= data.size)
-                AbiValue.ArrayValue(sequence(List(length) { type.element }, start, depth))
+                val (items, end) = sequence(List(length) { type.element }, start, depth)
+                AbiValue.ArrayValue(items) to end
             }
-            AbiType.AddressType -> AbiValue.AddressValue(AbiWords.address(word(at)) ?: throw IllegalArgumentException("address"))
+            AbiType.AddressType -> AbiValue.AddressValue(AbiWords.address(word(at)) ?: throw IllegalArgumentException("address")) to at + WORD
             AbiType.BoolType -> AbiValue.BoolValue(
                 when (AbiWords.uint(word(at))) {
                     UInt256.ZERO -> false
                     UInt256.ONE -> true
                     else -> throw IllegalArgumentException("bool")
                 },
-            )
-            is AbiType.UintType -> AbiValue.UintValue(AbiWords.uint(word(at), type.bits) ?: throw IllegalArgumentException("uint"), type.bits)
-            is AbiType.IntType -> signed(word(at), type.bits)
-            is AbiType.FixedBytesType -> AbiValue.BytesValue(word(at).copyOf(type.size).toHex(), fixed = true)
-            AbiType.BytesType -> AbiValue.BytesValue(dynamicBytes(at).toHex(), fixed = false)
-            AbiType.StringType -> AbiValue.StringValue(dynamicBytes(at).decodeToString(throwOnInvalidSequence = true))
+            ) to at + WORD
+            is AbiType.UintType ->
+                AbiValue.UintValue(AbiWords.uint(word(at), type.bits) ?: throw IllegalArgumentException("uint"), type.bits) to at + WORD
+            is AbiType.IntType -> signed(word(at), type.bits) to at + WORD
+            is AbiType.FixedBytesType -> AbiValue.BytesValue(word(at).copyOf(type.size).toHex(), fixed = true) to at + WORD
+            AbiType.BytesType -> dynamicBytes(at).let { (bytes, end) -> AbiValue.BytesValue(bytes.toHex(), fixed = false) to end }
+            AbiType.StringType ->
+                dynamicBytes(at).let { (bytes, end) -> AbiValue.StringValue(bytes.decodeToString(throwOnInvalidSequence = true)) to end }
         }
 
-        fun dynamicBytes(at: Int): ByteArray {
+        fun dynamicBytes(at: Int): Pair<ByteArray, Int> {
             val length = AbiWords.long(word(at)) ?: throw IllegalArgumentException("length")
-            require(at + WORD + length <= data.size)
-            return data.copyOfRange(at + WORD, at + WORD + length.toInt())
+            val end = at + WORD + length + AbiWords.padding((length % WORD).toInt())
+            require(end <= data.size)
+            return data.copyOfRange(at + WORD, at + WORD + length.toInt()) to end.toInt()
         }
 
         fun signed(word: ByteArray, bits: Int): AbiValue.IntValue {

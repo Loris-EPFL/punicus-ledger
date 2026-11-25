@@ -40,8 +40,17 @@ sealed interface ClearSignedField {
         val notInTokenList: Address? = null,
     ) : ClearSignedField
 
-    /** A call nested in this one, to [callee], with what its own descriptor says of it. */
-    data class Nested(override val label: String, val callee: Address, val result: ClearSignResult) : ClearSignedField
+    /**
+     * A call nested in this one, to [callee], its [data] as raw `0x` hex (shown whatever [result] says), and
+     * what its own descriptor says of it. [grantsApproval] is read from its selector, covered or not.
+     */
+    data class Nested(
+        override val label: String,
+        val callee: Address,
+        val data: String,
+        val result: ClearSignResult,
+        val grantsApproval: Boolean,
+    ) : ClearSignedField
 }
 
 /** A parameter no field shows: its [location] in the call or the message, and its [raw] value. */
@@ -175,9 +184,13 @@ object ClearSignFormatter {
         val typeHash = "0x" + keccak256(Eip712.encodeType(data.types, data.primaryType).encodeToByteArray()).toHex()
         val format = descriptor.formatForTypeHash(typeHash)
             ?: return ClearSignResult.NotCovered(NotCoveredReason.NoFormat(null))
-        if (descriptor.domainName != null && (data.domain["name"] as? TypedValue.Text)?.text != descriptor.domainName) {
+        if (descriptor.domainName != null && (data.domain["name"] as? TypedValue.Text)?.text != descriptor.domainName ||
+            descriptor.domainVersion != null && (data.domain["version"] as? TypedValue.Text)?.text != descriptor.domainVersion
+        ) {
             return ClearSignResult.NotCovered(NotCoveredReason.NoFormat(null))
         }
+        // The caller checks the data first; held here too, so a message never reaches the formatter unchecked.
+        if (Eip712.encode(data) == null) return ClearSignResult.NotCovered(NotCoveredReason.NotDecodable)
         val message = runCatching { TypedMessage.struct(data.types, data.primaryType, data.message, 0) }.getOrNull()
             ?: return ClearSignResult.NotCovered(NotCoveredReason.NotDecodable)
         val values = ClearSigningValues(
@@ -204,6 +217,7 @@ object ClearSignFormatter {
         val lookups: ClearSigningLookups,
         val depth: Int,
     ) {
+        val callValue: UInt256 = (values.container["value"] as? AbiValue.UintValue)?.value ?: UInt256.ZERO
         val fields = mutableListOf<ClearSignedField>()
         val shownAt = mutableMapOf<String, String>()
         val covered = mutableSetOf<String>()
@@ -225,6 +239,11 @@ object ClearSignFormatter {
             )
         } catch (refusal: Refusal) {
             ClearSignResult.NotCovered(refusal.reason)
+        } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Fails closed: anything not rendered exactly is not covered, never a partial display.
+            ClearSignResult.NotCovered(NotCoveredReason.NotDecodable)
         }
 
         suspend fun field(field: ClearSigningField) {
@@ -242,8 +261,9 @@ object ClearSignFormatter {
                         else throw Refusal(NotCoveredReason.ValueOutsideDescriptor(label))
                 }
                 if (!shown) continue
-                fields += value(label, field.format ?: FieldFormat.Raw, at.value)
-                shownAt.putIfAbsent(path.toString(), (fields.last() as? ClearSignedField.Value)?.shown ?: "")
+                val shownField = value(label, field.format ?: FieldFormat.Raw, at.value)
+                fields += shownField
+                if (shownField is ClearSignedField.Value && path.toString() !in shownAt) shownAt[path.toString()] = shownField.shown
                 covered += at.location
             }
         }
@@ -277,10 +297,15 @@ object ClearSignFormatter {
                 is FieldFormat.Calldata -> {
                     val callee = address(single(format.calleePath))
                     val data = (value as? AbiValue.BytesValue)?.bytes ?: throw Refusal(NotCoveredReason.NotDecodable)
+                    // A call into the contract itself (a multicall) runs as the user's call: same sender, same
+                    // value. Any other is the contract calling out, with nothing sent.
+                    val self = callee == to
                     val nested = if (depth + 1 > MAX_DEPTH) ClearSignResult.NotCovered(NotCoveredReason.TooDeep)
-                    else lookups.nested(network, to, callee, UInt256.ZERO, data, depth + 1)
-                    if ((nested as? ClearSignResult.ClearSigned)?.grantsApproval == true) approval = true
-                    ClearSignedField.Nested(label, callee, nested)
+                    else lookups.nested(network, if (self) from else to, callee, if (self) callValue else UInt256.ZERO, data, depth + 1)
+                    val grants = data.size >= SELECTOR && "0x" + data.copyOf(SELECTOR).toHex() in APPROVAL_SELECTORS ||
+                        (nested as? ClearSignResult.ClearSigned)?.grantsApproval == true
+                    if (grants) approval = true
+                    ClearSignedField.Nested(label, callee, raw, nested, grants)
                 }
                 is FieldFormat.NftName -> {
                     val collection = address(single(format.collectionPath))
@@ -393,8 +418,16 @@ object ClearSignFormatter {
     private fun address(value: AbiValue): Address =
         (value as? AbiValue.AddressValue)?.address ?: throw Refusal(NotCoveredReason.NotDecodable)
 
-    /** Selectors that grant an approval: ERC-20 `approve`/`increaseAllowance`, `setApprovalForAll`, Permit2's `approve`, `permit`. */
-    val APPROVAL_SELECTORS = setOf("0x095ea7b3", "0x39509351", "0xa22cb465", "0x87517c45", "0xd505accf", "0x2b67b570", "0x2a2d80d1")
+    /**
+     * Selectors that grant an approval, flagged whatever a descriptor says: ERC-20 `approve` and
+     * `increaseAllowance`, ERC-721/1155 `setApprovalForAll`, Permit2's `approve` and its two `permit`s, ERC-2612
+     * `permit`, DAI's `permit`, and Aave's `approveDelegation` and `approvePositionManager` (rights over the
+     * user's debt or positions).
+     */
+    val APPROVAL_SELECTORS = setOf(
+        "0x095ea7b3", "0x39509351", "0xa22cb465", "0x87517c45", "0x2b67b570", "0x2a2d80d1", "0xd505accf",
+        "0x8fcbaf0c", "0xc04a8a10", "0xb8caa7c5",
+    )
 
     /** EIP-712 types that grant an approval: ERC-2612's and Permit2's permits. */
     val APPROVAL_TYPES = setOf("Permit", "PermitSingle", "PermitBatch", "PermitTransferFrom", "PermitBatchTransferFrom")

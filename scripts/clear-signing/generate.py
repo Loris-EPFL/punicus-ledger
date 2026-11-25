@@ -215,6 +215,8 @@ def calldata_root(key: str, where: str):
     for param in split_top(match.group(1), where):
         name, tree = type_tree(param, where)
         if name is not None:
+            if name in members:
+                refuse(where, f"the parameter name {name!r} repeats: a path would reach only the first")
             members[name] = tree
     return ("tuple", members)
 

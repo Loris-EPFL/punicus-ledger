@@ -311,6 +311,43 @@ class ClearSignFormatterTest {
     }
 
     @Test
+    fun aNestedApprovalIsFlaggedAndItsBytesKeptEvenWhenItIsNotCovered() = runTest {
+        val approve = Erc20.approveData(router, UInt256.MAX)
+        val lookups = Lookups(emptyMap(), nested = ClearSignResult.NotCovered(NotCoveredReason.ClaimedByAppDecoder))
+        val signed = assertIs<ClearSignResult.ClearSigned>(
+            ClearSignFormatter.formatCall(multicall, Network.ETHEREUM, sender, router, UInt256.ZERO, callData(2, approve), lookups),
+        )
+        val nested = signed.fields[0] as ClearSignedField.Nested
+        assertTrue(nested.grantsApproval)
+        assertTrue(signed.grantsApproval)
+        assertEquals("0x" + approve.toHex(), nested.data)
+    }
+
+    @Test
+    fun aCallIntoTheContractItselfKeepsTheUsersSenderAndValue() = runTest {
+        var seen: Pair<Address, UInt256>? = null
+        val lookups = object : ClearSigningLookups by Lookups(emptyMap()) {
+            override suspend fun nested(network: Network, from: Address, callee: Address, value: UInt256, data: ByteArray, depth: Int): ClearSignResult {
+                seen = from to value
+                return ClearSignResult.NotCovered(NotCoveredReason.NoDescriptor)
+            }
+        }
+        ClearSignFormatter.formatCall(multicall, Network.ETHEREUM, sender, usdc, UInt256.of(5), callData(2, byteArrayOf()), lookups)
+        assertEquals(sender to UInt256.of(5), seen, "callee usdc is the call's own `to`")
+        ClearSignFormatter.formatCall(multicall, Network.ETHEREUM, sender, router, UInt256.of(5), callData(2, byteArrayOf()), lookups)
+        assertEquals(router to UInt256.ZERO, seen, "a call out of the contract")
+    }
+
+    @Test
+    fun aDomainOfAnotherVersionIsNotCovered() = runTest {
+        val versioned = permit2.copy(domainVersion = "2")
+        assertEquals(
+            ClearSignResult.NotCovered(NotCoveredReason.NoFormat(null)),
+            ClearSignFormatter.formatTypedData(versioned, Network.ETHEREUM, sender, permitData("1"), withUsdc),
+        )
+    }
+
+    @Test
     fun aValueItsEnumHasNoNameForIsNotCovered() = runTest {
         assertEquals(
             ClearSignResult.NotCovered(NotCoveredReason.UnknownEnumValue("Mode")),

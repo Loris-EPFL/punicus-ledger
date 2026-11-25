@@ -47,7 +47,10 @@ data class ClearSigningPath(val container: Boolean, val steps: List<Step>) {
                     INDEX.matches(segment) -> Step.Index(segment.drop(1).dropLast(1).toIntOrNull() ?: return null)
                     SLICE.matches(segment) -> {
                         val (from, to) = segment.drop(1).dropLast(1).split(':')
-                        Step.Slice(from.ifEmpty { null }?.toIntOrNull(), to.ifEmpty { null }?.toIntOrNull())
+                        Step.Slice(
+                            from.ifEmpty { null }?.let { it.toIntOrNull() ?: return null },
+                            to.ifEmpty { null }?.let { it.toIntOrNull() ?: return null },
+                        )
                     }
                     NAME.matches(segment) -> Step.Member(segment)
                     else -> return null

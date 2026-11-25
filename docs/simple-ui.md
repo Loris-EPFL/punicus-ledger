@@ -230,8 +230,10 @@ change what it trusts.
   event on chain (one the engine dated by its block alone has no time
   here), and how it ended in words ("Confirmed", "Final", "Failed",
   "Filled"), never a block number. Above them "Activity since you
-  added it" (or since it was deployed from this device), and "older
-  activity is still being checked" while it is. The mockup's day headings
+  added it" (or since it was deployed from this device), and "Still
+  catching up." while the walk back has not reached it (owner's choice,
+  2026-11-25, on #375: the walk is "catching up", "older activity" is the
+  addr1 index's). The mockup's day headings
   and amounts' values are not built yet. A transaction queued in lenient
   mode is listed first, "Waiting to send" or "Needs your signature
   again", whichever way the rows run (docs/wallet-ux.md, screen 25).
@@ -378,9 +380,13 @@ failed.
 - **T1 · Settings.** Display: Currency, Tokens. Networks: each with its
   switch and its state ("Up to date", "Test network · live", "Catching
   up…", "Can't check right now", "Off"), and under them *Heavy downloads
-  on metered connections* ("Off: older activity is checked only on Wi-Fi or
-  another unmetered connection"; owner ruling, 2026-10-20; docs/wallet-ux.md,
-  screen 18). Security: password and
+  on metered connections* ("Off: catching up on activity since you added an
+  account waits for Wi-Fi or another unmetered connection"; owner ruling,
+  2026-10-20; docs/wallet-ux.md, screen 18). Simple mode names each source
+  once (owner's choice, 2026-11-25, on #375): the log index's walk is
+  "catching up", as H5 says it, and "older activity" is the addr1 rows',
+  which on Android read on any connection whatever this switch says
+  (owner's decision, 2026-11-25, on #367). Security: password and
   fingerprint. Advanced: *Detailed view* ("Show the light client's state,
   blocks and proofs on every screen"), off by default: what Detailed view
   shows up front, since simple mode keeps the fee levels behind a row and

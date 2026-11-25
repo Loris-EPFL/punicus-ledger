@@ -293,7 +293,9 @@ class AccountActivity(
             val sinceWhen = if (deployedHere) "since it was deployed from this device" else "since you added it"
             val simple = listOfNotNull(
                 "Activity $sinceWhen.",
-                "Older activity is still being checked.".takeIf {
+                // The log index's walk, named as Settings' metered switch names it; "older activity" is the addr1
+                // rows' (owner's choice, 2026-11-25, on #375).
+                "Still catching up.".takeIf {
                     histories.any { it is IndexedHistory.Checking || (it as? IndexedHistory.Read)?.complete == false }
                 },
                 "Activity on chain can't be read right now."

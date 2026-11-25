@@ -1,5 +1,5 @@
 ---
-description: "Data sources. The embedded engine is the only source of chain data; the three networks; Chainlink prices; the built-in token list; Safe co-signing without a service; history from the log index, and verified addr1 rows from Swarm on the desktop and Android; an account's NFTs, on chain only; swaps on Uniswap and CoW; CoW's order API; dApp connections over WalletConnect."
+description: "Data sources. The embedded engine is the only source of chain data; the three networks; Chainlink prices; the built-in token list; the built-in clear-signing descriptors; Safe co-signing without a service; history from the log index, and verified addr1 rows from Swarm on the desktop and Android; an account's NFTs, on chain only; swaps on Uniswap and CoW; CoW's order API; dApp connections over WalletConnect."
 paths:
   - "domain/**/*"
   - "data/**/*"
@@ -170,6 +170,36 @@ of a stale feed.)
   contract and shown as the contract's claim, with a monogram icon.
 - No remote token list and no icon CDN: one would learn which tokens the user
   holds.
+
+## The clear-signing descriptors are built in
+
+(Owner's decisions, 2026-11-25, #240; docs/clear-signing.md is the contract.)
+
+- **ERC-7730 descriptors from the registry**
+  (ethereum/clear-signing-erc7730-registry) say in words what a call or a
+  typed-data message does. They are pinned, checked and converted at build
+  time, and ship in every build.
+- **The app never fetches a descriptor**: not from clearsigning.org, not from
+  GitHub, not from a CDN. A fetch at signing time would tell a server which
+  contract the user is about to use.
+- **Pinned twice.** Each file by the registry's commit id and its sha256;
+  each deployment by the keccak256 of its runtime code, and by how that code
+  can change (a proxy's slot or a forwarding call, with the implementation
+  it names), read through Myotis when the pin is made, never from an
+  RPC provider. Only a curated list of deployments on Ethereum, Gnosis Chain
+  and Sepolia ships (docs/clear-signing.md, *The first list*), whatever else
+  a descriptor names.
+- **A descriptor the runtime cannot render fails the build**: an unsupported
+  schema major, or any key or value the runtime does not implement, or the
+  registry's own test vectors not met. So does a deployment whose way of
+  changing its code cannot be pinned. Nothing is dropped silently.
+- **Every shipped descriptor is reviewed in our PR.** An auditor attestation
+  from the registry's `sigs/` is shown where one exists; none is required.
+- **A refresh is a step of every release PR**, through a PR that moves the
+  pins, its diff reviewed like code. Never at runtime.
+- **Descriptors of our own** for contracts Punicus pins and the registry
+  lacks (Swarm's, the Gnosis Pay Delay module) come in a later part,
+  contributed upstream.
 
 ## An account's NFTs: found in its verified history, proven held, read on chain only
 
@@ -546,6 +576,9 @@ docs/walletconnect.md is the contract.)
 ## Open decisions
 
 Each is recorded here before its code lands. Today: each optional
-WalletConnect service above; Swarm on Sepolia (docs/swarm.md); and what follows a
+WalletConnect service above; Swarm on Sepolia (docs/swarm.md); what follows a
 contradicted addr1 entry beyond the warning (no longer trusting the importer key,
-reporting it), the owner's to decide (2026-11-21, on #335).
+reporting it), the owner's to decide (2026-11-21, on #335); and clear
+signing's later phases, a verified trace and verified ABIs for contracts no
+descriptor covers, with their questions 6 to 8 (#240; docs/clear-signing.md,
+*Open decisions*).

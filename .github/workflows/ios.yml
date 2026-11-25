@@ -7,11 +7,18 @@ name: iOS
 # starts it there, so iOS code is checked on every PR, not first on a phone. It also runs the
 # desktop UI tests on macOS, where skiko takes another code path than on Linux.
 #
-# On a PR, scoped by pr-scope.yml (owner's request, 2026-11-18): a PR that changes only docs
-# skips both jobs, and the device link runs only for a PR that changes the iOS host or the
-# build. The simulator build links the same code, and the targets job compiles the device
-# target, so what the device link alone can catch is a native library missing for arm64: an
-# engine bump, a build change. main runs everything, and the label `full-ci` on a PR does too.
+# The targets job runs on a PR. The app job is an image build, and runs in the merge queue
+# instead (owner's request, 2026-11-25): the queue tests the commit that lands on main, and
+# holds the PR out of main until the app builds and starts. The targets job is skipped there:
+# it ran on the PR, Build and Test tests the queue's commit, and the app job compiles that
+# commit for iOS; running it again would add its 22 minutes to every merge.
+#
+# Scoped by pr-scope.yml (owner's request, 2026-11-18): a change of docs alone skips both
+# jobs, and the device link runs only for a change to the iOS host or the build. The
+# simulator build links the same code, and the targets job compiles the device target, so
+# what the device link alone can catch is a native library missing for arm64: an engine
+# bump, a build change. main runs everything. The label `full-ci` runs the targets job on a
+# PR of docs alone, and the app job with its device link in the queue.
 
 on:
   push:
@@ -19,6 +26,7 @@ on:
   # pull_request unscoped (any base branch), like ci.yml: a part PR of a multi-PR plan
   # targets its feature branch and still needs the check (CLAUDE.md, "Multi-PR plans").
   pull_request:
+  merge_group:
   workflow_dispatch:
 
 concurrency:
@@ -26,18 +34,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # What the PR changes (pr-scope.yml). Every output is 'true' on every event but pull_request.
+  # What the PR or the queue entry changes (pr-scope.yml). Every output is 'true' on every
+  # event but pull_request and merge_group.
   scope:
     name: PR scope
     uses: ./.github/workflows/pr-scope.yml
     permissions:
+      contents: read
       pull-requests: read
 
   ios:
     name: iOS targets + macOS UI tests
     needs: scope
     # `!= 'false'`: a scope job that failed leaves the output empty, and empty runs the job.
-    if: ${{ !cancelled() && needs.scope.outputs.code != 'false' }}
+    # Skipped in the merge queue (see the header), which takes a skipped check as passed.
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.scope.outputs.code != 'false' }}
     runs-on: macos-15
     permissions:
       contents: read
@@ -122,7 +133,9 @@ jobs:
   app:
     name: iOS app (build + start on a simulator)
     needs: scope
-    if: ${{ !cancelled() && needs.scope.outputs.code != 'false' }}
+    # Skipped on a PR (see the header), which shows the check as skipped; the queue then
+    # builds it.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.scope.outputs.code != 'false' }}
     runs-on: macos-15
     permissions:
       contents: read
@@ -146,8 +159,8 @@ jobs:
         run: chmod +x gradlew
 
       # The app's framework for a device: the static archive with the engine, libsodium and
-      # libsecp256k1 in it. Retried like the job above. On a PR only when the iOS host or the
-      # build changes (see the header): it takes about 9 of this job's 23 minutes.
+      # libsecp256k1 in it. Retried like the job above. In the queue only when the iOS host or
+      # the build changes (see the header): it takes about 9 of this job's 23 minutes.
       - name: Link the framework for a device
         if: needs.scope.outputs.ios_device != 'false'
         run: |

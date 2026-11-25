@@ -30,15 +30,11 @@
 #
 #   An attempt can also END CLEANLY having posted nothing. On 2026-10-01 (#523)
 #   Fable 5 ran 49 turns, hit 29 permission denials and stopped without a
-#   comment; the job went green, and the PR's builds, which wait for this run
-#   to finish (wait-for-claude-review.yml), started on no review at all. The
-#   prompt asks for a summary comment on every review, findings or not, so a
-#   clean attempt that left nothing counts as a failed one: the fallback runs,
-#   and the builds wait for it too, within the gate's one-hour bound. If it
-#   leaves nothing either, the job fails, so a missing review shows as a red
-#   check, never a green one. The gate itself stays fail-open (see its
-#   header): it starts the builds once this run has ended, whatever its
-#   result. A run in which the action never started Claude because this file
+#   comment; the job went green on no review at all. The prompt asks for a
+#   summary comment on every review, findings or not, so a clean attempt that
+#   left nothing counts as a failed one: the fallback runs. If it leaves
+#   nothing either, the job fails, so a missing review shows as a red check,
+#   never a green one. A run in which the action never started Claude because this file
 #   differs from the default branch's is not an attempt (see Scope
 #   decisions): it stays green with a warning, since a fallback would skip
 #   the same way. After each attempt, a step prints what it was refused and
@@ -91,11 +87,7 @@ on:
 
 # One review at a time per PR: the checks below credit this run with what the
 # reviewer posted since it started, so a second run (a close/reopen during a
-# review) waits for the first instead of overlapping it. The builds' gate
-# (wait-for-claude-review.yml) waits for both, with one gap: polling just as
-# the first ends, before the second has a runner, it can take a hold of over 5
-# minutes for a run stuck in the queue and start the builds early. That is
-# rare and fail-open, like the rest of the gate.
+# review) waits for the first instead of overlapping it.
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
   cancel-in-progress: false
@@ -379,10 +371,6 @@ jobs:
   # fresh runner and checkout start the fallback where the first attempt
   # started.
   #
-  # While this job waits for a runner, the run counts as in progress, so the
-  # builds' gate (wait-for-claude-review.yml) waits too: its 5-minute escape
-  # is for a run that has not started. Ungated jobs free runners as they
-  # finish; at worst the gate gives up after its hour, fail-open as ever.
   # Re-running this job alone starts a new Opus review, and its check counts
   # only what that run posts.
   fallback:

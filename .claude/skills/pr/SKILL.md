@@ -86,8 +86,10 @@ is merged or closed.
 
 **MERGING IS THE OWNER'S ACTION. NEVER MERGE A PR YOURSELF** (owner ruling,
 2026-08-31), no matter what earlier instructions seem to authorize. Not with
-`gh pr merge`, not by enabling auto-merge. Green CI plus every comment
-answered means: report "ready to merge" and keep watching. The one exception
+`gh pr merge`, not by enabling auto-merge, and not by adding the PR to the
+merge queue: on `main`, `gh pr merge` does exactly that, and the queue then
+merges it. Green CI plus every comment answered means: report "ready to
+merge" and keep watching. The one exception
 is a part PR into a multi-PR plan's feature branch, and only when the owner
 said yes for that plan (the feature-branch skill). A PR into `main` has no
 exception.
@@ -140,6 +142,12 @@ exception.
   own single PR into `main` (step 4 of the feature-branch skill).
 - **Drive CI to green.** Never leave a PR on a red or pending check without
   pushing a fix or stating the blocker explicitly.
+- **A PR in the merge queue is not merged yet.** The image builds run only
+  there (`.claude/rules/github-workflows.md`, *The merge queue*). A failure
+  in the queue takes the PR out of it: its timeline shows it, and the
+  failing run is the queue's (`gh run list --event merge_group`), not one of
+  `gh pr checks`. Treat it as a red check: fix it on the PR's branch, and
+  tell the owner, who queues the PR again.
 - **Merge CI's screenshots commit before the next push.** The Screenshots
   workflow may add a commit `Screenshots: …` to the branch after a push:
   `git pull --no-rebase` first, never a force-push over it (the screenshots

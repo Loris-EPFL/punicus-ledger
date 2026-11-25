@@ -142,8 +142,9 @@ change what it trusts.
 - **The light client's state.** Detailed view keeps the status strip on
   every screen whose content or actions depend on it (owner's request,
   2026-10-20). Simple mode replaces it with the freshness line, a banner
-  when a network cannot be checked (H3), each network's state in Settings
-  (T1), and a sync line (below). An action the light client blocks is
+  when a network cannot be checked (H3), each network's state in its header
+  on Home (H1; owner's request, 2026-11-25) and in Settings (T1), and a sync
+  line (below). An action the light client blocks is
   greyed out and says why, in both views.
 - **The sync line** (owner's requests, 2026-10-29: the sync status visible
   on every screen where it decides what the user can see or do). Every
@@ -180,8 +181,17 @@ change what it trusts.
   "Safe" or "watch only"), its value and its native balance. A Sepolia
   account says "Sepolia · test network" and "no real value", and the list
   ends with "Test networks aren't counted in the total." The add button,
-  and the Wallet | Settings bar. No network sections and no status strip:
-  those are Detailed view's. In lenient mode, under the freshness line, what
+  and the Wallet | Settings bar. No status strip: that is Detailed view's.
+  Each network's accounts come under a header of their own (owner's
+  request, 2026-11-25, amending "no network sections" of the approved
+  mockups): the network's icon and name, and its sync state in a few words
+  beside a dot of its colour ("Up to date", "Syncing · 3 of 12 periods",
+  "Paused in the background", "Checkpoint too old", "Needs an update",
+  "Off"). It stays on top while its accounts scroll under it. A tap on it
+  folds its accounts away, the header then saying how many it hides
+  ("Gnosis Chain · 2 accounts"), and another brings them back (owner's
+  request, 2026-11-25); the screen keeps what is folded while it is shown,
+  back from an account included. In lenient mode, under the freshness line, what
   each network has queued ("Ethereum: 1 waiting to send · Keep Punicus
   open to send it sooner."; "1 needs your signature again"), and once, a
   notice that a queued transaction was lost, with Dismiss, as in Detailed

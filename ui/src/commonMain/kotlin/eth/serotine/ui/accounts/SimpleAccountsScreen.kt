@@ -1,14 +1,18 @@
 package eth.serotine.ui.accounts
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,16 +35,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.HideAmountsButton
+import eth.serotine.ui.components.LightClientHealthDot
 import eth.serotine.ui.components.NameWithControlBadge
+import eth.serotine.ui.components.NetworkIcon
 import eth.serotine.ui.components.StaleAnchorBanner
 import eth.serotine.ui.components.StaleAnchorQuestion
 import eth.serotine.ui.components.StaleAnchorWarning
@@ -49,6 +60,9 @@ import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.WithActionMenu
 import eth.serotine.ui.update.UpgradeBanner
 import kotlinx.coroutines.launch
+
+/** Test tag prefix of simple mode's header of a network's accounts (suffixed with its chain id), for UI tests. */
+const val ACCOUNTS_NETWORK_HEADER_TAG = "accounts-network-header-"
 
 /** Test tag of simple mode's freshness line, for UI tests. */
 const val ACCOUNTS_FRESHNESS_TAG = "accounts-freshness"
@@ -61,10 +75,11 @@ const val ACCOUNTS_UNREACHABLE_TAG = "accounts-unreachable-"
 
 /**
  * The Accounts screen in simple mode (docs/simple-ui.md, H1 to H3), a pure function of the same
- * [state] as [AccountsScreen]: the total with how fresh the values are under it, and one list of
- * the accounts, each with its network's icon on its blockie and its network named under its name.
- * No section per network and no light-client strip: a network that cannot be checked while it shows
- * balances from before gets a banner, and those rows are dimmed with their age. Pulling the list
+ * [state] as [AccountsScreen]: the total with how fresh the values are under it, and the accounts
+ * under a header per network that says its sync state in a few words and folds its accounts away on a tap (owner's
+ * requests, 2026-11-25), each with its network's icon on its blockie and its network named under its name. No
+ * light-client strip: a network that cannot be checked while it shows balances from before gets a banner, and those
+ * rows are dimmed with their age. Pulling the list
  * down, or the Refresh button, asks [onRefresh]. Everything else is as [AccountsScreen] has it: the
  * + button, a row's tap and long-press menu, the greyed-out actions and their reasons, the upgrade
  * banners and a stale checkpoint's warning with its "Catch up…", and the eye at the top left
@@ -105,6 +120,9 @@ fun SimpleAccountsScreen(
     var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
     unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
     var asking by remember { mutableStateOf<StaleAnchorWarning?>(null) }
+    // The networks whose accounts are folded away under their header (owner's request, 2026-11-25): kept with the
+    // screen, back from an account included, and while its list reloads.
+    var collapsed by rememberSaveable { mutableStateOf(listOf<Long>()) }
     StaleAnchorQuestion(
         asking,
         current = { state.staleAnchorOf(it) },
@@ -191,6 +209,11 @@ fun SimpleAccountsScreen(
                         onTurnOnNetwork,
                         onCatchUp = { asking = it },
                         onDismissLost = onDismissLost,
+                        collapsed = collapsed,
+                        // Read at the tap, so that a quick second tap undoes the first instead of repeating it.
+                        onToggle = { chainId ->
+                            collapsed = if (chainId in collapsed) collapsed - chainId else collapsed + chainId
+                        },
                     ) { unavailable = it }
                 }
             }
@@ -206,6 +229,8 @@ private fun SimpleAccountList(
     onTurnOnNetwork: (Long) -> Unit,
     onCatchUp: (StaleAnchorWarning) -> Unit,
     onDismissLost: () -> Unit,
+    collapsed: List<Long>,
+    onToggle: (chainId: Long) -> Unit,
     onUnavailable: (UnavailableNotice) -> Unit,
 ) {
     LazyColumn(Modifier.fillMaxSize().testTag(ACCOUNTS_LIST_TAG)) {
@@ -231,20 +256,83 @@ private fun SimpleAccountList(
                 textAlign = TextAlign.Center,
             )
         }
-        items(state.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
-            val shown = selected?.matches(account) == true
-            WithActionMenu(
-                actions = accountMenu(account, onAccountAction, onTurnOnNetwork, onUnavailable),
-                menuLabel = "Actions for ${account.label}",
-                onClick = { onAccountAction(AccountAction.Open(account.chainId, account.address)) },
-                modifier = Modifier.selectedRow(shown),
-                clickLabel = "Open ${account.label}",
-            ) {
-                // A balance from before, or a network that is off: the row dimmed, its age said.
-                SimpleAccountRow(account, shown, Modifier.alpha(if (account.ageNote != null) DIMMED else 1f))
+        // Each network's accounts under its header, which says its sync state and stays on top while they scroll; a
+        // tap on it folds them away and back (owner's requests, 2026-11-25).
+        state.sections.filter { it.accounts.isNotEmpty() }.forEach { section ->
+            val folded = section.chainId in collapsed
+            // Folded, its accounts go but the one open beside the list, which stays in sight with its row selected.
+            val listed = if (folded) section.accounts.filter { selected?.matches(it) == true } else section.accounts
+            stickyHeader(key = "network/${section.chainId}") {
+                val hidden = section.accounts.size - listed.size
+                NetworkHeader(section, folded, hidden) { onToggle(section.chainId) }
             }
-            HorizontalDivider()
+            items(listed, key = { "${it.chainId}/${it.address}" }) { account ->
+                val shown = selected?.matches(account) == true
+                WithActionMenu(
+                    actions = accountMenu(account, onAccountAction, onTurnOnNetwork, onUnavailable),
+                    menuLabel = "Actions for ${account.label}",
+                    onClick = { onAccountAction(AccountAction.Open(account.chainId, account.address)) },
+                    modifier = Modifier.selectedRow(shown),
+                    clickLabel = "Open ${account.label}",
+                ) {
+                    // A balance from before, or a network that is off: the row dimmed, its age said.
+                    SimpleAccountRow(account, shown, Modifier.alpha(if (account.ageNote != null) DIMMED else 1f))
+                }
+                HorizontalDivider()
+            }
         }
+    }
+}
+
+/**
+ * The header of a network's accounts: its icon and name, and its sync state in a few words beside a dot of its
+ * colour ([NetworkSection.simpleStatus], [NetworkSection.simpleHealth]); the words say it, the colour never alone.
+ * A tap folds its accounts away, or back ([onToggle]); [folded], it says how many it hides ([hidden]), and its arrow
+ * points to the side. Opaque, in the screen's background colour, since the accounts scroll under it, and the tap is its own.
+ */
+@Composable
+private fun NetworkHeader(section: NetworkSection, folded: Boolean, hidden: Int, onToggle: () -> Unit) {
+    val count = hidden
+    Row(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .clickable(
+                onClickLabel = if (folded) "Show ${section.name}'s accounts" else "Hide ${section.name}'s accounts",
+                onClick = onToggle,
+            )
+            .padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)
+            .testTag(ACCOUNTS_NETWORK_HEADER_TAG + section.chainId)
+            .semantics(mergeDescendants = true) {
+                heading()
+                stateDescription = if (folded) "Collapsed" else "Expanded"
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NetworkIcon(section.network)
+        Text(
+            // A testnet named as one, as its rows and Detailed view's section are (owner ruling, 2026-10-22).
+            listOfNotNull(
+                section.name,
+                "test network".takeIf { section.testnet },
+                (if (count == 1) "1 account" else "$count accounts").takeIf { folded },
+            ).joinToString(" · "),
+            Modifier.padding(start = 8.dp).weight(1f),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        LightClientHealthDot(section.simpleHealth)
+        Text(
+            section.simpleStatus,
+            Modifier.padding(start = 6.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Icon(
+            Icons.Filled.ArrowDropDown,
+            contentDescription = null,
+            Modifier.padding(start = 4.dp).rotate(if (folded) -90f else 0f),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

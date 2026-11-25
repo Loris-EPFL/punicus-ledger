@@ -462,6 +462,7 @@ class AccountsViewModelTest {
                 true,
                 NOT_VERIFIED,
                 simpleText = "Syncing Sepolia · 1 of 4 periods",
+                simpleHeader = "Syncing · 1 of 4 periods",
             ),
             viewModel.sepoliaStatus,
         )
@@ -577,9 +578,16 @@ class AccountsViewModelTest {
         assertEquals(false, section.on)
         assertEquals("Off", section.total)
         assertEquals(
-            LightClientItem("Off in this wallet · nothing is checked", null, false, LightClientHealth.NOT_RUNNING),
+            LightClientItem(
+                "Off in this wallet · nothing is checked",
+                null,
+                false,
+                LightClientHealth.NOT_RUNNING,
+                simpleHeader = "Off",
+            ),
             section.status,
         )
+        assertEquals("Off", section.simpleStatus)
         assertEquals(
             listOf("2.5 ETH" to "Last verified <1792100000> · Sepolia is off", "Not checked" to "Sepolia is off"),
             section.accounts.map { it.balance to it.balanceNote },

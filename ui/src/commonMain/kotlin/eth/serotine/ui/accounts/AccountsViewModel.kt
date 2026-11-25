@@ -687,7 +687,13 @@ class AccountsViewModel(
 
         /** A network's status line while it is off in this wallet (N18). */
         val OFF =
-            LightClientItem("Off in this wallet · nothing is checked", null, false, LightClientHealth.NOT_RUNNING)
+            LightClientItem(
+                "Off in this wallet · nothing is checked",
+                null,
+                false,
+                LightClientHealth.NOT_RUNNING,
+                simpleHeader = "Off",
+            )
 
         const val DAMAGED_SET_ASIDE =
             "Your saved account list was damaged and has been set aside. Add your accounts again."

@@ -115,6 +115,8 @@ docs/simple-ui.md.)
 - Simple mode replaces the light client's status strip with a freshness line,
   a banner when a network cannot be checked, and each network's state in
   Settings. Detailed view keeps the strip (owner's request, 2026-10-20).
+  Home also heads each network's accounts with its state in a few words
+  (owner's request, 2026-11-25; docs/simple-ui.md, H1).
 - In simple mode the sync status is visible on every screen where it decides
   what the user can see or do: a sync line while the network's light client
   cannot serve verified reads. A read refused because it is still syncing

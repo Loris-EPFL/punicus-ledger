@@ -311,10 +311,15 @@ contradicted entries and what others learn.)
   against old blocks and their receipts) starts only when the user opens or
   scrolls an account's Activity, a read the user waits on, so it is no heavy
   download in the sense of the ruling of 2026-10-20 and is not held off a
-  metered connection. A page started finishes after the user leaves;
-  once the app's light clients pause (a minute in the background) the engine
-  refuses every read and stops its Swarm node (Myotis v0.1.23, `host.rs`,
-  `pause` and `snapshot_reader_evm`). Turning the setting off stops it.
+  metered connection. An opening with a list kept from before also reads
+  every entry newer than it, page by page, however many pages that is, with
+  no scroll in between (below); that too reads on any connection, mobile
+  data included (owner's decision, 2026-11-25, on #374). A page started
+  finishes after the user leaves, and the newer pages still to come start
+  too; once the app's light clients pause (a minute in the background) the
+  engine refuses every read and stops its Swarm node (Myotis v0.1.23,
+  `host.rs`, `pause` and `snapshot_reader_evm`). Turning the setting off
+  stops it.
 - **A panic in the reader ends the app** (recorded at the owner's request,
   2026-11-24). Myotis accepted for now that a panic inside `ant`, its
   embedded Swarm node, ends the host process (2026-11-24,
@@ -339,7 +344,8 @@ contradicted entries and what others learn.)
   - Each entry is kept by itself (a row, left out for good, or waiting for
     its check), so a later read neither checks nor counts it again.
   - Every entry newer than the kept list is read when the Activity opens,
-    page by page, however many pages that is, each page kept as it loads;
+    page by page, however many pages that is, each page kept as it loads,
+    on any connection (owner's decision, 2026-11-25, on #374);
     older ones only as the list nears its end. A refusal of the newer
     entries is asked again first.
   - Up to 20 entries that no peer answered before are checked again at each

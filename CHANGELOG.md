@@ -19,7 +19,8 @@ and issues of this repository.
   digits with or without 0x. The key is checked, then sealed on this device
   under the wallet password like every key, and never shown again. Such an
   account has no recovery phrase, so New account from the same phrase and
-  per-app addresses are not offered for it; only the key brings it back.
+  per-app addresses are not offered for it; only the key brings it back
+  (#376).
 - Account history from the addr1 index (desktop and Android, experimental,
   on by default in Settings → Experimental): an account's Activity also lists its
   older transactions from the addr1 address index on Swarm, each entry

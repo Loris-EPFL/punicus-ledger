@@ -541,6 +541,20 @@ class ClearSignFormatterTest {
     }
 
     @Test
+    fun anAccountsKindMatchesTheTypesItCanBe() {
+        val cases = listOf(
+            Triple("eoa", setOf("eoa", "contract"), true),
+            Triple("contract", setOf("eoa", "contract"), true),
+            Triple("contract", setOf("token"), true),
+            Triple("contract", setOf("collection"), true),
+            Triple("contract", setOf("eoa", "wallet"), false),
+            Triple("eoa", setOf("contract"), false),
+            Triple("not verified", setOf("contract"), false),
+        )
+        for ((kind, types, matches) in cases) assertEquals(matches, ClearSignFormatter.kindMatches(kind, types), "$kind in $types")
+    }
+
+    @Test
     fun datesAndDurationsAreWrittenAsTheRegistrysVectorsWriteThem() {
         assertEquals("1970-01-01 00:00:00Z", ClearSignFormatter.utc(0))
         assertEquals("2026-03-31 00:00:00Z", ClearSignFormatter.utc(1_774_915_200))

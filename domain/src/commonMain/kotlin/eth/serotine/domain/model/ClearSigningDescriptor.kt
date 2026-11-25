@@ -145,7 +145,8 @@ sealed interface FieldFormat {
 /**
  * A built-in deployment a descriptor applies to: [address] on [network], its runtime code pinned by
  * [codeHash], and how that code can change ([codePin]). A descriptor binds to it only while every pin
- * holds at the verified head (A4; [ClearSigningBinding]).
+ * holds at the verified head (A4; [ClearSigningBinding]). [delegatesToItself] is the reviewed declaration
+ * that its code runs a call into its own address by DELEGATECALL (a multicall: A1, step 4).
  */
 data class ClearSigningDeployment(
     val network: Network,
@@ -154,6 +155,7 @@ data class ClearSigningDeployment(
     val codeHash: String,
     val codePin: CodePin,
     val descriptors: List<ClearSigningDescriptor>,
+    val delegatesToItself: Boolean = false,
 )
 
 /** How a deployment's code can change, as pinned at build time (docs/clear-signing.md, A1, step 4). */
@@ -168,7 +170,7 @@ sealed interface CodePin {
     data class Call(val selector: String, val returns: String, val implementationCodeHash: String) : CodePin
 }
 
-/** What the verified reads at one block found for a deployment, which [ClearSigningBinding] holds against its pins. */
+/** What the verified reads found for a deployment (A4, step 3), which [ClearSigningBinding] holds against its pins. */
 data class ClearSigningCodeReads(
     /** The keccak256 of the code at the deployment's address. */
     val codeHash: String,

@@ -108,6 +108,9 @@ class DescriptorTest(unittest.TestCase):
     def test_refuses_a_bad_visibility_path_or_reference(self):
         self.refused(lambda d: self.fields(d)[1].update(visible={"mustMatch": [0], "ifNotIn": [1]}))
         self.refused(lambda d: self.fields(d)[1].update(visible="sometimes"))
+        self.refused(lambda d: self.fields(d)[1].update(visible={"mustMatch": ["$.metadata.constants.max"]}))
+        self.refused(lambda d: self.fields(d)[1].update(visible={"ifNotIn": ["0x01"]}))
+        self.refused(lambda d: self.fields(d)[1].update(visible={"mustMatch": [-1]}))
         self.refused(lambda d: self.fields(d)[1].update(path="amount..x"))
         self.refused(lambda d: self.fields(d).append(
             {"path": "to", "format": "enum", "params": {"$ref": "$.metadata.enums.missing"}}))
@@ -146,6 +149,11 @@ class DescriptorTest(unittest.TestCase):
         generate.resolve_path("items.[].amount", message, minimal_descriptor(), "t")
         with self.assertRaises(generate.Refused):
             generate.resolve_path("items.[].price", message, minimal_descriptor(), "t")
+
+    def test_refuses_what_a_group_or_a_field_path_cannot_apply(self):
+        group = {"label": "G", "visible": {"mustMatch": [0]}, "fields": [{"path": "to", "label": "To"}]}
+        self.refused(lambda d: self.fields(d).append(group))
+        self.refused(lambda d: self.fields(d).append({"path": "$.metadata.enums.mode", "label": "M"}))
 
     def test_refuses_a_format_without_what_it_needs(self):
         add = lambda field: (lambda d: self.fields(d).append(dict(path="amount", label="A", **field)))  # noqa: E731

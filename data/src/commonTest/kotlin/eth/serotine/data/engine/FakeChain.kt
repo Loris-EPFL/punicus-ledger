@@ -74,6 +74,14 @@ internal class FakeChain : VerifiedChain {
         return calls[to to data.toHex()]
     }
 
+    /** Answers per contract, calldata (hex) and block, for [callAt], as a test sets them. */
+    val callsAt = mutableMapOf<Triple<Address, String, Long>, CallOutcome>()
+
+    override fun callAt(to: Address, data: ByteArray, block: Long): CallOutcome? {
+        failure?.let { throw it }
+        return callsAt[Triple(to, data.toHex(), block)]
+    }
+
     /** Proven storage words per contract, slot and mapping key, as a test sets them; unset: proven empty. */
     val slots = mutableMapOf<Triple<Address, Long, Address?>, String>()
 

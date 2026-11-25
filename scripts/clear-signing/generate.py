@@ -474,7 +474,11 @@ def check_field(field: dict, descriptor: dict, where: str, root) -> None:
     only(field, FIELD_KEYS, where)
     if "path" in field and "fields" in field:
         refuse(where, "a group with a path of its own is not implemented")
+    if "fields" in field and ("visible" in field or "format" in field or "params" in field):
+        refuse(where, "a group's visibility or format is not implemented: it would apply to nothing")
     if "path" in field:
+        if field["path"].startswith("$."):
+            refuse(where, "a field's path is in the call or the message, not a constant")
         check_path(field["path"], where + ".path")
         resolve_path(field["path"], root, descriptor, where + ".path")
         if not isinstance(field.get("label"), str) or not field["label"].strip():
@@ -491,6 +495,13 @@ def check_field(field: dict, descriptor: dict, where: str, root) -> None:
         only(visible, VISIBLE_RULES, where + ".visible")
         if len(visible) != 1 or not isinstance(next(iter(visible.values())), list):
             refuse(where, "a visibility rule is one of mustMatch or ifNotIn, with a list")
+        for item in next(iter(visible.values())):
+            # The runtime lists values as decimal integers, booleans and plain strings: a reference or a hex
+            # number would be compared as its text and never meet the value it means.
+            plain = isinstance(item, bool) or isinstance(item, int) and item >= 0 or \
+                isinstance(item, str) and not item.startswith("$.") and not re.match(r"^0x[0-9a-fA-F]{1,63}$", item)
+            if not plain:
+                refuse(where, f"visibility item {item!r} is not a non-negative integer, a boolean or a plain string")
     if "iteration" in field and field["iteration"] not in ITERATIONS:
         refuse(where, f"iteration {field['iteration']!r} is not implemented")
     fmt = field.get("format")

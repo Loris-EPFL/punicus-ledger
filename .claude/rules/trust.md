@@ -427,7 +427,8 @@ docs/clear-signing.md, *What a clear-signed line proves*.)
   - The binding's reads are each verified at a fresh head (docs/clear-signing.md,
     A4, step 3), a call pin held to the block the code was proven at; a
     library declared for an implementation is pinned at build time only
-    (on #382, replacing "all read at one block").
+    (owner's decision, 2026-11-25, on #382, replacing "all read at one
+    block").
   - The hand-written decoders take precedence by type: where one claims a
     struct type or a selector (`TypedDataMeaning`'s Permit, Permit2 and CoW
     order, `Erc20`'s `transfer` and `approve`, SwapRouter02's swaps, Safe's

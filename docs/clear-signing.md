@@ -296,8 +296,9 @@ A descriptor applies only when every step holds; otherwise it fails closed:
    verified head, hashes to the pinned hash. Where its code can change
    (A1, step 4), the pinned pointer (a slot read with `getStorageAt`, or a
    verified call) holds the pinned implementation, whose code hashes to its
-   own pin. How it is applied, not part of the decisions: each read is a
-   verified one at a fresh head; a call pin is held to the block the code
+   own pin. Each read is a verified one at a fresh head (owner's decision,
+   2026-11-25, on #382, replacing "every read of one check is at one
+   block"); a call pin is held to the block the code
    was proven at, a slot is read at the head (the engine proves no hashed
    slot at a given block), and the implementation's code is proven in
    turn. An upgrade between two reads either shows in one of them, and the

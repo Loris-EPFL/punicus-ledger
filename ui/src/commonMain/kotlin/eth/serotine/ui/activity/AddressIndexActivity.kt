@@ -12,8 +12,11 @@ import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.usecase.AddressIndexContinuation
 import eth.serotine.domain.usecase.AddressIndexLeftOut
+import eth.serotine.domain.usecase.AddressIndexLeftOutEntries
 import eth.serotine.domain.usecase.AddressIndexLoad
 import eth.serotine.domain.usecase.AddressIndexProgress
+import eth.serotine.domain.usecase.AddressIndexResume
+import eth.serotine.domain.usecase.KeepAddressIndex
 import eth.serotine.domain.usecase.LoadAddressIndexPage
 import eth.serotine.domain.usecase.ObserveAddressIndexStatus
 import eth.serotine.ui.components.Eip55
@@ -21,6 +24,7 @@ import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.shortAddress
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -34,10 +38,17 @@ import kotlinx.coroutines.flow.onStart
  * (owner ruling, 2026-11-21, #334; the owner's decisions of that day on #335): whether the setting is on ([status]),
  * and its pages of verified rows ([load]). A host that offers no such setting (iOS), or a release that pins no
  * importer key, hands none to [AccountActivity], and the Activity is the log index's alone.
+ *
+ * **Kept between runs** (owner's request, 2026-11-25), where the host gives [keep]: what was read and verified is
+ * shown at once when the Activity opens again, the rows of finalized blocks among it, and only what is newer is read,
+ * then prepended; the entries no check answered before are checked again, and the older pages go on where the kept
+ * list ended.
  */
 class AddressIndexActivity(
     private val status: ObserveAddressIndexStatus,
     private val load: LoadAddressIndexPage,
+    /** Keeps each account's list between runs; null: every opening reads the index from its newest page. */
+    private val keep: KeepAddressIndex? = null,
 ) {
     /**
      * The pages of [account]'s addr1 history while the setting is on, null while it is off (and until it is read).
@@ -48,6 +59,9 @@ class AddressIndexActivity(
      * One by one (owner's request, 2026-11-24): a page holds [PAGE_SIZE] entries, about a screen of rows and one
      * batch more; once it is read, each entry is pending ([IndexPaging.pending], a ghost row in its place) until its
      * check answers, and a verified one is a row at once, whatever the others' checks still take.
+     *
+     * With a list kept from before, it is the first value, and instead of the newest page the entries newer than it
+     * are read, page by page down to it, and prepended; then the entries it keeps for a check are checked again.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     internal fun of(account: AccountId, more: StateFlow<Int>): Flow<IndexPaging?> = status()
@@ -58,11 +72,17 @@ class AddressIndexActivity(
 
     private fun pages(account: AccountId, pinned: Address, more: StateFlow<Int>): Flow<IndexPaging> = flow {
         var asked = more.value
-        var paging = IndexPaging(pinned)
+        val resume = keep?.restore(account)
+        var paging = resume?.let { IndexPaging.resumed(pinned, it) } ?: IndexPaging(pinned)
         emit(paging)
-        load(account, limit = PAGE_SIZE).collect { progress ->
-            paging = paging.after(progress)
-            emit(paging)
+        // Whether the opening caught up with a kept list: until then, an ask goes on with that, not an older page.
+        var caughtUp = resume == null
+        if (resume == null) {
+            paging = newest(account, paging)
+        } else {
+            val (list, done) = catchUp(account, paging)
+            paging = list
+            caughtUp = done
         }
         more.collect { value ->
             if (value <= asked) return@collect
@@ -76,13 +96,196 @@ class AddressIndexActivity(
                 lastLeftOut = AddressIndexLeftOut(),
             )
             emit(paging)
-            load(account, paging.next, PAGE_SIZE).collect { progress ->
-                paging = paging.after(progress)
-                emit(paging)
+            when {
+                // The kept list's catching up again, after a refusal of its newer entries.
+                !caughtUp -> {
+                    val (list, done) = catchUp(account, paging)
+                    paging = list
+                    caughtUp = done
+                }
+                // Nothing read through yet (the newest page refused before): this is the newest page again.
+                paging.top == null -> paging = newest(account, paging)
+                else -> load(account, paging.next, PAGE_SIZE, known = paging.known).collect { progress ->
+                    paging = paging.after(progress)
+                    emit(paging)
+                    if (progress is AddressIndexLoad) settled(account, paging, progress)
+                }
             }
             // What was asked while it was read and checked was asked of this page.
             asked = maxOf(asked, more.value)
         }
+    }
+
+    /**
+     * The newest page of [account]'s history, with nothing read through yet: [paging] after it, read through the
+     * newest block the index covers once it is loaded.
+     */
+    private suspend fun FlowCollector<IndexPaging>.newest(account: AccountId, paging: IndexPaging): IndexPaging {
+        var list = paging
+        var top: Long? = null
+        load(account, limit = PAGE_SIZE).collect { progress ->
+            if (progress is AddressIndexProgress.Read) top = progress.coverage.covered?.last
+            list = list.after(progress)
+            if (progress is AddressIndexLoad.Loaded) list = list.copy(top = top)
+            emit(list)
+            if (progress is AddressIndexLoad) settled(account, list, progress)
+        }
+        return list
+    }
+
+    /**
+     * A kept list ([paging], resumed) brought up to date: the entries newer than it, then, once those are all read,
+     * the entries waiting for a check and the ranges a read could not get, each once per opening. [paging] after it,
+     * and whether the newer entries were all read.
+     */
+    private suspend fun FlowCollector<IndexPaging>.catchUp(
+        account: AccountId,
+        paging: IndexPaging,
+    ): Pair<IndexPaging, Boolean> {
+        val (prepended, done) = prepend(account, paging)
+        if (!done) return prepended to false
+        var list = recheck(account, prepended)
+        if (list.refused == null) list = reread(account, list)
+        // The list reads on as it nears its end, as after any page that added rows: the kept ones count as its last.
+        list = list.copy(lastRows = list.lastRows.ifEmpty { list.rows })
+        if (list.refused == null) settled(account, list, null)
+        emit(list)
+        return list to true
+    }
+
+    /**
+     * The entries of [account]'s history newer than the list kept ([paging], resumed), read page by page down to its
+     * top, each one the list has no answer for checked, each verified one prepended as it comes: [paging] after
+     * them, and whether they were all read. The list's continuation below stays the kept one's. Each page is kept as
+     * it loads, its entries by themselves, so that a refusal later reads none of them twice; the top moves to the
+     * newest block read only once all are read.
+     */
+    private suspend fun FlowCollector<IndexPaging>.prepend(
+        account: AccountId,
+        paging: IndexPaging,
+    ): Pair<IndexPaging, Boolean> {
+        val top = paging.top ?: return paging to true
+        val older = paging.next
+        var list = paging
+        var cursor: AddressIndexContinuation? = null
+        var newTop: Long? = null
+        while (true) {
+            // A refusal of a page takes away that page's rows only, never the kept ones.
+            list = list.copy(lastRows = emptyList(), lastLeftOut = AddressIndexLeftOut())
+            var last: AddressIndexLoad? = null
+            load(account, cursor, PAGE_SIZE, newerThan = top, known = list.known).collect { progress ->
+                if (progress is AddressIndexProgress.Read && newTop == null) newTop = progress.coverage.covered?.last
+                list = list.after(progress).copy(next = older)
+                if (progress is AddressIndexLoad) last = progress
+                emit(list)
+            }
+            val loaded = last as? AddressIndexLoad.Loaded
+            if (loaded == null) {
+                last?.let { settled(account, list, it) }
+                return list.copy(lastRows = list.lastRows.ifEmpty { list.rows }) to false
+            }
+            if (loaded.next == null) {
+                return list.copy(top = maxOf(top, newTop ?: top)) to true
+            }
+            settled(account, list, loaded)
+            cursor = loaded.next
+        }
+    }
+
+    /**
+     * Up to [PAGE_SIZE] of the entries [paging] keeps for a check, newest first, checked again, each verified one a
+     * row in its place as it comes: [paging] after them. A check none of them answers now (the light client catching
+     * up, no peer serving their blocks) changes nothing: they wait for the next opening, and the list stands as it
+     * was. A lasting refusal is said, and the checkpoint table's alarm withdraws the list.
+     */
+    private suspend fun FlowCollector<IndexPaging>.recheck(account: AccountId, paging: IndexPaging): IndexPaging {
+        val coverage = paging.coverage ?: return paging
+        val waiting = paging.recheck
+            .sortedWith(compareByDescending<AddressIndexEntry> { it.block }.thenByDescending { it.slot })
+            .take(PAGE_SIZE)
+        if (waiting.isEmpty()) return paging
+        var list = paging.copy(lastRows = emptyList(), lastLeftOut = AddressIndexLeftOut())
+        var last: AddressIndexLoad? = null
+        load.again(account, waiting, coverage, paging.next).collect { progress ->
+            list = list.after(progress)
+            if (progress is AddressIndexLoad) last = progress
+            emit(list)
+        }
+        val refused = (last as? AddressIndexLoad.Refused)?.reason ?: return list
+        if (refused.retryable) {
+            emit(paging)
+            return paging
+        }
+        settled(account, list, last)
+        return list
+    }
+
+    /**
+     * Each range [paging] could not get from Swarm before and that the reads of this opening did not miss again, read
+     * again from the index, one page each, each entry the list has no answer for checked: [paging] after them. A
+     * range read in part goes on below what that page reached at the next opening. A refusal stops it, the ranges
+     * left to the next opening; the checkpoint table's alarm withdraws the list.
+     */
+    private suspend fun FlowCollector<IndexPaging>.reread(account: AccountId, paging: IndexPaging): IndexPaging {
+        val missedNow = paging.coverage?.gaps.orEmpty()
+        var list = paging
+        for (range in paging.unread.filter { range -> missedNow.none { it.overlaps(range) } }) {
+            val before = list
+            list = list.copy(
+                unread = list.unread - setOf(range),
+                lastRows = emptyList(),
+                lastLeftOut = AddressIndexLeftOut(),
+            )
+            var last: AddressIndexLoad? = null
+            load(account, limit = PAGE_SIZE, known = list.known, range = range).collect { progress ->
+                // A range's read says nothing of the index's coverage beyond it: the list keeps its own.
+                list = list.after(progress).copy(coverage = before.coverage, next = before.next)
+                if (progress is AddressIndexLoad) last = progress
+                emit(list)
+            }
+            when (val end = last) {
+                is AddressIndexLoad.Loaded -> {
+                    // What lies below the page read in the range is read at a later opening.
+                    val rest = end.reached?.let { range.first..minOf(range.last, it) }
+                        ?.takeIf { end.next != null && !it.isEmpty() }
+                    if (rest != null) list = list.copy(unread = list.unread + listOf(rest))
+                }
+                is AddressIndexLoad.Refused -> {
+                    if (end.reason.retryable) return before
+                    settled(account, list, end)
+                    return list
+                }
+                null -> return before
+            }
+        }
+        return list
+    }
+
+    /**
+     * What [load], a page's or a check's end, means for what is kept of [account]'s list: [paging] kept after a page
+     * loaded (or with no load: after the opening caught up); nothing kept any more on the checkpoint table's alarm,
+     * which withdraws the trust the rows rest on (`.claude/rules/trust.md`, *The addr1 history*). A list not read
+     * through any block yet, or after any other refusal, changes nothing of what is kept.
+     */
+    private suspend fun settled(account: AccountId, paging: IndexPaging, load: AddressIndexLoad?) {
+        val keep = keep ?: return
+        if (load is AddressIndexLoad.Refused) {
+            if (load.reason is AddressIndexRefusal.CheckpointAlarm) keep.forget(account)
+            return
+        }
+        val coverage = paging.coverage ?: return
+        val top = paging.top ?: return
+        keep.keep(
+            account,
+            coverage,
+            top,
+            paging.rows,
+            paging.recheck,
+            paging.out,
+            paging.notFinal,
+            paging.unread,
+            paging.next,
+        )
     }
 
     internal companion object {
@@ -103,7 +306,9 @@ class AddressIndexActivity(
  * is read by itself. [pending] are the entries of the page read whose check has not answered yet, newest first: the
  * importer's word that they are there, nothing more, so a list shows each as a ghost row in its place, with nothing
  * of it but that it is being checked. [checking] while a page read is not done with: from its read to the end of its
- * load, its last check answered or not, so that nothing more is asked for in between.
+ * load, its last check answered or not, so that nothing more is asked for in between. [top] is the newest block the
+ * list was read through (null until a page is: every entry above it is new), and [recheck] the entries read whose
+ * check gave no lasting answer yet, kept to be checked again: what [AddressIndexActivity] keeps between runs.
  */
 internal data class IndexPaging(
     val pinned: Address,
@@ -117,7 +322,43 @@ internal data class IndexPaging(
     val refused: AddressIndexRefusal? = null,
     val lastRows: List<AddressIndexRow> = emptyList(),
     val lastLeftOut: AddressIndexLeftOut = AddressIndexLeftOut(),
+    val top: Long? = null,
+    val recheck: List<AddressIndexEntry> = emptyList(),
+    val out: AddressIndexLeftOutEntries = AddressIndexLeftOutEntries(),
+    val notFinal: List<AddressIndexEntry> = emptyList(),
+    val unread: List<LongRange> = emptyList(),
 ) {
+    /**
+     * Every entry the list has an answer for, or waits for one, by block and slot: a later read neither checks nor
+     * counts these again.
+     */
+    val known: Set<Pair<Long, Int>>
+        get() = rows.mapTo(HashSet()) { it.entry.block to it.entry.slot } +
+            out.keys + recheck.map { it.block to it.slot }
+
+    /**
+     * What the list says of the index's coverage: [coverage], with the ranges a read could not get before ([unread])
+     * among its gaps, so that none of them goes unsaid.
+     */
+    val statedCoverage: AddressIndexCoverage?
+        get() = coverage?.let { coverage ->
+            val covered = coverage.covered ?: return@let coverage
+            val gaps = (coverage.gaps + unread)
+                .mapNotNull { gap ->
+                    (maxOf(gap.first, covered.first)..minOf(gap.last, covered.last)).takeUnless { it.isEmpty() }
+                }
+                .sortedBy { it.first }
+                .fold(emptyList<LongRange>()) { merged, gap ->
+                    val last = merged.lastOrNull()
+                    if (last != null && gap.first <= last.last + 1) {
+                        merged.dropLast(1) + listOf(last.first..maxOf(last.last, gap.last))
+                    } else {
+                        merged + listOf(gap)
+                    }
+                }
+            coverage.copy(gaps = gaps)
+        }
+
     /** Whether a page was read: [coverage] is known, and [next] null means the end of its coverage. */
     val started: Boolean
         get() = coverage != null
@@ -174,6 +415,7 @@ internal data class IndexPaging(
                 rows = row?.let { listed(rows + it) } ?: rows,
                 pending = pending - load.entry,
                 lastRows = added?.let { lastRows + it } ?: lastRows,
+                recheck = recheck.filterNot { it.block == load.entry.block && it.slot == load.entry.slot },
             )
         }
         is AddressIndexLoad.Loaded -> copy(
@@ -188,6 +430,12 @@ internal data class IndexPaging(
             // The page's own rows are those its checks added, as `Checked` kept them: a row it only repeats (the
             // edge of the page before) is no row it added, so a page of repeats pauses the endless list.
             lastLeftOut = load.leftOut,
+            // An entry no check answered this time is checked again at a later read; what it left out for good, and
+            // its verdicts that may still be undone, are kept by entry; a range it could not get is read again.
+            recheck = (recheck + load.unavailable).distinct(),
+            out = out + load.out,
+            notFinal = (notFinal + load.notFinal).distinct(),
+            unread = (unread + load.coverage.gaps).distinct(),
         )
         is AddressIndexLoad.Refused -> when (load.reason) {
             is AddressIndexRefusal.CheckpointAlarm -> IndexPaging(pinned, loading = false, refused = load.reason)
@@ -215,6 +463,26 @@ internal data class IndexPaging(
     private fun listed(rows: List<AddressIndexRow>): List<AddressIndexRow> = rows
         .distinctBy { it.entry.block to it.entry.slot }
         .sortedWith(compareByDescending<AddressIndexRow> { it.entry.block }.thenByDescending { it.entry.slot })
+
+    internal companion object {
+        /**
+         * The list [resume] kept, under [pinned]: its rows shown at once, as the last ones it added, and its counts,
+         * coverage and continuation; [loading], since what is newer is read next.
+         */
+        fun resumed(pinned: Address, resume: AddressIndexResume): IndexPaging = IndexPaging(
+            pinned = pinned,
+            rows = resume.kept.rows,
+            coverage = resume.kept.coverage,
+            leftOut = resume.leftOut,
+            next = resume.next,
+            loading = true,
+            lastRows = resume.kept.rows,
+            top = resume.kept.top,
+            recheck = resume.kept.recheck,
+            out = resume.out,
+            unread = resume.kept.unread,
+        )
+    }
 }
 
 /**
@@ -226,7 +494,7 @@ internal data class IndexPaging(
  */
 internal fun indexSection(paging: IndexPaging, network: Network, shownFromLast: Int?): IndexSection {
     val key = Eip55.format(paging.pinned)
-    val coverage = paging.coverage
+    val coverage = paging.statedCoverage
     val lines = buildList {
         add(
             "Also from the addr1 index on Swarm, each entry checked against the chain before it is listed. Which " +
@@ -422,6 +690,9 @@ private fun range(range: LongRange): String = if (range.first == range.last) {
 } else {
     "blocks ${grouped(range.first)} to ${grouped(range.last)}"
 }
+
+/** Whether these blocks and [other] share one at least. */
+private fun LongRange.overlaps(other: LongRange): Boolean = first <= other.last && other.first <= last
 
 /** [n] entries, in words: "1 entry", "3 entries". */
 private fun entries(n: Int): String = if (n == 1) "1 entry" else "$n entries"

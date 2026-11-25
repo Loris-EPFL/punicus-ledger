@@ -321,6 +321,34 @@ contradicted entries and what others learn.)
   freedom-hq/ant#271). On the desktop and on Android the host process is the
   wallet. The node runs only for a read, so with the setting off it never
   runs. The changelog says so.
+- **What was read is kept between runs** (owner's request, 2026-11-25:
+  "Make the downloaded list persistent. The results will never change. So
+  it's ok to store them locally. And prepend the newest txs on the next
+  displaying of the screen"). Each account's verified rows are kept in an
+  app-private file, out of backups and device transfers like every file of
+  the app, and shown at once when its Activity opens again. Only the
+  entries newer than the newest block read before are then read, checked
+  and prepended; older pages go on where the kept list ended.
+- How it is applied, not part of the request:
+  - Only a verdict against a block the beacon chain had finalized is kept as
+    an answer (a row, or a contradiction counted against the key). The kept
+    list's top stays below every block whose verdict was not final yet, so
+    the index is read there again, with any reorganisation's corrections.
+  - Each entry is kept by itself (a row, left out for good, or waiting for
+    its check), so a later read neither checks nor counts it again.
+  - Every entry newer than the kept list is read when the Activity opens,
+    page by page, however many pages that is, each page kept as it loads;
+    older ones only as the list nears its end. A refusal of the newer
+    entries is asked again first.
+  - Up to 20 entries that no peer answered before are checked again at each
+    opening. The ranges a read could not get from Swarm (a page's gaps) are
+    named as gaps and read again, one page each per opening, while this
+    opening's reads do not miss them again.
+  - Only the pinned key's list is kept; under a newly pinned key the list
+    starts again from the index. The checkpoint table's alarm deletes what
+    is kept, met by a list's read or a row's detail, as it withdraws the
+    trust the rows rest on. Removing an account deletes every file named
+    after it.
 - How it is applied, not part of the ruling: the list says how many entries
   of the index it left out because they could not be verified, and,
   separately, how many the chain contradicts. That follows from this ruling

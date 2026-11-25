@@ -1,5 +1,6 @@
 package eth.serotine.ui.activity
 
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -134,11 +135,13 @@ fun LazyListScope.activityItems(
             if (state.rows.isEmpty()) {
                 item { Text(state.empty, style = MaterialTheme.typography.bodyMedium) }
             }
-            // A heading wherever the day changes: the rows of a day are consecutive, whichever way they run.
+            // A heading wherever the day changes: the rows of a day are consecutive, whichever way they run. It
+            // stays on top while its day's rows scroll under it (owner's request, 2026-11-25), until the next day's
+            // heading pushes it away.
             var heading: String? = null
             state.rows.forEach { row ->
                 val day = row.day
-                if (day != null && day != heading) item(key = "day:${row.key}") { DayHeading(day) }
+                if (day != null && day != heading) stickyHeader(key = "day:${row.key}") { DayHeading(day) }
                 heading = day
                 item(key = row.key) {
                     // An entry still being checked holds its row's room, so that its row, or its leaving, moves
@@ -297,12 +300,21 @@ private fun ActivityGhost(withTime: Boolean = true) {
     )
 }
 
-/** The heading of a day's rows: "Today · Monday, November 23, 2026". */
+/**
+ * The heading of a day's rows: "Today · Monday, November 23, 2026". Opaque, in the screen's background colour, and to
+ * a tap, since the day's rows scroll under it while it stays on top.
+ */
 @Composable
 private fun DayHeading(day: String) {
     Text(
         day,
-        Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp).testTag(ACTIVITY_DAY_TAG).semantics { heading() },
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            // Opaque to a tap too: without it, the hit test goes on to the row scrolled under the pinned heading.
+            .pointerInput(Unit) {}
+            .padding(top = 16.dp, bottom = 4.dp)
+            .testTag(ACTIVITY_DAY_TAG)
+            .semantics { heading() },
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
     )

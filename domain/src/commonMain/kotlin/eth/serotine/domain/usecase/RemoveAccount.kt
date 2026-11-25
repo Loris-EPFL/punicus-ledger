@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.AddressIndexArchive
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.PerAppAliases
@@ -30,6 +31,10 @@ import kotlinx.coroutines.withContext
  * The last account of a per-app address takes the address's aliases with it (issue #252; docs/walletconnect.md,
  * *Aliases*): a site linked to it is no longer linked, so that restoring the address later never links that site
  * again without asking. An alias that cannot be removed takes nothing from the removal.
+ *
+ * The account's addr1 history kept between runs ([addressIndex]; owner's request, 2026-11-25) goes with it, as the
+ * privacy policy says of everything stored for an account. A list that cannot be removed takes nothing from the
+ * removal either: it is public chain data, and adding the address again shows it again.
  */
 class RemoveAccount(
     private val accounts: AccountRepository,
@@ -38,6 +43,8 @@ class RemoveAccount(
     private val changes: WalletChanges,
     /** The aliases the user linked, which the last account of a per-app address takes with it. */
     private val aliases: PerAppAliases,
+    /** Each account's addr1 history kept between runs, on a host that keeps one; null: none is kept. */
+    private val addressIndex: AddressIndexArchive? = null,
 ) {
     suspend operator fun invoke(id: AccountId): AccountRemoval =
         withContext(NonCancellable) { changes.serialized { remove(id) } }
@@ -61,6 +68,7 @@ class RemoveAccount(
         if (account.perApp != null && lastOfItsAddress) {
             aliases.observe().first().filterValues { it == id.address }.keys.forEach { aliases.unlink(it) }
         }
+        addressIndex?.forget(id)
         return when (account.custody) {
             AccountCustody.Watched -> AccountRemoval.Removed
             AccountCustody.InKeyStore -> if (keyStillNeeded) {

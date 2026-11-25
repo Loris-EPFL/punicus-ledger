@@ -32,6 +32,9 @@ Last updated: 2026-11-25.
   device has one (docs/keys-and-signing.md).
 - The light client's own state, the balances it last verified, the record of
   what you sent, and your dApp sessions.
+- On the desktop and Android, with the experimental addr1 history on, what
+  was read and checked of each account's history from it. Removing the
+  account deletes it.
 
 These files are private to the app. Keys and session secrets are kept out of
 cloud backups and device-to-device transfers. Removing the app deletes them.
@@ -122,6 +125,9 @@ Activity: turned off, it stays off.
   index checks up to 20 old blocks, and a page started finishes even if you
   leave the screen. Once the app is in the background for a minute, nothing
   more is read.
+- What was read and checked is kept on the device, so opening the Activity
+  again asks Swarm peers only for the newest part of the account's index,
+  and archive peers only for the blocks of entries not checked before.
 - The Swarm peers and archive peers are not run by Punicus. With the setting
   turned off, none of this happens.
 

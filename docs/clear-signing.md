@@ -125,8 +125,13 @@ that, and nothing it adds narrows what is already shown.
    a CI job of their own (the app never runs Python; the linter reads
    Sourcify, and its warnings do not fail the job). Every selector is unique. Every key and value of a
    descriptor must be one the runtime implements (A3), not `format` and
-   `params` alone: an unsupported one fails the build, and is never dropped
-   silently.
+   `params` alone, and each format has the parameters it needs. Every path,
+   `…Path` parameter and placeholder must name a parameter of the function
+   or the message, the container, or the descriptor's metadata; every field
+   has a label, every descriptor an owner's name. A repeated key, or a string
+   with anything outside printable ASCII, is refused, since a reader of the
+   diff would not see it. Anything else unsupported fails the build, and is
+   never dropped silently.
 4. **Code hashes, and how the code can change.** For every deployment
    `contracts.json` pins the keccak256 of its runtime code, and records how
    the code it runs can change: not at all; through a named storage slot
@@ -140,7 +145,10 @@ that, and nothing it adds narrows what is already shown.
    by hand what it delegates to (a multicall into its own code, such as
    SwapRouter02's; linked libraries at addresses fixed in the code, such as
    the Aave v3 Pool's), which the PR's reviewer checks against the verified
-   source. A contract that forwards by CALL to a pointer it keeps (USDT's
+   source. The script checks what it can of such a declaration: each library
+   is an address the code pushes, its code is pinned, and it delegates only
+   to libraries the declaration links it to; the declaration names the code
+   hash it was read for, and a refresh refuses it once that code moved. A contract that forwards by CALL to a pointer it keeps (USDT's
    `deprecated`/`upgradedAddress`) is not seen this way, so it stays off the
    list until the script reads such a pointer. A deployment whose pointer cannot be named and read this way
    stays off the list. The values are read through Myotis, never from an RPC

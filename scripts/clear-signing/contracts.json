@@ -38,8 +38,12 @@
       "codeHash": "0x6ec798e80f3a19de650826338677604e54d6664f44a33b53a20b22b1939f402e",
       "upgrade": {
         "kind": "none",
-        "delegatecall": "multicall: address(this).delegatecall, into its own code (MulticallExtended)",
-        "why": "every proxy slot empty; its DELEGATECALL is declared by hand"
+        "why": "every proxy slot empty; its DELEGATECALL is declared by hand",
+        "delegatecall": {
+          "why": "MulticallExtended's multicall: address(this).delegatecall, into its own code",
+          "forCodeHash": "0x6ec798e80f3a19de650826338677604e54d6664f44a33b53a20b22b1939f402e",
+          "self": true
+        }
       },
       "descriptors": [
         "registry/uniswap/calldata-UniswapV3Router02.json"
@@ -81,8 +85,31 @@
         "why": "the EIP-1967 implementation slot",
         "slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
         "implementation": "0x4295fe69b3e978eb511e4558b4407ad871612fcb",
-        "implementationCodeHash": "0xe334f592d8ff872871487568216f48dfbe98822bbf8c9c2ec55242db3a07028e",
-        "implementationDelegatecall": "Aave v3's linked libraries (SupplyLogic, BorrowLogic, LiquidationLogic, FlashLoanLogic, PoolLogic, BridgeLogic, EModeLogic), at addresses fixed in the implementation's code"
+        "implementationDelegatecall": {
+          "why": "PoolInstance (Sourcify, solc 0.8.27): OpenZeppelin's Multicall, Address.functionDelegateCall(address(this), ...), into the proxy itself; and its five linked libraries, BorrowLogic, FlashLoanLogic, LiquidationLogic, PoolLogic and SupplyLogic, at the addresses its compiler settings link; FlashLoanLogic is itself linked to BorrowLogic",
+          "forCodeHash": "0xe334f592d8ff872871487568216f48dfbe98822bbf8c9c2ec55242db3a07028e",
+          "self": true,
+          "libraries": [
+            "0x52da0ce88202d1542543598d1e1e27f0d344726a",
+            "0x584c7d8c4cb05304fe5ac7fbc97f20a10fb07564",
+            "0x96d5686812e33ab509eccdb38c89d15607b2a413",
+            "0xc27a4d7ac0623b129919786d88714ef16132beae",
+            "0xd70593841c57cbaa04957cc3eace95708e48853b"
+          ],
+          "libraryCodeHashes": {
+            "0x52da0ce88202d1542543598d1e1e27f0d344726a": "0xdb9bb1c68eae0ef32f1653dc1bbb7b7ac50636d2e090a5d8d8056c62367a18d2",
+            "0xc27a4d7ac0623b129919786d88714ef16132beae": "0x3aaa2e2ff707b6b241ddfbcea5fc57e55bfcb772cb51c7b32d20dfad11f9558d",
+            "0x96d5686812e33ab509eccdb38c89d15607b2a413": "0xef11fa2346ecdfa4640a056724ccd69dbd709dfda916a60afb5e669c345ae0c4",
+            "0xd70593841c57cbaa04957cc3eace95708e48853b": "0x0fe8b38a44e9cb253e9e8c1abb79beb4ac2aae00dedaf4207a3215eeab678cee",
+            "0x584c7d8c4cb05304fe5ac7fbc97f20a10fb07564": "0xd7a886e7fff585881ef03af514c58a96b9c188f9502bc0d0a49fb472cd2eee6e"
+          },
+          "links": {
+            "0xc27a4d7ac0623b129919786d88714ef16132beae": [
+              "0x52da0ce88202d1542543598d1e1e27f0d344726a"
+            ]
+          }
+        },
+        "implementationCodeHash": "0xe334f592d8ff872871487568216f48dfbe98822bbf8c9c2ec55242db3a07028e"
       },
       "descriptors": [
         "registry/aave/calldata-lpv3.json"
@@ -125,8 +152,31 @@
         "why": "the EIP-1967 implementation slot",
         "slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
         "implementation": "0x7f0d7d67683c30e5aefc9a13b35cd3db181a5889",
-        "implementationCodeHash": "0xc3a933761fd4c9ed935abdb8bc91ee20711f1a152e40cd92f1ebf2970d3422a2",
-        "implementationDelegatecall": "Aave v3's linked libraries (SupplyLogic, BorrowLogic, LiquidationLogic, FlashLoanLogic, PoolLogic, BridgeLogic, EModeLogic), at addresses fixed in the implementation's code"
+        "implementationDelegatecall": {
+          "why": "PoolInstance (Sourcify, solc 0.8.27): OpenZeppelin's Multicall, Address.functionDelegateCall(address(this), ...), into the proxy itself; and its five linked libraries, BorrowLogic, FlashLoanLogic, LiquidationLogic, PoolLogic and SupplyLogic, at the addresses its compiler settings link; FlashLoanLogic is itself linked to BorrowLogic",
+          "forCodeHash": "0xc3a933761fd4c9ed935abdb8bc91ee20711f1a152e40cd92f1ebf2970d3422a2",
+          "self": true,
+          "libraries": [
+            "0x52da0ce88202d1542543598d1e1e27f0d344726a",
+            "0x584c7d8c4cb05304fe5ac7fbc97f20a10fb07564",
+            "0x96d5686812e33ab509eccdb38c89d15607b2a413",
+            "0xc27a4d7ac0623b129919786d88714ef16132beae",
+            "0xd70593841c57cbaa04957cc3eace95708e48853b"
+          ],
+          "libraryCodeHashes": {
+            "0x52da0ce88202d1542543598d1e1e27f0d344726a": "0xdb9bb1c68eae0ef32f1653dc1bbb7b7ac50636d2e090a5d8d8056c62367a18d2",
+            "0xc27a4d7ac0623b129919786d88714ef16132beae": "0x3aaa2e2ff707b6b241ddfbcea5fc57e55bfcb772cb51c7b32d20dfad11f9558d",
+            "0x96d5686812e33ab509eccdb38c89d15607b2a413": "0xef11fa2346ecdfa4640a056724ccd69dbd709dfda916a60afb5e669c345ae0c4",
+            "0xd70593841c57cbaa04957cc3eace95708e48853b": "0x0fe8b38a44e9cb253e9e8c1abb79beb4ac2aae00dedaf4207a3215eeab678cee",
+            "0x584c7d8c4cb05304fe5ac7fbc97f20a10fb07564": "0xd7a886e7fff585881ef03af514c58a96b9c188f9502bc0d0a49fb472cd2eee6e"
+          },
+          "links": {
+            "0xc27a4d7ac0623b129919786d88714ef16132beae": [
+              "0x52da0ce88202d1542543598d1e1e27f0d344726a"
+            ]
+          }
+        },
+        "implementationCodeHash": "0xc3a933761fd4c9ed935abdb8bc91ee20711f1a152e40cd92f1ebf2970d3422a2"
       },
       "descriptors": [
         "registry/aave/calldata-lpv3.json"

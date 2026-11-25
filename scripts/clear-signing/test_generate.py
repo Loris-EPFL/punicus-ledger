@@ -123,6 +123,40 @@ class DescriptorTest(unittest.TestCase):
         self.assertEqual(generate.merge({"a": {"x": 1, "y": 2}, "b": 1}, {"a": {"y": 3}, "c": 4}),
                          {"a": {"x": 1, "y": 3}, "b": 1, "c": 4})
 
+    def test_refuses_a_path_that_names_nothing(self):
+        fmt = lambda d: d["display"]["formats"]["pay(address to,uint256 amount)"]  # noqa: E731
+        self.refused(lambda d: self.fields(d)[1].update(path="amountt"))
+        self.refused(lambda d: self.fields(d)[1].update(path="$.metadata.constants.missing"))
+        self.refused(lambda d: self.fields(d)[1].update(path="amount.[]"))
+        self.refused(lambda d: self.fields(d).append(
+            {"path": "amount", "label": "A", "format": "tokenAmount", "params": {"tokenPath": "nope"}}))
+        self.refused(lambda d: fmt(d).update(interpolatedIntent="Pay {nope}"))
+        descriptor = minimal_descriptor()
+        fmt(descriptor).update(interpolatedIntent="Pay {amount} to {to}")
+        self.check(descriptor)
+
+    def test_resolves_paths_into_tuples_arrays_and_messages(self):
+        root = generate.calldata_root("f((address a,(uint256 x)[] ys) p,bytes data)", "t")
+        for good in ("p.a", "p.ys.[]", "p.ys.[0].x", "p.ys.[-1].x", "#.data", "data.[0:4]", "@.value"):
+            generate.resolve_path(good, root, minimal_descriptor(), "t")
+        for bad in ("p.b", "p.a.[]", "p.ys.x", "q"):
+            with self.assertRaises(generate.Refused, msg=bad):
+                generate.resolve_path(bad, root, minimal_descriptor(), "t")
+        message = generate.message_root("Order(Item[] items,address owner)Item(address token,uint256 amount)")
+        generate.resolve_path("items.[].amount", message, minimal_descriptor(), "t")
+        with self.assertRaises(generate.Refused):
+            generate.resolve_path("items.[].price", message, minimal_descriptor(), "t")
+
+    def test_refuses_a_format_without_what_it_needs(self):
+        add = lambda field: (lambda d: self.fields(d).append(dict(path="amount", label="A", **field)))  # noqa: E731
+        self.refused(add({"format": "date", "params": {}}))
+        self.refused(add({"format": "unit", "params": {"decimals": 2}}))
+        self.refused(add({"format": "calldata", "params": {}}))
+        self.refused(add({"format": "tokenAmount", "params": {"token": "0x" + "11" * 20, "tokenPath": "to"}}))
+        self.refused(lambda d: self.fields(d)[1].pop("label"))
+        self.refused(lambda d: d["metadata"].pop("owner"))
+        self.refused(lambda d: d["metadata"].update(owner={"name": "x"}))
+
     def test_includes_never_replace_a_list(self):
         with self.assertRaisesRegex(generate.Refused, "lists or mixed values"):
             generate.merge({"fields": [1, 2]}, {"fields": [3]})
@@ -190,8 +224,40 @@ class BuildTest(unittest.TestCase):
                 generate.check_pins()
 
 
+class LoadTest(unittest.TestCase):
+    def load(self, text):
+        with mock.patch.object(generate, "VENDORED", mock.MagicMock()) as vendored:
+            vendored.__truediv__.return_value.is_file.return_value = True
+            vendored.__truediv__.return_value.read_text.return_value = text
+            return generate.load("x.json")
+
+    def test_refuses_a_repeated_key(self):
+        self.assertEqual(self.load('{"a": 1, "b": {"c": 2}}'), {"a": 1, "b": {"c": 2}})
+        with self.assertRaisesRegex(generate.Refused, "repeats"):
+            self.load('{"label": "Amount", "label": "To"}')
+
+    def test_refuses_what_a_reader_cannot_see(self):
+        for text in ('{"label": "Amount\\nTo: 0x0"}', '{"label": "\\u202eevil"}', '{"label": "a\\u200bb"}',
+                     '{"\\u0007": 1}'):
+            with self.assertRaisesRegex(generate.Refused, "printable ASCII", msg=text):
+                self.load(text)
+
+
 class UpgradeTest(unittest.TestCase):
     HASH = "0x" + "ab" * 32
+
+    def test_a_declaration_names_the_code_it_was_read_for(self):
+        declared = {"why": "x", "forCodeHash": self.HASH, "self": True}
+        generate.check_upgrade({"kind": "slot", "slot": "0x" + "36" * 32, "implementation": "0x" + "12" * 20,
+                                "implementationCodeHash": self.HASH, "implementationDelegatecall": declared}, "t")
+        with self.assertRaisesRegex(generate.Refused, "other code"):
+            generate.check_upgrade({"kind": "slot", "slot": "0x" + "36" * 32, "implementation": "0x" + "12" * 20,
+                                    "implementationCodeHash": "0x" + "cd" * 32,
+                                    "implementationDelegatecall": declared}, "t")
+        for bad in ({"why": "x", "self": True}, {"why": "x", "forCodeHash": self.HASH},
+                    {"why": "x", "forCodeHash": self.HASH, "libraries": ["0x" + "12" * 20]}):
+            with self.assertRaises(generate.Refused, msg=bad):
+                generate.check_declaration(bad, None, "t")
 
     def test_accepts_each_kind(self):
         generate.check_upgrade({"kind": "none", "why": "x"}, "t")
@@ -222,6 +288,12 @@ class PinTest(unittest.TestCase):
         # (0x63 reads as PUSH4 there, so the DELEGATECALL follows the four bytes it pushes.)
         fake = bytes([0xA1, 0x63]) + b"abc" + bytes([0x00, 0xF4]) + bytes([0x00, 0x07])
         self.assertTrue(pin_code_hashes.has_delegatecall(bytes([0x00]) + fake))
+
+    def test_push20_operands(self):
+        address = bytes(range(1, 21))
+        self.assertEqual(pin_code_hashes.push20_operands(bytes([0x73]) + address + bytes([0xF4])),
+                         {"0x" + address.hex()})
+        self.assertEqual(pin_code_hashes.push20_operands(bytes([0x7F]) + bytes([0x73]) + address + bytes(11)), set())
 
     def test_only_loopback_is_read(self):
         with self.assertRaises(SystemExit):

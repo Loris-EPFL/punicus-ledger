@@ -178,6 +178,88 @@ def canonical_type(text: str, where: str) -> str:
     return base + arrays
 
 
+def type_tree(text: str, where: str):
+    """One parameter's name and its type as a tree: ("elem", base) | ("tuple", {name: tree}) | ("array", tree)."""
+    text = text.strip()
+    if text.startswith("tuple("):
+        text = text[len("tuple"):]
+    if text.startswith("("):
+        depth = 0
+        for i, ch in enumerate(text):
+            depth += ch == "("
+            depth -= ch == ")"
+            if depth == 0:
+                break
+        members = {}
+        for member in split_top(text[1:i], where):
+            name, tree = type_tree(member, where)
+            if name is None or name in members:
+                refuse(where, f"tuple member {member!r} has no name of its own")
+            members[name] = tree
+        node, rest = ("tuple", members), text[i + 1:].strip()
+    else:
+        match = re.match(r"^([a-z0-9]+)(.*)$", text)
+        node, rest = ("elem", match.group(1)), match.group(2).strip()
+    arrays = re.match(r"^((?:\[\d*\])*)\s*(?:indexed\s+)?([A-Za-z_][A-Za-z0-9_]*)?$", rest)
+    if not arrays:
+        refuse(where, f"cannot read {text!r}")
+    for _ in re.findall(r"\[\d*\]", arrays.group(1)):
+        node = ("array", node)
+    return arrays.group(2), node
+
+
+def calldata_root(key: str, where: str):
+    """The function's parameters as a tuple tree, by name."""
+    match = re.match(r"^[A-Za-z_][A-Za-z0-9_]*\((.*)\)$", key.strip(), re.S)
+    members = {}
+    for param in split_top(match.group(1), where):
+        name, tree = type_tree(param, where)
+        if name is not None:
+            members[name] = tree
+    return ("tuple", members)
+
+
+def message_root(key: str):
+    """An EIP-712 message's primary struct as a tuple tree, its referenced structs expanded."""
+    structs = dict(re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\(([^()]*)\)", key))
+
+    def struct(name):
+        members = {}
+        for member in structs[name].split(",") if structs[name] else []:
+            base_and_arrays, field = member.rsplit(" ", 1)
+            base = re.match(r"^[A-Za-z0-9_]+", base_and_arrays).group(0)
+            node = struct(base) if base in structs else ("elem", base)
+            for _ in re.findall(r"\[\d*\]", base_and_arrays):
+                node = ("array", node)
+            members[field] = node
+        return ("tuple", members)
+
+    return struct(next(iter(structs)))
+
+
+def resolve_path(value: str, root, descriptor: dict, where: str) -> None:
+    """Refuses a path that names nothing in the call's parameters (or the message), the container or the
+    descriptor's metadata."""
+    if value.startswith("$."):
+        check_ref(value, descriptor, where)
+        return
+    if value.startswith("@."):
+        return  # check_container named one of CONTAINER_NAMES
+    node = root
+    for segment in (value[2:] if value.startswith("#.") else value).split("."):
+        if segment.startswith("["):
+            if node[0] == "array":
+                node = node[1] if ":" not in segment else node
+            elif node[0] == "elem" and ":" in segment and re.match(r"^(bytes|string)$", node[1]):
+                pass
+            else:
+                refuse(where, f"path {value!r}: {segment} of something that is not an array")
+        elif node[0] == "tuple" and segment in node[1]:
+            node = node[1][segment]
+        else:
+            refuse(where, f"path {value!r}: {segment!r} names no parameter there")
+
+
 def canonical_signature(key: str, where: str) -> str:
     """`transfer(address to,uint256 value)` → `transfer(address,uint256)`."""
     match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\((.*)\)$", key.strip(), re.S)
@@ -227,10 +309,36 @@ def check_encode_type(key: str, where: str) -> str:
 # Descriptors
 
 def load(path: str) -> dict:
+    """A vendored file, refused if a key repeats (json keeps the last one, a reader may stop at the first) or
+    if any string holds something outside printable ASCII (a control, bidi or zero-width character, a newline)
+    that a reader of the diff cannot see but a signing review would show."""
     file = VENDORED / path
     if not file.is_file():
         refuse(path, "not vendored")
-    return json.loads(file.read_text(encoding="utf-8"))
+
+    def pairs(items):
+        keys = [key for key, _ in items]
+        for key in keys:
+            if keys.count(key) > 1:
+                refuse(path, f"the key {key!r} repeats in one object")
+        return dict(items)
+
+    data = json.loads(file.read_text(encoding="utf-8"), object_pairs_hook=pairs)
+    check_strings(data, path)
+    return data
+
+
+def check_strings(value, where: str) -> None:
+    if isinstance(value, str):
+        if not all(0x20 <= ord(ch) <= 0x7E for ch in value):
+            refuse(where, f"{value[:40]!r} holds a character outside printable ASCII")
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            check_strings(key, where)
+            check_strings(item, f"{where}.{key}"[:200])
+    elif isinstance(value, list):
+        for item in value:
+            check_strings(item, where)
 
 
 def merge(base, override, where: str = "includes"):
@@ -356,14 +464,22 @@ def check_container(value: str, where: str) -> None:
         refuse(where, f"{value!r} names no field of the container ({sorted(CONTAINER_NAMES)})")
 
 
-def check_field(field: dict, descriptor: dict, where: str) -> None:
+FORMAT_REQUIRES = {"date": {"encoding"}, "unit": {"base"}, "nftName": {"collectionPath"},
+                   "calldata": {"calleePath"}, "enum": {"$ref"}}
+
+
+def check_field(field: dict, descriptor: dict, where: str, root) -> None:
     only(field, FIELD_KEYS, where)
+    if "path" in field and "fields" in field:
+        refuse(where, "a group with a path of its own is not implemented")
     if "path" in field:
         check_path(field["path"], where + ".path")
-        check_container(field["path"], where + ".path")
+        resolve_path(field["path"], root, descriptor, where + ".path")
+        if not isinstance(field.get("label"), str) or not field["label"].strip():
+            refuse(where, "every field has a label")
     elif "fields" not in field:
         refuse(where, "a field has a path, or is a group of fields")
-    if "label" in field and not isinstance(field["label"], str):
+    elif "label" in field and not isinstance(field["label"], str):
         refuse(where, "a label is a string")
     visible = field.get("visible", "always")
     if isinstance(visible, str):
@@ -383,12 +499,17 @@ def check_field(field: dict, descriptor: dict, where: str) -> None:
         only(params, FORMAT_PARAMS[fmt], where + ".params")
         for key, value in params.items():
             check_param(fmt, key, value, descriptor, f"{where}.params.{key}")
-        if fmt == "enum" and "$ref" not in params:
-            refuse(where, "an enum names its values with $ref")
+            if key.endswith("Path"):
+                resolve_path(value, root, descriptor, f"{where}.params.{key}")
+        missing = FORMAT_REQUIRES.get(fmt, set()) - params.keys()
+        if missing:
+            refuse(where, f"{fmt} needs {sorted(missing)}")
+        if fmt == "tokenAmount" and {"token", "tokenPath"} <= params.keys():
+            refuse(where, "a tokenAmount names its token by token or by tokenPath, not both")
     elif "params" in field:
         refuse(where, "params without a format")
     for i, sub in enumerate(field.get("fields", [])):
-        check_field(sub, descriptor, f"{where}.fields[{i}]")
+        check_field(sub, descriptor, f"{where}.fields[{i}]", root)
 
 
 def check_descriptor(path: str, descriptor: dict) -> str:
@@ -411,6 +532,8 @@ def check_descriptor(path: str, descriptor: dict) -> str:
         only(deployment, {"chainId", "address"}, f"{path}.deployments[{i}]")
     metadata = descriptor.get("metadata", {})
     only(metadata, METADATA_KEYS, path + ".metadata")
+    if not isinstance(metadata.get("owner"), str) or not metadata["owner"].strip():
+        refuse(path, "metadata.owner, the name a review shows after \"Described by\", is a non-empty string")
     only(metadata.get("info", {}), INFO_KEYS, path + ".metadata.info")
     for name, values in metadata.get("enums", {}).items():
         if not isinstance(values, dict) or not all(isinstance(v, str) for v in values.values()):
@@ -422,6 +545,12 @@ def check_descriptor(path: str, descriptor: dict) -> str:
     for key, fmt in display["formats"].items():
         where = f"{path} format {key[:60]!r}"
         only(fmt, FORMAT_KEYS, where)
+        if kind == "calldata":
+            canonical_signature(key, where)
+            root = calldata_root(key, where)
+        else:
+            check_encode_type(key, where)
+            root = message_root(key)
         if not isinstance(fmt.get("intent"), str):
             refuse(where, "the intent is a string (an object intent is not implemented)")
         if "interpolatedIntent" in fmt:
@@ -431,8 +560,9 @@ def check_descriptor(path: str, descriptor: dict) -> str:
                 refuse(where, "the interpolated intent is a string of {path} placeholders")
             for placeholder in re.findall(r"\{([^{}]*)\}", text):
                 check_path(placeholder, where + ".interpolatedIntent")
+                resolve_path(placeholder, root, descriptor, where + ".interpolatedIntent")
         for i, field in enumerate(fmt.get("fields", [])):
-            check_field(field, descriptor, f"{where}.fields[{i}]")
+            check_field(field, descriptor, f"{where}.fields[{i}]", root)
     return kind
 
 
@@ -465,6 +595,21 @@ def compile_formats(path: str, kind: str, descriptor: dict) -> list:
 UPGRADE_KINDS = {"none", "slot", "call"}
 
 
+def check_declaration(declared, code_hash, where: str) -> None:
+    """A by-hand declaration of what some code delegates to, as pin_code_hashes.py checked and wrote it."""
+    only(declared, {"why", "forCodeHash", "self", "libraries", "libraryCodeHashes", "links"}, where)
+    if not isinstance(declared.get("why"), str) or not HASH.match(declared.get("forCodeHash", "")):
+        refuse(where, "a declaration has its why and the code hash it was read for (pin_code_hashes.py)")
+    if code_hash is not None and declared["forCodeHash"] != code_hash:
+        refuse(where, "declared for other code than the code pinned")
+    libraries = declared.get("libraries", [])
+    if set(libraries) != set(declared.get("libraryCodeHashes", {})) or not all(
+            HASH.match(h) for h in declared.get("libraryCodeHashes", {}).values()):
+        refuse(where, "every library has its code hash pinned")
+    if not libraries and declared.get("self") is not True:
+        refuse(where, "a declaration names libraries, or self, or both")
+
+
 def check_upgrade(upgrade: dict, where: str) -> None:
     kind = upgrade.get("kind")
     if kind not in UPGRADE_KINDS:
@@ -474,6 +619,10 @@ def check_upgrade(upgrade: dict, where: str) -> None:
             "call": {"kind", "call", "selector", "returns", "implementationCodeHash", "implementationDelegatecall",
                      "why"}}[kind]
     only(upgrade, keys, where)
+    for key, code_key in (("delegatecall", "codeHash"), ("implementationDelegatecall", "implementationCodeHash")):
+        if key in upgrade:
+            check_declaration(upgrade[key], upgrade.get(code_key) if code_key != "codeHash" else None,
+                              f"{where}.{key}")
     if kind == "slot":
         if not HASH.match(upgrade.get("slot", "")):
             refuse(where, "a slot is 32 bytes of lowercase hex")
@@ -511,6 +660,9 @@ def build() -> dict:
         if not HASH.match(deployment.get("codeHash", "")):
             refuse(where, "no code hash pinned (pin_code_hashes.py)")
         check_upgrade(deployment.get("upgrade", {}), where + ".upgrade")
+        if deployment["upgrade"].get("delegatecall", {}).get("forCodeHash", deployment["codeHash"]) \
+                != deployment["codeHash"]:
+            refuse(where, "its delegatecall was declared for other code than the code pinned")
         if not deployment.get("descriptors"):
             refuse(where, "names no descriptor")
         for path in deployment["descriptors"]:

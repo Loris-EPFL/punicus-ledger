@@ -113,13 +113,78 @@ def code_hash(rpc: Rpc, address: str, block: str, where: str) -> tuple:
     return code, digest
 
 
-def implementation_hash(rpc: Rpc, implementation: str, block: str, where: str, declared) -> str:
+def push20_operands(code: bytes) -> set:
+    """The addresses pushed by PUSH20 in [code], PUSH data of other widths skipped."""
+    code, found, i = without_metadata(code), set(), 0
+    while i < len(code):
+        op = code[i]
+        if op == 0x73 and i + 21 <= len(code):
+            found.add("0x" + code[i + 1:i + 21].hex())
+        i += 1 + (op - 0x5F if 0x60 <= op <= 0x7F else 0)
+    return found
+
+
+def check_declaration(rpc: Rpc, code: bytes, digest: str, declared: dict, block: str, where: str) -> dict:
+    """A by-hand declaration of what [code] delegates to, checked as far as the code allows.
+
+    `forCodeHash` is the code it was read for: a declaration never vouches for other code, so a moved code
+    hash is refused until a person reads the new source and updates it. Each of `libraries` must be pushed by
+    the code itself (an address fixed at link time), and its hash is pinned. A library's own code may delegate
+    only to the declared libraries its `links` names for it (library-to-library linking), each pushed by it.
+    `self` (the code delegating into itself, a multicall) cannot be proven here: the PR's reviewer checks it.
+    """
+    if not isinstance(declared, dict) or not isinstance(declared.get("why"), str):
+        raise SystemExit(f"refused: {where}: a declaration is an object with its `why`")
+    for_hash = declared.get("forCodeHash")
+    if for_hash and for_hash != digest:
+        raise SystemExit(f"refused: {where}: its delegate calls were declared for code {for_hash}, the code is now"
+                         f" {digest}; read the new source and update the declaration")
+    pushed = push20_operands(code)
+    libraries = [library.lower() for library in declared.get("libraries", [])]
+    links = {k.lower(): [v.lower() for v in vs] for k, vs in declared.get("links", {}).items()}
+    hashes = {}
+    for library in libraries:
+        if library not in pushed:
+            raise SystemExit(f"refused: {where}: library {library} is not an address its code pushes")
+        library_code, library_hash = code_hash(rpc, library, block, f"{where} library {library}")
+        if has_delegatecall(library_code):
+            targets = links.get(library)
+            if not targets:
+                raise SystemExit(f"refused: {where}: library {library} can DELEGATECALL or CALLCODE, and `links`"
+                                 " names no library it is linked to")
+            for target in targets:
+                if target not in libraries or target not in push20_operands(library_code):
+                    raise SystemExit(f"refused: {where}: library {library} links {target}, which is not a declared"
+                                     " library its code pushes")
+        hashes[library] = library_hash
+    for library in links:
+        if library not in libraries:
+            raise SystemExit(f"refused: {where}: `links` names {library}, which is not a declared library")
+    if not hashes and not declared.get("self"):
+        raise SystemExit(f"refused: {where}: a declaration names libraries, or `self`, or both")
+    out = {"why": declared["why"], "forCodeHash": digest}
+    if declared.get("self"):
+        out["self"] = True
+    if hashes:
+        out["libraries"] = sorted(hashes)
+        out["libraryCodeHashes"] = hashes
+    if links:
+        out["links"] = {k: sorted(v) for k, v in sorted(links.items())}
+    return out
+
+
+def implementation_hash(rpc: Rpc, implementation: str, block: str, where: str, upgrade: dict) -> str:
     """The implementation's code hash; refused when that code itself delegates (a proxy behind the proxy) and
-    contracts.json does not say by hand what it delegates to ([declared])."""
+    contracts.json does not say by hand what it delegates to (`implementationDelegatecall`), which is checked
+    and rewritten in [upgrade]."""
     code, digest = code_hash(rpc, implementation, block, where + " implementation")
+    declared = upgrade.get("implementationDelegatecall")
     if has_delegatecall(code) and not declared:
         raise SystemExit(f"refused: {where}: its implementation {implementation} can DELEGATECALL or CALLCODE too;"
                          " pin that by hand, or leave the deployment off the list")
+    if declared:
+        upgrade["implementationDelegatecall"] = check_declaration(rpc, code, digest, declared, block,
+                                                                  where + " implementation")
     return digest
 
 
@@ -141,8 +206,7 @@ def pin(rpc: Rpc, deployment: dict) -> None:
         if len(word) != 66:
             raise SystemExit(f"refused: {where}: {upgrade['call']} returned {word!r}, not one word")
         upgrade.update(returns=word.lower(),
-                       implementationCodeHash=implementation_hash(rpc, as_address(word), block, where,
-                                                                  upgrade.get("implementationDelegatecall")))
+                       implementationCodeHash=implementation_hash(rpc, as_address(word), block, where, upgrade))
     elif len(found) > 1:
         raise SystemExit(f"refused: {where}: several proxy slots are set ({sorted(found)}); declare it by hand")
     elif found:
@@ -150,17 +214,16 @@ def pin(rpc: Rpc, deployment: dict) -> None:
         if name == "EIP-1967 beacon":
             raise SystemExit(f"refused: {where}: a beacon proxy, which this script does not pin yet")
         implementation = as_address(word)
-        declared = upgrade.get("implementationDelegatecall")
+        declared = {k: v for k, v in upgrade.items() if k == "implementationDelegatecall"}
         upgrade = {"kind": "slot", "why": f"the {name} slot", "slot": SLOTS[name], "implementation": implementation,
-                   "implementationCodeHash": implementation_hash(rpc, implementation, block, where, declared)}
-        if declared:
-            upgrade["implementationDelegatecall"] = declared
+                   **declared}
+        upgrade["implementationCodeHash"] = implementation_hash(rpc, implementation, block, where, upgrade)
     elif has_delegatecall(code) and not upgrade.get("delegatecall"):
-        raise SystemExit(f"refused: {where}: its code can DELEGATECALL or CALLCODE and no proxy slot names an implementation;"
-                         " declare how it changes (upgrade.kind call) by hand")
+        raise SystemExit(f"refused: {where}: its code can DELEGATECALL or CALLCODE and no proxy slot names an"
+                         " implementation; declare how it changes (upgrade.kind call) by hand")
     elif has_delegatecall(code):
-        upgrade = {"kind": "none", "delegatecall": upgrade["delegatecall"],
-                   "why": "every proxy slot empty; its DELEGATECALL is declared by hand"}
+        upgrade = {"kind": "none", "why": "every proxy slot empty; its DELEGATECALL is declared by hand",
+                   "delegatecall": check_declaration(rpc, code, digest, upgrade["delegatecall"], block, where)}
     else:
         upgrade = {"kind": "none", "why": upgrade.get("why") or "no DELEGATECALL in its code, every proxy slot empty"}
     deployment["upgrade"] = upgrade

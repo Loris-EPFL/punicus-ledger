@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.ClearSignFormatter
 import eth.serotine.domain.model.ClearSignResult
 import eth.serotine.domain.model.ClearSignedField
 import eth.serotine.domain.model.DappCallMeaning
@@ -96,6 +97,7 @@ data class ClearSignedSection(
     val intent: String,
     /** Whose words these are, as the descriptor states it, and what that does and does not prove. */
     val describedBy: String,
+    /** What it shows, in the descriptor's order; a nested call's rows (its other parameters among them) indented. */
     val rows: List<ClearSignedRow>,
     /** Every parameter no row shows, raw: a descriptor orders and labels, it hides nothing. */
     val otherParameters: List<SignInField>,
@@ -277,6 +279,11 @@ class DappTransactionViewModel(
             describing.value = true
             description.value = try {
                 describeClearSigning.call(network, review.address, transaction.to, transaction.value, transaction.data)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Fails closed: the call stays not decoded.
+                ClearSignResult.NotCovered(NotCoveredReason.NotDecodable)
             } finally {
                 describing.value = false
             }
@@ -734,7 +741,10 @@ class DappTransactionViewModel(
             dataSize = DappRequestViewModel.bytesLine(transaction.dataSize),
             warnings = buildList {
                 if (transaction.meaning is DappCallMeaning.NotDecoded) add(NOT_DECODED)
-                if (transaction.meaning is DappCallMeaning.TokenApproval) add(APPROVAL_NOTE)
+                // An approval is flagged by what the call is, whatever any description says or whether one does.
+                if (transaction.meaning is DappCallMeaning.TokenApproval || ClearSignFormatter.grantsApproval(transaction.data)) {
+                    add(APPROVAL_NOTE)
+                }
             },
             refusal = review.refusal?.let { refusalLine(it) },
             fromSafe = review.account?.kind == AccountKind.SAFE,
@@ -879,10 +889,18 @@ class DappTransactionViewModel(
                             is ClearSignResult.NotCovered -> "A call to ${Eip55.format(field.callee)}, not decoded"
                         },
                         raw = field.data,
-                        note = if (field.grantsApproval) "Grants an approval." else
+                        note = listOfNotNull(
+                            "Grants an approval.".takeIf { field.grantsApproval },
                             (nested as? ClearSignResult.NotCovered)?.reason?.let(::notDescribedLine),
+                        ).joinToString(" ").ifEmpty { null },
                     )
-                    listOf(head) + ((nested as? ClearSignResult.ClearSigned)?.let { rows(it, level + 1) } ?: emptyList())
+                    // A nested call hides nothing either: its own other parameters, raw, under it.
+                    val inner = (nested as? ClearSignResult.ClearSigned)?.let { described ->
+                        rows(described, level + 1) + described.otherParameters.map {
+                            ClearSignedRow(level + 1, "Other parameter · ${it.location}", it.raw, raw = null, note = null)
+                        }
+                    } ?: emptyList()
+                    listOf(head) + inner
                 }
             }
         }

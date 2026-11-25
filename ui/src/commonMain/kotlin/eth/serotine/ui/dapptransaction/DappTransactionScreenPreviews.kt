@@ -95,6 +95,8 @@ private val describedNested = described.copy(
             ClearSignedRow(0, "Call", "Supply, described by Aave DAO", raw = "0x617ba037…0000", note = null),
             ClearSignedRow(1, "Amount to supply", "1.5 WETH", raw = "1500000000000000000", note = null),
             ClearSignedRow(1, "Collateral recipient", ACCOUNT, raw = null, note = null),
+            ClearSignedRow(1, "Other parameter · asset", WETH, raw = null, note = null),
+            ClearSignedRow(1, "Other parameter · referralCode", "0", raw = null, note = null),
             ClearSignedRow(
                 0, "Call", "Borrow, described by Aave DAO", raw = "0xa415bcad…0000",
                 note = null,
@@ -136,6 +138,18 @@ private val describedUnlisted = described.copy(
 )
 
 private val describing = notDecoded.copy(to = POOL, network = "On Ethereum, real funds", describing = true)
+
+private val codeNotChecked = notDecoded.copy(
+    to = POOL,
+    network = "On Ethereum, real funds",
+    notDescribed = DappTransactionViewModel.CODE_NOT_CHECKED,
+)
+
+private val notAsDescribed = notDecoded.copy(
+    to = POOL,
+    network = "On Ethereum, real funds",
+    notDescribed = DappTransactionViewModel.NOT_AS_DESCRIBED,
+)
 
 private val contractChanged = notDecoded.copy(
     to = POOL,
@@ -258,6 +272,14 @@ private fun DappTransactionContractChangedPreview() = DappTransactionPreview(con
 
 @Preview
 @Composable
+private fun DappTransactionCodeNotCheckedPreview() = DappTransactionPreview(codeNotChecked)
+
+@Preview
+@Composable
+private fun DappTransactionNotAsDescribedPreview() = DappTransactionPreview(notAsDescribed)
+
+@Preview
+@Composable
 private fun DappTransactionQuotingPreview() = DappTransactionPreview(payment.copy(quote = emptyList(), quoting = true))
 
 @Preview
@@ -358,6 +380,8 @@ internal val dappTransactionScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("described-unlisted") { DappTransactionDescribedUnlistedPreview() },
     ScreenPreview("describing") { DappTransactionDescribingPreview() },
     ScreenPreview("contract-changed") { DappTransactionContractChangedPreview() },
+    ScreenPreview("code-not-checked") { DappTransactionCodeNotCheckedPreview() },
+    ScreenPreview("not-as-described") { DappTransactionNotAsDescribedPreview() },
     ScreenPreview("quoting") { DappTransactionQuotingPreview() },
     ScreenPreview("not-quoted") { DappTransactionNotQuotedPreview() },
     ScreenPreview("refused") { DappTransactionRefusedPreview() },

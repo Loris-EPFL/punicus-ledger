@@ -58,7 +58,10 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import eth.serotine.domain.model.AbiFunction
+import eth.serotine.domain.model.ClearSignResult
+import eth.serotine.domain.model.ClearSignedField
 import eth.serotine.domain.model.ClearSigningDeployment
+import eth.serotine.domain.model.OtherParameter
 import eth.serotine.domain.model.ClearSigningDescriptor
 import eth.serotine.domain.model.ClearSigningField
 import eth.serotine.domain.model.ClearSigningFormat
@@ -134,6 +137,7 @@ class DappTransactionViewModelTest {
         ),
     )
     private var deployments: Array<ClearSigningDeployment> = emptyArray()
+    private var throwing = false
 
     private fun TestScope.viewModel(id: Long = 1): DappTransactionViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
@@ -141,7 +145,7 @@ class DappTransactionViewModelTest {
         val vm = DappTransactionViewModel(
             "t/$id",
             ObserveDappMessages(requests, accounts, networks, catalog, MemoryAliases(), clock = { now }),
-            describing(catalog, *deployments),
+            if (throwing) describingThat(throws = IllegalStateException("engine")) else describing(catalog, *deployments),
             QuoteDappTransaction(
                 requests, accounts, networks, catalog, balances, inputs, sent, history, Outbox.None, clock = { now },
             ),
@@ -206,6 +210,57 @@ class DappTransactionViewModelTest {
         assertNull(state.described)
         assertNull(state.notDescribed)
         assertTrue(DappTransactionViewModel.NOT_DECODED in state.warnings)
+    }
+
+    @Test
+    fun aPermit2ApprovalIsFlaggedWhetherOrNotItIsDescribed() = runTest {
+        val permit2Approve = "87517c45".hexBytes() + ByteArray(4 * 32)
+        requests.waiting.value = listOf(request(1, DappTransactionRequest(held.address, weth, UInt256.ZERO, permit2Approve, null)))
+        val state = viewModel().uiState.value
+        assertNull(state.described, "no descriptor here")
+        assertTrue(DappTransactionViewModel.APPROVAL_NOTE in state.warnings)
+        assertTrue(DappTransactionViewModel.NOT_DECODED in state.warnings)
+    }
+
+    @Test
+    fun aUseCaseThatThrowsLeavesTheCallNotDecoded() = runTest {
+        deployments = arrayOf(wrapping)
+        throwing = true
+        val deposit = DappTransactionRequest(held.address, weth, UInt256.ZERO, byteArrayOf(-48, -29, 13, -80), null)
+        requests.waiting.value = listOf(request(1, deposit))
+        val state = viewModel().uiState.value
+        assertNull(state.described)
+        assertFalse(state.describing)
+        assertTrue(DappTransactionViewModel.NOT_DECODED in state.warnings)
+    }
+
+    @Test
+    fun aNestedCallsRowsKeepItsOtherParametersAndItsApproval() {
+        val inner = ClearSignResult.ClearSigned(
+            "Inner", emptyList(), "Supply", null,
+            listOf(ClearSignedField.Value("Amount", "1.5 WETH", "1500000000000000000")),
+            listOf(OtherParameter("referralCode", "0")),
+            grantsApproval = false,
+        )
+        val outer = ClearSignResult.ClearSigned(
+            "Outer", emptyList(), "Multicall", null,
+            listOf(
+                ClearSignedField.Nested("Call", weth, "0x617ba037", inner, grantsApproval = false),
+                ClearSignedField.Nested(
+                    "Call", weth, "0x095ea7b3", ClearSignResult.NotCovered(NotCoveredReason.ContractChanged), grantsApproval = true,
+                ),
+            ),
+            emptyList(),
+            grantsApproval = true,
+        )
+        val rows = DappTransactionViewModel.describedSection(outer).rows
+        assertEquals(
+            listOf("Call", "Amount", "Other parameter · referralCode", "Call"),
+            rows.map { it.label },
+        )
+        assertEquals(listOf(0, 1, 1, 0), rows.map { it.level })
+        assertEquals("Grants an approval. ${DappTransactionViewModel.CONTRACT_CHANGED}", rows.last().note)
+        assertEquals("0x095ea7b3", rows.last().raw)
     }
 
     @Test
@@ -331,3 +386,5 @@ class DappTransactionViewModelTest {
         assertEquals(listOf(request(1, payment).id to DappRequestError.USER_REJECTED), requests.refusals)
     }
 }
+
+private fun String.hexBytes(): ByteArray = chunked(2).map { it.toInt(16).toByte() }.toByteArray()

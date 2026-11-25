@@ -33,3 +33,19 @@ internal fun describing(tokens: TokenCatalog, vararg deployments: ClearSigningDe
             override fun observeKind(network: Network, address: Address) = flowOf<KindReading>(KindReading.Syncing)
         },
     )
+
+/** A [DescribeClearSigning] whose catalog throws [throws], as a failing adapter would. */
+internal fun describingThat(throws: Exception): DescribeClearSigning = DescribeClearSigning(
+    catalog = object : ClearSigningCatalog {
+        override fun deployment(network: Network, address: Address): ClearSigningDeployment = throw throws
+    },
+    codes = object : ContractCodes {
+        override suspend fun read(network: Network, address: Address, pin: CodePin): CodeReading = throw throws
+    },
+    tokens = object : TokenCatalog {
+        override fun observeTokens(network: Network) = flowOf(emptyList<eth.serotine.domain.model.Token>())
+    },
+    kinds = object : AddressKinds {
+        override fun observeKind(network: Network, address: Address) = flowOf<KindReading>(KindReading.Syncing)
+    },
+)

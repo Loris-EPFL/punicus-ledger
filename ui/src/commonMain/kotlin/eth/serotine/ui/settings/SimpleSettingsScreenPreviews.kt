@@ -120,8 +120,8 @@ private fun SimpleSettingsMeteredNotReportedPreview() = SimpleSettingsPreview(
             on = false,
             text = "This device does not say whether its connection is metered",
             unavailableReason = "This device does not report whether its connection is metered.",
-            simpleText = "This device doesn't say whether its connection is metered: the full history is " +
-                "downloaded on any connection",
+            simpleText = "This device doesn't say whether its connection is metered: catching up on activity " +
+                "runs on any connection",
         ),
     ),
 )

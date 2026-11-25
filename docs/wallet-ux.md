@@ -1536,16 +1536,17 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     mode: nothing is drafted on it. On the desktop and Android (owner's
     decision, 2026-11-24), an *Experimental* section holds *Account history from the addr1 index* (owner ruling,
     2026-11-21, #334; a file of its own, `address-index.json`, which keeps
-    the importer key it was turned on for, or an explicit off): on by
+    the importer keys it was turned on for, or an explicit off): on by
     default (owner's decision, 2026-11-22, #334, amending "off by default"
     of 2026-11-21), the user may turn it off, and an explicit off stays off,
-    whatever key a later release pins. It names the importer key pinned in
-    the release, says what it does and what Swarm and archive peers learn
+    whatever key a later release pins. One switch for every network (owner's
+    decision, 2026-11-25): it names each network's importer key pinned in
+    the release ("Ethereum, 0xb11B…; Gnosis Chain, 0xE779…"), says what it does and what Swarm and archive peers learn
     while it is on (docs/privacy-policy.md). A key is never typed in. A
-    choice to turn it on made for a key the release no longer pins does not
-    carry over: the key pinned now has no choice, so it is on by default
-    for it; only an explicit off carries across keys (owner's decision,
-    2026-11-22, #334). A choice that cannot be read is off and cannot be
+    choice to turn it on made for keys the release no longer pins, or before a
+    key was pinned, does not carry over to the key pinned since: it has no
+    choice, so it is on by default for it, and the row says so; only an
+    explicit off carries across keys (owner's decision, 2026-11-22, #334). A choice that cannot be read is off and cannot be
     changed until it can be read; one found damaged is set aside and an
     explicit off written in its place, since it may have been one, so it
     stays off after a restart, says so, and offers *Turn off*. While it is not in force
@@ -1553,8 +1554,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     made in another build), *Turn off* below the row stores an explicit off,
     greyed out or not. It is greyed out, a tap saying what is
     missing, while no importer key is pinned in the release (none was until
-    2026-11-24, owner's decision of 2026-11-21; `0xb11B…7241` since, the
-    owner's choice of 2026-11-24, #359) and while the build's engine has no Swarm
+    2026-11-24, owner's decision of 2026-11-21; `0xb11B…7241` for Ethereum
+    since, the owner's choice of 2026-11-24, #359, and `0xE779…9335` for
+    Gnosis Chain, the owner's choice of 2026-11-25) and while the build's engine has no Swarm
     reader (none had it before Myotis 0.1.23, whose desktop natives and Android AAR carry it), both said when both hold.
     iOS has no such row. Tokens opens the list of every token the wallet knows, each with its check (*Tokens* below) and a visible ⋮ menu:
     Copy contract, Hide or Show, and Remove for an added one; Add token

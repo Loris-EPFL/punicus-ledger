@@ -405,21 +405,27 @@ class SettingsViewModel(
     private fun AddressIndexStatus.item(notSaved: Boolean): AddressIndexItem {
         val text = buildString {
             append(if (on) "On" else "Off")
+            // One switch naming each network's key (owner's decision, 2026-11-25).
             append(
-                pinned?.let { ": importer ${Eip55.format(it)}, pinned in this release" }
-                    ?: ": no importer key is pinned in this release yet",
+                if (pinned.isEmpty()) {
+                    ": no importer key is pinned in this release yet"
+                } else {
+                    val keys = pinned.keys.entries.sortedBy { it.key.chainId }
+                        .joinToString("; ") { (network, key) -> "${network.displayName}, ${Eip55.format(key)}" }
+                    ": ${if (pinned.keys.size == 1) "importer" else "importers"} pinned in this release: $keys"
+                },
             )
             if (AddressIndexMissing.NO_READER in missing) append(" · This build's engine has no Swarm reader")
             if (AddressIndexMissing.READER_NOT_KNOWN in missing) {
                 append(" · Waiting for the engine to say whether it reads Swarm")
             }
-            val stored = (choice as? AddressIndexChoice.Chosen)?.importer
-            val other = trustsAnotherKey
+            val added = newKeys
             when {
-                // That choice does not carry over: the key pinned now had none, so it is on by default.
-                other != null && pinned != null && on -> append(
-                    " · It was turned on for another importer, ${shortAddress(Eip55.format(other))}: on by default " +
-                        "for the one pinned now",
+                // That choice does not carry over: the keys pinned since had none, so it is on by default for them.
+                added.isNotEmpty() && on -> append(
+                    " · It was turned on before " +
+                        added.joinToString(" and ") { shortAddress(Eip55.format(it)) } +
+                        " was pinned: on by default for ${if (added.size == 1) "it" else "them"} too",
                 )
                 // On by default (owner's decision, 2026-11-22), once nothing keeps it off.
                 choice == AddressIndexChoice.NotChosen && !on ->
@@ -448,7 +454,7 @@ class SettingsViewModel(
             // A stored choice not in force can always be taken back, and the default turned off ahead, greyed out
             // or not (TurnAddressIndex): an explicit off stays.
             // A choice found damaged is off (and written so); Turn off confirms it, and harms nothing.
-            turnOff = !on && ((choice as? AddressIndexChoice.Chosen)?.importer != null ||
+            turnOff = !on && ((choice as? AddressIndexChoice.Chosen)?.importers != null ||
                 choice == AddressIndexChoice.NotChosen || setAside),
         )
     }

@@ -1,5 +1,6 @@
 package eth.serotine.ui
 
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexCoverage
@@ -153,17 +154,21 @@ internal fun indexRow(
  * yet (a fresh install, on by default) without one; [failSaves] makes every save fail.
  */
 internal class MemoryAddressIndexSetting(on: Address? = null) : AddressIndexSetting {
-    val choice = MutableStateFlow(on?.let { AddressIndexChoice.Chosen(it) } ?: AddressIndexChoice.NotChosen)
+    val choice = MutableStateFlow(on?.let { AddressIndexChoice.Chosen(setOf(it)) } ?: AddressIndexChoice.NotChosen)
     var failSaves = false
 
     override fun observe(): Flow<AddressIndexChoice> = choice
 
-    override suspend fun trust(importer: Address?): Boolean {
+    override suspend fun trust(importers: Set<Address>?): Boolean {
         if (failSaves || choice.value is AddressIndexChoice.Unreadable) return false
-        choice.value = AddressIndexChoice.Chosen(importer)
+        choice.value = AddressIndexChoice.Chosen(importers)
         return true
     }
 }
+
+/** [key] pinned for every network, as the release pinned one key before 2026-11-25; none for a null [key]. */
+internal fun pinnedEverywhere(key: Address?): AddressIndexImporters =
+    key?.let { k -> AddressIndexImporters(Network.entries.associateWith { k }) } ?: AddressIndexImporters.NONE
 
 /** An [AddressIndexArchive] in memory, as the port's contract says one behaves: what is kept, by account, in [kept]. */
 internal class MemoryAddressIndexArchive : AddressIndexArchive {

@@ -10,6 +10,7 @@ import eth.serotine.data.safe.SafeDeployments
 import eth.serotine.data.swaps.UniswapDeployments
 import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressIndexHistory
 import eth.serotine.domain.repository.AddressIndexReaderSettings
@@ -237,13 +238,14 @@ class MyotisHost private constructor(
     private var addressHistoryConfig: String? = null
 
     /**
-     * Lets the engine read the addr1 index of [importer] on the host's Swarm network, or nothing (null). Kept, and
+     * Lets the engine read, on each network of [importers], the addr1 index its key signs, on the host's Swarm
+     * network, or nothing ([AddressIndexImporters.NONE]). Kept, and
      * applied on the control thread: now if the engine exists, else as soon as the first start creates it. Waits until
      * the control thread got to it: true when the engine took it, or when it is kept for an engine not created yet;
      * false when the engine refused it, or the host shut down first.
      */
-    override suspend fun apply(importer: Address?): Boolean {
-        val config = addressHistoryConfigJson(importer, addressIndexSwarm)
+    override suspend fun apply(importers: AddressIndexImporters): Boolean {
+        val config = addressHistoryConfigJson(importers, addressIndexSwarm)
         addressHistoryConfig = config
         val applied = CompletableDeferred<Boolean>()
         try {

@@ -1,5 +1,6 @@
 package eth.serotine.ui.accountdetail
 
+import eth.serotine.ui.pinnedEverywhere
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.model.Account
@@ -1576,8 +1577,8 @@ class AccountDetailViewModelTest {
         val viewModel = viewModel(
             activity = activity(
                 AddressIndexActivity(
-                    ObserveAddressIndexStatus(index, setting, FIXTURE_IMPORTER),
-                    LoadAddressIndexPage(index, FIXTURE_IMPORTER),
+                    ObserveAddressIndexStatus(index, setting, pinnedEverywhere(FIXTURE_IMPORTER)),
+                    LoadAddressIndexPage(index, pinnedEverywhere(FIXTURE_IMPORTER)),
                 ),
             ),
         )
@@ -1608,8 +1609,8 @@ class AccountDetailViewModelTest {
         val viewModel = viewModel(
             activity = activity(
                 AddressIndexActivity(
-                    ObserveAddressIndexStatus(index, setting, FIXTURE_IMPORTER),
-                    LoadAddressIndexPage(index, FIXTURE_IMPORTER),
+                    ObserveAddressIndexStatus(index, setting, pinnedEverywhere(FIXTURE_IMPORTER)),
+                    LoadAddressIndexPage(index, pinnedEverywhere(FIXTURE_IMPORTER)),
                 ),
             ),
         )

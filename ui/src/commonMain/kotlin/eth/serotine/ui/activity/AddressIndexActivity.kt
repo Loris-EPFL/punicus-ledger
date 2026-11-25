@@ -65,7 +65,8 @@ class AddressIndexActivity(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     internal fun of(account: AccountId, more: StateFlow<Int>): Flow<IndexPaging?> = status()
-        .map { if (it.on) it.pinned else null }
+        // The key pinned for the account's network: none (Sepolia), and its Activity is the log index's alone.
+        .map { if (it.on) it.pinned.of(account.network) else null }
         .distinctUntilChanged()
         .flatMapLatest { pinned -> if (pinned == null) flowOf(null) else pages(account, pinned, more) }
         .onStart { emit(null) }
@@ -713,6 +714,9 @@ internal fun indexRefusalText(reason: AddressIndexRefusal, network: Network): St
         "Tor routing is on, and the addr1 index is not read over Tor: nothing comes from it while Tor is on."
     is AddressIndexRefusal.NetworkNotServed ->
         "The addr1 index is not read for ${reason.network.displayName} here."
+    is AddressIndexRefusal.NoKeyPinned ->
+        "No importer key is pinned for ${reason.network.displayName} in this release, so no addr1 index is read " +
+            "for it."
     is AddressIndexRefusal.CheckpointAlarm ->
         "The engine's checkpoint table and the beacon chain disagree, so nothing that rests on the table is shown, " +
             "the index's rows among it. The engine says: ${reason.text}"
@@ -741,6 +745,7 @@ internal fun indexRefusalSimpleText(reason: AddressIndexRefusal, network: Networ
     AddressIndexRefusal.SettingOff -> "The shared index is off. Settings → Experimental turns it on."
     AddressIndexRefusal.TorRouting -> "Tor is on, and the shared index isn't read over Tor."
     is AddressIndexRefusal.NetworkNotServed -> "The shared index isn't read for ${reason.network.displayName} here."
+    is AddressIndexRefusal.NoKeyPinned -> "There's no shared index for ${reason.network.displayName} in this version."
     is AddressIndexRefusal.CheckpointAlarm -> "Older activity from the shared index can't be shown: the checkpoints " +
         "Punicus relies on disagree with the network."
     AddressIndexRefusal.StaleAnchor -> "${network.displayName} can't be checked right now. Accounts shows the ways on."

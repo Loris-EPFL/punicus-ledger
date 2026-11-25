@@ -1,5 +1,6 @@
 package eth.serotine.data.engine
 
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexCursor
 import eth.serotine.domain.model.AddressIndexEntry
@@ -439,14 +440,20 @@ class EngineAddressIndexHistoryTest {
     }
 
     @Test
-    fun theSettingsNameThePinnedKeyOrNoneAndTheSwarmNetwork() {
+    fun theSettingsNameEachNetworksPinnedKeyByChainIdOrNoneAndTheSwarmNetwork() {
+        val gnosisImporter = Address.of("0x" + "9e".repeat(20))
+        val pinned = AddressIndexImporters(mapOf(Network.GNOSIS to gnosisImporter, Network.ETHEREUM to fixtureImporter))
         assertEquals(
-            """{"importer":"${fixtureImporter.hex}","swarm":{"network":"mainnet"}}""",
-            addressHistoryConfigJson(fixtureImporter, AddressIndexSwarm.Mainnet),
+            """{"importers":{"1":"${fixtureImporter.hex}","100":"${gnosisImporter.hex}"},""" +
+                """"swarm":{"network":"mainnet"}}""",
+            addressHistoryConfigJson(pinned, AddressIndexSwarm.Mainnet),
         )
         assertEquals(
             """{"importer":null,"swarm":{"network":"dev","networkId":7,"bootnodes":["/ip4/192.0.2.1/tcp/1634"]}}""",
-            addressHistoryConfigJson(null, AddressIndexSwarm.Dev(7, listOf("/ip4/192.0.2.1/tcp/1634"))),
+            addressHistoryConfigJson(
+                AddressIndexImporters.NONE,
+                AddressIndexSwarm.Dev(7, listOf("/ip4/192.0.2.1/tcp/1634")),
+            ),
         )
     }
 

@@ -1,6 +1,6 @@
 package eth.serotine.data.engine
 
-import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexImporters
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
@@ -26,19 +26,30 @@ sealed interface AddressIndexSwarm {
 }
 
 /**
- * The engine's address history settings (`setAddressHistoryConfigJson`): [importer], the key whose index may be read,
- * or null, which refuses every read; and the [swarm] network its reader joins.
+ * The engine's address history settings (`setAddressHistoryConfigJson`): [importers], on each network the key whose
+ * index may be read there (`"importers"`, by chain id; Myotis 0.1.25 on), and none at all
+ * ([AddressIndexImporters.NONE]: `"importer": null`, which refuses every read); and the [swarm] network its reader
+ * joins.
  */
-internal fun addressHistoryConfigJson(importer: Address?, swarm: AddressIndexSwarm): String = buildJsonObject {
-    if (importer == null) put("importer", JsonNull) else put("importer", importer.hex)
-    putJsonObject("swarm") {
-        when (swarm) {
-            AddressIndexSwarm.Mainnet -> put("network", "mainnet")
-            is AddressIndexSwarm.Dev -> {
-                put("network", "dev")
-                put("networkId", swarm.networkId)
-                putJsonArray("bootnodes") { swarm.bootnodes.forEach { add(it) } }
+internal fun addressHistoryConfigJson(importers: AddressIndexImporters, swarm: AddressIndexSwarm): String =
+    buildJsonObject {
+        if (importers.isEmpty()) {
+            put("importer", JsonNull)
+        } else {
+            putJsonObject("importers") {
+                importers.keys.entries.sortedBy { it.key.chainId }.forEach { (network, key) ->
+                    put(network.chainId.toString(), key.hex)
+                }
             }
         }
-    }
-}.toString()
+        putJsonObject("swarm") {
+            when (swarm) {
+                AddressIndexSwarm.Mainnet -> put("network", "mainnet")
+                is AddressIndexSwarm.Dev -> {
+                    put("network", "dev")
+                    put("networkId", swarm.networkId)
+                    putJsonArray("bootnodes") { swarm.bootnodes.forEach { add(it) } }
+                }
+            }
+        }
+    }.toString()

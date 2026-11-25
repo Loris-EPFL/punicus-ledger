@@ -37,7 +37,7 @@ class KeepAddressIndexTest {
     private val wallet = ListAccountRepository(
         Account(Network.ETHEREUM, alice, AccountKind.EOA, "Alice", AccountCustody.Watched),
     )
-    private val keep = KeepAddressIndex(archive, wallet, WalletChanges(), importer)
+    private val keep = KeepAddressIndex(archive, wallet, WalletChanges(), pinnedEverywhere(importer))
     private val none = AddressIndexLeftOutEntries()
 
     private fun entry(block: Long, slot: Int) = AddressIndexEntry(block, slot, setOf(FROM))
@@ -55,7 +55,8 @@ class KeepAddressIndexTest {
     private suspend fun continuation(cursor: String): AddressIndexContinuation {
         val index = FakeAddressIndexHistory()
         index.pages[null] = AddressIndexPage(coverage, emptyList(), AddressIndexCursor(cursor))
-        val load = assertIs<AddressIndexLoad.Loaded>(LoadAddressIndexPage(index, importer)(account).last())
+        val loader = LoadAddressIndexPage(index, pinnedEverywhere(importer))
+        val load = assertIs<AddressIndexLoad.Loaded>(loader(account).last())
         return assertNotNull(load.next)
     }
 
@@ -131,7 +132,7 @@ class KeepAddressIndexTest {
         assertFalse(keepPlain(on = otherKeys))
         assertNull(archive.kept[account])
 
-        keepPlain(on = otherKeys, with = KeepAddressIndex(archive, wallet, WalletChanges(), other))
+        keepPlain(on = otherKeys, with = KeepAddressIndex(archive, wallet, WalletChanges(), pinnedEverywhere(other)))
 
         assertNull(keep.restore(account), "a list kept under the key pinned before starts again from the index")
     }

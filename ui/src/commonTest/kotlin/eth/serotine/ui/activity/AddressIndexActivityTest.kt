@@ -1,5 +1,6 @@
 package eth.serotine.ui.activity
 
+import eth.serotine.ui.pinnedEverywhere
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
@@ -113,9 +114,11 @@ class AddressIndexActivityTest {
             ObserveOutbox(MemoryOutbox()),
             addressIndex = pinned?.let {
                 AddressIndexActivity(
-                    ObserveAddressIndexStatus(index, setting, it),
-                    LoadAddressIndexPage(index, it),
-                    keep = archive?.let { kept -> KeepAddressIndex(kept, accounts, WalletChanges(), it) },
+                    ObserveAddressIndexStatus(index, setting, pinnedEverywhere(it)),
+                    LoadAddressIndexPage(index, pinnedEverywhere(it)),
+                    keep = archive?.let { kept ->
+                        KeepAddressIndex(kept, accounts, WalletChanges(), pinnedEverywhere(it))
+                    },
                 )
             },
             now = { 600 },
@@ -298,7 +301,7 @@ class AddressIndexActivityTest {
 
     @Test
     fun offItAddsNothingAndReadsNothing() = runTest {
-        setting.choice.value = AddressIndexChoice.Chosen(importer = null)
+        setting.choice.value = AddressIndexChoice.Chosen(importers = null)
 
         val shown = shown(activity())
 

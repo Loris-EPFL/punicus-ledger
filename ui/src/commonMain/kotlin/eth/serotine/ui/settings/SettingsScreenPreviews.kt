@@ -344,6 +344,11 @@ private fun SettingsMeteredSetAsidePreview() = SettingsPreview(
 
 /** A made-up importer key of the addr1 index: no release pins it. */
 private val sampleImporter = Eip55.format(Address.of("0x" + "1e".repeat(20)))
+private val sampleGnosisImporter = Eip55.format(Address.of("0x" + "9e".repeat(20)))
+
+/** The keys the setting names, one per network (made-up fixtures; owner's decision, 2026-11-25: one switch). */
+private val sampleKeys =
+    "importers pinned in this release: Ethereum, $sampleImporter; Gnosis Chain, $sampleGnosisImporter"
 
 /** A release that pins no importer key, on an engine with no Swarm reader: what the desktop showed until #359. */
 private const val ADDRESS_INDEX_GREYED_TEXT =
@@ -380,7 +385,7 @@ private fun SettingsAddressIndexNoReaderPreview() = SettingsPreview(
     synced.copy(
         addressIndex = AddressIndexItem(
             on = false,
-            text = "Off: importer $sampleImporter, pinned in this release · This build's engine has no Swarm reader" +
+            text = "Off: $sampleKeys · This build's engine has no Swarm reader" +
                 " · On by default once it can be read: Turn off keeps it off",
             turnOff = true,
             unavailableReason = "This build's engine has no Swarm reader, so the index cannot be read here. The " +
@@ -400,7 +405,7 @@ private fun SettingsAddressIndexReaderNotKnownPreview() = SettingsPreview(
     synced.copy(
         addressIndex = AddressIndexItem(
             on = false,
-            text = "Off: importer $sampleImporter, pinned in this release · Waiting for the engine to say " +
+            text = "Off: $sampleKeys · Waiting for the engine to say " +
                 "whether it reads Swarm · On by default once it can be read: Turn off keeps it off",
             turnOff = true,
             unavailableReason = "The engine says whether this build reads Swarm once Ethereum's light client runs: " +
@@ -417,7 +422,7 @@ private fun SettingsAddressIndexOnPreview() = SettingsPreview(
     synced.copy(
         addressIndex = AddressIndexItem(
             on = true,
-            text = "On: importer $sampleImporter, pinned in this release · On by default: you can turn it off",
+            text = "On: $sampleKeys · On by default: you can turn it off",
         ),
     ),
     atTheEnd = true,
@@ -452,7 +457,7 @@ private fun SettingsAddressIndexSetAsidePreview() = SettingsPreview(
     synced.copy(
         addressIndex = AddressIndexItem(
             on = false,
-            text = "Off: importer $sampleImporter, pinned in this release" +
+            text = "Off: $sampleKeys" +
                 " (your saved choice was damaged and set aside)",
             turnOff = true,
         ),

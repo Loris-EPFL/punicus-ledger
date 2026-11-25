@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexCoverage
 import eth.serotine.domain.model.AddressIndexCursor
 import eth.serotine.domain.model.AddressIndexEntry
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.AddressIndexRow
 import eth.serotine.domain.model.AddressIndexVerdict
 import eth.serotine.domain.repository.AddressIndexArchive
@@ -41,8 +42,9 @@ import kotlin.time.Duration.Companion.seconds
  * are the ones to keep. Only a [AddressIndexVerdict.Verified] one is ever a row; a `Checked` of any other verdict says
  * only that the entry is done with.
  *
- * - **The pinned key only.** A page whose index is signed by any key but [pinnedImporter], the key pinned in the
- *   release, is refused ([AddressIndexRefusal.WrongImporter]) before anything of it is checked.
+ * - **The pinned key only.** A page whose index is signed by any key but the one [pinned] for the account's network
+ *   in the release is refused ([AddressIndexRefusal.WrongImporter]) before anything of it is checked; on a network
+ *   with no key pinned nothing is read ([AddressIndexRefusal.NoKeyPinned]).
  * - **Verified rows only.** An entry becomes a row only on an [AddressIndexVerdict.Verified] of it. Every other
  *   entry is left out and counted ([AddressIndexLeftOut]); a contradicted one apart, a warning against the key.
  * - **TRACE-only entries are not sent to the check**: the engine never verifies one, so asking would only spend a
@@ -83,8 +85,8 @@ import kotlin.time.Duration.Companion.seconds
  */
 class LoadAddressIndexPage(
     private val history: AddressIndexHistory,
-    /** The importer key pinned in the release: the one key whose index the list may rest on. */
-    private val pinnedImporter: Address,
+    /** The importer keys pinned in the release: on each network, the one key whose index the list may rest on. */
+    private val pinned: AddressIndexImporters,
     /** How many checks an entry gets at most, the first one included: 1 or more. */
     private val attempts: Int = DEFAULT_ATTEMPTS,
     /** How long to wait before asking again for the entries no check answered. */
@@ -127,6 +129,11 @@ class LoadAddressIndexPage(
         require(after == null || after.account == account) { "a continuation of another account's history" }
         require(newerThan == null || newerThan >= 0) { "a block number is never negative" }
         require(range == null || (!range.isEmpty() && range.first >= 0)) { "a range of one block at least" }
+        val pinnedImporter = pinned.of(account.network)
+        if (pinnedImporter == null) {
+            send(AddressIndexLoad.Refused(AddressIndexRefusal.NoKeyPinned(account.network)))
+            return@channelFlow
+        }
         val query = AddressIndexQuery(
             cursor = after?.cursor,
             limit = limit,
@@ -178,7 +185,7 @@ class LoadAddressIndexPage(
         next: AddressIndexContinuation?,
     ): Flow<AddressIndexProgress> = channelFlow {
         require(next == null || next.account == account) { "a continuation of another account's history" }
-        require(coverage.importer == pinnedImporter) { "a list resting on another key than the pinned one" }
+        require(coverage.importer == pinned.of(account.network)) { "a list resting on another key than the pinned one" }
         val verdicts = mutableMapOf<AddressIndexEntry, AddressIndexVerdict>()
         val pick = Pick(entries.distinct(), coverage, next)
         val refused = checked(account, pick, verdicts)
@@ -483,8 +490,9 @@ sealed interface AddressIndexLoad : AddressIndexProgress {
 /**
  * Checks one entry of an account's addr1 history again, for the detail of its row (docs/wallet-ux.md, screen 26):
  * the detail never shows what the list once found, only what the engine's check finds now, against verified chain
- * data. [importer] is the key pinned in the release that the list rests on, which the detail names. Only while the
- * experimental setting is wanted ([AddressIndexStatus.wanted] for [importer]: [setting]; on by default, an explicit
+ * data. [importers] are the keys pinned in the release, the one of the account's network the key the list rests on,
+ * which the detail names; on a network with none it is refused ([AddressIndexRefusal.NoKeyPinned]). Only while the
+ * experimental setting is wanted ([AddressIndexStatus.wanted] for [importers]: [setting]; on by default, an explicit
  * off kept; an engine without the reader refuses the check itself): otherwise it is refused
  * ([AddressIndexRefusal.SettingOff]) and nothing is fetched, as the privacy policy promises. A
  * `TRACE`-only entry is never sent to the check, since the engine never verifies one: it is unverified. A verdict is
@@ -497,8 +505,8 @@ class CheckAddressIndexEntry(
     private val history: AddressIndexHistory,
     /** The user's choice: the check runs only while the setting is wanted ([AddressIndexStatus.wanted]). */
     private val setting: AddressIndexSetting,
-    /** The importer key pinned in the release: what the list's completeness rests on. */
-    val importer: Address,
+    /** The importer keys pinned in the release: on each network, what the list's completeness rests on. */
+    val importers: AddressIndexImporters,
     /** Each account's list kept between runs, on a host that keeps one; null: none is kept. */
     private val archive: AddressIndexArchive? = null,
 ) {
@@ -506,7 +514,10 @@ class CheckAddressIndexEntry(
     suspend operator fun invoke(account: AccountId, entry: AddressIndexEntry): AddressIndexEntryCheck {
         // The user's choice alone, without waiting for the engine's word on its reader: an engine without one refuses
         // the check itself (AddressIndexRefusal.NotInThisBuild).
-        if (!AddressIndexStatus(importer, null, setting.observe().first()).wanted) {
+        if (importers.of(account.network) == null) {
+            return AddressIndexEntryCheck.Refused(AddressIndexRefusal.NoKeyPinned(account.network))
+        }
+        if (!AddressIndexStatus(importers, null, setting.observe().first()).wanted) {
             return AddressIndexEntryCheck.Refused(AddressIndexRefusal.SettingOff)
         }
         if (entry.traceOnly) {

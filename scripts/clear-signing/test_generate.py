@@ -6,7 +6,9 @@
 ci.yml runs them before it regenerates the catalog, so a broken check cannot pass silently.
 """
 import copy
+import hashlib
 import json
+import re
 import pathlib
 import sys
 import unittest
@@ -57,7 +59,8 @@ class SignatureTest(unittest.TestCase):
         self.assertEqual(generate.check_encode_type(
             "PermitBatch(PermitDetails[] details,address spender,uint256 sigDeadline)"
             "PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)", "t"), "PermitBatch")
-        for bad in ("Mail(address  to)", "Mail(address to, string body)", "A(B b,C c)C(uint256 x)B(uint256 y)"):
+        for bad in ("Mail(address  to)", "Mail(address to, string body)", "A(B b,C c)C(uint256 x)B(uint256 y)",
+                    "Mail(uint to)", "Mail(Person from)", "Mail(address to)Extra(uint256 x)", "A(B b)B(C c)"):
             with self.assertRaises(generate.Refused, msg=bad):
                 generate.check_encode_type(bad, "t")
 
@@ -120,6 +123,26 @@ class DescriptorTest(unittest.TestCase):
         self.assertEqual(generate.merge({"a": {"x": 1, "y": 2}, "b": 1}, {"a": {"y": 3}, "c": 4}),
                          {"a": {"x": 1, "y": 3}, "b": 1, "c": 4})
 
+    def test_includes_never_replace_a_list(self):
+        with self.assertRaisesRegex(generate.Refused, "lists or mixed values"):
+            generate.merge({"fields": [1, 2]}, {"fields": [3]})
+
+    def test_refuses_a_parameter_value_the_runtime_does_not_implement(self):
+        self.refused(lambda d: self.fields(d)[0]["params"].update(types=["spaceship"]))
+        self.refused(lambda d: self.fields(d)[0]["params"].update(sources=["coingecko"]))
+        self.refused(lambda d: self.fields(d)[0]["params"].update(senderAddress=["$.metadata.constants.nope"]))
+        self.refused(lambda d: self.fields(d).append(
+            {"path": "amount", "format": "unit", "params": {"decimals": "lots"}}))
+        self.refused(lambda d: self.fields(d).append(
+            {"path": "amount", "format": "tokenAmount", "params": {"token": "not-an-address"}}))
+        self.refused(lambda d: self.fields(d).append(
+            {"path": "amount", "format": "tokenAmount", "params": {"tokenPath": "$.metadata.constants.nope"}}))
+        self.refused(lambda d: self.fields(d).append({"path": "@.gasPrice", "label": "Gas"}))
+        self.refused(lambda d: d["display"]["formats"]["pay(address to,uint256 amount)"].update(
+            interpolatedIntent="Pay {amount..x}"))
+        self.refused(lambda d: d["display"]["formats"]["pay(address to,uint256 amount)"].update(
+            interpolatedIntent="Pay {amount"))
+
 
 class BuildTest(unittest.TestCase):
     def test_the_committed_catalog_builds(self):
@@ -138,12 +161,54 @@ class BuildTest(unittest.TestCase):
     def test_the_output_is_deterministic(self):
         self.assertEqual(generate.kotlin(generate.build()), generate.kotlin(generate.build()))
 
+    def test_the_kotlin_holds_the_json_and_its_sha256(self):
+        catalog = {"x": "$.metadata ${'$'} \"\"\" end", "pad": "y" * (2 * generate.CHUNK_BYTES),
+                   "descriptors": {}, "deployments": []}
+        source = generate.kotlin(catalog)
+        chunks = re.findall(r'^    """(.*)""",$', source, re.M)
+        self.assertGreater(len(chunks), 2)
+        joined = "".join(chunk.replace("${'$'}", "$") for chunk in chunks)
+        self.assertEqual(json.loads(joined), catalog)
+        digest = re.search(r'CLEAR_SIGNING_CATALOG_SHA256 = "([0-9a-f]{64})"', source).group(1)
+        self.assertEqual(hashlib.sha256(joined.encode("ascii")).hexdigest(), digest)
+        for chunk in chunks:
+            self.assertNotIn('"""', chunk)
+            self.assertNotRegex(chunk.replace("${'$'}", ""), r"\$")
+
     def test_a_deployment_outside_its_descriptor_is_refused(self):
         contracts = json.loads(generate.CONTRACTS.read_text(encoding="utf-8"))
         contracts["deployments"][0]["address"] = "0x" + "22" * 20
         with mock.patch.object(generate, "CONTRACTS", mock.Mock(read_text=lambda **_: json.dumps(contracts))):
-            with self.assertRaises(generate.Refused):
+            with self.assertRaisesRegex(generate.Refused, "not among the deployments"):
                 generate.build()
+
+    def test_a_file_vendored_without_a_pin_is_refused(self):
+        path = next(iter(generate.PINNED))
+        pins = {k: v for k, v in generate.PINNED.items() if k != path}
+        with mock.patch.object(generate, "PINNED", pins):
+            with self.assertRaisesRegex(generate.Refused, "vendored without a pin"):
+                generate.check_pins()
+
+
+class UpgradeTest(unittest.TestCase):
+    HASH = "0x" + "ab" * 32
+
+    def test_accepts_each_kind(self):
+        generate.check_upgrade({"kind": "none", "why": "x"}, "t")
+        generate.check_upgrade({"kind": "slot", "slot": "0x" + "36" * 32, "implementation": "0x" + "12" * 20,
+                                "implementationCodeHash": self.HASH}, "t")
+        generate.check_upgrade({"kind": "call", "call": "implementation()", "selector": "0x5c60da1b",
+                                "returns": "0x" + "00" * 32, "implementationCodeHash": self.HASH}, "t")
+
+    def test_refuses_a_wrong_selector_or_a_missing_pin(self):
+        with self.assertRaisesRegex(generate.Refused, "selector"):
+            generate.check_upgrade({"kind": "call", "call": "implementation()", "selector": "0x00000000",
+                                    "returns": "0x" + "00" * 32, "implementationCodeHash": self.HASH}, "t")
+        with self.assertRaisesRegex(generate.Refused, "not pinned"):
+            generate.check_upgrade({"kind": "slot", "slot": "0x" + "36" * 32, "implementation": "0x" + "12" * 20,
+                                    "implementationCodeHash": "pending"}, "t")
+        with self.assertRaises(generate.Refused):
+            generate.check_upgrade({"kind": "maybe"}, "t")
 
 
 class PinTest(unittest.TestCase):
@@ -152,6 +217,11 @@ class PinTest(unittest.TestCase):
         self.assertFalse(pin_code_hashes.has_delegatecall(bytes([0x60, 0xF4, 0x00])))  # PUSH1 data
         trailer = bytes([0xA1, 0x65]) + b"bzzr0" + bytes([0x58, 0x20]) + bytes([0xF4] * 32) + bytes([0x00, 0x29])
         self.assertFalse(pin_code_hashes.has_delegatecall(bytes([0x00]) + trailer))  # solc's metadata
+        self.assertTrue(pin_code_hashes.has_delegatecall(bytes([0x60, 0x00, 0xF2])))  # CALLCODE
+        # A tail that merely looks like a map, its first key not one solc writes, is code and is scanned.
+        # (0x63 reads as PUSH4 there, so the DELEGATECALL follows the four bytes it pushes.)
+        fake = bytes([0xA1, 0x63]) + b"abc" + bytes([0x00, 0xF4]) + bytes([0x00, 0x07])
+        self.assertTrue(pin_code_hashes.has_delegatecall(bytes([0x00]) + fake))
 
     def test_only_loopback_is_read(self):
         with self.assertRaises(SystemExit):

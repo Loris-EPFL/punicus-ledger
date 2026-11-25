@@ -45,11 +45,8 @@ PINNED = {
     "registry/aave/testsv2/calldata-lpv3.tests.json": "15a7cc441c0ba34bd35a35d8356d915e11156689dbd1f6e9c3ac3c19f4345e8e",
     "registry/ens/calldata-ETHRegistrarController.json": "0c6f8928034198423815b5bfdb56d9031eb03caf02e01e813b9e21a41ce9a3d5",
     "registry/ens/testsv2/calldata-ETHRegistrarController.tests.json": "a8e90c48d5aec7da0c253bbdf028825a509efe54b02ebae13ffdb15ed61f9556",
-    "registry/lido/calldata-stETH.json": "7a64a2bc5b17b4ecdea4b4b5ebd024b0d5858e30ed0afd15b8a9898f61d81317",
     "registry/lido/calldata-wstETH.json": "a5fe1954ebc04c6f236e237566d374c474368a5346446a23a1cca6171026378b",
-    "registry/lido/sigs/calldata-stETH.eip155-1-0x3846c3A30E62075Fa916216b35EF04B8F53931f6.json": "c5cc37e26d374f83c8a83cfce9df05808cb119929bf9f7a75a90ed1b2c840c6e",
     "registry/lido/sigs/calldata-wstETH.eip155-1-0x3846c3A30E62075Fa916216b35EF04B8F53931f6.json": "50ad69b97e54695d7cddcfa7e9e21f8101977388a1b2897894963ddb992bc326",
-    "registry/lido/testsv2/calldata-stETH.tests.json": "0f477ecd8b5eace96b264887eee02c79071d0ea4874e6c75f9ec27c8565890b2",
     "registry/lido/testsv2/calldata-wstETH.tests.json": "85712d33446db0f6ac1b16c1215ec2731dd575934aba83d9fbfe6577dfae29f9",
     "registry/opensea/calldata-Seaport-1.6.json": "a0e981ed74b762c7c5ce3687eb416259da2983bc91101929a66cb5ed9306d801",
     "registry/opensea/testsv2/calldata-Seaport-1.6.tests.json": "7868e5f49aee9135c8c32522fc475fd3eb287a583a1c3a806599b25e50792d09",
@@ -191,17 +188,38 @@ def canonical_signature(key: str, where: str) -> str:
 
 
 def check_encode_type(key: str, where: str) -> str:
-    """The primary type of an EIP-712 `encodeType`; refuses one whose hash would not be the type hash."""
+    """The primary type of an EIP-712 `encodeType`; refuses one whose hash would not be the type hash.
+
+    EIP-712's encodeType is the primary struct, then every struct it references, directly or not, each once
+    and in alphabetical order; each member `<type> <name>`, one space, its type canonical (`uint256`, never
+    `uint`) or a struct of the string.
+    """
     structs = re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\(([^()]*)\)", key)
-    if "".join(f"{n}({m})" for n, m in structs) != key:
+    if not structs or "".join(f"{n}({m})" for n, m in structs) != key:
         refuse(where, "not an EIP-712 encodeType")
     names = [n for n, _ in structs]
-    for _, members in structs:
+    if len(set(names)) != len(names):
+        refuse(where, "a struct is defined twice")
+    references = {}
+    for name, members in structs:
+        references[name] = set()
         for member in members.split(",") if members else []:
-            if not re.match(r"^[A-Za-z0-9_]+(?:\[\d*\])* [A-Za-z_][A-Za-z0-9_]*$", member):
+            match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)((?:\[\d*\])*) ([A-Za-z_][A-Za-z0-9_]*)$", member)
+            if not match:
                 refuse(where, f"member {member!r} is not canonical (one space, no other)")
-    if names[1:] != sorted(names[1:]) or len(set(names)) != len(names):
-        refuse(where, "the referenced structs are not each once, in alphabetical order")
+            base = match.group(1)
+            if base in ("uint", "int") or (not ELEMENTARY.match(base) and base not in names):
+                refuse(where, f"member type {base!r} is neither canonical nor a struct of the type")
+            if base in names:
+                references[name].add(base)
+    reached, todo = set(), [names[0]]
+    while todo:
+        for ref in references[todo.pop()]:
+            if ref not in reached and ref != names[0]:
+                reached.add(ref)
+                todo.append(ref)
+    if names[1:] != sorted(reached):
+        refuse(where, f"the appended structs are {names[1:]}, the referenced ones {sorted(reached)} in order")
     return names[0]
 
 
@@ -215,13 +233,19 @@ def load(path: str) -> dict:
     return json.loads(file.read_text(encoding="utf-8"))
 
 
-def merge(base, override):
-    """ERC-7730 `includes`: the including file's values win; objects merge key by key."""
+def merge(base, override, where: str = "includes"):
+    """ERC-7730 `includes`: objects merge key by key, the including file's values win.
+
+    A key both files define as a list, or as an object in one and not the other, is refused rather than
+    guessed at: replacing a list would drop the included file's fields or deployments without a word.
+    """
     if isinstance(base, dict) and isinstance(override, dict):
         merged = dict(base)
         for key, value in override.items():
-            merged[key] = merge(base[key], value) if key in base else value
+            merged[key] = merge(base[key], value, f"{where}.{key}") if key in base else value
         return merged
+    if isinstance(base, (dict, list)) or isinstance(override, (dict, list)):
+        refuse(where, "both files define it, and lists or mixed values are not merged")
     return override
 
 
@@ -254,6 +278,7 @@ def check_path(value, where: str) -> None:
     for prefix in ("#.", "@.", "$."):
         if value.startswith(prefix):
             body = value[len(prefix):]
+    check_container(value, where)
     for segment in body.split("."):
         if not PATH_SEGMENT.match(segment):
             refuse(where, f"path {value!r}: segment {segment!r} is not implemented")
@@ -266,10 +291,76 @@ def check_ref(value, descriptor: dict, where: str) -> None:
         refuse(where, f"reference {value!r} names nothing in the descriptor's metadata")
 
 
+ADDRESS_TYPES = {"eoa", "wallet", "contract", "token", "collection"}
+ADDRESS_SOURCES = {"local", "ens"}
+CONTAINER_NAMES = {"from", "to", "value", "chainId"}
+
+
+def check_value_or_ref(value, kinds: tuple, descriptor: dict, where: str):
+    """A `$.metadata…` reference (resolved and checked in turn), or a value of one of [kinds]."""
+    if isinstance(value, str) and value.startswith("$."):
+        check_ref(value, descriptor, where)
+        name = value.split(".")[-1]
+        value = descriptor["metadata"]["constants" if ".constants." in value else "enums"][name]
+    for kind in kinds:
+        if kind == "address" and isinstance(value, str) and ADDRESS.match(value):
+            return
+        if kind == "uint" and (isinstance(value, int) and not isinstance(value, bool) and value >= 0
+                               or isinstance(value, str) and re.match(r"^(?:0x[0-9a-fA-F]{1,64}|\d+)$", value)):
+            return
+        if kind == "string" and isinstance(value, str):
+            return
+        if kind == "bool" and isinstance(value, bool):
+            return
+        if kind == "int" and isinstance(value, int) and not isinstance(value, bool):
+            return
+    refuse(where, f"{value!r} is not {' or '.join(kinds)}")
+
+
+def check_param(fmt: str, key: str, value, descriptor: dict, where: str) -> None:
+    """Every parameter's value, not its name alone, is one the runtime implements."""
+    if key.endswith("Path"):
+        if isinstance(value, str) and value.startswith("$."):
+            refuse(where, "a path parameter names a path, not a constant")
+        check_path(value, where)
+    elif key == "$ref":
+        check_ref(value, descriptor, where)
+        if ".enums." not in value:
+            refuse(where, "an enum's $ref names an enum")
+    elif key in ("types", "sources"):
+        allowed = ADDRESS_TYPES if key == "types" else ADDRESS_SOURCES
+        if not isinstance(value, list) or not value or not set(value) <= allowed:
+            refuse(where, f"{value!r} is not a list of {sorted(allowed)}")
+    elif key == "token":
+        check_value_or_ref(value, ("address",), descriptor, where)
+    elif key in ("nativeCurrencyAddress", "senderAddress"):
+        for i, item in enumerate(value if isinstance(value, list) else [value]):
+            check_value_or_ref(item, ("address",), descriptor, f"{where}[{i}]")
+    elif key == "threshold":
+        check_value_or_ref(value, ("uint",), descriptor, where)
+    elif key in ("message", "base"):
+        check_value_or_ref(value, ("string",), descriptor, where)
+    elif key == "decimals":
+        check_value_or_ref(value, ("int",), descriptor, where)
+    elif key == "prefix":
+        check_value_or_ref(value, ("bool",), descriptor, where)
+    elif key == "encoding":
+        if value not in DATE_ENCODINGS:
+            refuse(where, f"date encoding {value!r} is not implemented")
+    else:
+        refuse(where, "no check for this parameter's value")
+
+
+def check_container(value: str, where: str) -> None:
+    if value.startswith("@.") and value[2:] not in CONTAINER_NAMES:
+        refuse(where, f"{value!r} names no field of the container ({sorted(CONTAINER_NAMES)})")
+
+
 def check_field(field: dict, descriptor: dict, where: str) -> None:
     only(field, FIELD_KEYS, where)
     if "path" in field:
         check_path(field["path"], where + ".path")
+        check_container(field["path"], where + ".path")
     elif "fields" not in field:
         refuse(where, "a field has a path, or is a group of fields")
     if "label" in field and not isinstance(field["label"], str):
@@ -291,12 +382,7 @@ def check_field(field: dict, descriptor: dict, where: str) -> None:
         params = field.get("params", {})
         only(params, FORMAT_PARAMS[fmt], where + ".params")
         for key, value in params.items():
-            if key.endswith("Path"):
-                check_path(value, f"{where}.params.{key}")
-            elif isinstance(value, str) and value.startswith("$."):
-                check_ref(value, descriptor, f"{where}.params.{key}")
-        if fmt == "date" and params.get("encoding", "timestamp") not in DATE_ENCODINGS:
-            refuse(where, f"date encoding {params['encoding']!r} is not implemented")
+            check_param(fmt, key, value, descriptor, f"{where}.params.{key}")
         if fmt == "enum" and "$ref" not in params:
             refuse(where, "an enum names its values with $ref")
     elif "params" in field:
@@ -338,6 +424,13 @@ def check_descriptor(path: str, descriptor: dict) -> str:
         only(fmt, FORMAT_KEYS, where)
         if not isinstance(fmt.get("intent"), str):
             refuse(where, "the intent is a string (an object intent is not implemented)")
+        if "interpolatedIntent" in fmt:
+            text = fmt["interpolatedIntent"]
+            if not isinstance(text, str) or re.sub(r"\{[^{}]*\}", "", text).count("{") \
+                    or re.sub(r"\{[^{}]*\}", "", text).count("}"):
+                refuse(where, "the interpolated intent is a string of {path} placeholders")
+            for placeholder in re.findall(r"\{([^{}]*)\}", text):
+                check_path(placeholder, where + ".interpolatedIntent")
         for i, field in enumerate(fmt.get("fields", [])):
             check_field(field, descriptor, f"{where}.fields[{i}]")
     return kind
@@ -377,8 +470,9 @@ def check_upgrade(upgrade: dict, where: str) -> None:
     if kind not in UPGRADE_KINDS:
         refuse(where, f"upgrade kind {kind!r}: one of {sorted(UPGRADE_KINDS)}")
     keys = {"none": {"kind", "why", "delegatecall"},
-            "slot": {"kind", "slot", "implementation", "implementationCodeHash", "why"},
-            "call": {"kind", "call", "selector", "returns", "implementationCodeHash", "why"}}[kind]
+            "slot": {"kind", "slot", "implementation", "implementationCodeHash", "implementationDelegatecall", "why"},
+            "call": {"kind", "call", "selector", "returns", "implementationCodeHash", "implementationDelegatecall",
+                     "why"}}[kind]
     only(upgrade, keys, where)
     if kind == "slot":
         if not HASH.match(upgrade.get("slot", "")):

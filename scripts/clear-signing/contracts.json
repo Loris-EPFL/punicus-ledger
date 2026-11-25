@@ -60,23 +60,6 @@
     },
     {
       "network": "ETHEREUM",
-      "name": "Lido stETH",
-      "address": "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84",
-      "codeHash": "0xb9c1c929064cd21734c102a698e68bf617feefcfa5a9f62407c45401546736bf",
-      "upgrade": {
-        "kind": "call",
-        "why": "an Aragon AppProxyUpgradeable: it asks its Kernel for the implementation on every call",
-        "call": "implementation()",
-        "selector": "0x5c60da1b",
-        "returns": "0x000000000000000000000000028271e30a695c0527a0c50ca30603fed004cdb0",
-        "implementationCodeHash": "0xb74d1082863f9295e1691cb1c609062dbfd0e388ae52f0243017801b7556e488"
-      },
-      "descriptors": [
-        "registry/lido/calldata-stETH.json"
-      ]
-    },
-    {
-      "network": "ETHEREUM",
       "name": "Lido wstETH",
       "address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
       "codeHash": "0x630181884786c962140041cffa3acffbf39d8c93bde1a62b7b55046e57400557",
@@ -98,7 +81,8 @@
         "why": "the EIP-1967 implementation slot",
         "slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
         "implementation": "0x4295fe69b3e978eb511e4558b4407ad871612fcb",
-        "implementationCodeHash": "0xe334f592d8ff872871487568216f48dfbe98822bbf8c9c2ec55242db3a07028e"
+        "implementationCodeHash": "0xe334f592d8ff872871487568216f48dfbe98822bbf8c9c2ec55242db3a07028e",
+        "implementationDelegatecall": "Aave v3's linked libraries (SupplyLogic, BorrowLogic, LiquidationLogic, FlashLoanLogic, PoolLogic, BridgeLogic, EModeLogic), at addresses fixed in the implementation's code"
       },
       "descriptors": [
         "registry/aave/calldata-lpv3.json"
@@ -141,7 +125,8 @@
         "why": "the EIP-1967 implementation slot",
         "slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
         "implementation": "0x7f0d7d67683c30e5aefc9a13b35cd3db181a5889",
-        "implementationCodeHash": "0xc3a933761fd4c9ed935abdb8bc91ee20711f1a152e40cd92f1ebf2970d3422a2"
+        "implementationCodeHash": "0xc3a933761fd4c9ed935abdb8bc91ee20711f1a152e40cd92f1ebf2970d3422a2",
+        "implementationDelegatecall": "Aave v3's linked libraries (SupplyLogic, BorrowLogic, LiquidationLogic, FlashLoanLogic, PoolLogic, BridgeLogic, EModeLogic), at addresses fixed in the implementation's code"
       },
       "descriptors": [
         "registry/aave/calldata-lpv3.json"

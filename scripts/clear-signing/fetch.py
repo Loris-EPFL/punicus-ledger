@@ -6,8 +6,9 @@
 Reads scripts/clear-signing/contracts.json and downloads, from raw.githubusercontent.com at REGISTRY_COMMIT,
 every descriptor it names, the files those include, their test vectors (`testsv2/<name>.tests.json`) and their
 auditor attestations (`sigs/<name>.eip155-*.json`, listed from the commit's tree), into
-scripts/clear-signing/registry/. It replaces that folder. It never runs in the app or in CI: what it writes is
-committed and pinned, and a PR reviews every changed byte (`generate.py --print-pins` gives the new pins).
+scripts/clear-signing/registry/. It replaces that folder, and writes REGISTRY_COMMIT into contracts.json. It
+never runs in the app or in CI: what it writes is committed and pinned, and a PR reviews every changed byte
+(`generate.py --print-pins` gives the new pins).
 """
 import json
 import pathlib
@@ -36,6 +37,8 @@ def tree() -> list:
 
 def main() -> int:
     contracts = json.loads(CONTRACTS.read_text(encoding="utf-8"))
+    contracts["registry"] = {"repository": REGISTRY_REPOSITORY, "commit": REGISTRY_COMMIT}
+    CONTRACTS.write_text(json.dumps(contracts, indent=2) + "\n", encoding="utf-8")
     paths = sorted({p for d in contracts["deployments"] for p in d["descriptors"]})
     every = set(tree())
     wanted, files = list(paths), {}

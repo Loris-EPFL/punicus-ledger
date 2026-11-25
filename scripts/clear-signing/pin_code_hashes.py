@@ -9,7 +9,7 @@ scripts/clear-signing/contracts.json on those networks it reads, at one verified
 
   - the runtime code, hashed with Keccak-256 here, and checked against the account proof's `codeHash`;
   - how that code can change, as `upgrade` records it:
-      none  the code runs nothing else: no DELEGATECALL in it, and every known proxy slot empty;
+      none  the code runs nothing else: no DELEGATECALL or CALLCODE in it, and every known proxy slot empty;
       slot  a proxy whose implementation sits in a named slot (EIP-1967, its beacon, ZeppelinOS, EIP-1822);
       call  a proxy that names its implementation through a call (an Aragon AppProxy's `implementation()`),
             declared by hand in contracts.json, with the word the call must return.
@@ -17,8 +17,10 @@ scripts/clear-signing/contracts.json on those networks it reads, at one verified
     unless contracts.json declares by hand what it delegates to (`upgrade.delegatecall`: a multicall into
     the contract's own code), which the PR's reviewer checks against the verified source:
     an empty EIP-1967 slot never means "not a proxy". So is a slot or a call that names a contract without
-    code. A contract that forwards by CALL (USDT's `deprecated`) is not seen this way: its entry says why it
-    is `none`, and the PR's reviewer checks it.
+    code, or one whose implementation can itself DELEGATECALL or CALLCODE, unless contracts.json declares by
+    hand what that implementation delegates to (`upgrade.implementationDelegatecall`: linked libraries at
+    addresses fixed in its code, for one). A contract that forwards by CALL (USDT's `deprecated`) is not
+    seen this way: it stays off the list until the script reads its pointer.
 
 It rewrites contracts.json in place; the PR's diff shows every value. Run generate.py after it.
 """
@@ -40,40 +42,58 @@ SLOTS = {
 ZERO_WORD = "0x" + "00" * 32
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise SystemExit(f"refused: {req.full_url} redirects to {newurl}; only the local daemon is read")
+
+
 class Rpc:
     def __init__(self, url: str):
         if not url.startswith(("http://127.0.0.1:", "http://localhost:", "http://[::1]:")):
             raise SystemExit(f"refused: {url} is not on loopback; only a local Myotis daemon is read")
         self.url, self.next_id = url, 0
+        # No proxy from the environment (http_proxy would carry a loopback URL elsewhere), and no redirect.
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
     def call(self, method: str, *params):
         self.next_id += 1
         body = json.dumps({"jsonrpc": "2.0", "id": self.next_id, "method": method, "params": list(params)})
         request = urllib.request.Request(self.url, body.encode(), {"content-type": "application/json"})
-        with urllib.request.urlopen(request, timeout=300) as response:
+        with self.opener.open(request, timeout=300) as response:
             answer = json.loads(response.read())
         if "error" in answer:
             raise RuntimeError(f"{method}: {answer['error']}")
         return answer["result"]
 
 
+SOLC_METADATA_KEYS = (b"bzzr0", b"bzzr1", b"ipfs", b"solc", b"experimental")
+
+
 def without_metadata(code: bytes) -> bytes:
-    """[code] without solc's CBOR metadata trailer (its length in the last two bytes), which is data, not code."""
+    """[code] without solc's CBOR metadata trailer, which is data, not code.
+
+    The trailer is a CBOR map of one to five entries whose length is the code's last two bytes. It is
+    stripped only when that map's first key is one solc writes (a text string `bzzr0`, `bzzr1`, `ipfs`,
+    `solc` or `experimental`), so that stray bytes of other code are never taken for one.
+    """
     if len(code) >= 2:
         length = int.from_bytes(code[-2:], "big")
         start = len(code) - 2 - length
-        if length and start >= 0 and 0xA1 <= code[start] <= 0xA5:
-            return code[:start]
+        if length >= 3 and start >= 0 and 0xA1 <= code[start] <= 0xA5:
+            header = code[start + 1]
+            if 0x60 <= header <= 0x77 and code[start + 2:start + 2 + header - 0x60] in SOLC_METADATA_KEYS:
+                return code[:start]
     return code
 
 
 def has_delegatecall(code: bytes) -> bool:
-    """Whether DELEGATECALL (0xf4) occurs as an opcode, PUSH data and the metadata trailer skipped."""
+    """Whether DELEGATECALL (0xf4) or CALLCODE (0xf2), which both run other code as this contract, occurs as an
+    opcode, PUSH data and the metadata trailer skipped."""
     code = without_metadata(code)
     i = 0
     while i < len(code):
         op = code[i]
-        if op == 0xF4:
+        if op in (0xF4, 0xF2):
             return True
         i += 1 + (op - 0x5F if 0x60 <= op <= 0x7F else 0)
     return False
@@ -87,11 +107,20 @@ def code_hash(rpc: Rpc, address: str, block: str, where: str) -> tuple:
     try:
         proven = rpc.call("eth_getProof", address, [], block)["codeHash"].lower()
     except RuntimeError as error:
-        print(f"  note: no account proof to cross-check {address}: {error}")
-    else:
-        if proven != digest:
-            raise SystemExit(f"refused: {where}: keccak of the code {digest}, the account proof says {proven}")
+        raise SystemExit(f"refused: {where}: no account proof to check the code of {address} against: {error}")
+    if proven != digest:
+        raise SystemExit(f"refused: {where}: keccak of the code {digest}, the account proof says {proven}")
     return code, digest
+
+
+def implementation_hash(rpc: Rpc, implementation: str, block: str, where: str, declared) -> str:
+    """The implementation's code hash; refused when that code itself delegates (a proxy behind the proxy) and
+    contracts.json does not say by hand what it delegates to ([declared])."""
+    code, digest = code_hash(rpc, implementation, block, where + " implementation")
+    if has_delegatecall(code) and not declared:
+        raise SystemExit(f"refused: {where}: its implementation {implementation} can DELEGATECALL or CALLCODE too;"
+                         " pin that by hand, or leave the deployment off the list")
+    return digest
 
 
 def as_address(word: str) -> str:
@@ -111,9 +140,9 @@ def pin(rpc: Rpc, deployment: dict) -> None:
         word = rpc.call("eth_call", {"to": address, "data": upgrade["selector"]}, block)
         if len(word) != 66:
             raise SystemExit(f"refused: {where}: {upgrade['call']} returned {word!r}, not one word")
-        implementation = as_address(word)
-        _, implementation_hash = code_hash(rpc, implementation, block, where + " implementation")
-        upgrade.update(returns=word.lower(), implementationCodeHash=implementation_hash)
+        upgrade.update(returns=word.lower(),
+                       implementationCodeHash=implementation_hash(rpc, as_address(word), block, where,
+                                                                  upgrade.get("implementationDelegatecall")))
     elif len(found) > 1:
         raise SystemExit(f"refused: {where}: several proxy slots are set ({sorted(found)}); declare it by hand")
     elif found:
@@ -121,11 +150,13 @@ def pin(rpc: Rpc, deployment: dict) -> None:
         if name == "EIP-1967 beacon":
             raise SystemExit(f"refused: {where}: a beacon proxy, which this script does not pin yet")
         implementation = as_address(word)
-        _, implementation_hash = code_hash(rpc, implementation, block, where + " implementation")
-        upgrade = {"kind": "slot", "why": f"the {name} slot", "slot": SLOTS[name],
-                   "implementation": implementation, "implementationCodeHash": implementation_hash}
+        declared = upgrade.get("implementationDelegatecall")
+        upgrade = {"kind": "slot", "why": f"the {name} slot", "slot": SLOTS[name], "implementation": implementation,
+                   "implementationCodeHash": implementation_hash(rpc, implementation, block, where, declared)}
+        if declared:
+            upgrade["implementationDelegatecall"] = declared
     elif has_delegatecall(code) and not upgrade.get("delegatecall"):
-        raise SystemExit(f"refused: {where}: its code can DELEGATECALL and no proxy slot names an implementation;"
+        raise SystemExit(f"refused: {where}: its code can DELEGATECALL or CALLCODE and no proxy slot names an implementation;"
                          " declare how it changes (upgrade.kind call) by hand")
     elif has_delegatecall(code):
         upgrade = {"kind": "none", "delegatecall": upgrade["delegatecall"],

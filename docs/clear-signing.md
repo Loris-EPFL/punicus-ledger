@@ -133,13 +133,16 @@ that, and nothing it adds narrows what is already shown.
    (EIP-1967's, the ZeppelinOS slot of Circle's `FiatTokenProxy`), with the
    implementation it holds and that implementation's code hash; or through a
    verified call (an Aragon `AppProxyUpgradeable` such as Lido's stETH asks
-   its Kernel; USDT's `deprecated`/`upgradedAddress` forwards every call),
-   with the value it must return. An empty EIP-1967 slot never means "not a
-   proxy": code that can DELEGATECALL (PUSH data and solc's metadata trailer
-   skipped) and names no implementation is refused, unless `contracts.json`
-   says by hand what it delegates to (a multicall into its own code, such as
-   SwapRouter02's), which the PR's reviewer checks against the verified
-   source. A deployment whose pointer cannot be named and read this way
+   its Kernel), with the value it must return. An empty EIP-1967 slot never
+   means "not a proxy": code that can DELEGATECALL or CALLCODE (PUSH data and
+   solc's metadata trailer skipped) and names no implementation is refused,
+   and so is an implementation that can itself, unless `contracts.json` says
+   by hand what it delegates to (a multicall into its own code, such as
+   SwapRouter02's; linked libraries at addresses fixed in the code, such as
+   the Aave v3 Pool's), which the PR's reviewer checks against the verified
+   source. A contract that forwards by CALL to a pointer it keeps (USDT's
+   `deprecated`/`upgradedAddress`) is not seen this way, so it stays off the
+   list until the script reads such a pointer. A deployment whose pointer cannot be named and read this way
    stays off the list. The values are read through Myotis, never from an RPC
    provider: `scripts/clear-signing/pin_code_hashes.py` asks a local
    `myotis-rpcd` (the Myotis repository's daemon over its verified light
@@ -158,7 +161,8 @@ that, and nothing it adds narrows what is already shown.
 
 **Refresh** (decision 6): only through a PR that moves `PINNED`, the commit
 id and the hashes, its diff reviewed like code, as a step of every release
-PR (`.claude/skills/release/SKILL.md`, *The clear-signing descriptors*).
+PR (`.claude/skills/release/SKILL.md`, *3b. Refresh the clear-signing
+descriptors*).
 Never something the app does.
 
 ### The first list
@@ -178,12 +182,17 @@ decision 5 writes its descriptor.
 describes less of the list than the plan assumed. How it is applied, not
 part of the decisions:
 
-- **Ethereum:** WETH, Permit2 (its `approve`, and its `PermitBatch`, since
-  `TypedDataMeaning` claims the other two structs), SwapRouter02, Seaport
-  1.6, Lido stETH and wstETH, the Aave v3 Pool, and the ENS ETH registrar
-  controller the registry names (`0x59E1…E547`).
+- **Ethereum:** WETH, Permit2 (its `approve`, and its three EIP-712 structs,
+  of which only `PermitBatch` applies, since `TypedDataMeaning` claims
+  `PermitSingle` and `PermitTransferFrom`), SwapRouter02, Seaport 1.6, Lido
+  wstETH, the Aave v3 Pool, and the ENS ETH registrar controller the
+  registry names (`0x59E1…E547`).
 - **Gnosis Chain:** Permit2 and the Aave v3 Pool.
 - **Sepolia:** WETH and Permit2.
+- **Left out, its code delegating where the pin cannot follow:** Lido's
+  stETH. Its implementation can DELEGATECALL (Aragon's `EVMScriptRunner`,
+  whose executor comes from a registry that can change), and no reviewed
+  declaration says what. Its descriptor is not vendored.
 - **Left out, not in the registry at that commit:** the Universal Router,
   CoW's GPv2Settlement (the registry describes only another deployment of
   it), Safe's MultiSend and MultiSendCallOnly, WXDAI, and Seaport's EIP-712
@@ -209,7 +218,9 @@ part of the decisions:
   shown, the other parameters, the nested calls) or `NotCovered(reason)`.
 - **Strict decoding.** The ABI is decoded exactly: lengths and offsets
   checked, no trailing bytes, dynamic types bounded. An error is
-  `NotCovered`, never a partial display.
+  `NotCovered`, never a partial display. A call of fewer than four bytes
+  matches no format: Seaport's `fulfillBasicOrder_efficient_6GL6yc` has the
+  selector `0x00000000`.
 - **The formats v1 supports:** `raw`, `amount`, `tokenAmount`,
   `addressName`, `date`, `duration`, `unit`, `enum`, `chainId`, `calldata`,
   `nftName` and `tokenTicker`; `visible` as a word (`always`, `never`,

@@ -88,7 +88,9 @@ that, and nothing it adds narrows what is already shown.
   attestation where one exists. An attestation (`sigs/`, an EAS off-chain
   attestation over the descriptor's ERC-8176 hash) is shown only once its
   signature recovers to the auditor its file names and its hash is that of
-  the descriptor shipped; part 4 checks both. Revocation is not read.
+  the descriptor shipped. Neither is checked yet, so no attestation is
+  shown: a later part brings the check (the ERC-8176 hash computed at build
+  time, the EAS signature recovered here). Revocation is not read.
 - **How a value is formatted is the descriptor's claim too.** The raw words
   are proven; which token an amount is in (`tokenPath`, a constant `token`),
   a `unit`'s decimals and base, an `enum`'s names, a `threshold` word
@@ -246,8 +248,8 @@ part of the decisions:
   Activity's unlisted-token rows already do (#324). The same holds on D5 and
   D6 for hand-decoded and clear-signed calls alike.
 - **A nested call** (`calldata`) is formatted with its own descriptor, up to
-  depth 3, only when its callee passes A4's steps itself, at the same block
-  as its parent. Otherwise it stays raw inside its parent, with its reason;
+  depth 3, only when its callee passes A4's steps itself, read as its
+  parent's are. Otherwise it stays raw inside its parent, with its reason;
   its bytes are shown either way. Past depth 3 the bytes are not read, so
   the whole call is not covered: an approval down there could not be seen.
   An approval is flagged at every depth, by its selector, covered or not:
@@ -292,7 +294,13 @@ A descriptor applies only when every step holds; otherwise it fails closed:
    verified head, hashes to the pinned hash. Where its code can change
    (A1, step 4), the pinned pointer (a slot read with `getStorageAt`, or a
    verified call) holds the pinned implementation, whose code hashes to its
-   own pin. Every read of one check is at one block.
+   own pin. How it is applied, not part of the decisions: each read is a
+   verified one at a fresh head; a call pin is held to the block the code
+   was proven at, a slot is read at the head (the engine proves no hashed
+   slot at a given block), and the implementation's code is proven in
+   turn. An upgrade between two reads either shows in one of them, and the
+   call is not described, or is caught at the next check: the transaction is
+   included later than any read in any case.
 4. The selector, or the typed data's `encodeType` hash and domain, matches a
    format.
 
@@ -335,13 +343,16 @@ the five steps of docs/architecture.md:
    formatter and the binding check as pure functions, tested on the
    registry's vectors written out by hand.
 4. **`:data`** (A4): reading the catalog, the verified code reads for the
-   binding check, the attestations, the conformance tests over every
-   vendored vector, and the wiring in the composition roots.
-5. **`:ui`** (A5): D6 first, then D5 and the Safe review, with previews,
-   screenshots and the `CHANGELOG.md` entry.
+   binding check (`ContractCodes`), the use case `DescribeClearSigning`, and
+   the conformance tests over every vendored vector: 55 of the 56 that run
+   read as the registry expects; the one other is refused on purpose
+   (trailing bytes).
+5. **`:ui`** (A5): the wiring in the composition roots and `AppGraph`, D6
+   first, then D5 and the Safe review, with previews, screenshots and the
+   `CHANGELOG.md` entry.
 6. **The final PR**, `feature/clear-signing` → `main`.
 
-Then, a later part: the descriptors of decision 5.
+Then, later parts: the attestations' check, and the descriptors of decision 5.
 
 ## Later phases (open)
 

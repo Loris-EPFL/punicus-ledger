@@ -350,7 +350,7 @@ object ClearSignFormatter {
                     val checksum = checksummed(address)
                     val name = if (format.sources.isEmpty() || "local" in format.sources) lookups.addressName(network, address) else null
                     val kind = if (format.types.isEmpty()) null else lookups.addressKind(network, address)
-                    val mismatch = kind?.takeUnless { it in format.types }?.let { AddressTypeMismatch(format.types, it) }
+                    val mismatch = kind?.takeUnless { kindMatches(it, format.types) }?.let { AddressTypeMismatch(format.types, it) }
                     shown(name?.let { "$it ($checksum)" } ?: checksum, mismatch = mismatch)
                 }
                 is FieldFormat.Date -> shown(
@@ -427,6 +427,13 @@ object ClearSignFormatter {
         }
         return parameter.copy(steps = steps)
     }
+
+    /**
+     * Whether an account of [kind] (`eoa`, `wallet` for a smart account, `contract`) is one of [types]: a
+     * contract may be the `token` or `collection` a descriptor expects, which its code alone does not tell.
+     */
+    internal fun kindMatches(kind: String, types: Set<String>): Boolean =
+        kind in types || kind == "contract" && types.any { it == "token" || it == "collection" }
 
     /** Whether [data] calls a function that grants an approval ([APPROVAL_SELECTORS]), described or not. */
     fun grantsApproval(data: ByteArray): Boolean =

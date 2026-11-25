@@ -393,7 +393,8 @@ docs/clear-signing.md, *What a clear-signed line proves*.)
   deployment, and the code there, read with a verified `getCode` at the
   verified head, hashes to the pinned hash. Where that code can change (a
   proxy's slot, a forwarding call), the pinned pointer holds the pinned
-  implementation, whose code hashes to its own pin, all read at one block.
+  implementation, whose code hashes to its own pin, each read verified at a
+  fresh head (docs/clear-signing.md, A4, step 3).
   ERC-7730 itself binds by address alone; that was declined.
 - **A contract changed after the release is not decoded**, and the review
   says why, until a release moves the pin. Any other failed step is not

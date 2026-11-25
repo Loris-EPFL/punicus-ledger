@@ -10,6 +10,8 @@ and issues of this repository.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-25
+
 ### Added
 
 - Account history from the addr1 index (desktop and Android, experimental,
@@ -66,13 +68,32 @@ and issues of this repository.
   waits behind such an entry.
 - On a wide window (840 dp and wider: a desktop window, a tablet, an unfolded
   phone) the Accounts tab shows the list and the account chosen side by side.
+  From 1200 dp on, a transaction tapped in an account's Activity opens its
+  detail in a third column beside the account, which stays as it was, the
+  row drawn selected (#372).
+- Per-app addresses: each site a dApp connects from over WalletConnect gets
+  an address of its own, derived from the recovery phrase, so that no site
+  sees what you do on another (#252, #331).
+- Swarm nodes: an account on Gnosis Chain is recognised as a Swarm (Bee)
+  node once a chequebook or a postage batch is proven its own. Its postage
+  batches can be bought, topped up and diluted, and its chequebook withdrawn
+  from, through Bee's pinned contracts only; the node's account is watched,
+  with no `swarm.key` imported (#357).
+- In simple mode, each network's accounts come under a header that says its
+  sync state in a few words ("Up to date", "Syncing · 3 of 12 periods",
+  "Off"), and a tap on it folds them away and back (#371).
+- A day's heading in an account's Activity stays on top while that day's
+  rows scroll under it (#370).
 
 ### Changed
 
-- The embedded Myotis engine is 0.1.23 (was 0.1.21-rc1). It brings the
+- The website's address is <https://punicus.eth.limo/>; the old GitHub Pages
+  address no longer answers since the move to VesperBats (#373).
+- The embedded Myotis engine is 0.1.24 (was 0.1.21-rc1). It brings the
   engine's address history with its Swarm reader on the desktop and Android,
-  the mainnet checkpoint table up to block 26,485,995, and the embedded
-  checkpoints of 2026-11-24 for Ethereum, Gnosis Chain and Sepolia. The
+  each checked entry with its block's verified time (Myotis 0.1.24), the
+  mainnet checkpoint table up to block 26,491,578, and the embedded
+  checkpoints of 2026-11-25 for Ethereum, Gnosis Chain and Sepolia. The
   reader runs only on a read, while an account's Activity is open with the
   addr1 setting on; it adds about 11 MB to the Android app, which carries
   the engine for two processor types. The reader runs inside the app: a
@@ -277,7 +298,8 @@ accounts on Sepolia, on the embedded Myotis light client, for Android, desktop
 - Control badges: the icon beside the text, the icon alone where the text
   would wrap (#128).
 
-[Unreleased]: https://github.com/VesperBats/punicus/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/VesperBats/punicus/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/VesperBats/punicus/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/VesperBats/punicus/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/VesperBats/punicus/compare/v0.3.0-rc1...v0.4.0
 [0.3.0-rc1]: https://github.com/VesperBats/punicus/compare/v0.2.0...v0.3.0-rc1

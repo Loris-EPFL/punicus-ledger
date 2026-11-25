@@ -1361,7 +1361,13 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
         only on *Load older entries*; a page that adds rows lets the list
         read on by itself again. The pages read stay while the account's
         screen is open: back from a row's detail, or from another tab, they
-        are there and nothing is read again. A footer holds its room while a page is read and checked ("Reading
+        are there and nothing is read again. They are also kept between
+        runs (owner's request, 2026-11-25): opening the Activity again shows
+        the rows verified before at once, then reads only the entries newer
+        than those, each a ghost row at the top until its check answers, and
+        prepends them; older pages go on where the kept list ended. A row is
+        kept only once its block is finalized; one of a block not final yet,
+        and an entry no check answered, are checked again at that opening. A footer holds its room while a page is read and checked ("Reading
         more of the addr1 index …"), and the end of its coverage is marked
         ("The addr1 index starts at block 9,000,000: nothing older comes from
         it"). Turned oldest first, the footer goes above the rows, in sight

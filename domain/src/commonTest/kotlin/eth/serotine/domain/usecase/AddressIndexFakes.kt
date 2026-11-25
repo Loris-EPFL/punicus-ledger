@@ -5,7 +5,10 @@ import eth.serotine.domain.model.AddressIndexCursor
 import eth.serotine.domain.model.AddressIndexEntry
 import eth.serotine.domain.model.AddressIndexVerdict
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.AccountId
+import eth.serotine.domain.repository.AddressIndexArchive
 import eth.serotine.domain.repository.AddressIndexCheck
+import eth.serotine.domain.repository.KeptAddressIndex
 import eth.serotine.domain.repository.AddressIndexChoice
 import eth.serotine.domain.repository.AddressIndexHistory
 import eth.serotine.domain.repository.AddressIndexPage
@@ -103,6 +106,26 @@ internal class RecordingReaderSettings : AddressIndexReaderSettings {
 
     override suspend fun apply(importer: Address?): Boolean {
         applied += importer
+        return true
+    }
+}
+
+/** An [AddressIndexArchive] in memory, as the port's contract says one behaves; [failWrites] makes every write fail. */
+internal class MemoryAddressIndexArchive : AddressIndexArchive {
+    val kept = mutableMapOf<AccountId, KeptAddressIndex>()
+    var failWrites = false
+
+    override suspend fun read(account: AccountId): KeptAddressIndex? = kept[account]
+
+    override suspend fun write(account: AccountId, kept: KeptAddressIndex): Boolean {
+        if (failWrites) return false
+        this.kept[account] = kept
+        return true
+    }
+
+    override suspend fun forget(account: AccountId): Boolean {
+        if (failWrites) return false
+        kept -= account
         return true
     }
 }

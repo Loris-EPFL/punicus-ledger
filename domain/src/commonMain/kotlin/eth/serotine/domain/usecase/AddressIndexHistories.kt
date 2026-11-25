@@ -9,7 +9,6 @@ import eth.serotine.domain.model.AddressIndexRow
 import eth.serotine.domain.model.AddressIndexVerdict
 import eth.serotine.domain.repository.AddressIndexCheck
 import eth.serotine.domain.repository.AddressIndexHistory
-import eth.serotine.domain.repository.AddressIndexPage
 import eth.serotine.domain.repository.AddressIndexQuery
 import eth.serotine.domain.repository.AddressIndexReading
 import eth.serotine.domain.repository.AddressIndexRefusal
@@ -17,6 +16,7 @@ import eth.serotine.domain.repository.AddressIndexSetting
 import eth.serotine.domain.repository.ReadUnavailable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.channelFlow
@@ -106,20 +106,27 @@ class LoadAddressIndexPage(
      * [account]'s network and checked there, as it goes (see the class): its last value is always the
      * [AddressIndexLoad]. Nothing is read until it is collected. [after] of another account is the caller's error
      * and throws when collected.
+     *
+     * [newerThan], when given, is the newest block a list kept from an earlier read was read through
+     * ([eth.serotine.domain.repository.KeptAddressIndex.top]): only the page's entries above it are new, so only they
+     * are checked and counted, and the others are passed over. Once the page reaches it, nothing newer lies below:
+     * the page's [AddressIndexProgress.Read.next] and [AddressIndexLoad.Loaded.next] are null, the newer part read.
      */
     operator fun invoke(
         account: AccountId,
         after: AddressIndexContinuation? = null,
         limit: Int = AddressIndexHistory.DEFAULT_PAGE,
+        newerThan: Long? = null,
     ): Flow<AddressIndexProgress> = channelFlow {
         require(after == null || after.account == account) { "a continuation of another account's history" }
+        require(newerThan == null || newerThan >= 0) { "a block number is never negative" }
         val query = AddressIndexQuery(cursor = after?.cursor, limit = limit)
-        var readPage: AddressIndexPage? = null
+        var read: Pick? = null
         var refused: AddressIndexRefusal? = null
         val verdicts = mutableMapOf<AddressIndexEntry, AddressIndexVerdict>()
         // A page not read within its budget is a passing refusal.
         val reading = withTimeoutOrNull(budget) { history.page(account.network, account.address, query) }
-        val read = when (reading) {
+        val page = when (reading) {
             null -> null
             is AddressIndexReading.Refused -> {
                 refused = reading.reason
@@ -127,50 +134,97 @@ class LoadAddressIndexPage(
             }
             is AddressIndexReading.Page -> reading.page
         }
-        if (read != null && read.coverage.importer != pinnedImporter) {
-            refused = AddressIndexRefusal.WrongImporter(pinnedImporter, read.coverage.importer)
-        } else if (read != null) {
-            readPage = read
-            val toCheck = read.entries.filterNot { it.traceOnly }
-            val next = read.next?.let { AddressIndexContinuation(account, it) }
-            send(AddressIndexProgress.Read(account, read.coverage, next, toCheck))
-            val outcome = checkAll(account, toCheck, verdicts) { entry, verdict ->
-                send(AddressIndexProgress.Checked(entry, verdict))
-            }
-            when (outcome) {
-                is Lasting -> refused = outcome.reason
-                is Passing -> refused = outcome.reason
-                Done -> Unit
-            }
+        if (page != null && page.coverage.importer != pinnedImporter) {
+            refused = AddressIndexRefusal.WrongImporter(pinnedImporter, page.coverage.importer)
+        } else if (page != null) {
+            // Of a page read for what is newer than a kept list, only the entries above its top are new.
+            val reachesKept = newerThan != null && page.entries.any { it.block <= newerThan }
+            val entries = if (newerThan == null) page.entries else page.entries.filter { it.block > newerThan }
+            val next = page.next?.takeUnless { reachesKept }?.let { AddressIndexContinuation(account, it) }
+            read = Pick(entries, page.coverage, next)
+            refused = checked(account, read, verdicts)
         }
-        send(summary(account, readPage, refused, verdicts))
+        send(summary(account, read, refused, verdicts))
     }
         // Never waits on its collector: the budgets are the read's and the checks', not the time a list takes to draw.
         .buffer(Channel.UNLIMITED)
 
-    /** What a load came to: [refused] if it was, else [page] (null: not read in time) with its [verdicts]. */
+    /**
+     * Checks [entries] of [account]'s history again, entries a load read before whose check gave no lasting answer
+     * then ([AddressIndexLoad.Loaded.unavailable], or a row whose block was not final yet), as it goes, like a page
+     * (see the class): a [AddressIndexProgress.Read] of them, with [coverage] and [next], the list's own, which this
+     * check reads nothing of and changes nothing of, then each verdict, and last the [AddressIndexLoad], whose
+     * [AddressIndexLoad.Loaded.next] is [next] again. No page is read. [next] of another account is the caller's
+     * error and throws when collected.
+     */
+    fun again(
+        account: AccountId,
+        entries: List<AddressIndexEntry>,
+        coverage: AddressIndexCoverage,
+        next: AddressIndexContinuation?,
+    ): Flow<AddressIndexProgress> = channelFlow {
+        require(next == null || next.account == account) { "a continuation of another account's history" }
+        require(coverage.importer == pinnedImporter) { "a list resting on another key than the pinned one" }
+        val verdicts = mutableMapOf<AddressIndexEntry, AddressIndexVerdict>()
+        val pick = Pick(entries.distinct(), coverage, next)
+        val refused = checked(account, pick, verdicts)
+        send(summary(account, pick, refused, verdicts))
+    }
+        .buffer(Channel.UNLIMITED)
+
+    /**
+     * Says that [pick] is read, then checks its entries (but the `TRACE`-only ones) into [verdicts], telling each as
+     * it comes: the refusal the checks came to, or null.
+     */
+    private suspend fun ProducerScope<AddressIndexProgress>.checked(
+        account: AccountId,
+        pick: Pick,
+        verdicts: MutableMap<AddressIndexEntry, AddressIndexVerdict>,
+    ): AddressIndexRefusal? {
+        val toCheck = pick.entries.filterNot { it.traceOnly }
+        send(AddressIndexProgress.Read(account, pick.coverage, pick.next, toCheck))
+        val outcome = checkAll(account, toCheck, verdicts) { entry, verdict ->
+            send(AddressIndexProgress.Checked(entry, verdict))
+        }
+        return when (outcome) {
+            is Lasting -> outcome.reason
+            is Passing -> outcome.reason
+            Done -> null
+        }
+    }
+
+    /** The entries a load checks, with what the index covers and where the list goes on below them. */
+    private class Pick(
+        val entries: List<AddressIndexEntry>,
+        val coverage: AddressIndexCoverage,
+        val next: AddressIndexContinuation?,
+    )
+
+    /** What a load came to: [refused] if it was, else [read] (null: not read in time) with its [verdicts]. */
     private fun summary(
         account: AccountId,
-        page: AddressIndexPage?,
+        read: Pick?,
         refused: AddressIndexRefusal?,
         verdicts: Map<AddressIndexEntry, AddressIndexVerdict>,
     ): AddressIndexLoad {
         refused?.let { return AddressIndexLoad.Refused(it) }
-        if (page == null) return AddressIndexLoad.Refused(AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN))
-        val checked = page.entries.filterNot { it.traceOnly }
-        val rows = page.entries.mapNotNull { (verdicts[it] as? AddressIndexVerdict.Verified)?.row }
+        if (read == null) return AddressIndexLoad.Refused(AddressIndexRefusal.NotNow(ReadUnavailable.UNPROVEN))
+        val checked = read.entries.filterNot { it.traceOnly }
+        val rows = read.entries.mapNotNull { (verdicts[it] as? AddressIndexVerdict.Verified)?.row }
+        val unavailable = checked.filterNot { it in verdicts }
         val leftOut = AddressIndexLeftOut(
             unverified = verdicts.values.count { it is AddressIndexVerdict.Unverified },
             contradicted = verdicts.values.count { it is AddressIndexVerdict.Contradicted },
-            traceOnly = page.entries.size - checked.size,
-            unavailable = checked.count { it !in verdicts },
+            traceOnly = read.entries.size - checked.size,
+            unavailable = unavailable.size,
         )
         return AddressIndexLoad.Loaded(
             account = account,
             rows = rows,
-            coverage = page.coverage,
+            coverage = read.coverage,
             leftOut = leftOut,
-            next = page.next?.let { AddressIndexContinuation(account, it) },
+            next = read.next,
+            unavailable = unavailable,
         )
     }
 
@@ -343,8 +397,9 @@ sealed interface AddressIndexLoad : AddressIndexProgress {
     /**
      * One page of [account]'s history: its verified [rows], newest first, and nothing else of it; what the index
      * covers and the importer key it rests on ([coverage]), which the list names, saying that entries may be
-     * missing; the entries it [leftOut]; and [next], where the history goes on, null at the end of what the index
-     * covers.
+     * missing; the entries it [leftOut]; [next], where the history goes on, null at the end of what the index
+     * covers; and [unavailable], the entries counted in [AddressIndexLeftOut.unavailable] themselves, which a later
+     * check may verify.
      */
     data class Loaded(
         val account: AccountId,
@@ -352,6 +407,7 @@ sealed interface AddressIndexLoad : AddressIndexProgress {
         val coverage: AddressIndexCoverage,
         val leftOut: AddressIndexLeftOut,
         val next: AddressIndexContinuation?,
+        val unavailable: List<AddressIndexEntry> = emptyList(),
     ) : AddressIndexLoad {
         /** Whether this page reaches the end of what the index covers: no page lies below it. */
         val endOfCoverage: Boolean

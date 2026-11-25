@@ -501,4 +501,78 @@ class AddressIndexHistoriesTest {
         assertEquals(11 + 33 + 44, sum.notVerified)
         assertEquals(110, sum.total)
     }
+
+    @Test
+    fun aPageReadForWhatIsNewerChecksOnlyTheEntriesAboveTheKeptTopAndEndsThere() = runTest {
+        val newer = entry(21_190_000, 2, FROM)
+        val atTop = entry(21_180_000, 1, TO)
+        val older = entry(21_170_000, 3, FROM)
+        index.pages[null] = page(listOf(newer, atTop, older), next = "7:21170000:3")
+        verifyingAll()
+
+        val progress = loader()(account, newerThan = 21_180_000).toList()
+
+        val read = assertIs<AddressIndexProgress.Read>(progress.first())
+        assertEquals(listOf(newer), read.entries)
+        assertEquals(null, read.next, "the page reaches the kept top: nothing newer lies below")
+        assertEquals(listOf(listOf(newer)), index.checks, "only the new entry is checked")
+        val load = assertIs<AddressIndexLoad.Loaded>(progress.last())
+        assertEquals(listOf(rowOf(newer)), load.rows)
+        assertEquals(AddressIndexLeftOut(), load.leftOut, "the entries passed over are not counted")
+        assertEquals(null, load.next)
+    }
+
+    @Test
+    fun aPageOfNewerEntriesThatDoesNotReachTheKeptTopGoesOn() = runTest {
+        index.pages[null] = page(listOf(entry(21_190_000, 2, FROM)), next = "7:21190000:2")
+        verifyingAll()
+
+        val load = assertIs<AddressIndexLoad.Loaded>(loader()(account, newerThan = 21_100_000).last())
+
+        assertEquals(AddressIndexCursor("7:21190000:2"), load.next?.cursor)
+    }
+
+    @Test
+    fun aLoadNamesTheEntriesNoCheckAnswered() = runTest {
+        val answered = entry(21_150_000, 4, FROM)
+        val unread = entry(21_140_000, 2, TO)
+        index.pages[null] = page(listOf(answered, unread))
+        index.check = { entries, _ ->
+            AddressIndexCheck.Verdicts(
+                entries.map { if (it == answered) verified(it) else AddressIndexVerdict.Unavailable(it, "no peer") },
+            )
+        }
+
+        val load = assertIs<AddressIndexLoad.Loaded>(loader(attempts = 1)(account).last())
+
+        assertEquals(listOf(unread), load.unavailable)
+        assertEquals(1, load.leftOut.unavailable)
+    }
+
+    @Test
+    fun entriesCheckedAgainReadNoPageAndKeepTheListsCoverageAndContinuation() = runTest {
+        val waiting = entry(21_150_000, 4, FROM)
+        val stillWaiting = entry(21_140_000, 2, TO)
+        index.pages[null] = page(listOf(entry(1, 1, FROM)), next = "7:1:1")
+        verifyingAll()
+        val next = assertIs<AddressIndexLoad.Loaded>(loader()(account).last()).next
+        index.queries.clear()
+        index.checks.clear()
+        index.check = { entries, _ ->
+            AddressIndexCheck.Verdicts(
+                entries.map { if (it == waiting) verified(it) else AddressIndexVerdict.Unavailable(it, "no peer") },
+            )
+        }
+
+        val progress = loader(attempts = 1).again(account, listOf(waiting, stillWaiting), coverage, next).toList()
+
+        assertEquals(emptyList(), index.queries, "no page is read")
+        val read = assertIs<AddressIndexProgress.Read>(progress.first())
+        assertEquals(listOf(waiting, stillWaiting), read.entries)
+        val load = assertIs<AddressIndexLoad.Loaded>(progress.last())
+        assertEquals(listOf(rowOf(waiting)), load.rows)
+        assertEquals(listOf(stillWaiting), load.unavailable)
+        assertEquals(coverage, load.coverage)
+        assertEquals(next, load.next)
+    }
 }

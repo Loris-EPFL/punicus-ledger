@@ -26,6 +26,7 @@ import eth.serotine.data.cow.HttpCowApi
 import eth.serotine.data.engine.AndroidDnsServers
 import eth.serotine.data.engine.MyotisHost
 import eth.serotine.data.history.FileHistoryStarts
+import eth.serotine.data.history.FileAddressIndexArchive
 import eth.serotine.data.history.PinnedAddressIndexImporter
 import eth.serotine.data.keys.AndroidBiometricKey
 import eth.serotine.data.keys.AndroidKeystoreSecret
@@ -536,6 +537,8 @@ class SerotineApplication : Application() {
             addressIndex = node.addressIndex,
             addressIndexSetting = addressIndexSetting,
             addressIndexImporter = PinnedAddressIndexImporter.KEY,
+            // What was read of each account's addr1 history, kept between runs (owner's request, 2026-11-25).
+            addressIndexArchive = FileAddressIndexArchive(filesDir.resolve("address-index").path),
         )
     }
 

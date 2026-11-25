@@ -1,5 +1,6 @@
 package eth.serotine.ui
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexCoverage
 import eth.serotine.domain.model.AddressIndexCursor
@@ -12,6 +13,7 @@ import eth.serotine.domain.model.AddressIndexVerdict
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.Wei
+import eth.serotine.domain.repository.AddressIndexArchive
 import eth.serotine.domain.repository.AddressIndexCheck
 import eth.serotine.domain.repository.AddressIndexChoice
 import eth.serotine.domain.repository.AddressIndexHistory
@@ -20,6 +22,7 @@ import eth.serotine.domain.repository.AddressIndexQuery
 import eth.serotine.domain.repository.AddressIndexReading
 import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.AddressIndexSetting
+import eth.serotine.domain.repository.KeptAddressIndex
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -144,6 +147,23 @@ internal class MemoryAddressIndexSetting(on: Address? = null) : AddressIndexSett
     override suspend fun trust(importer: Address?): Boolean {
         if (failSaves || choice.value is AddressIndexChoice.Unreadable) return false
         choice.value = AddressIndexChoice.Chosen(importer)
+        return true
+    }
+}
+
+/** An [AddressIndexArchive] in memory, as the port's contract says one behaves: what is kept, by account, in [kept]. */
+internal class MemoryAddressIndexArchive : AddressIndexArchive {
+    val kept = mutableMapOf<AccountId, KeptAddressIndex>()
+
+    override suspend fun read(account: AccountId): KeptAddressIndex? = kept[account]
+
+    override suspend fun write(account: AccountId, kept: KeptAddressIndex): Boolean {
+        this.kept[account] = kept
+        return true
+    }
+
+    override suspend fun forget(account: AccountId): Boolean {
+        kept -= account
         return true
     }
 }

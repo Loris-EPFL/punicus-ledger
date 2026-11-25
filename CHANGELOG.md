@@ -20,7 +20,11 @@ and issues of this repository.
   release pins and the list names; the list says what the index does not
   cover, how many entries it left out, and warns when the chain contradicts
   one. The engine's Swarm reader comes with Myotis 0.1.23; with an engine
-  without it, the setting is greyed out, saying so (#334).
+  without it, the setting is greyed out, saying so (#334). What was read is
+  kept between runs: opening an account's Activity again shows its verified
+  rows at once and reads only the newer entries, which come in at the top.
+  Only rows of finalized blocks are kept as they are; the others are
+  checked again.
 - Activity at a glance: the rows are grouped by day under a heading
   ("Today", "Yesterday", then the date), each with its time in your time
   zone; a green arrow for value in and a red one for value out, and the

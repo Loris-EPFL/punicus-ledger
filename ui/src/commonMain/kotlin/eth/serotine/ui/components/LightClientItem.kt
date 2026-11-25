@@ -23,6 +23,8 @@ import kotlin.time.ExperimentalTime
  * to serving verified reads; and its [health], the strip's colour. [simpleText] is simple mode's
  * sync line (docs/simple-ui.md, *The sync line*): what keeps the network from verified reads, in
  * plain words, or null while nothing does, or nothing needs saying (asleep, off, idle).
+ * [simpleHeader] is the same state in a few words, always, for the header of the network's accounts in simple
+ * mode's list ("Up to date", "Syncing · 3 of 12 periods"; owner's request, 2026-11-25).
  */
 data class LightClientItem(
     val text: String,
@@ -30,6 +32,7 @@ data class LightClientItem(
     val working: Boolean,
     val health: LightClientHealth,
     val simpleText: String? = null,
+    val simpleHeader: String = "",
 ) {
 
     companion object {
@@ -43,7 +46,28 @@ data class LightClientItem(
             now: Long,
             decidedHere: Boolean = false,
             network: String = "the network",
-        ): LightClientItem = strip(status, now, decidedHere).copy(simpleText = simpleText(status, network, decidedHere))
+        ): LightClientItem = strip(status, now, decidedHere)
+            .copy(simpleText = simpleText(status, network, decidedHere), simpleHeader = simpleHeader(status))
+
+        /** [status] in a few words, for the header of a network's accounts in simple mode. */
+        private fun simpleHeader(status: LightClientStatus): String = when (status) {
+            LightClientStatus.Starting, is LightClientStatus.Bootstrapping -> "Syncing · starting"
+            is LightClientStatus.CatchingUp ->
+                if (status.total > 0 && status.done < status.total) {
+                    "Syncing · ${status.done} of ${status.total} periods"
+                } else {
+                    "Syncing"
+                }
+            is LightClientStatus.WaitingForHead ->
+                if (status.headAgeSeconds == null) "Syncing" else "Waiting for a new block"
+            is LightClientStatus.WaitingForProofPeers -> "Looking for peers"
+            is LightClientStatus.Synced -> "Up to date"
+            LightClientStatus.Sleeping -> "Paused in the background"
+            is LightClientStatus.StaleAnchor -> "Checkpoint too old"
+            LightClientStatus.Unavailable -> "Not running on this device"
+            LightClientStatus.Off -> "Off"
+            LightClientStatus.Idle -> "Starts when needed"
+        }
 
         /** Simple mode's sync line for [status] on [network], or null when it draws none. */
         private fun simpleText(status: LightClientStatus, network: String, decidedHere: Boolean): String? =

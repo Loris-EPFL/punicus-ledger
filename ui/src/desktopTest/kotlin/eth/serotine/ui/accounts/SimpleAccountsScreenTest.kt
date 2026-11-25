@@ -1,6 +1,8 @@
 package eth.serotine.ui.accounts
 
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -21,6 +23,7 @@ import eth.serotine.ui.components.AMOUNT_MASK
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.HIDE_AMOUNTS
 import eth.serotine.ui.components.HIDE_AMOUNTS_TAG
+import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientHealth.VERIFIED
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkLabel
@@ -77,6 +80,44 @@ class SimpleAccountsScreenTest {
         total = "€12,025.55",
         freshness = "Updated 2 min ago · pull down to refresh",
     )
+
+    @Test
+    fun eachNetworksAccountsHaveAHeaderSayingItsSyncState() {
+        val gnosis = NetworkLabel.of(Network.GNOSIS)
+        val onGnosis =
+            main.copy(label = "Card", chainId = gnosis.chainId, network = gnosis, networkLine = "Gnosis Chain")
+        val syncing = LightClientItem(
+            "Verifying sync committees",
+            0.25f,
+            true,
+            NOT_VERIFIED,
+            simpleHeader = "Syncing · 3 of 12 periods",
+        )
+        show(
+            AccountsUiState.Ready(
+                listOf(
+                    NetworkSection(
+                        ethereum.chainId,
+                        "Ethereum",
+                        false,
+                        true,
+                        strip.copy(simpleHeader = "Up to date"),
+                        listOf(main),
+                    ),
+                    NetworkSection(gnosis.chainId, "Gnosis Chain", false, true, syncing, listOf(onGnosis)),
+                ),
+                total = "€12,025.55",
+                freshness = "Updated 2 min ago · pull down to refresh",
+            ),
+        )
+
+        // The header's words are one heading to a screen reader: its node holds them.
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + ethereum.chainId).assert(hasText("Up to date"))
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + gnosis.chainId).assert(hasText("Syncing · 3 of 12 periods"))
+        // A tap on a header opens nothing, whatever row lies under it.
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + gnosis.chainId).performClick()
+        assertEquals(emptyList(), actions)
+    }
 
     @Test
     fun theAccountShownBesideTheListIsTheOneRowSelected() {
@@ -166,9 +207,9 @@ class SimpleAccountsScreenTest {
         rule.onNodeWithTag(ACCOUNTS_TOTAL_TAG).assertTextEquals("€12,025.55")
         rule.onNodeWithTag(ACCOUNTS_FRESHNESS_TAG).assertTextEquals("Updated 2 min ago · pull down to refresh")
         rule.onNodeWithText("Verified at block", substring = true).assertDoesNotExist()
-        // The network named in text and on the blockie's icon.
-        rule.onNodeWithText("Ethereum").assertIsDisplayed()
-        rule.onNodeWithContentDescription("Ethereum").assertIsDisplayed()
+        // The network named in text and by its icon: in its header and on the account's row.
+        rule.onAllNodesWithText("Ethereum").assertCountEquals(2)
+        rule.onAllNodesWithContentDescription("Ethereum").assertCountEquals(2)
     }
 
     @Test

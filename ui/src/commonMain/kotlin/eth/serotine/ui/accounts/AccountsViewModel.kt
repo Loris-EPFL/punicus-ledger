@@ -43,6 +43,7 @@ import eth.serotine.ui.components.FreshCheckpointFetches
 import eth.serotine.ui.components.handoffChoice
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.StaleAnchorWarning
 import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.asItems
@@ -557,6 +558,7 @@ class AccountsViewModel(
                         totalNote = sectionNote(total, network, currency, portfolio).takeIf { isOn }?.ifEmpty { null },
                         blocked = blocked,
                         staleAnchor = staleAnchors[i].takeIf { isOn },
+                        network = NetworkLabel.of(network),
                     )
                 }
                 // The top total adds the real networks that are on; a testnet only when the wallet has
@@ -687,7 +689,13 @@ class AccountsViewModel(
 
         /** A network's status line while it is off in this wallet (N18). */
         val OFF =
-            LightClientItem("Off in this wallet · nothing is checked", null, false, LightClientHealth.NOT_RUNNING)
+            LightClientItem(
+                "Off in this wallet · nothing is checked",
+                null,
+                false,
+                LightClientHealth.NOT_RUNNING,
+                simpleHeader = "Off",
+            )
 
         const val DAMAGED_SET_ASIDE =
             "Your saved account list was damaged and has been set aside. Add your accounts again."

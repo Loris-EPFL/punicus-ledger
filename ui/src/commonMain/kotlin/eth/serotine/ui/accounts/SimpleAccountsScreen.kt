@@ -1,5 +1,12 @@
 package eth.serotine.ui.accounts
 
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
+import eth.serotine.ui.components.NetworkIcon
+import eth.serotine.ui.components.LightClientHealthDot
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +56,9 @@ import eth.serotine.ui.components.UnavailableNotice
 import eth.serotine.ui.components.WithActionMenu
 import eth.serotine.ui.update.UpgradeBanner
 import kotlinx.coroutines.launch
+
+/** Test tag prefix of simple mode's header of a network's accounts (suffixed with its chain id), for UI tests. */
+const val ACCOUNTS_NETWORK_HEADER_TAG = "accounts-network-header-"
 
 /** Test tag of simple mode's freshness line, for UI tests. */
 const val ACCOUNTS_FRESHNESS_TAG = "accounts-freshness"
@@ -231,20 +241,59 @@ private fun SimpleAccountList(
                 textAlign = TextAlign.Center,
             )
         }
-        items(state.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
-            val shown = selected?.matches(account) == true
-            WithActionMenu(
-                actions = accountMenu(account, onAccountAction, onTurnOnNetwork, onUnavailable),
-                menuLabel = "Actions for ${account.label}",
-                onClick = { onAccountAction(AccountAction.Open(account.chainId, account.address)) },
-                modifier = Modifier.selectedRow(shown),
-                clickLabel = "Open ${account.label}",
-            ) {
-                // A balance from before, or a network that is off: the row dimmed, its age said.
-                SimpleAccountRow(account, shown, Modifier.alpha(if (account.ageNote != null) DIMMED else 1f))
+        // Each network's accounts under its header, which says its sync state and stays on top while they scroll
+        // (owner's request, 2026-11-25).
+        state.sections.filter { it.accounts.isNotEmpty() }.forEach { section ->
+            stickyHeader(key = "network/${section.chainId}") { NetworkHeader(section) }
+            items(section.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
+                val shown = selected?.matches(account) == true
+                WithActionMenu(
+                    actions = accountMenu(account, onAccountAction, onTurnOnNetwork, onUnavailable),
+                    menuLabel = "Actions for ${account.label}",
+                    onClick = { onAccountAction(AccountAction.Open(account.chainId, account.address)) },
+                    modifier = Modifier.selectedRow(shown),
+                    clickLabel = "Open ${account.label}",
+                ) {
+                    // A balance from before, or a network that is off: the row dimmed, its age said.
+                    SimpleAccountRow(account, shown, Modifier.alpha(if (account.ageNote != null) DIMMED else 1f))
+                }
+                HorizontalDivider()
             }
-            HorizontalDivider()
         }
+    }
+}
+
+/**
+ * The header of a network's accounts: its icon and name, and its sync state in a few words beside a dot of its
+ * colour ([NetworkSection.simpleStatus], [NetworkSection.simpleHealth]); the words say it, the colour never alone.
+ * Opaque, in the screen's background colour, since the accounts scroll under it.
+ */
+@Composable
+private fun NetworkHeader(section: NetworkSection) {
+    Row(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            // Opaque to a tap too: without it, the hit test goes on to the account row scrolled under the header.
+            .pointerInput(Unit) {}
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
+            .testTag(ACCOUNTS_NETWORK_HEADER_TAG + section.chainId)
+            .semantics(mergeDescendants = true) { heading() },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NetworkIcon(section.network)
+        Text(
+            section.name,
+            Modifier.padding(start = 8.dp).weight(1f),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        LightClientHealthDot(section.simpleHealth)
+        Text(
+            section.simpleStatus,
+            Modifier.padding(start = 6.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

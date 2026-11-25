@@ -63,7 +63,8 @@ class LightClientItemTest {
     }
 
     /** [status] as Detailed view's strip draws it: simple mode's line is tested on its own, below. */
-    private fun item(status: LightClientStatus) = LightClientItem.from(status, NOW).copy(simpleText = null)
+    private fun item(status: LightClientStatus) =
+        LightClientItem.from(status, NOW).copy(simpleText = null, simpleHeader = "")
 
     /** Simple mode's sync line for [status] on Ethereum. */
     private fun simple(status: LightClientStatus, decidedHere: Boolean = false) =
@@ -158,5 +159,16 @@ class LightClientItemTest {
             LightClientStatus.Off,
             LightClientStatus.Idle,
         ).forEach { status -> assertEquals(null, simple(status), "$status") }
+    }
+
+    @Test
+    fun eachStateHasAFewWordsForTheHeaderOfItsNetworksAccounts() {
+        fun header(status: LightClientStatus) = LightClientItem.from(status, NOW).simpleHeader
+
+        assertEquals("Up to date", header(LightClientStatus.Synced(100, NOW - 8, finalized = null)))
+        assertEquals("Syncing · 3 of 12 periods", header(LightClientStatus.CatchingUp(3, 12)))
+        assertEquals("Syncing · starting", header(LightClientStatus.Starting))
+        assertEquals("Paused in the background", header(LightClientStatus.Sleeping))
+        assertEquals("Off", header(LightClientStatus.Off))
     }
 }

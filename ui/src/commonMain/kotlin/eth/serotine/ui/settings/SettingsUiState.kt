@@ -122,9 +122,14 @@ data class TurnOffConfirmation(
     val waiting: String? = null,
 )
 
-/** [METERED_DOWNLOADS_OFF] in simple mode's words, which do not say how the history is read. */
-internal const val METERED_DOWNLOADS_OFF_SIMPLE = "Off: older activity is checked only on Wi-Fi or another " +
-    "unmetered connection"
+/**
+ * [METERED_DOWNLOADS_OFF] in simple mode's words, which do not say how the history is read: the log index's walk is
+ * "catching up on activity since you added an account", as the Activity says it (owner's choice, 2026-11-25, on
+ * #375). "Older activity" is the addr1 rows', which read on any connection (owner's decision, 2026-11-25, on #367).
+ */
+internal const val METERED_DOWNLOADS_OFF_SIMPLE = "Off: catching up on activity since you added an account waits " +
+    "for Wi-Fi or another unmetered connection"
 
 /** [METERED_DOWNLOADS_ON] in simple mode's words. */
-internal const val METERED_DOWNLOADS_ON_SIMPLE = "On: older activity is checked on any connection, mobile data too"
+internal const val METERED_DOWNLOADS_ON_SIMPLE = "On: catching up on activity since you added an account runs on " +
+    "any connection, mobile data too"

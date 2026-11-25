@@ -183,14 +183,16 @@ of a stale feed.)
   GitHub, not from a CDN. A fetch at signing time would tell a server which
   contract the user is about to use.
 - **Pinned twice.** Each file by the registry's commit id and its sha256;
-  each deployment by the keccak256 of its runtime code, and a proxy also by
-  its implementation, read through Myotis when the pin is made, never from an
+  each deployment by the keccak256 of its runtime code, and by how that code
+  can change (a proxy's slot or a forwarding call, with the implementation
+  it names), read through Myotis when the pin is made, never from an
   RPC provider. Only a curated list of deployments on Ethereum, Gnosis Chain
   and Sepolia ships (docs/clear-signing.md, *The first list*), whatever else
   a descriptor names.
 - **A descriptor the runtime cannot render fails the build**: an unsupported
-  schema major, format or parameter, or the registry's own test vectors not
-  met. Nothing is dropped silently.
+  schema major, or any key or value the runtime does not implement, or the
+  registry's own test vectors not met. So does a deployment whose way of
+  changing its code cannot be pinned. Nothing is dropped silently.
 - **Every shipped descriptor is reviewed in our PR.** An auditor attestation
   from the registry's `sigs/` is shown where one exists; none is required.
 - **A refresh is a step of every release PR**, through a PR that moves the

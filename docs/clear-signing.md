@@ -81,10 +81,18 @@ that, and nothing it adds narrows what is already shown.
   ("Minimum received") and the choice of fields are its author's words.
   Registry review is basic. A descriptor can be wrong, and a malicious
   contract can be described perfectly.
-- **So the words are labelled, not the values.** The intent is shown as
-  "Described by <owner> (ERC-7730 registry, reviewed for this release)", with
-  the auditor's attestation where one exists. The decoded values are shown as
-  what the user signs.
+- **So the words are labelled.** The intent is shown as described by the
+  name in the descriptor's `metadata.owner`, which its author wrote and the
+  registry does not prove: "Described by <name>, as the descriptor states
+  (ERC-7730 registry, reviewed for this release)", with the auditor's
+  attestation where one exists.
+- **How a value is formatted is the descriptor's claim too.** The raw words
+  are proven; which token an amount is in (`tokenPath`, a constant `token`),
+  a `unit`'s decimals and base, an `enum`'s names, a `threshold` word
+  ("Unlimited"), a `date`'s encoding, and the ABI types the bytes are read
+  as (tied to the contract by the 4-byte selector alone) are the
+  descriptor's. So each formatted value keeps its raw decoded value beside
+  it, in the detailed view at least.
 - **Nothing is hidden for good.** Every ABI parameter that no field displays,
   and every field the descriptor marks as not visible, appears under "Other
   parameters" as raw decoded values. A descriptor orders and labels what is
@@ -111,15 +119,23 @@ that, and nothing it adds narrows what is already shown.
    nothing outside it ships, even where a descriptor names more chains.
 3. **Validation.** Each file is checked against the pinned
    `erc7730-v2.schema.json`, and by the pinned `erc7730 lint` in CI (the app
-   never runs Python). Every selector is unique. Every `format` and every
-   `params` key must be one the runtime supports (A3): an unsupported one
-   fails the build, and is never dropped silently.
-4. **Code hashes.** For every deployment `contracts.toml` pins the keccak256
-   of its runtime code, and for a proxy also the implementation's address
-   (its EIP-1967 slot) and code hash. They are read through Myotis, never from
-   an RPC provider: `scripts/clear-signing/pin_code_hashes.sh` asks a local
-   Myotis daemon (`get-account` for the verified `codeHash`, `get-storage` for
-   the slot). The reviewer sees the values in the PR's diff.
+   never runs Python). Every selector is unique. Every key and value of a
+   descriptor must be one the runtime implements (A3), not `format` and
+   `params` alone: an unsupported one fails the build, and is never dropped
+   silently.
+4. **Code hashes, and how the code can change.** For every deployment
+   `contracts.toml` pins the keccak256 of its runtime code, and records how
+   the code it runs can change: not at all; through a named storage slot
+   (EIP-1967's, the ZeppelinOS slot of Circle's `FiatTokenProxy`), with the
+   implementation it holds and that implementation's code hash; or through a
+   verified call (an Aragon `AppProxyUpgradeable` such as Lido's stETH asks
+   its Kernel; USDT's `deprecated`/`upgradedAddress` forwards every call),
+   with the value it must return. An empty EIP-1967 slot never means "not a
+   proxy". A deployment whose pointer cannot be named and read this way
+   stays off the list. The values are read through Myotis, never from an RPC
+   provider: `scripts/clear-signing/pin_code_hashes.sh` asks a local Myotis
+   daemon (`get-account` for the verified `codeHash`, `get-storage` for a
+   slot), at one block. The reviewer sees them in the PR's diff.
 5. **Output.** A compact resource for `:data`, a generated Kotlin file as
    `PublicSuffixRules.kt` is, or a JSON resource with its sha256 pinned in
    code: `includes` resolved, paths parsed, selectors computed. The runtime
@@ -153,10 +169,10 @@ decision 5 writes its descriptor.
   and constants. A plain immutable value, with no JSON.
 - **`ClearSignFormatter`**, a pure function of the descriptor, the call
   (chain id, `to`, `from`, value and calldata, or the typed data) and lookups
-  through ports: a token's metadata from the built-in list, or for a token
-  the user added in Settings its verified `symbol()`/`decimals()` labelled
-  as the contract's claim, as everywhere; an address's name
-  from the wallet's accounts, the built-in tokens and the pinned contracts.
+  through ports: a token's metadata from the built-in list alone, as the dApp
+  review's hand-written decoders name tokens today; an address's name from
+  the wallet's accounts, the built-in tokens and the pinned contracts; and
+  the binding check of A4, for a nested call's callee.
   It returns `ClearSigned` (the intent, the interpolated intent, the fields
   shown, the other parameters, the nested calls) or `NotCovered(reason)`.
 - **Strict decoding.** The ABI is decoded exactly: lengths and offsets
@@ -164,28 +180,42 @@ decision 5 writes its descriptor.
   `NotCovered`, never a partial display.
 - **The formats v1 supports:** `raw`, `amount`, `tokenAmount`,
   `addressName`, `date`, `duration`, `unit`, `enum`, `chainId`, `calldata`,
-  `nftName` and `tokenTicker`. `interoperableAddressName` and `encryption`
-  are not supported, so the build refuses a descriptor that uses them.
-- **An unlisted token in a `tokenAmount`** (neither built in nor added by
-  the user) shows the raw amount and the
-  contract's address, marked unlisted. Its own symbol is never shown as if it
-  were real, as Activity's unlisted-token rows already do (#324).
+  `nftName` and `tokenTicker`. Refused at build time: the
+  `interoperableAddressName` format, the `encryption` field attribute, the
+  object forms of `visible` (`ifNotIn`, `mustMatch`) and a `factory`
+  context, which binds by a deploy event rather than a listed deployment.
+- **A token outside the built-in list in a `tokenAmount`** shows the raw
+  amount and the contract's address, marked as not in the built-in list. Its
+  own symbol is never shown as if it were real, as the dApp review and
+  Activity's unlisted-token rows already do (#324). The same holds on D5 and
+  D6 for hand-decoded and clear-signed calls alike.
 - **A nested call** (`calldata`) is formatted with its own descriptor, up to
-  depth 3. Without one it is not decoded inside its parent.
-- **Typed data.** The hand-written decoders of `TypedDataMeaning` (Permit,
-  Permit2, CoW) stay authoritative. A descriptor never replaces one; it covers
-  the structs that have none.
+  depth 3, only when its callee passes A4's steps itself, at the same block
+  as its parent. Otherwise it stays raw inside its parent, with its reason.
+  An approval is flagged at every depth: an `approve` or a Permit2 grant
+  inside a batch is still an approval.
+- **The hand-written decoders take precedence, by type.** Where one claims a
+  struct type (`encodeType`) or a selector, its answer stands, "not decoded"
+  included: `TypedDataMeaning` (Permit, Permit2, CoW; a GPv2 order with a
+  fee is left undecoded on purpose), ERC-20 `transfer` and `approve`
+  (`Erc20`), the swap reads of SwapRouter02, and Safe's own methods. A
+  descriptor covers only the types and selectors none of them claims.
 
 ### A4. `:data`: the binding check and the resource
 
 A descriptor applies only when every step holds; otherwise it fails closed:
 
-1. The chain id is the request's network.
-2. `to` is a pinned deployment on that network.
-3. The code at `to`, read with `VerifiedReads.getCode` at the verified head,
-   hashes to the pinned hash. For a proxy, its EIP-1967 implementation slot,
-   read with `getStorageAt`, holds the pinned implementation, and that
-   implementation's code hashes to its pinned hash.
+1. The chain id is the request's network. For typed data, the domain's
+   `chainId` must be present and be that network.
+2. `to`, or for typed data the domain's `verifyingContract`, is a pinned
+   deployment on that network. A domain without `verifyingContract` has no
+   code to bind to; a domain without `chainId` could be verified on another
+   chain. Each is not covered, with its reason.
+3. The code at that address, read with `VerifiedReads.getCode` at the
+   verified head, hashes to the pinned hash. Where its code can change
+   (A1, step 4), the pinned pointer (a slot read with `getStorageAt`, or a
+   verified call) holds the pinned implementation, whose code hashes to its
+   own pin. Every read of one check is at one block.
 4. The selector, or the typed data's `encodeType` hash and domain, matches a
    format.
 
@@ -199,19 +229,21 @@ through the existing Myotis adapter; nothing new crosses `io.myotis.api`.
 - **D6, a dApp's `eth_sendTransaction`** (docs/walletconnect.md): the intent
   on top, then the fields in the descriptor's order, then "Other
   parameters"; the verified simulation stays below; approvals flagged loudly.
-- **D5, a dApp's `eth_signTypedData_v4`**: the structs the hand-written
-  decoders do not know.
+- **D5, a dApp's `eth_signTypedData_v4`**: the struct types no
+  hand-written decoder claims.
 - **Safe transactions** (docs/wallet-ux.md, screen 17, and a dApp's Safe
   transaction): the inner call formatted; the `safeTxHash` still shown in
   full, to compare with a hardware signer's screen. The Safe refusals come
-  first. Each call inside a MultiSendCallOnly batch gets its own line once
-  #57 is built; until then every delegate call stays refused, and a delegate
-  call to MultiSend itself stays refused after it too.
+  first. How it is applied, not part of the decisions: each call inside a
+  MultiSendCallOnly batch gets its own line once #57 is built; until then
+  every delegate call stays refused, and a delegate call to MultiSend
+  itself stays refused after it too.
 - **Previews** for every state: described; described with other parameters;
   nested; not covered, one per reason; contract changed; an unlisted token in
-  a `tokenAmount`; and the dark theme. Simple mode keeps the intent, the
-  fields and a short "Described by <owner>" line; only the attestation's
-  detail is left to the detailed view.
+  a `tokenAmount`; and the dark theme. How it is applied, not part of the
+  decisions: simple mode keeps the intent, the fields and a short
+  "Described by <name>" line; the attestation and the raw values beside the
+  formatted ones are left to the detailed view.
 
 ## Delivery
 

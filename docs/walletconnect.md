@@ -490,12 +490,16 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     request is refused.
   - A token is named by the built-in list (its pinned symbol and decimals);
     any other is shown by its address, its amount in raw units.
-- A struct no hand-written decoder knows is clear-signed where a built-in
-  ERC-7730 descriptor covers its `encodeType` and domain, bound to the
-  verifying contract's verified code (owner's decisions, 2026-11-25, #240;
-  docs/clear-signing.md). The descriptor's intent and labels are shown as its
-  claim; every field it does not show is listed under "Other parameters". It
-  never replaces the decoders above.
+- A struct type no hand-written decoder claims is clear-signed where a
+  built-in ERC-7730 descriptor covers its `encodeType`, and the domain names
+  a `chainId` that is the account's network and a `verifyingContract` whose
+  verified code matches its pin (owner's decisions, 2026-11-25, #240;
+  docs/clear-signing.md). A domain without either is not covered. The
+  descriptor's intent, labels and formatting are shown as its claim; every
+  field it does not show is listed under "Other parameters"; a token is
+  named by the built-in list alone, as above. Where a decoder above claims
+  the type, its answer stands, "not decoded" included: a GPv2 order with a
+  fee is never handed to a descriptor.
 - Any other struct is shown field by field and marked as not decoded, with a
   warning that the app cannot say what signing it lets someone do.
 - The domain is shown too, and every field of the message, decoded or not.
@@ -529,8 +533,9 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   - the recipient, the value, and the calldata decoded for the ABIs the app
     knows (ERC-20 `transfer` and `approve`, Safe's own methods, the Uniswap
     calls it already builds);
-  - for a call to a contract a built-in ERC-7730 descriptor covers, bound to
-    its verified code, its intent on top and its fields in the descriptor's
+  - for any other call to a contract a built-in ERC-7730 descriptor covers
+    (the ABIs above take precedence by selector), bound to its verified
+    code, its intent on top and its fields in the descriptor's
     order, then "Other parameters" with every parameter it does not show; the
     intent and labels as the descriptor's claim, the values as what is
     signed; an approval flagged whatever its description (owner's decisions,

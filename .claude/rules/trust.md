@@ -381,37 +381,49 @@ fails the call.
   an app-private file, out of backups and device transfers, never logged,
   and not under the wallet password.
 
-## A clear-signed line: the values proven, the words the descriptor's claim
+## A clear-signed line: the raw values proven, the rest the descriptor's claim
 
-(Owner's decisions, 2026-11-25, #240; docs/clear-signing.md, *What a
-clear-signed line proves*.)
+(Owner's decisions, 2026-11-25, #240: built in, bound to code, a contract
+changed after the release not decoded, reviewed in our PR;
+docs/clear-signing.md, *What a clear-signed line proves*.)
 
 - **Bound to verified code.** A built-in descriptor applies only when the
-  request's network is the pin's, `to` is a pinned deployment, the code at
-  `to`, read with a verified `getCode` at the verified head, hashes to the
-  pinned hash, and for a proxy its EIP-1967 slot holds the pinned
-  implementation, whose code hashes to its own pin. ERC-7730 itself binds by
-  address alone; that was declined.
+  request's network is the pin's, its `to` (for typed data, the domain's
+  `verifyingContract`, with a `chainId` that is the network) is a pinned
+  deployment, and the code there, read with a verified `getCode` at the
+  verified head, hashes to the pinned hash. Where that code can change (a
+  proxy's slot, a forwarding call), the pinned pointer holds the pinned
+  implementation, whose code hashes to its own pin, all read at one block.
+  ERC-7730 itself binds by address alone; that was declined.
 - **A contract changed after the release is not decoded**, and the review
   says why, until a release moves the pin. Any other failed step is not
   decoded either, with its reason. Never a partial display.
-- **The values are what is signed**, decoded here from the exact bytes, the
-  ABI strictly (lengths and offsets checked, no trailing bytes).
-- **The words are the descriptor's claim**: its intent and labels shown as
-  described by its owner, reviewed for this release, with an auditor's
-  attestation where one exists. Simple mode keeps that label too.
+- **A nested call is bound the same way**: its callee passes every step
+  itself, or the call stays raw inside its parent.
+- **The raw values are what is signed**, decoded here from the exact bytes,
+  the ABI strictly (lengths and offsets checked, no trailing bytes).
+- **The words and the formatting are the descriptor's claim**: its intent,
+  its labels, its owner's name (stated in the file, not proven), and how a
+  value is formatted (the token an amount is in, a unit, an enum's names, a
+  date's encoding). Shown as described, reviewed for this release, with an
+  auditor's attestation where one exists.
 - **A descriptor hides nothing.** Every parameter no field shows, and every
   field it marks as not visible, is listed raw under "Other parameters".
-- **An unlisted token's own symbol is never shown as real**: a token
-  neither built in nor added by the user shows its amount raw, with its
-  address.
-- **The hand-written decoders stay authoritative** (`TypedDataMeaning`'s
-  Permit, Permit2 and CoW, Safe's own methods). A descriptor never replaces
-  one.
 - **The refusals come first.** Every Safe refusal (`SafeTxRefusal`;
   docs/wallet-ux.md, screen 17), those above among them, holds whatever a
   descriptor says, and an approval is flagged loudly whatever its
-  description.
+  description, at any depth.
+- How it is applied, not part of the decisions (the owner's to approve on
+  #378):
+  - A formatted value keeps its raw decoded value beside it, in the detailed
+    view at least. Simple mode keeps the "described by" label.
+  - A token outside the built-in list is shown by its address, its amount
+    raw, never by its own symbol, as the dApp review's hand-written decoders
+    do today.
+  - The hand-written decoders take precedence by type: where one claims a
+    struct type or a selector (`TypedDataMeaning`'s Permit, Permit2 and CoW
+    order, `Erc20`'s `transfer` and `approve`, SwapRouter02's swaps, Safe's
+    own methods), its answer stands, "not decoded" included.
 
 ## Send from another wallet signs nothing here
 

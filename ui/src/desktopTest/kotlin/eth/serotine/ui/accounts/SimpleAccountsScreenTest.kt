@@ -82,7 +82,7 @@ class SimpleAccountsScreenTest {
     )
 
     @Test
-    fun eachNetworksAccountsHaveAHeaderSayingItsSyncState() {
+    fun eachNetworksAccountsHaveAHeaderSayingItsSyncStateWhoseTapFoldsThemAway() {
         val gnosis = NetworkLabel.of(Network.GNOSIS)
         val onGnosis =
             main.copy(label = "Card", chainId = gnosis.chainId, network = gnosis, networkLine = "Gnosis Chain")
@@ -114,9 +114,16 @@ class SimpleAccountsScreenTest {
         // The header's words are one heading to a screen reader: its node holds them.
         rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + ethereum.chainId).assert(hasText("Up to date"))
         rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + gnosis.chainId).assert(hasText("Syncing · 3 of 12 periods"))
-        // A tap on a header opens nothing, whatever row lies under it.
+        // A tap on a header folds its network's accounts away, and opens nothing; another brings them back.
         rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + gnosis.chainId).performClick()
         assertEquals(emptyList(), actions)
+        rule.onNodeWithText("Card").assertDoesNotExist()
+        rule.onNodeWithText("Main").assertExists()
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + gnosis.chainId)
+            .assert(hasText("Gnosis Chain · 1 account"))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + gnosis.chainId).performClick()
+        rule.onNodeWithText("Card").assertExists()
     }
 
     @Test

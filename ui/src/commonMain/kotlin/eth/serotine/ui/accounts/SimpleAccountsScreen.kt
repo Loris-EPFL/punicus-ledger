@@ -1,21 +1,18 @@
 package eth.serotine.ui.accounts
 
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.layout.Row
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.heading
-import eth.serotine.ui.components.NetworkIcon
-import eth.serotine.ui.components.LightClientHealthDot
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,16 +35,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.HideAmountsButton
+import eth.serotine.ui.components.LightClientHealthDot
 import eth.serotine.ui.components.NameWithControlBadge
+import eth.serotine.ui.components.NetworkIcon
 import eth.serotine.ui.components.StaleAnchorBanner
 import eth.serotine.ui.components.StaleAnchorQuestion
 import eth.serotine.ui.components.StaleAnchorWarning
@@ -218,6 +222,9 @@ private fun SimpleAccountList(
     onDismissLost: () -> Unit,
     onUnavailable: (UnavailableNotice) -> Unit,
 ) {
+    // The networks whose accounts are folded away under their header: kept while the screen is, back from an account
+    // included.
+    var collapsed by rememberSaveable { mutableStateOf(listOf<Long>()) }
     LazyColumn(Modifier.fillMaxSize().testTag(ACCOUNTS_LIST_TAG)) {
         items(state.upgrades) { UpgradeBanner(it) }
         state.lostNotice?.let { lost -> item(key = "lost") { LostQueuedNotice(lost, onDismissLost) } }
@@ -241,10 +248,16 @@ private fun SimpleAccountList(
                 textAlign = TextAlign.Center,
             )
         }
-        // Each network's accounts under its header, which says its sync state and stays on top while they scroll
-        // (owner's request, 2026-11-25).
+        // Each network's accounts under its header, which says its sync state and stays on top while they scroll; a
+        // tap on it folds them away and back (owner's requests, 2026-11-25).
         state.sections.filter { it.accounts.isNotEmpty() }.forEach { section ->
-            stickyHeader(key = "network/${section.chainId}") { NetworkHeader(section) }
+            val folded = section.chainId in collapsed
+            stickyHeader(key = "network/${section.chainId}") {
+                NetworkHeader(section, folded) {
+                    collapsed = if (folded) collapsed - section.chainId else collapsed + section.chainId
+                }
+            }
+            if (folded) return@forEach
             items(section.accounts, key = { "${it.chainId}/${it.address}" }) { account ->
                 val shown = selected?.matches(account) == true
                 WithActionMenu(
@@ -266,23 +279,30 @@ private fun SimpleAccountList(
 /**
  * The header of a network's accounts: its icon and name, and its sync state in a few words beside a dot of its
  * colour ([NetworkSection.simpleStatus], [NetworkSection.simpleHealth]); the words say it, the colour never alone.
- * Opaque, in the screen's background colour, since the accounts scroll under it.
+ * A tap folds its accounts away, or back ([onToggle]); [folded], it says how many it hides, and its arrow points to
+ * the side. Opaque, in the screen's background colour, since the accounts scroll under it, and the tap is its own.
  */
 @Composable
-private fun NetworkHeader(section: NetworkSection) {
+private fun NetworkHeader(section: NetworkSection, folded: Boolean, onToggle: () -> Unit) {
+    val count = section.accounts.size
     Row(
         Modifier.fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)
-            // Opaque to a tap too: without it, the hit test goes on to the account row scrolled under the header.
-            .pointerInput(Unit) {}
-            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
+            .clickable(
+                onClickLabel = if (folded) "Show ${section.name}'s accounts" else "Hide ${section.name}'s accounts",
+                onClick = onToggle,
+            )
+            .padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)
             .testTag(ACCOUNTS_NETWORK_HEADER_TAG + section.chainId)
-            .semantics(mergeDescendants = true) { heading() },
+            .semantics(mergeDescendants = true) {
+                heading()
+                stateDescription = if (folded) "Collapsed" else "Expanded"
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         NetworkIcon(section.network)
         Text(
-            section.name,
+            if (folded) "${section.name} · ${if (count == 1) "1 account" else "$count accounts"}" else section.name,
             Modifier.padding(start = 8.dp).weight(1f),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.primary,
@@ -293,6 +313,12 @@ private fun NetworkHeader(section: NetworkSection) {
             Modifier.padding(start = 6.dp),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Icon(
+            Icons.Filled.ArrowDropDown,
+            contentDescription = null,
+            Modifier.padding(start = 4.dp).rotate(if (folded) -90f else 0f),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

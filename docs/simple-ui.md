@@ -186,7 +186,11 @@ change what it trusts.
   mockups): the network's icon and name, and its sync state in a few words
   beside a dot of its colour ("Up to date", "Syncing · 3 of 12 periods",
   "Paused in the background", "Checkpoint too old", "Needs an update",
-  "Off"). It stays on top while its accounts scroll under it. In lenient mode, under the freshness line, what
+  "Off"). It stays on top while its accounts scroll under it. A tap on it
+  folds its accounts away, the header then saying how many it hides
+  ("Gnosis Chain · 2 accounts"), and another brings them back (owner's
+  request, 2026-11-25); the screen keeps what is folded while it is shown,
+  back from an account included. In lenient mode, under the freshness line, what
   each network has queued ("Ethereum: 1 waiting to send · Keep Punicus
   open to send it sooner."; "1 needs your signature again"), and once, a
   notice that a queued transaction was lost, with Dismiss, as in Detailed

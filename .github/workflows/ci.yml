@@ -80,6 +80,24 @@ jobs:
       - name: Test the PR scope rules
         run: python3 -I scripts/test_pr_scope.py
 
+      # The built-in clear-signing catalog (data/.../clearsigning/ClearSigningCatalog.kt) is GENERATED from the
+      # ERC-7730 descriptors vendored under scripts/clear-signing/registry/, each pinned by its sha256, and the
+      # curated list with its code hashes (scripts/clear-signing/contracts.json; docs/clear-signing.md, A1).
+      # Its tests first, then the generator, which refuses a moved pin or anything the runtime does not
+      # implement; then the drift gate, as for the icons below. Standard-library Python, seconds.
+      - name: Verify the clear-signing catalog
+        run: |
+          python3 -I scripts/clear-signing/test_generate.py
+          python3 -I scripts/clear-signing/generate.py
+          out="data/src/commonMain/kotlin/eth/serotine/data/clearsigning"
+          git diff --exit-code -- $out \
+            && test -z "$(git status --porcelain -- $out)" || {
+            git status --porcelain -- $out
+            echo "::error::the clear-signing catalog in $out is STALE —" \
+                 "regenerate with \`python3 -I scripts/clear-signing/generate.py\` and commit what it writes."
+            exit 1
+          }
+
       # The Android launcher icon is GENERATED from assets/serotine_logo.svg and committed
       # (android-app/src/main/res: ic_launcher_foreground, ic_launcher_background,
       # mipmap-anydpi-v26/ic_launcher; android-app/src/debug/res: the debug app's recoloured
@@ -151,3 +169,37 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
           overwrite: true
+
+  # The vendored ERC-7730 descriptors against the registry's own checks (docs/clear-signing.md, A1, step 3):
+  # the pinned v2 schema (check-jsonschema, the version the registry's CI pins) and the registry's linter
+  # (its pinned fork of python-erc7730). The app never runs Python; this is CI only. The linter reads
+  # Sourcify's repository to compare each descriptor with the contract's verified ABI, so it needs the
+  # network, and it reports missing formats as warnings, which do not fail the job. Its own job, so that an
+  # outage there does not hold up Build and Test, which is the required check.
+  #
+  # In Python 3.12, pinned by digest: the linter accepts >=3.12,<3.13 only, and the runner's own Python moves.
+  clear-signing:
+    name: Clear-signing descriptors (schema + erc7730 lint)
+    runs-on: ubuntu-latest
+    container: python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+    permissions:
+      contents: read
+    steps:
+      # git, for pip to fetch the linter's pinned commit.
+      - name: Install git
+        run: apt-get -qq update && apt-get -qq install -y --no-install-recommends git ca-certificates >/dev/null
+      # No token left in .git/config: the linter's dependencies are installed by version, not by hash.
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Check the schema and lint
+        working-directory: scripts/clear-signing/registry
+        run: |
+          python3 -m venv /tmp/erc7730
+          /tmp/erc7730/bin/pip install --quiet check-jsonschema==0.38.0 \
+            "erc7730 @ git+https://github.com/sourcifyeth/python-erc7730@ccd51ad544e6625d89564a79258fa4e8d0846cce"
+          descriptors=$(find registry -name 'calldata-*.json' -o -name 'eip712-*.json' -o -name 'common-*.json' \
+                        | grep -v -e /testsv2/ -e /sigs/ | sort)
+          /tmp/erc7730/bin/check-jsonschema --schemafile specs/erc7730-v2.schema.json $descriptors
+          /tmp/erc7730/bin/erc7730 lint $(echo "$descriptors" | grep -v /common-)

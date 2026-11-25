@@ -58,6 +58,26 @@ A Myotis release is published to its `maven-repo` branch. Moving the
 `eth.myotis:myotis-engine` version is a dependency change like any other. It
 goes through the release PR when the owner wants it in the release.
 
+## 3b. Refresh the clear-signing descriptors. MANDATORY, not a question
+
+(Owner's decision, 2026-11-25, #240, question 5: "a step of every release PR";
+docs/clear-signing.md, *A1*.) In the release PR:
+
+1. Move `REGISTRY_COMMIT` in `scripts/clear-signing/generate.py` to the
+   registry's current head, and run `python3 -I scripts/clear-signing/fetch.py`.
+2. `python3 -I scripts/clear-signing/generate.py --print-pins` gives the new
+   `PINNED`. Read the diff of every vendored file that moved: a descriptor is
+   reviewed in our PR (decision 3), its words as much as its paths.
+3. Start a `myotis-rpcd` per network (Ethereum, Gnosis Chain, Sepolia) and run
+   `python3 -I scripts/clear-signing/pin_code_hashes.py ETHEREUM=… GNOSIS=…
+   SEPOLIA=…`. A moved code hash or implementation is a contract changed since
+   the last release: say which, and why the new code may be described the same.
+4. `python3 -I scripts/clear-signing/generate.py`, then commit what it writes.
+   A refusal is fixed or the deployment is taken off the list, never ignored.
+
+The release PR's description lists what moved, or says "the clear-signing
+descriptors are unchanged".
+
 ## 4. The Android release key
 
 `sign-release` (android-apk.yml) signs the release APK on the tag with the

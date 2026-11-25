@@ -11,7 +11,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | Screen | Folder | States |
 |---|---|---|
 | [Account detail](#account-detail) | `account-detail/` | 74 |
-| [Accounts](#accounts) | `accounts/` | 41 |
+| [Accounts](#accounts) | `accounts/` | 42 |
 | [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 5 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 15 |
 | [Add on networks (dialog)](#add-on-networks-dialog) | `add-on-networks-dialog/` | 5 |
@@ -155,7 +155,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="accounts"></a>
 ## Accounts
 
-`accounts/`, 41 states: `accounts`, `accounts-dark`, `catching-up`, `head-too-old`, `head-too-old-dark`, `no-accounts`, `no-accounts-syncing`, `no-accounts-syncing-dark`, `no-accounts-stale-anchor`, `create-safe-greyed-out`, `create-safe-reason`, `send-reason`, `loading`, `loading-create-safe-greyed-out`, `list-set-aside`, `upgrade-ahead`, `upgrade-activated-dark`, `list-unavailable`, `catching-up-dark`, `narrow`, `ens-names`, `three-networks`, `three-networks-dark`, `one-network-catching-up`, `network-off`, `network-off-dark`, `send-needs-network`, `network-blocked`, `no-rate-on-a-network`, `network-blocked-dark`, `stale-anchor`, `stale-anchor-dark`, `stale-anchor-dialog`, `stale-anchor-fetching`, `stale-anchor-unconfirmed`, `stale-anchor-refused`, `hidden`, `hidden-dark`, `queued`, `queued-dark`, `lost-queued`
+`accounts/`, 42 states: `accounts`, `accounts-dark`, `catching-up`, `head-too-old`, `head-too-old-dark`, `no-accounts`, `no-accounts-syncing`, `no-accounts-syncing-dark`, `no-accounts-stale-anchor`, `create-safe-greyed-out`, `create-safe-reason`, `send-reason`, `derive-bare-key-reason`, `loading`, `loading-create-safe-greyed-out`, `list-set-aside`, `upgrade-ahead`, `upgrade-activated-dark`, `list-unavailable`, `catching-up-dark`, `narrow`, `ens-names`, `three-networks`, `three-networks-dark`, `one-network-catching-up`, `network-off`, `network-off-dark`, `send-needs-network`, `network-blocked`, `no-rate-on-a-network`, `network-blocked-dark`, `stale-anchor`, `stale-anchor-dark`, `stale-anchor-dialog`, `stale-anchor-fetching`, `stale-anchor-unconfirmed`, `stale-anchor-refused`, `hidden`, `hidden-dark`, `queued`, `queued-dark`, `lost-queued`
 
 <a href="accounts/accounts.png"><img src="accounts/accounts.png" width="206" alt="accounts"></a>
 <a href="accounts/accounts-dark.png"><img src="accounts/accounts-dark.png" width="206" alt="accounts-dark"></a>
@@ -169,6 +169,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="accounts/create-safe-greyed-out.png"><img src="accounts/create-safe-greyed-out.png" width="206" alt="create-safe-greyed-out"></a>
 <a href="accounts/create-safe-reason.png"><img src="accounts/create-safe-reason.png" width="206" alt="create-safe-reason"></a>
 <a href="accounts/send-reason.png"><img src="accounts/send-reason.png" width="206" alt="send-reason"></a>
+<a href="accounts/derive-bare-key-reason.png"><img src="accounts/derive-bare-key-reason.png" width="206" alt="derive-bare-key-reason"></a>
 <a href="accounts/loading.png"><img src="accounts/loading.png" width="206" alt="loading"></a>
 <a href="accounts/loading-create-safe-greyed-out.png"><img src="accounts/loading-create-safe-greyed-out.png" width="206" alt="loading-create-safe-greyed-out"></a>
 <a href="accounts/list-set-aside.png"><img src="accounts/list-set-aside.png" width="206" alt="list-set-aside"></a>

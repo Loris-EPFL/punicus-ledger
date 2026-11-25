@@ -57,6 +57,16 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import eth.serotine.domain.model.AbiFunction
+import eth.serotine.domain.model.ClearSigningDeployment
+import eth.serotine.domain.model.ClearSigningDescriptor
+import eth.serotine.domain.model.ClearSigningField
+import eth.serotine.domain.model.ClearSigningFormat
+import eth.serotine.domain.model.ClearSigningPath
+import eth.serotine.domain.model.CodePin
+import eth.serotine.domain.model.FieldFormat
+import eth.serotine.domain.model.NotCoveredReason
+import eth.serotine.domain.model.Visibility
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -106,12 +116,32 @@ class DappTransactionViewModelTest {
 
     private val payment = DappTransactionRequest(held.address, recipient, UInt256.of("500000000000000000"), ByteArray(0), null)
 
+    private val weth = Address.of("0x" + "77".repeat(20))
+    private val wrapping = ClearSigningDeployment(
+        Network.SEPOLIA, "WETH", weth, "0x" + "11".repeat(32), CodePin.Fixed,
+        listOf(
+            ClearSigningDescriptor(
+                source = "test", sha256 = "00", owner = "WETH", kind = ClearSigningDescriptor.Kind.CALLDATA,
+                domainName = null, domainVersion = null, enums = emptyMap(),
+                formats = listOf(
+                    ClearSigningFormat(
+                        key = "deposit()", function = AbiFunction.parse("deposit()"), selector = "0xd0e30db0",
+                        encodeType = null, typeHash = null, primaryType = null, intent = "Wrap", interpolatedIntent = null,
+                        fields = listOf(ClearSigningField(ClearSigningPath.parse("@.value"), "Amount", FieldFormat.Amount, Visibility.Shown)),
+                    ),
+                ),
+            ),
+        ),
+    )
+    private var deployments: Array<ClearSigningDeployment> = emptyArray()
+
     private fun TestScope.viewModel(id: Long = 1): DappTransactionViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val catalog = FakeTokenCatalog(usdc)
         val vm = DappTransactionViewModel(
             "t/$id",
             ObserveDappMessages(requests, accounts, networks, catalog, MemoryAliases(), clock = { now }),
+            describing(catalog, *deployments),
             QuoteDappTransaction(
                 requests, accounts, networks, catalog, balances, inputs, sent, history, Outbox.None, clock = { now },
             ),
@@ -152,6 +182,37 @@ class DappTransactionViewModelTest {
         assertEquals(listOf("correct horse"), signer.passwords)
         assertEquals(request(1, payment).id, requests.hashes.single().first)
         assertTrue(vm.uiState.value.done)
+    }
+
+    @Test
+    fun aCallTheAppDoesNotDecodeIsDescribedByItsBuiltInDescriptor() = runTest {
+        deployments = arrayOf(wrapping)
+        val deposit = DappTransactionRequest(held.address, weth, UInt256.of("500000000000000000"), byteArrayOf(-48, -29, 13, -80), null)
+        requests.waiting.value = listOf(request(1, deposit))
+        val state = viewModel().uiState.value
+        val described = assertNotNull(state.described)
+        assertEquals("Wrap", described.intent)
+        assertTrue(described.describedBy.startsWith("Described by WETH, as the descriptor states"))
+        assertEquals(listOf(ClearSignedRow(0, "Amount", "0.5 ETH", raw = "500000000000000000", note = null)), described.rows)
+        assertFalse(DappTransactionViewModel.NOT_DECODED in state.warnings, "described, so no longer 'not decoded'")
+        assertFalse(state.describing)
+    }
+
+    @Test
+    fun aCallNoDescriptorCoversStaysNotDecoded() = runTest {
+        val deposit = DappTransactionRequest(held.address, weth, UInt256.ZERO, byteArrayOf(-48, -29, 13, -80), null)
+        requests.waiting.value = listOf(request(1, deposit))
+        val state = viewModel().uiState.value
+        assertNull(state.described)
+        assertNull(state.notDescribed)
+        assertTrue(DappTransactionViewModel.NOT_DECODED in state.warnings)
+    }
+
+    @Test
+    fun aContractChangedSinceTheReleaseSaysSo() {
+        assertEquals(DappTransactionViewModel.CONTRACT_CHANGED, DappTransactionViewModel.notDescribedLine(NotCoveredReason.ContractChanged))
+        assertEquals(DappTransactionViewModel.CODE_NOT_CHECKED, DappTransactionViewModel.notDescribedLine(NotCoveredReason.CodeNotProven))
+        assertNull(DappTransactionViewModel.notDescribedLine(NotCoveredReason.NoDescriptor))
     }
 
     @Test

@@ -182,9 +182,27 @@ fun DappTransactionScreen(
             Heading("What it does")
             state.meaning?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
             state.meaningFields.forEach { Field(it) }
+            if (state.describing) {
+                Row(
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("Looking it up in the built-in descriptions and checking the contract's code…")
+                }
+            }
+            state.described?.let { Described(it) }
+            state.notDescribed?.let {
+                Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.error)
+            }
             state.dataHex?.let { hex ->
                 Text(
-                    "Call data (${state.dataSize})" + if (state.meaning == null) ", not decoded" else "",
+                    "Call data (${state.dataSize})" + when {
+                        state.described != null -> ", as described above"
+                        state.meaning == null -> ", not decoded"
+                        else -> ""
+                    },
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -283,6 +301,55 @@ fun DappTransactionScreen(
                         "Refuse",
                         color = if (state.refuseUnavailable) Unavailable.contentColor() else Color.Unspecified,
                     )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A call in a built-in descriptor's words (docs/clear-signing.md, A5): its intent, whose words they are, each
+ * value with its raw form where that differs, nested calls indented, and every other parameter, raw.
+ */
+@Composable
+private fun Described(section: ClearSignedSection) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Text(section.intent, style = MaterialTheme.typography.titleMedium)
+        Text(
+            section.describedBy,
+            Modifier.padding(top = 2.dp, bottom = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    section.rows.forEach { row ->
+        Column(Modifier.padding(start = 16.dp + 16.dp * row.level, end = 16.dp, top = 4.dp, bottom = 4.dp)) {
+            Text(row.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SelectionContainer { Text(row.value) }
+            row.raw?.let {
+                SelectionContainer {
+                    Text(
+                        "Raw: $it",
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            row.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        }
+    }
+    if (section.otherParameters.isNotEmpty()) {
+        Text(
+            "Other parameters, which the description does not show",
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 2.dp),
+            style = MaterialTheme.typography.labelMedium,
+        )
+        section.otherParameters.forEach { parameter ->
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+                Text(parameter.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SelectionContainer {
+                    Text(parameter.value, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

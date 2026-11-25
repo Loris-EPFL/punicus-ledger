@@ -21,6 +21,7 @@ import eth.serotine.android.widget.RateRefreshJob
 import eth.serotine.android.widget.RateWidget
 import eth.serotine.android.widget.RateWidgetPairs
 import eth.serotine.data.account.FileAccountRepository
+import eth.serotine.data.clearsigning.BuiltInClearSigningCatalog
 import eth.serotine.data.cow.FileCowOrders
 import eth.serotine.data.cow.HttpCowApi
 import eth.serotine.data.engine.AndroidDnsServers
@@ -498,6 +499,8 @@ class SerotineApplication : Application() {
             safeReleases = PinnedSafeReleases(),
             // Uniswap v3 on each network that has it pinned, its contracts proven by their code before any quote.
             uniswap = node.uniswap,
+            clearSigningCatalog = BuiltInClearSigningCatalog(),
+            contractCodes = node.contractCodes,
             // CoW Protocol: its pinned contracts proven by their code, and its order API, an off-chain
             // service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*).
             cowChain = node.cow,

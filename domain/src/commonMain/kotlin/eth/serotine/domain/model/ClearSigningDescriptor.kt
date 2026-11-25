@@ -53,7 +53,8 @@ data class ClearSigningFormat(
 
 /**
  * One field of a format: a [path] into the call or the message with its [label], [format] and [visibility];
- * or a group of [children] without a path of its own.
+ * or a group of [children] without a path of its own, its [label] shown over them, its items gone through
+ * as [iteration] says.
  */
 data class ClearSigningField(
     val path: ClearSigningPath?,
@@ -61,7 +62,17 @@ data class ClearSigningField(
     val format: FieldFormat?,
     val visibility: Visibility,
     val children: List<ClearSigningField> = emptyList(),
-)
+    val iteration: Iteration = Iteration.SEQUENTIAL,
+) {
+    /** How a group goes through its children's arrays (ERC-7730's `iteration`). */
+    enum class Iteration {
+        /** Each child over all its items, one child after the other. */
+        SEQUENTIAL,
+
+        /** Item by item: every child's first item, then every child's second; arrays of one length only. */
+        BUNDLED,
+    }
+}
 
 /** Whether a field is shown (ERC-7730's `visible`). A hidden field's value is still listed under "Other parameters". */
 sealed interface Visibility {
@@ -99,8 +110,12 @@ sealed interface FieldFormat {
         val message: String?,
     ) : FieldFormat
 
-    /** An address, by the wallet's name for it where it has one; one of [senderAddress] stands for the sender. */
-    data class AddressName(val senderAddress: Set<Address>) : FieldFormat
+    /**
+     * An address, by the wallet's name for it where [sources] allow one (`local`: the wallet's own names;
+     * ENS is not looked up); one of [senderAddress] stands for the sender. [types] is the kind of account the
+     * descriptor expects (`eoa`, `contract`, …), which the lookup holds the address against.
+     */
+    data class AddressName(val senderAddress: Set<Address>, val types: Set<String>, val sources: Set<String>) : FieldFormat
 
     /** A point in time: a Unix timestamp, or a block height when [blockHeight]. */
     data class Date(val blockHeight: Boolean) : FieldFormat

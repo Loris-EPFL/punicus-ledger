@@ -29,15 +29,22 @@ sealed interface ClearSignedField {
     /** The descriptor's [label]. */
     val label: String
 
+    /** The label of the group it is shown under, or null. */
+    val group: String?
+
     /**
-     * A value: [shown] as the descriptor formats it, [raw] as decoded. [notInTokenList] is the token of a
-     * `tokenAmount` that is not in the built-in list, whose amount is then shown raw with its address.
+     * A value: [shown] as the descriptor formats it, [raw] as decoded. [unlisted] is a token (of a
+     * `tokenAmount`) or an NFT collection (of an `nftName`) that is not a built-in one: shown by its address,
+     * never by the name its own contract gives it. [addressType] is set when an `addressName`'s address is
+     * not of the kind the descriptor expects.
      */
     data class Value(
         override val label: String,
         val shown: String,
         val raw: String,
-        val notInTokenList: Address? = null,
+        val unlisted: Address? = null,
+        override val group: String? = null,
+        val addressType: AddressTypeMismatch? = null,
     ) : ClearSignedField
 
     /**
@@ -50,8 +57,12 @@ sealed interface ClearSignedField {
         val data: String,
         val result: ClearSignResult,
         val grantsApproval: Boolean,
+        override val group: String? = null,
     ) : ClearSignedField
 }
+
+/** An `addressName` whose address is [actual], where the descriptor expects one of [expected]. */
+data class AddressTypeMismatch(val expected: Set<String>, val actual: String)
 
 /** A parameter no field shows: its [location] in the call or the message, and its [raw] value. */
 data class OtherParameter(val location: String, val raw: String)
@@ -82,8 +93,11 @@ sealed interface NotCoveredReason {
     /** A value its enum has no name for, at [label]. */
     data class UnknownEnumValue(val label: String) : NotCoveredReason
 
-    /** Calls nested deeper than [ClearSignFormatter.MAX_DEPTH]. */
+    /** Calls nested deeper than [ClearSignFormatter.MAX_DEPTH]: not read, so not described at all. */
     data object TooDeep : NotCoveredReason
+
+    /** A group goes through its arrays item by item (`bundled`), and they are not of one length, at [label]. */
+    data class UnequalArrays(val label: String?) : NotCoveredReason
 
     /** The contract's code, or its proxy's implementation, is not what this release pinned. */
     data object ContractChanged : NotCoveredReason
@@ -112,14 +126,24 @@ interface ClearSigningLookups {
     /** The wallet's name for [address] (an account, a built-in token, a pinned contract), or null. */
     fun addressName(network: Network, address: Address): String?
 
-    /** An NFT collection's `name()` read in a verified call, or null. */
-    suspend fun collectionName(network: Network, collection: Address): String?
+    /**
+     * The kind of account [address] is, as a verified read finds it (`eoa`, `contract`, …), or null when it
+     * cannot be told: held against an `addressName`'s expected types.
+     */
+    suspend fun addressKind(network: Network, address: Address): String?
 
     /**
-     * A call nested at [depth] to [callee] with [data] and [value], formatted with the callee's own built-in
-     * descriptor after its binding check, at the same block as its parent (A3, *A nested call*).
+     * A built-in NFT collection's name (`.claude/rules/data-sources.md`, *An account's NFTs*), or null for any
+     * other: a collection's own `name()` is never shown as if it were real.
      */
-    suspend fun nested(network: Network, from: Address, callee: Address, value: UInt256, data: ByteArray, depth: Int): ClearSignResult
+    fun builtInCollectionName(network: Network, collection: Address): String?
+
+    /**
+     * A call nested at [depth] to [callee] with [data], sent by [from] with [value] (null when the bytes do not
+     * say: the parent calling out), formatted with the callee's own built-in descriptor after its binding check,
+     * at the same block as its parent (A3, *A nested call*).
+     */
+    suspend fun nested(network: Network, from: Address, callee: Address, value: UInt256?, data: ByteArray, depth: Int): ClearSignResult
 }
 
 /**
@@ -132,16 +156,22 @@ object ClearSignFormatter {
     /** The deepest a nested call is formatted. */
     const val MAX_DEPTH = 3
 
-    /** [data] sent from [from] to [to] with [value] on [network], as [descriptor] (a calldata one) describes it. */
+    /**
+     * [data] sent from [from] to [to] with [value] (null when unknown, as for a call a contract makes) on
+     * [network], as [descriptor] (a calldata one) describes it. [delegatesToItself] is the deployment's
+     * reviewed declaration that it runs a call into its own address by DELEGATECALL (a multicall), so that
+     * such a nested call keeps the user's sender and value.
+     */
     suspend fun formatCall(
         descriptor: ClearSigningDescriptor,
         network: Network,
         from: Address,
         to: Address,
-        value: UInt256,
+        value: UInt256?,
         data: ByteArray,
         lookups: ClearSigningLookups,
         depth: Int = 0,
+        delegatesToItself: Boolean = false,
     ): ClearSignResult {
         if (depth > MAX_DEPTH) return ClearSignResult.NotCovered(NotCoveredReason.TooDeep)
         if (data.size < SELECTOR) return ClearSignResult.NotCovered(NotCoveredReason.TooShort)
@@ -153,15 +183,15 @@ object ClearSignFormatter {
             ?: return ClearSignResult.NotCovered(NotCoveredReason.NotDecodable)
         val values = ClearSigningValues(
             arguments,
-            mapOf(
-                "from" to AbiValue.AddressValue(from),
-                "to" to AbiValue.AddressValue(to),
-                "value" to AbiValue.UintValue(value, 256),
-                "chainId" to AbiValue.UintValue(UInt256.of(network.chainId), 256),
-            ),
+            buildMap {
+                put("from", AbiValue.AddressValue(from))
+                put("to", AbiValue.AddressValue(to))
+                value?.let { put("value", AbiValue.UintValue(it, 256)) }
+                put("chainId", AbiValue.UintValue(UInt256.of(network.chainId), 256))
+            },
         )
-        val approval = selector in APPROVAL_SELECTORS
-        return Rendering(descriptor, format, values, network, from, to, lookups, depth).render(approval)
+        return Rendering(descriptor, format, values, network, from, to, value, lookups, depth, delegatesToItself)
+            .render(grantsApproval(data))
     }
 
     /**
@@ -201,8 +231,8 @@ object ClearSignFormatter {
                 "chainId" to AbiValue.UintValue(UInt256.of(network.chainId), 256),
             ),
         )
-        val approval = data.primaryType in APPROVAL_TYPES
-        return Rendering(descriptor, format, values, network, signer, verifier, lookups, 0).render(approval)
+        return Rendering(descriptor, format, values, network, signer, verifier, null, lookups, 0, false)
+            .render(grantsApproval(data))
     }
 
     private class Refusal(val reason: NotCoveredReason) : Exception()
@@ -214,10 +244,11 @@ object ClearSignFormatter {
         val network: Network,
         val from: Address,
         val to: Address,
+        val callValue: UInt256?,
         val lookups: ClearSigningLookups,
         val depth: Int,
+        val delegatesToItself: Boolean,
     ) {
-        val callValue: UInt256 = (values.container["value"] as? AbiValue.UintValue)?.value ?: UInt256.ZERO
         val fields = mutableListOf<ClearSignedField>()
         val shownAt = mutableMapOf<String, String>()
         val covered = mutableSetOf<String>()
@@ -225,7 +256,7 @@ object ClearSignFormatter {
 
         suspend fun render(grantsApproval: Boolean): ClearSignResult = try {
             approval = grantsApproval
-            for (field in format.fields) field(field)
+            for (field in format.fields) field(field, group = null)
             ClearSignResult.ClearSigned(
                 owner = descriptor.owner,
                 attestedBy = descriptor.attestedBy,
@@ -246,39 +277,81 @@ object ClearSignFormatter {
             ClearSignResult.NotCovered(NotCoveredReason.NotDecodable)
         }
 
-        suspend fun field(field: ClearSigningField) {
-            field.children.forEach { field(it) }
-            val path = field.path ?: return
-            val label = field.label ?: return
-            val reached = values.evaluate(path) ?: throw Refusal(NotCoveredReason.PathNotFound(path.toString()))
-            for (at in reached) {
-                val shown = when (val visibility = field.visibility) {
-                    Visibility.Shown -> true
-                    Visibility.Hidden -> false
-                    is Visibility.ShownUnless -> key(at.value) !in visibility.values
-                    is Visibility.MustMatch ->
-                        if (key(at.value) in visibility.values) false
-                        else throw Refusal(NotCoveredReason.ValueOutsideDescriptor(label))
+        suspend fun field(field: ClearSigningField, group: String?) {
+            if (field.children.isNotEmpty()) {
+                val label = field.label ?: group
+                when (field.iteration) {
+                    ClearSigningField.Iteration.SEQUENTIAL -> field.children.forEach { field(it, label) }
+                    ClearSigningField.Iteration.BUNDLED -> bundled(field, label)
                 }
-                if (!shown) continue
-                val shownField = value(label, field.format ?: FieldFormat.Raw, at.value)
-                fields += shownField
-                if (shownField is ClearSignedField.Value && path.toString() !in shownAt) shownAt[path.toString()] = shownField.shown
-                covered += at.location
+                return
             }
+            val path = field.path ?: throw Refusal(NotCoveredReason.NotDecodable)
+            for (at in reach(path)) one(field, path, at, group)
         }
 
-        suspend fun value(label: String, format: FieldFormat, value: AbiValue): ClearSignedField {
+        /** A `bundled` group: each child's first item, then each child's second, its arrays of one length. */
+        suspend fun bundled(group: ClearSigningField, label: String?) {
+            val children = group.children.map { child ->
+                if (child.children.isNotEmpty()) throw Refusal(NotCoveredReason.NotDecodable)
+                val path = child.path ?: throw Refusal(NotCoveredReason.NotDecodable)
+                Triple(child, path, reach(path))
+            }
+            val length = children.map { it.third.size }.distinct().singleOrNull()
+                ?: throw Refusal(NotCoveredReason.UnequalArrays(label))
+            for (i in 0 until length) for ((child, path, reached) in children) one(child, path, reached[i], label)
+        }
+
+        fun reach(path: ClearSigningPath): List<Reached> =
+            values.evaluate(path) ?: throw Refusal(NotCoveredReason.PathNotFound(path.toString()))
+
+        suspend fun one(field: ClearSigningField, path: ClearSigningPath, at: Reached, group: String?) {
+            // Visibility before anything else: a `mustMatch` holds whether or not the field has a label.
+            val shown = when (val visibility = field.visibility) {
+                Visibility.Shown -> true
+                Visibility.Hidden -> false
+                is Visibility.ShownUnless -> key(at.value) !in visibility.values
+                is Visibility.MustMatch ->
+                    if (key(at.value) in visibility.values) false
+                    else throw Refusal(NotCoveredReason.ValueOutsideDescriptor(field.label ?: path.toString()))
+            }
+            if (!shown) return
+            val label = field.label ?: throw Refusal(NotCoveredReason.NotDecodable)
+            val shownField = value(label, field.format ?: FieldFormat.Raw, at, path, group)
+            fields += shownField
+            if (shownField is ClearSignedField.Value && path.toString() !in shownAt) shownAt[path.toString()] = shownField.shown
+            covered += at.location
+        }
+
+        suspend fun value(label: String, format: FieldFormat, at: Reached, path: ClearSigningPath, group: String?): ClearSignedField {
+            val value = at.value
             val raw = raw(value)
-            fun shown(text: String, unlisted: Address? = null) = ClearSignedField.Value(label, text, raw, unlisted)
+            fun shown(text: String, unlisted: Address? = null, mismatch: AddressTypeMismatch? = null) =
+                ClearSignedField.Value(label, text, raw, unlisted, group, mismatch)
+            // A parameter's path that walks the same array as the field is read at the field's item (ERC-7730,
+            // *Array references in parameters*).
+            fun parameter(parameter: ClearSigningPath): AbiValue = single(aligned(parameter, path, at.location))
             return when (format) {
                 FieldFormat.Raw -> shown(raw)
                 FieldFormat.Amount -> shown("${uint(value).formatUnits(NATIVE_DECIMALS)} ${network.nativeSymbol}")
-                is FieldFormat.TokenAmount -> tokenAmount(label, format, value, raw)
+                is FieldFormat.TokenAmount -> {
+                    val amount = uint(value)
+                    val token = format.tokenPath?.let { address(parameter(it)) } ?: format.token ?: to
+                    val known = if (token in format.nativeCurrency) ClearSigningToken(network.nativeSymbol, NATIVE_DECIMALS)
+                    else lookups.token(network, token)
+                    if (known == null) return shown("${amount.toDecimal()} (raw units) of ${checksummed(token)}", unlisted = token)
+                    val threshold = format.threshold
+                    val text = if (threshold != null && amount >= threshold) format.message ?: "Unlimited" else amount.formatUnits(known.decimals)
+                    shown("$text ${known.symbol}")
+                }
                 is FieldFormat.AddressName -> {
-                    val address = address(value).let { if (it in format.senderAddress) from else it }
+                    val address = address(value)
+                    if (address in format.senderAddress) return shown(SENDER)
                     val checksum = checksummed(address)
-                    shown(lookups.addressName(network, address)?.let { "$it ($checksum)" } ?: checksum)
+                    val name = if (format.sources.isEmpty() || "local" in format.sources) lookups.addressName(network, address) else null
+                    val kind = if (format.types.isEmpty()) null else lookups.addressKind(network, address)
+                    val mismatch = kind?.takeUnless { it in format.types }?.let { AddressTypeMismatch(format.types, it) }
+                    shown(name?.let { "$it ($checksum)" } ?: checksum, mismatch = mismatch)
                 }
                 is FieldFormat.Date -> shown(
                     if (format.blockHeight) "block ${uint(value).toDecimal()}"
@@ -295,36 +368,30 @@ object ClearSignFormatter {
                         ?: uint(value).toDecimal(),
                 )
                 is FieldFormat.Calldata -> {
-                    val callee = address(single(format.calleePath))
+                    val callee = address(parameter(format.calleePath))
                     val data = (value as? AbiValue.BytesValue)?.bytes ?: throw Refusal(NotCoveredReason.NotDecodable)
-                    // A call into the contract itself (a multicall) runs as the user's call: same sender, same
-                    // value. Any other is the contract calling out, with nothing sent.
-                    val self = callee == to
-                    val nested = if (depth + 1 > MAX_DEPTH) ClearSignResult.NotCovered(NotCoveredReason.TooDeep)
-                    else lookups.nested(network, if (self) from else to, callee, if (self) callValue else UInt256.ZERO, data, depth + 1)
-                    val grants = data.size >= SELECTOR && "0x" + data.copyOf(SELECTOR).toHex() in APPROVAL_SELECTORS ||
-                        (nested as? ClearSignResult.ClearSigned)?.grantsApproval == true
+                    // Past the depth limit the bytes are not read, so nothing may be said of the whole call.
+                    if (depth + 1 > MAX_DEPTH) throw Refusal(NotCoveredReason.TooDeep)
+                    // Into its own address by DELEGATECALL (declared for the deployment, reviewed): the user's call,
+                    // same sender and value. Any other is the contract calling out, its value not in these bytes.
+                    val self = delegatesToItself && callee == to
+                    val nested = lookups.nested(network, if (self) from else to, callee, if (self) callValue else null, data, depth + 1)
+                    val grants = grantsApproval(data) || (nested as? ClearSignResult.ClearSigned)?.grantsApproval == true
                     if (grants) approval = true
-                    ClearSignedField.Nested(label, callee, raw, nested, grants)
+                    ClearSignedField.Nested(label, callee, raw, nested, grants, group)
                 }
                 is FieldFormat.NftName -> {
-                    val collection = address(single(format.collectionPath))
+                    val collection = address(parameter(format.collectionPath))
                     val id = uint(value).toDecimal()
-                    shown(lookups.collectionName(network, collection)?.let { "$it #$id" } ?: "#$id of ${checksummed(collection)}")
+                    val name = lookups.builtInCollectionName(network, collection)
+                    if (name == null) shown("#$id of ${checksummed(collection)}", unlisted = collection) else shown("$name #$id")
                 }
-                FieldFormat.TokenTicker -> shown(lookups.token(network, address(value))?.symbol ?: checksummed(address(value)))
+                FieldFormat.TokenTicker -> {
+                    val token = address(value)
+                    val known = lookups.token(network, token)
+                    if (known == null) shown(checksummed(token), unlisted = token) else shown(known.symbol)
+                }
             }
-        }
-
-        fun tokenAmount(label: String, format: FieldFormat.TokenAmount, value: AbiValue, raw: String): ClearSignedField.Value {
-            val amount = uint(value)
-            val token = format.tokenPath?.let { address(single(it)) } ?: format.token ?: to
-            val native = token in format.nativeCurrency
-            val known = if (native) ClearSigningToken(network.nativeSymbol, NATIVE_DECIMALS) else lookups.token(network, token)
-                ?: return ClearSignedField.Value(label, "${amount.toDecimal()} (raw units) of ${checksummed(token)}", raw, token)
-            val threshold = format.threshold
-            val text = if (threshold != null && amount >= threshold) format.message ?: "Unlimited" else amount.formatUnits(known.decimals)
-            return ClearSignedField.Value(label, "$text ${known.symbol}", raw)
         }
 
         fun single(path: ClearSigningPath): AbiValue =
@@ -342,6 +409,31 @@ object ClearSignFormatter {
             return text.takeUnless { missing }
         }
     }
+
+    /**
+     * [parameter] with each `[]` it shares with [field]'s path, step for step from the start, replaced by the
+     * index [location] (where the field's value was found) has there.
+     */
+    internal fun aligned(parameter: ClearSigningPath, field: ClearSigningPath, location: String): ClearSigningPath {
+        if (parameter.container || field.container) return parameter
+        val concrete = location.split('.')
+        val steps = parameter.steps.mapIndexed { i, step ->
+            val shared = i < field.steps.size && parameter.steps.subList(0, i) == field.steps.subList(0, i)
+            if (shared && step == ClearSigningPath.Step.All && field.steps[i] == ClearSigningPath.Step.All) {
+                ClearSigningPath.Step.Index(concrete[i].removeSurrounding("[", "]").toInt())
+            } else {
+                step
+            }
+        }
+        return parameter.copy(steps = steps)
+    }
+
+    /** Whether [data] calls a function that grants an approval ([APPROVAL_SELECTORS]), described or not. */
+    fun grantsApproval(data: ByteArray): Boolean =
+        data.size >= SELECTOR && "0x" + data.copyOf(SELECTOR).toHex() in APPROVAL_SELECTORS
+
+    /** Whether [data] is a message of a type that grants an approval ([APPROVAL_TYPES]), described or not. */
+    fun grantsApproval(data: TypedData): Boolean = data.primaryType in APPROVAL_TYPES
 
     /** A value as decoded: an integer in decimal, an address checksummed, bytes in hex, a string escaped. */
     fun raw(value: AbiValue): String = when (value) {
@@ -432,7 +524,11 @@ object ClearSignFormatter {
     /** EIP-712 types that grant an approval: ERC-2612's and Permit2's permits. */
     val APPROVAL_TYPES = setOf("Permit", "PermitSingle", "PermitBatch", "PermitTransferFrom", "PermitBatchTransferFrom")
 
-    private val PLACEHOLDER = Regex("\\{([^{}]*)}")
+    // Every brace escaped: Android's ICU refuses a bare `}` (its java.util.regex reference, API 10 on).
+    private val PLACEHOLDER = Regex("\\{([^\\{\\}]*)\\}")
+
+    /** What an `addressName` shows for one of its `senderAddress` values, as the registry's vectors write it. */
+    const val SENDER = "Sender"
     private val SI_PREFIXES = listOf("k", "M", "G", "T", "P", "E")
     private const val MAX_DECIMALS = 77
     private const val SELECTOR = 4

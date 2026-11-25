@@ -39,7 +39,7 @@ class ClearSignFormatterTest {
             field("params.amountIn", "Send", FieldFormat.TokenAmount(path("params.tokenIn"), null, emptySet(), null, null)),
             field("params.amountOutMinimum", "Minimum to Receive", FieldFormat.TokenAmount(path("params.tokenOut"), null, emptySet(), null, null)),
             field("params.fee", "Uniswap fee", FieldFormat.Unit("%", 4, prefix = false)),
-            field("params.recipient", "Beneficiary", FieldFormat.AddressName(emptySet())),
+            field("params.recipient", "Beneficiary", FieldFormat.AddressName(setOf(Address.of("0x" + "00".repeat(19) + "01")), emptySet(), setOf("local"))),
             field("params.sqrtPriceLimitX96", "Price Limit", FieldFormat.Raw, Visibility.MustMatch(setOf("0"))),
         ),
     )
@@ -70,12 +70,14 @@ class ClearSignFormatterTest {
     private class Lookups(
         val tokens: Map<Address, ClearSigningToken>,
         val nested: ClearSignResult = ClearSignResult.NotCovered(NotCoveredReason.NoDescriptor),
+        val collections: Map<Address, String> = emptyMap(),
     ) : ClearSigningLookups {
         val nestedCalls = mutableListOf<Pair<Address, Int>>()
         override fun token(network: Network, token: Address) = tokens[token]
         override fun addressName(network: Network, address: Address): String? = null
-        override suspend fun collectionName(network: Network, collection: Address): String? = null
-        override suspend fun nested(network: Network, from: Address, callee: Address, value: UInt256, data: ByteArray, depth: Int): ClearSignResult {
+        override suspend fun addressKind(network: Network, address: Address): String? = "eoa"
+        override fun builtInCollectionName(network: Network, collection: Address) = collections[collection]
+        override suspend fun nested(network: Network, from: Address, callee: Address, value: UInt256?, data: ByteArray, depth: Int): ClearSignResult {
             nestedCalls += callee to depth
             return nested
         }
@@ -125,7 +127,7 @@ class ClearSignFormatterTest {
         val signed = assertIs<ClearSignResult.ClearSigned>(swap(Lookups(mapOf(weth to ClearSigningToken("WETH", 18)))))
         val minimum = signed.fields[1] as ClearSignedField.Value
         assertEquals("13901216 (raw units) of 0xdAC17F958D2ee523a2206206994597C13D831ec7", minimum.shown)
-        assertEquals(usdt, minimum.notInTokenList)
+        assertEquals(usdt, minimum.unlisted)
     }
 
     @Test
@@ -325,17 +327,20 @@ class ClearSignFormatterTest {
 
     @Test
     fun aCallIntoTheContractItselfKeepsTheUsersSenderAndValue() = runTest {
-        var seen: Pair<Address, UInt256>? = null
+        var seen: Pair<Address, UInt256?>? = null
         val lookups = object : ClearSigningLookups by Lookups(emptyMap()) {
-            override suspend fun nested(network: Network, from: Address, callee: Address, value: UInt256, data: ByteArray, depth: Int): ClearSignResult {
+            override suspend fun nested(network: Network, from: Address, callee: Address, value: UInt256?, data: ByteArray, depth: Int): ClearSignResult {
                 seen = from to value
                 return ClearSignResult.NotCovered(NotCoveredReason.NoDescriptor)
             }
         }
-        ClearSignFormatter.formatCall(multicall, Network.ETHEREUM, sender, usdc, UInt256.of(5), callData(2, byteArrayOf()), lookups)
-        assertEquals(sender to UInt256.of(5), seen, "callee usdc is the call's own `to`")
-        ClearSignFormatter.formatCall(multicall, Network.ETHEREUM, sender, router, UInt256.of(5), callData(2, byteArrayOf()), lookups)
-        assertEquals(router to UInt256.ZERO, seen, "a call out of the contract")
+        val data = callData(2, byteArrayOf())
+        ClearSignFormatter.formatCall(multicall, Network.ETHEREUM, sender, usdc, UInt256.of(5), data, lookups, delegatesToItself = true)
+        assertEquals(sender to UInt256.of(5), seen, "callee usdc is the call's own `to`, which delegates into itself")
+        ClearSignFormatter.formatCall(multicall, Network.ETHEREUM, sender, usdc, UInt256.of(5), data, lookups)
+        assertEquals(usdc to null, seen, "the same, not declared to delegate into itself: a call out")
+        ClearSignFormatter.formatCall(multicall, Network.ETHEREUM, sender, router, UInt256.of(5), data, lookups, delegatesToItself = true)
+        assertEquals(router to null, seen, "a call out of the contract: its value is not in the bytes")
     }
 
     @Test
@@ -356,11 +361,183 @@ class ClearSignFormatterTest {
     }
 
     @Test
-    fun callsNestedTooDeepAreNotFormatted() = runTest {
+    fun callsNestedTooDeepAreNotFormattedAndNothingIsSaidOfTheWhole() = runTest {
         assertEquals(
             ClearSignResult.NotCovered(NotCoveredReason.TooDeep),
             ClearSignFormatter.formatCall(multicall, Network.ETHEREUM, sender, router, UInt256.ZERO, callData(2, byteArrayOf()), listed, depth = 4),
         )
+        // At the limit, a covered parent whose nested call would go one deeper is not covered either: an
+        // approval down there would otherwise read as none.
+        assertEquals(
+            ClearSignResult.NotCovered(NotCoveredReason.TooDeep),
+            ClearSignFormatter.formatCall(multicall, Network.ETHEREUM, sender, router, UInt256.ZERO, callData(2, byteArrayOf()), listed, depth = 3),
+        )
+    }
+
+    @Test
+    fun theSendersPlaceholderAddressReadsSender() = runTest {
+        val toSender = swapData.copyOf().also { data ->
+            // The recipient word (the fourth of the tuple) set to 0x…01, Uniswap's stand-in for the sender.
+            for (i in 4 + 3 * 32 until 4 + 4 * 32) data[i] = 0
+            data[4 + 4 * 32 - 1] = 1
+        }
+        val signed = assertIs<ClearSignResult.ClearSigned>(swap(data = toSender))
+        val beneficiary = signed.fields[3] as ClearSignedField.Value
+        assertEquals("Sender", beneficiary.shown)
+        assertEquals("0x0000000000000000000000000000000000000001", beneficiary.raw)
+    }
+
+    @Test
+    fun aMustMatchHoldsOnAFieldWithoutALabel() = runTest {
+        val unlabelled = swapRouter.copy(
+            formats = listOf(
+                exactInputSingle.copy(
+                    fields = exactInputSingle.fields.map { if (it.label == "Price Limit") it.copy(label = null) else it },
+                ),
+            ),
+        )
+        val limited = swapData.copyOf().also { it[it.size - 1] = 1 }
+        assertIs<ClearSignResult.NotCovered>(
+            ClearSignFormatter.formatCall(unlabelled, Network.ETHEREUM, sender, router, UInt256.ZERO, limited, listed),
+        )
+    }
+
+    private val permitBatch = ClearSigningFormat(
+        key = PERMIT_BATCH,
+        function = null,
+        selector = null,
+        encodeType = PERMIT_BATCH,
+        typeHash = "0x" + keccak256(PERMIT_BATCH.encodeToByteArray()).toHex(),
+        primaryType = "PermitBatch",
+        intent = "Authorize spending of tokens",
+        interpolatedIntent = null,
+        fields = listOf(
+            field("spender", "Spender", FieldFormat.Raw),
+            field("details.[].amount", "Amount allowance", FieldFormat.TokenAmount(path("details.[].token"), null, emptySet(), null, null)),
+            field("details.[].expiration", "Approval expires", FieldFormat.Date(blockHeight = false)),
+        ),
+    )
+
+    private fun batch(tokens: List<Pair<String, String>>) = TypedData(
+        types = mapOf(
+            "EIP712Domain" to listOf(TypedField("name", "string"), TypedField("chainId", "uint256"), TypedField("verifyingContract", "address")),
+            "PermitDetails" to listOf(
+                TypedField("token", "address"), TypedField("amount", "uint160"),
+                TypedField("expiration", "uint48"), TypedField("nonce", "uint48"),
+            ),
+            "PermitBatch" to listOf(TypedField("details", "PermitDetails[]"), TypedField("spender", "address"), TypedField("sigDeadline", "uint256")),
+        ),
+        primaryType = "PermitBatch",
+        domain = mapOf(
+            "name" to TypedValue.Text("Permit2"),
+            "chainId" to TypedValue.Number("1"),
+            "verifyingContract" to TypedValue.Text("0x000000000022D473030F116dDEE9F6B43aC78BA3"),
+        ),
+        message = mapOf(
+            "details" to TypedValue.Items(
+                tokens.map { (token, amount) ->
+                    TypedValue.Struct(
+                        mapOf(
+                            "token" to TypedValue.Text(token), "amount" to TypedValue.Text(amount),
+                            "expiration" to TypedValue.Number("1782864000"), "nonce" to TypedValue.Number("0"),
+                        ),
+                    )
+                },
+            ),
+            "spender" to TypedValue.Text("0xE592427A0AEce92De3Edee1F18E0157C05861564"),
+            "sigDeadline" to TypedValue.Number("1774915200"),
+        ),
+    )
+
+    @Test
+    fun eachItemOfABatchIsReadWithItsOwnToken() = runTest {
+        // The registry's vector "Authorize spending of tokens": a PermitBatch of USDC and WETH.
+        val lookups = Lookups(mapOf(usdc to ClearSigningToken("USDC", 6), weth to ClearSigningToken("WETH", 18)))
+        val signed = assertIs<ClearSignResult.ClearSigned>(
+            ClearSignFormatter.formatTypedData(
+                permit2.copy(formats = listOf(permitBatch)), Network.ETHEREUM, sender,
+                batch(listOf(usdc.hex to "2500000000", weth.hex to "750000000000000000")), lookups,
+            ),
+        )
+        assertEquals(
+            listOf("2500 USDC", "0.75 WETH"),
+            signed.fields.filter { it.label == "Amount allowance" }.map { (it as ClearSignedField.Value).shown },
+        )
+        assertTrue(signed.grantsApproval)
+    }
+
+    @Test
+    fun aBundledGroupGoesItemByItemAndRefusesArraysOfUnequalLength() = runTest {
+        val grouped = permitBatch.copy(
+            fields = listOf(
+                ClearSigningField(
+                    path = null, label = "Tokens", format = null, visibility = Visibility.Shown,
+                    children = listOf(
+                        field("details.[].amount", "Amount", FieldFormat.Raw),
+                        field("details.[].token", "Token", FieldFormat.Raw),
+                    ),
+                    iteration = ClearSigningField.Iteration.BUNDLED,
+                ),
+            ),
+        )
+        val descriptor = permit2.copy(formats = listOf(grouped))
+        val signed = assertIs<ClearSignResult.ClearSigned>(
+            ClearSignFormatter.formatTypedData(descriptor, Network.ETHEREUM, sender, batch(listOf(usdc.hex to "1", weth.hex to "2")), listed),
+        )
+        assertEquals(listOf("Amount", "Token", "Amount", "Token"), signed.fields.map { it.label })
+        assertEquals(setOf("Tokens"), signed.fields.map { it.group }.toSet())
+        val unequal = grouped.copy(
+            fields = listOf(
+                grouped.fields.single().copy(
+                    children = listOf(field("details.[].amount", "Amount", FieldFormat.Raw), field("details.[0].token", "Token", FieldFormat.Raw)),
+                ),
+            ),
+        )
+        assertEquals(
+            ClearSignResult.NotCovered(NotCoveredReason.UnequalArrays("Tokens")),
+            ClearSignFormatter.formatTypedData(
+                permit2.copy(formats = listOf(unequal)), Network.ETHEREUM, sender, batch(listOf(usdc.hex to "1", weth.hex to "2")), listed,
+            ),
+        )
+    }
+
+    @Test
+    fun aCollectionIsNamedOnlyWhenItIsABuiltInOne() = runTest {
+        val nft = ClearSigningDescriptor(
+            source = "test", sha256 = "00", owner = "Test", kind = ClearSigningDescriptor.Kind.CALLDATA,
+            domainName = null, domainVersion = null, enums = emptyMap(),
+            formats = listOf(
+                ClearSigningFormat(
+                    key = "buy(address collection,uint256 id)",
+                    function = AbiFunction.parse("buy(address collection,uint256 id)"),
+                    selector = AbiFunction.parse("buy(address collection,uint256 id)")!!.selector,
+                    encodeType = null, typeHash = null, primaryType = null,
+                    intent = "Buy", interpolatedIntent = null,
+                    fields = listOf(field("id", "NFT", FieldFormat.NftName(path("collection")))),
+                ),
+            ),
+        )
+        val function = nft.formats.single().function!!
+        val data = function.selector.removePrefix("0x").hexToBytes() + AbiWords.word(usdc) + AbiWords.word(7)
+        val unlisted = assertIs<ClearSignResult.ClearSigned>(
+            ClearSignFormatter.formatCall(nft, Network.ETHEREUM, sender, router, UInt256.ZERO, data, listed),
+        ).fields.single() as ClearSignedField.Value
+        assertEquals("#7 of 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", unlisted.shown)
+        assertEquals(usdc, unlisted.unlisted)
+        val named = assertIs<ClearSignResult.ClearSigned>(
+            ClearSignFormatter.formatCall(nft, Network.ETHEREUM, sender, router, UInt256.ZERO, data, Lookups(emptyMap(), collections = mapOf(usdc to "ENS"))),
+        ).fields.single() as ClearSignedField.Value
+        assertEquals("ENS #7", named.shown)
+    }
+
+    @Test
+    fun aParametersSharedArrayIsReadAtTheFieldsItem() {
+        assertEquals(
+            "details.[1].token",
+            ClearSignFormatter.aligned(path("details.[].token"), path("details.[].amount"), "details.[1].amount").toString(),
+        )
+        assertEquals("other.[].x", ClearSignFormatter.aligned(path("other.[].x"), path("details.[].amount"), "details.[1].amount").toString())
+        assertEquals("token", ClearSignFormatter.aligned(path("token"), path("details.[].amount"), "details.[1].amount").toString())
     }
 
     @Test
@@ -402,6 +579,8 @@ class ClearSignFormatterTest {
 
     private companion object {
         const val PERMIT_SINGLE = "PermitSingle(PermitDetails details,address spender,uint256 sigDeadline)" +
+            "PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)"
+        const val PERMIT_BATCH = "PermitBatch(PermitDetails[] details,address spender,uint256 sigDeadline)" +
             "PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)"
     }
 }

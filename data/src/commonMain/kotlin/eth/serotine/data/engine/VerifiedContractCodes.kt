@@ -34,11 +34,28 @@ class VerifiedContractCodes internal constructor(
             val pointer = when (pin) {
                 CodePin.Fixed -> null
                 is CodePin.Slot -> verified.storageAt(address, pin.slot.removePrefix("0x").fromHex())
-                    ?.let(::word) ?: return@askVerified UNPROVEN
-                is CodePin.Call -> when (val outcome = verified.callAt(address, pin.selector.removePrefix("0x").fromHex(), code.blockNumber)) {
-                    is CallOutcome.Returned -> word(outcome.hex).takeIf { outcome.blockNumber == code.blockNumber }
-                    else -> null
-                } ?: return@askVerified UNPROVEN
+                    ?.let { word(it) ?: NOT_A_WORD } ?: return@askVerified UNPROVEN
+                is CodePin.Call -> {
+                    // Held to the code's block, asked again once there, as OneBlockCalls does.
+                    val data = pin.selector.removePrefix("0x").fromHex()
+                    val outcome = verified.callAt(address, data, code.blockNumber)
+                        ?: verified.callAt(address, data, code.blockNumber)
+                    when {
+                        outcome is CallOutcome.Returned && outcome.blockNumber == code.blockNumber -> word(outcome.hex) ?: NOT_A_WORD
+                        // A verified revert is an answer, and not the pinned one.
+                        outcome is CallOutcome.Reverted && outcome.blockNumber == code.blockNumber -> REVERTED
+                        else -> return@askVerified UNPROVEN
+                    }
+                }
+            }
+            // A pointer that verifiably is not the pinned one needs no further read: the binding says it changed.
+            val pinned = when (pin) {
+                CodePin.Fixed -> null
+                is CodePin.Slot -> "0x" + "0".repeat(24) + pin.implementation.hex.removePrefix("0x")
+                is CodePin.Call -> pin.returns
+            }
+            if (pointer != null && pointer != pinned) {
+                return@askVerified CodeReading.Read(ClearSigningCodeReads("0x" + codeHash(code.codeHex), pointer, null))
             }
             val implementationHash = pointer?.let { word ->
                 val implementation = Address.of("0x" + word.takeLast(ADDRESS_HEX))
@@ -55,6 +72,10 @@ class VerifiedContractCodes internal constructor(
 
     private companion object {
         val UNPROVEN = CodeReading.Unavailable(ReadUnavailable.UNPROVEN)
+
+        /** What a pointer reads as when its verified answer is no 32-byte word, or a revert: never a pinned word. */
+        const val NOT_A_WORD = "not a word"
+        const val REVERTED = "reverted"
         const val WORD_HEX = 64
         const val ADDRESS_HEX = 40
         const val HEX = "0123456789abcdef"

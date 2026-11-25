@@ -76,9 +76,12 @@ class DescribeClearSigningTest {
     }
 
     private val codeHashes = mutableMapOf<Address, CodeReading>()
+    private val reads = mutableListOf<Address>()
     private val codes = object : ContractCodes {
-        override suspend fun read(network: Network, address: Address, pin: CodePin) =
-            codeHashes[address] ?: CodeReading.Read(ClearSigningCodeReads(codeHash, null, null))
+        override suspend fun read(network: Network, address: Address, pin: CodePin): CodeReading {
+            reads += address
+            return codeHashes[address] ?: CodeReading.Read(ClearSigningCodeReads(codeHash, null, null))
+        }
     }
 
     private val tokens = object : TokenCatalog {
@@ -145,6 +148,23 @@ class DescribeClearSigningTest {
     }
 
     @Test
+    fun eachContractIsBoundOnceADescriptionHoweverOftenItIsCalled() = runTest {
+        val deep = supplyData(pool, then = supplyData(pool, then = supplyData(pool)))
+        assertIs<ClearSignResult.ClearSigned>(describe.call(Network.ETHEREUM, user, pool, UInt256.ZERO, deep))
+        assertEquals(listOf(pool), reads)
+    }
+
+    @Test
+    fun noCodeIsReadForACallNoDescriptorCovers() = runTest {
+        val unknown = byteArrayOf(1, 2, 3, 4)
+        assertEquals(
+            ClearSignResult.NotCovered(NotCoveredReason.NoFormat("0x01020304")),
+            describe.call(Network.ETHEREUM, user, pool, UInt256.ZERO, unknown),
+        )
+        assertEquals(emptyList(), reads)
+    }
+
+    @Test
     fun aClaimedSelectorStaysClaimedWhenNested() = runTest {
         val signed = assertIs<ClearSignResult.ClearSigned>(
             describe.call(Network.ETHEREUM, user, pool, UInt256.ZERO, supplyData(usdc, then = Erc20.approveData(other, UInt256.MAX))),
@@ -194,6 +214,11 @@ class DescribeClearSigningTest {
         assertEquals(
             ClearSignResult.NotCovered(NotCoveredReason.ClaimedByAppDecoder),
             describe.typedData(Network.ETHEREUM, user, typed("PermitSingle", permit2)),
+        )
+        assertEquals(
+            ClearSignResult.NotCovered(NotCoveredReason.ClaimedByAppDecoder),
+            describe.typedData(Network.ETHEREUM, user, typed("PermitSingle", pool.hex)),
+            "a type the decoder knows, for a verifier it declines: still its",
         )
         assertEquals(
             ClearSignResult.NotCovered(NotCoveredReason.DomainWithoutVerifyingContract),

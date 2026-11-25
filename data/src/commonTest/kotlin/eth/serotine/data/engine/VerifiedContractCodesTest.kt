@@ -61,6 +61,24 @@ class VerifiedContractCodesTest {
     }
 
     @Test
+    fun aPointerThatVerifiablyIsNotThePinnedOneIsReadAsSuchWithoutMore() = runTest {
+        chain.snapshot = running()
+        chain.codes[proxy] = ProvenCode("6001", 100)
+        chain.storage[proxy to slot.removePrefix("0x")] = "0".repeat(24) + "cc".repeat(20)
+        assertEquals(
+            CodeReading.Read(ClearSigningCodeReads("0x" + codeHash("6001"), "0x" + "0".repeat(24) + "cc".repeat(20), null)),
+            codes().read(Network.ETHEREUM, proxy, CodePin.Slot(slot, implementation, "0x00")),
+            "another implementation: its code is not needed to know the binding fails",
+        )
+        chain.callsAt[Triple(proxy, "5c60da1b", 100L)] = CallOutcome.Reverted(100)
+        assertEquals(
+            CodeReading.Read(ClearSigningCodeReads("0x" + codeHash("6001"), "reverted", null)),
+            codes().read(Network.ETHEREUM, proxy, CodePin.Call("0x5c60da1b", word, "0x00")),
+            "a verified revert is an answer",
+        )
+    }
+
+    @Test
     fun whatIsNotProvenIsNoAnswer() = runTest {
         chain.snapshot = running()
         assertEquals(CodeReading.Unavailable(ReadUnavailable.UNPROVEN), codes().read(Network.ETHEREUM, proxy, CodePin.Fixed))

@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 /**
@@ -50,20 +51,25 @@ class DescribeClearSigning(
     private val codes: ContractCodes,
     private val tokens: TokenCatalog,
     private val kinds: AddressKinds,
+    private val timeSource: TimeSource = TimeSource.Monotonic,
 ) {
     /** What [data] sent by [from] to [to] with [value] on [network] does, as a built-in descriptor says. */
     suspend fun call(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): ClearSignResult {
         if (data.isEmpty()) return ClearSignResult.NotCovered(NotCoveredReason.ClaimedByAppDecoder)
-        return describeCall(network, from, to, value, data, depth = 0, lookups = lookups(network))
+        val bindings = Bindings()
+        return describeCall(network, from, to, value, data, depth = 0, lookups = lookups(network, bindings), bindings = bindings)
     }
 
     /** What [typed], signed by [signer] on [network], lets someone do, as a built-in descriptor says. */
     suspend fun typedData(network: Network, signer: Address, typed: TypedData): ClearSignResult {
-        val encoded = Eip712.encode(typed) ?: return ClearSignResult.NotCovered(NotCoveredReason.NotDecodable)
-        if (TypedDataMeaning.of(encoded) != null) return ClearSignResult.NotCovered(NotCoveredReason.ClaimedByAppDecoder)
+        if (Eip712.encode(typed) == null) return ClearSignResult.NotCovered(NotCoveredReason.NotDecodable)
+        // By type, as calls are by selector: a type the decoder knows is its, decoded by it or not.
+        if (Eip712.encodeType(typed.types, typed.primaryType) in TypedDataMeaning.CLAIMED_TYPES) {
+            return ClearSignResult.NotCovered(NotCoveredReason.ClaimedByAppDecoder)
+        }
         val verifier = (typed.domain["verifyingContract"] as? eth.serotine.domain.model.TypedValue.Text)?.text
             ?.let(Address::parse) ?: return ClearSignResult.NotCovered(NotCoveredReason.DomainWithoutVerifyingContract)
-        val deployment = bound(network, verifier) { return it }
+        val deployment = Bindings().bound(network, verifier) { return it }
         val typeHash = "0x" + keccak256(Eip712.encodeType(typed.types, typed.primaryType).encodeToByteArray()).toHex()
         val descriptor = deployment.descriptors.firstOrNull {
             it.kind == ClearSigningDescriptor.Kind.EIP712 && it.formatForTypeHash(typeHash) != null
@@ -79,61 +85,86 @@ class DescribeClearSigning(
         data: ByteArray,
         depth: Int,
         lookups: ClearSigningLookups,
+        bindings: Bindings,
     ): ClearSignResult {
         if (data.size < SELECTOR) return ClearSignResult.NotCovered(NotCoveredReason.TooShort)
         val selector = "0x" + data.copyOf(SELECTOR).toHex()
         // By selector, at every depth: what a hand-written decoder claims stands, "not decoded" included.
         if (selector in CLAIMED_SELECTORS) return ClearSignResult.NotCovered(NotCoveredReason.ClaimedByAppDecoder)
-        val deployment = bound(network, to) { return it }
-        val descriptor = deployment.descriptors.firstOrNull {
+        val pinned = catalog.deployment(network, to) ?: return ClearSignResult.NotCovered(NotCoveredReason.NoDescriptor)
+        // The format first, from the built-in catalog: no code is read for a call no descriptor covers.
+        val descriptor = pinned.descriptors.firstOrNull {
             it.kind == ClearSigningDescriptor.Kind.CALLDATA && it.formatForSelector(selector) != null
         } ?: return ClearSignResult.NotCovered(NotCoveredReason.NoFormat(selector))
+        val deployment = bindings.bound(network, to) { return it }
         return ClearSignFormatter.formatCall(
             descriptor, network, from, to, value, data, lookups, depth, deployment.delegatesToItself,
         )
     }
 
-    /** The deployment at [address] once its binding holds; otherwise [otherwise] is given why not. */
-    private suspend inline fun bound(
-        network: Network,
-        address: Address,
-        otherwise: (ClearSignResult.NotCovered) -> Nothing,
-    ): ClearSigningDeployment {
-        val deployment = catalog.deployment(network, address)
-            ?: otherwise(ClearSignResult.NotCovered(NotCoveredReason.NoDescriptor))
-        val reads = when (val reading = codes.read(network, address, deployment.codePin)) {
-            is CodeReading.Read -> reading.reads
-            is CodeReading.Unavailable -> otherwise(ClearSignResult.NotCovered(NotCoveredReason.CodeNotProven))
+    /**
+     * The binding checks of one description, each address's read once however often it is called (a nested
+     * call to the same contract is bound by the same reads), all within [BINDING_TIMEOUT_MS].
+     */
+    private inner class Bindings {
+        private val outcomes = mutableMapOf<Pair<Network, Address>, Any>()
+        private var started: TimeMark? = null
+
+        /** The deployment at [address] once its binding holds; otherwise [otherwise] is given why not. */
+        suspend inline fun bound(
+            network: Network,
+            address: Address,
+            otherwise: (ClearSignResult.NotCovered) -> Nothing,
+        ): ClearSigningDeployment {
+            val outcome = outcomes.getOrPut(network to address) { check(network, address) }
+            if (outcome is ClearSignResult.NotCovered) otherwise(outcome)
+            return outcome as ClearSigningDeployment
         }
-        ClearSigningBinding.check(deployment, reads)?.let { otherwise(ClearSignResult.NotCovered(it)) }
-        return deployment
+
+        suspend fun check(network: Network, address: Address): Any {
+            val deployment = catalog.deployment(network, address)
+                ?: return ClearSignResult.NotCovered(NotCoveredReason.NoDescriptor)
+            val mark = started ?: timeSource.markNow().also { started = it }
+            val left = BINDING_TIMEOUT_MS - mark.elapsedNow().inWholeMilliseconds
+            val reading = if (left <= 0) null else withTimeoutOrNull(left) { codes.read(network, address, deployment.codePin) }
+            val reads = when (reading) {
+                is CodeReading.Read -> reading.reads
+                is CodeReading.Unavailable, null -> return ClearSignResult.NotCovered(NotCoveredReason.CodeNotProven)
+            }
+            return ClearSigningBinding.check(deployment, reads)?.let { ClearSignResult.NotCovered(it) } ?: deployment
+        }
     }
 
-    private suspend fun lookups(network: Network): ClearSigningLookups {
+    private suspend fun lookups(network: Network, bindings: Bindings = Bindings()): ClearSigningLookups {
         val builtIn = tokens.observeTokens(network).first()
         val listed = builtIn.associate { it.address to ClearSigningToken(it.symbol, it.decimals) }
         val names = builtIn.associate { it.address to it.name }
         // Each address's kind is read once per description, and all of them within one deadline.
         val known = mutableMapOf<Address, String?>()
-        val started = TimeSource.Monotonic.markNow()
+        var started: TimeMark? = null
         return object : ClearSigningLookups {
             override fun token(network: Network, token: Address) = listed[token]
 
             override fun addressName(network: Network, address: Address): String? =
                 names[address] ?: catalog.deployment(network, address)?.name
 
-            override suspend fun addressKind(network: Network, address: Address): String? = known.getOrPut(address) {
-                val left = KIND_TIMEOUT_MS - started.elapsedNow().inWholeMilliseconds
-                if (left <= 0) return@getOrPut null
-                withTimeoutOrNull(left) {
+            override suspend fun addressKind(network: Network, address: Address): String? {
+                if (address in known) return known[address]
+                // The deadline starts at the first kind asked, after the binding's reads.
+                val mark = started ?: timeSource.markNow().also { started = it }
+                val left = KIND_TIMEOUT_MS - mark.elapsedNow().inWholeMilliseconds
+                val kind = if (left <= 0) null else withTimeoutOrNull(left) {
                     val reading = kinds.observeKind(network, address).filterNot { it is KindReading.Syncing }.firstOrNull()
+                    // A Safe is a contract. ERC-7730's `wallet` is one of the user's own accounts, which the
+                    // wallet's accounts give (part 5), not a kind of code.
                     when ((reading as? KindReading.Verified)?.kind) {
                         AddressKind.Eoa, is AddressKind.DelegatedEoa -> "eoa"
-                        is AddressKind.Safe -> "wallet"
-                        AddressKind.Contract -> "contract"
+                        is AddressKind.Safe, AddressKind.Contract -> "contract"
                         null -> null
                     }
                 }
+                known[address] = kind
+                return kind
             }
 
             // No collection is built in for clear signing yet: each is shown by its address (A3, *NFTs*).
@@ -146,13 +177,14 @@ class DescribeClearSigning(
                 value: UInt256?,
                 data: ByteArray,
                 depth: Int,
-            ): ClearSignResult = describeCall(network, from, callee, value, data, depth, this)
+            ): ClearSignResult = describeCall(network, from, callee, value, data, depth, this, bindings)
         }
     }
 
     private companion object {
         const val SELECTOR = 4
         const val KIND_TIMEOUT_MS = 15_000L
+        const val BINDING_TIMEOUT_MS = 30_000L
 
         /** ERC-20 `transfer` and `approve`, which [Erc20] decodes: never described by a descriptor. */
         val CLAIMED_SELECTORS = setOf("0xa9059cbb", "0x095ea7b3")

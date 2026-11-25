@@ -72,6 +72,12 @@ sealed interface TypedDataMeaning {
             "PermitTransferFrom(TokenPermissions permitted,address spender,uint256 nonce,uint256 deadline)" +
                 "TokenPermissions(address token,uint256 amount)"
 
+        /**
+         * The struct types this decoder claims, as their `encodeType`: what it says of one of them stands, "not
+         * decoded" included, and no clear-signing descriptor describes it (docs/clear-signing.md, A3).
+         */
+        val CLAIMED_TYPES: Set<String> get() = setOf(PERMIT, PERMIT_SINGLE, PERMIT_TRANSFER, GPv2Signing.ORDER_TYPE)
+
         /** What [encoded] lets someone do, or null when its struct is not one this app knows. */
         fun of(encoded: EncodedTypedData): TypedDataMeaning? {
             val data = encoded.data

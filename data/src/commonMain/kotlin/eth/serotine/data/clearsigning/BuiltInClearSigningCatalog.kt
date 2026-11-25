@@ -218,7 +218,6 @@ class BuiltInClearSigningCatalog internal constructor(
         val text = value.content
         return when {
             !value.isString && text != "true" && text != "false" -> requireNotNull(UInt256.parse(text)).toDecimal()
-            text.startsWith("0x") && text.length == ADDRESS_LENGTH -> text.lowercase()
             text.startsWith("0x") -> text.lowercase()
             else -> text
         }
@@ -240,6 +239,5 @@ class BuiltInClearSigningCatalog internal constructor(
 
     private companion object {
         const val CONSTANT = "\$.metadata.constants."
-        const val ADDRESS_LENGTH = 42
     }
 }

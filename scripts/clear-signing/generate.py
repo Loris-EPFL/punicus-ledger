@@ -495,6 +495,13 @@ def check_field(field: dict, descriptor: dict, where: str, root) -> None:
         only(visible, VISIBLE_RULES, where + ".visible")
         if len(visible) != 1 or not isinstance(next(iter(visible.values())), list):
             refuse(where, "a visibility rule is one of mustMatch or ifNotIn, with a list")
+        for item in next(iter(visible.values())):
+            # The runtime lists values as decimal integers, booleans and plain strings: a reference or a hex
+            # number would be compared as its text and never meet the value it means.
+            plain = isinstance(item, bool) or isinstance(item, int) and item >= 0 or \
+                isinstance(item, str) and not item.startswith("$.") and not re.match(r"^0x[0-9a-fA-F]{1,63}$", item)
+            if not plain:
+                refuse(where, f"visibility item {item!r} is not a non-negative integer, a boolean or a plain string")
     if "iteration" in field and field["iteration"] not in ITERATIONS:
         refuse(where, f"iteration {field['iteration']!r} is not implemented")
     fmt = field.get("format")

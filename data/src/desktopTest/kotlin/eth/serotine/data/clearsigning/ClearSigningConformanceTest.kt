@@ -78,6 +78,7 @@ class ClearSigningConformanceTest {
         }
         println("clear-signing conformance: $ran vectors run, $skipped skipped (deployments not shipped)")
         assertEquals(EXPECTED_RUN, ran, "a vector of a shipped deployment no longer runs, or one more does")
+        assertEquals(EXPECTED_SKIPPED, skipped, "a vector is skipped that is not of another chain or contract")
         assertEquals(emptyList(), outcomes, outcomes.joinToString("\n"))
     }
 
@@ -85,7 +86,7 @@ class ClearSigningConformanceTest {
     private suspend fun run(source: String, vector: JsonObject, lookups: ClearSigningLookups): ClearSignResult? {
         val from = (vector["from"] as? JsonPrimitive)?.content?.let(Address::parse) ?: Address.ZERO
         vector["rawTx"]?.let { raw ->
-            val tx = Transaction.decode(raw.jsonPrimitive.content.removePrefix("0x").hexBytes()) ?: return null
+            val tx = requireNotNull(Transaction.decode(raw.jsonPrimitive.content.removePrefix("0x").hexBytes())) { "unreadable rawTx" }
             val network = Network.entries.firstOrNull { it.chainId == tx.chainId } ?: return null
             val deployment = catalog.deployment(network, tx.to) ?: return null
             val descriptor = deployment.descriptors.firstOrNull { it.source == source } ?: return null
@@ -260,6 +261,9 @@ class ClearSigningConformanceTest {
     private companion object {
         /** How many vectors run: a refresh that changes it says why in its PR. */
         const val EXPECTED_RUN = 57
+
+        /** How many are skipped: four WETH vectors on chains 10 and 8453, one Permit2 message on chain 143. */
+        const val EXPECTED_SKIPPED = 5
 
         /** Vectors Punicus reads otherwise on purpose, by their exact name, with what it reads instead. */
         val DIFFERENCES: Map<String, ClearSignResult> = mapOf(

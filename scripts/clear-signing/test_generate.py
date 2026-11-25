@@ -108,6 +108,9 @@ class DescriptorTest(unittest.TestCase):
     def test_refuses_a_bad_visibility_path_or_reference(self):
         self.refused(lambda d: self.fields(d)[1].update(visible={"mustMatch": [0], "ifNotIn": [1]}))
         self.refused(lambda d: self.fields(d)[1].update(visible="sometimes"))
+        self.refused(lambda d: self.fields(d)[1].update(visible={"mustMatch": ["$.metadata.constants.max"]}))
+        self.refused(lambda d: self.fields(d)[1].update(visible={"ifNotIn": ["0x01"]}))
+        self.refused(lambda d: self.fields(d)[1].update(visible={"mustMatch": [-1]}))
         self.refused(lambda d: self.fields(d)[1].update(path="amount..x"))
         self.refused(lambda d: self.fields(d).append(
             {"path": "to", "format": "enum", "params": {"$ref": "$.metadata.enums.missing"}}))

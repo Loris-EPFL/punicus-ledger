@@ -170,7 +170,7 @@ sealed interface CodePin {
     data class Call(val selector: String, val returns: String, val implementationCodeHash: String) : CodePin
 }
 
-/** What the verified reads at one block found for a deployment, which [ClearSigningBinding] holds against its pins. */
+/** What the verified reads found for a deployment (A4, step 3), which [ClearSigningBinding] holds against its pins. */
 data class ClearSigningCodeReads(
     /** The keccak256 of the code at the deployment's address. */
     val codeHash: String,

@@ -10,7 +10,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 
 | Screen | Folder | States |
 |---|---|---|
-| [Account detail](#account-detail) | `account-detail/` | 74 |
+| [Account detail](#account-detail) | `account-detail/` | 75 |
 | [Accounts](#accounts) | `accounts/` | 41 |
 | [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 3 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 15 |
@@ -75,7 +75,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="account-detail"></a>
 ## Account detail
 
-`account-detail/`, 74 states: `assets`, `assets-dark`, `swarm-node`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `per-app-tab-no-network`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`, `activity-index`, `activity-index-dark`, `activity-index-loading`, `activity-index-loading-more`, `activity-index-checking`, `activity-index-end`, `activity-index-gaps`, `activity-index-left-out`, `activity-index-left-out-dark`, `activity-index-not-in-this-build`, `activity-index-setting-off`, `activity-index-tor`, `activity-index-network-not-served`, `activity-index-checkpoint-alarm`, `activity-index-stale-anchor`, `activity-index-no-engine`, `activity-index-wrong-importer`, `activity-index-rejected`, `activity-index-syncing`, `activity-index-unproven`, `activity-index-paused`, `activity-index-paused-dark`
+`account-detail/`, 75 states: `assets`, `assets-dark`, `swarm-node`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `per-app-tab-no-network`, `activity`, `activity-selected`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`, `activity-index`, `activity-index-dark`, `activity-index-loading`, `activity-index-loading-more`, `activity-index-checking`, `activity-index-end`, `activity-index-gaps`, `activity-index-left-out`, `activity-index-left-out-dark`, `activity-index-not-in-this-build`, `activity-index-setting-off`, `activity-index-tor`, `activity-index-network-not-served`, `activity-index-checkpoint-alarm`, `activity-index-stale-anchor`, `activity-index-no-engine`, `activity-index-wrong-importer`, `activity-index-rejected`, `activity-index-syncing`, `activity-index-unproven`, `activity-index-paused`, `activity-index-paused-dark`
 
 <a href="account-detail/assets.png"><img src="account-detail/assets.png" width="206" alt="assets"></a>
 <a href="account-detail/assets-dark.png"><img src="account-detail/assets-dark.png" width="206" alt="assets-dark"></a>
@@ -101,6 +101,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="account-detail/per-app-tab-empty-dark.png"><img src="account-detail/per-app-tab-empty-dark.png" width="206" alt="per-app-tab-empty-dark"></a>
 <a href="account-detail/per-app-tab-no-network.png"><img src="account-detail/per-app-tab-no-network.png" width="206" alt="per-app-tab-no-network"></a>
 <a href="account-detail/activity.png"><img src="account-detail/activity.png" width="206" alt="activity"></a>
+<a href="account-detail/activity-selected.png"><img src="account-detail/activity-selected.png" width="206" alt="activity-selected"></a>
 <a href="account-detail/activity-dark.png"><img src="account-detail/activity-dark.png" width="206" alt="activity-dark"></a>
 <a href="account-detail/waiting-swap.png"><img src="account-detail/waiting-swap.png" width="206" alt="waiting-swap"></a>
 <a href="account-detail/waiting-swap-dark.png"><img src="account-detail/waiting-swap-dark.png" width="206" alt="waiting-swap-dark"></a>

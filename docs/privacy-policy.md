@@ -122,9 +122,10 @@ Activity: turned off, it stays off.
   history above reaches included.
 - On Android this runs on whatever connection the phone has, mobile data
   included, when you open or scroll an account's Activity: each page of the
-  index checks up to 20 old blocks, and a page started finishes even if you
-  leave the screen. Once the app is in the background for a minute, nothing
-  more is read.
+  index checks up to 20 old blocks. Opening an Activity again reads every
+  page newer than what was read before, however many that is. What has
+  started goes on even if you leave the screen. Once the app is in the
+  background for a minute, nothing more is read.
 - What was read and checked is kept on the device, so opening the Activity
   again asks Swarm peers only for the newest part of the account's index,
   and archive peers only for the blocks of entries not checked before.

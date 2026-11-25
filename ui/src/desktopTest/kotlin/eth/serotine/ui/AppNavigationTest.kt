@@ -4,11 +4,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -19,6 +18,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isPopup
@@ -35,6 +35,9 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -52,11 +55,13 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.CowOrderUid
+import eth.serotine.domain.model.DappTransactionRequest
 import eth.serotine.domain.model.InterfaceMode
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.NetworkUpgrade
 import eth.serotine.domain.model.PerAppAccount
+import eth.serotine.domain.model.PersonalMessage
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
 import eth.serotine.domain.model.Signature
@@ -87,6 +92,14 @@ import eth.serotine.domain.repository.CowPlacement
 import eth.serotine.domain.repository.CowQuoteReading
 import eth.serotine.domain.repository.CowUnavailable
 import eth.serotine.domain.repository.CowVenueReading
+import eth.serotine.domain.repository.DappAsk
+import eth.serotine.domain.repository.DappMetadata
+import eth.serotine.domain.repository.DappRequest
+import eth.serotine.domain.repository.DappRequestError
+import eth.serotine.domain.repository.DappRequestId
+import eth.serotine.domain.repository.DappSessionId
+import eth.serotine.domain.repository.FreshCheckpoint
+import eth.serotine.domain.repository.FreshCheckpoints
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.HistoryStart
 import eth.serotine.domain.repository.IndexedLog
@@ -130,6 +143,7 @@ import eth.serotine.domain.usecase.FollowSafeDeployments
 import eth.serotine.domain.usecase.HistoryRecordingSentTransfers
 import eth.serotine.domain.usecase.ListDeployedSafe
 import eth.serotine.domain.usecase.NetworkDemand
+import eth.serotine.domain.usecase.OutboxLock
 import eth.serotine.domain.usecase.WatchAddress
 import eth.serotine.ui.accountdetail.ACCOUNT_ADDRESS_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_ASSET_TAG
@@ -138,13 +152,14 @@ import eth.serotine.ui.accountdetail.ACCOUNT_REFRESH_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_SWAP_TAG
 import eth.serotine.ui.accountdetail.ACCOUNT_TOTAL_TAG
 import eth.serotine.ui.accounts.ACCOUNTS_LIST_TAG
+import eth.serotine.ui.accounts.ACCOUNTS_REFRESH_TAG
 import eth.serotine.ui.accounts.ACCOUNTS_SELECTED_TAG
+import eth.serotine.ui.accounts.NO_ACCOUNTS_HINT
 import eth.serotine.ui.accounts.NO_ACCOUNT_OPEN_HINT
 import eth.serotine.ui.accounts.NO_ACCOUNT_OPEN_TAG
 import eth.serotine.ui.accounts.NO_ACCOUNT_YET_HINT
-import eth.serotine.ui.accounts.ACCOUNTS_REFRESH_TAG
-import eth.serotine.ui.accounts.NO_ACCOUNTS_HINT
 import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
+import eth.serotine.ui.activity.ACTIVITY_SELECTED_TAG
 import eth.serotine.ui.activitydetail.ACTIVITY_DETAIL_FIELD_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
 import eth.serotine.ui.components.Eip55
@@ -154,15 +169,16 @@ import eth.serotine.ui.components.SAFE_TX_QR_TAG
 import eth.serotine.ui.components.SAFE_TX_REQUEST_TAG
 import eth.serotine.ui.components.SEND_AMOUNT_TAG
 import eth.serotine.ui.components.SEND_RECIPIENT_TAG
-import eth.serotine.ui.components.chunkedAddress
 import eth.serotine.ui.components.SEND_REVIEW_TAG
 import eth.serotine.ui.components.UNAVAILABLE_REASON_TAG
+import eth.serotine.ui.components.chunkedAddress
 import eth.serotine.ui.coworder.COW_ORDER_UNISWAP_TAG
 import eth.serotine.ui.createsafe.CREATE_SAFE_CONTINUE_TAG
 import eth.serotine.ui.createsafe.CREATE_SAFE_DEPLOY_TAG
 import eth.serotine.ui.createsafe.CREATE_SAFE_NAME_TAG
 import eth.serotine.ui.createsafe.CREATE_SAFE_PASSWORD_TAG
 import eth.serotine.ui.createsafe.CREATE_SAFE_THRESHOLD_TAG
+import eth.serotine.ui.dapprequest.DAPP_REQUEST_REFUSE_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_FIELD_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_IMPORT_BUTTON_TAG
 import eth.serotine.ui.mnemonicimport.MNEMONIC_PASSWORD_TAG
@@ -208,18 +224,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestWatcher
 import org.junit.runner.Description
-import eth.serotine.domain.model.PersonalMessage
-import eth.serotine.domain.model.DappTransactionRequest
-import eth.serotine.domain.repository.DappAsk
-import eth.serotine.domain.repository.DappMetadata
-import eth.serotine.domain.repository.DappRequest
-import eth.serotine.domain.repository.DappRequestError
-import eth.serotine.domain.repository.DappRequestId
-import eth.serotine.domain.repository.DappSessionId
-import eth.serotine.domain.repository.FreshCheckpoint
-import eth.serotine.domain.repository.FreshCheckpoints
-import eth.serotine.ui.dapprequest.DAPP_REQUEST_REFUSE_TAG
-import eth.serotine.domain.usecase.OutboxLock
 
 /**
  * The shared [App] end to end, over fake ports: the tabs, the account screens and their dialogs,
@@ -524,6 +528,12 @@ class AppNavigationTest {
     private val windowWidth = mutableStateOf<Dp?>(PHONE)
 
     /**
+     * The density the [App] is drawn at: the test window's own unless a test asks for [WIDEST_DENSITY], at which its
+     * 1024 px are about 1365 dp, the widest window, where an Activity row's detail opens beside its account.
+     */
+    private val windowDensity = mutableStateOf<Float?>(null)
+
+    /**
      * Shows the [App] in the [host]; with [followDeployments], beside it the deployments' follower,
      * on the graph's own ports, as the hosts run it (`SerotineApplication`, `main()`).
      */
@@ -537,8 +547,12 @@ class AppNavigationTest {
             }
             val controller = rememberNavController()
             if (navController.isEmpty()) navController += controller
-            Box(windowWidth.value?.let { Modifier.width(it) } ?: Modifier.fillMaxSize()) {
-                App(graph, controller)
+            val outer = LocalDensity.current
+            val density = windowDensity.value?.let { Density(it, outer.fontScale) } ?: outer
+            CompositionLocalProvider(LocalDensity provides density) {
+                Box(windowWidth.value?.let { Modifier.width(it) } ?: Modifier.fillMaxSize()) {
+                    App(graph, controller)
+                }
             }
         }
     }
@@ -1249,6 +1263,51 @@ class AppNavigationTest {
     }
 
     @Test
+    fun onTheWidestWindowARowsDetailOpensBesideItsAccountAndANarrowerWindowClosesIt() {
+        accounts.value = listOf(daily, savings)
+        val sent = SentTransfer(
+            network = Network.SEPOLIA,
+            account = daily.address,
+            nonce = 7,
+            signed = SignedTransfer(byteArrayOf(2, 7)),
+            action = SentAction.Transfer(savings.address, TransferAsset.Native, UInt256.of("100000000000000000")),
+            maxCost = UInt256.ONE,
+            sentAt = 1_800_000_000,
+        )
+        history.entries.value = listOf(HistoryEntry(sent, SentOutcome.Finalized(9_412_118, succeeded = true)))
+        windowWidth.value = WIDE
+        windowDensity.value = WIDEST_DENSITY
+        showApp()
+
+        rule.onNodeWithText("Daily").performClick()
+        rule.onNodeWithText("Activity").performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Sent ETH").performClick()
+
+        // Beside the account, which stays: no screen of its own, the row drawn selected.
+        rule.waitUntil { rule.onAllNodesWithTag(ACTIVITY_DETAIL_FIELD_TAG).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag(ACTIVITY_PANE_TAG).assertIsDisplayed()
+        rule.onNodeWithTag(ACTIVITY_SELECTED_TAG).assertIsDisplayed()
+        assertEquals(listOf("accounts", "account/{chain}/{address}"), screens())
+
+        // Its Back closes it, and the account is as it was.
+        rule.onNode(hasContentDescription("Back") and hasAnyAncestor(hasTestTag(ACTIVITY_PANE_TAG))).performClick()
+        rule.onNodeWithTag(ACTIVITY_PANE_TAG).assertDoesNotExist()
+        rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).assertCountEquals(1)
+
+        // Open again, then a narrower window: the column closes, the account as it was; a row's tap there opens
+        // its detail on a screen of its own.
+        rule.onNodeWithText("Sent ETH").performClick()
+        rule.waitUntil { rule.onAllNodesWithTag(ACTIVITY_PANE_TAG).fetchSemanticsNodes().isNotEmpty() }
+        windowDensity.value = null
+        windowWidth.value = 900.dp
+        rule.waitUntil { rule.onAllNodesWithTag(ACTIVITY_PANE_TAG).fetchSemanticsNodes().isEmpty() }
+        assertEquals(listOf("accounts", "account/{chain}/{address}"), screens())
+        rule.onNodeWithText("Sent ETH").performClick()
+        rule.waitUntil { screens().lastOrNull() == DETAIL_ROUTE }
+    }
+
+    @Test
     fun aCowOrderInActivityOpensItsStatusAndTheSameSwapOnUniswapTakesItsPlace() {
         accounts.value = listOf(daily)
         val usdc = Token(Address.of("0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"), "USDC", "USDC", 6, "usdc")
@@ -1650,6 +1709,9 @@ private val PHONE = 400.dp
 
 /** The test window's own width, 1024 dp: the tabs in a rail, and the Accounts list beside the account. */
 private val WIDE: Dp? = null
+
+/** A density at which the test window's 1024 px are about 1365 dp: the widest window, three columns. */
+private const val WIDEST_DENSITY = 0.75f
 
 /** The Accounts tab's start, as [AppNavigationTest]'s back stack names it. */
 private const val ACCOUNTS_ROUTE = "accounts"

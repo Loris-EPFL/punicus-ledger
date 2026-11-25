@@ -247,6 +247,28 @@ replaces the bar (Material's expanded window size class):
   (owner's request, 2026-11-18): `docs/screenshots/accounts-tablet/` and
   `simple-accounts-tablet/`.
 
+**From 1200 dp on, an Activity row's detail opens beside its account: three
+columns** (owner's request, 2026-11-25). Material's large window size class:
+
+- A tap on a row of the account's Activity opens its detail (26) in a column
+  beside the account, which stays as it was, scrolled where it was. The list,
+  the account and the detail share the width beside the rail, the account and
+  the detail half each of what the list leaves.
+- The row whose detail is open is drawn selected, in the secondary container
+  colour, and says so to a screen reader. A tap on another row shows its
+  detail in its place.
+- The detail's own Back, or the back key, closes the column, and the account
+  takes the width again. With no row open, there is no third column.
+- Only a row's detail goes there. A CoW order and a queued transfer open
+  their status as before, and every action of the account (Send, Receive, a
+  Safe's proposal, ...) opens as it does at 840 dp.
+- Another account opened from the list opens with no row open: the detail
+  belongs to the account it was opened from.
+- A window narrowed below 1200 dp closes the column, and the account is
+  shown as it was; there a row's tap opens its detail on a screen of its
+  own. The row open beside the account is not kept past the end of the app's
+  process.
+
 ## Screens
 
 ### Accounts tab

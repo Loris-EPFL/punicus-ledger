@@ -418,8 +418,9 @@ private fun AccountDetailPreview(
     state: AccountDetailUiState,
     darkTheme: Boolean = false,
     lightClient: LightClientItem = verifiedStripSample,
+    selectedActivity: ActivityKey? = null,
 ) {
-    SerotineTheme(darkTheme = darkTheme) { AccountDetailSample(state, lightClient) }
+    SerotineTheme(darkTheme = darkTheme) { AccountDetailSample(state, lightClient, selectedActivity) }
 }
 
 /**
@@ -430,7 +431,11 @@ private fun AccountDetailPreview(
 internal fun AccountDetailDailySample() = AccountDetailSample(daily, verifiedStripSample)
 
 @Composable
-private fun AccountDetailSample(state: AccountDetailUiState, lightClient: LightClientItem) {
+private fun AccountDetailSample(
+    state: AccountDetailUiState,
+    lightClient: LightClientItem,
+    selectedActivity: ActivityKey? = null,
+) {
     AccountDetailScreen(
         state = state,
         chrome = AccountChrome.Strip(lightClient),
@@ -448,6 +453,7 @@ private fun AccountDetailSample(state: AccountDetailUiState, lightClient: LightC
         onOpenSafeTx = {},
         onImportRequest = {},
         onOpenActivity = {},
+        selectedActivity = selectedActivity,
     )
 }
 
@@ -691,6 +697,17 @@ private fun AccountDetailNotASafePreview() = AccountDetailPreview(
 @Composable
 private fun AccountDetailActivityPreview() = AccountDetailPreview(
     daily.copy(segment = DetailSegment.ACTIVITY, activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE)),
+)
+
+/**
+ * On the widest window: the row whose detail is open beside the account, drawn selected (owner's request,
+ * 2026-11-25).
+ */
+@Preview
+@Composable
+private fun AccountDetailActivitySelectedPreview() = AccountDetailPreview(
+    daily.copy(segment = DetailSegment.ACTIVITY, activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE)),
+    selectedActivity = activityRows[1].opens,
 )
 
 /** Lenient mode: what the account has queued, first whichever way the rows run (docs/lenient-mode.md). */
@@ -1370,6 +1387,7 @@ internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("per-app-tab-empty-dark") { AccountDetailPerAppTabEmptyPreview() },
     ScreenPreview("per-app-tab-no-network") { AccountDetailPerAppTabNoNetworkPreview() },
     ScreenPreview("activity") { AccountDetailActivityPreview() },
+    ScreenPreview("activity-selected") { AccountDetailActivitySelectedPreview() },
     ScreenPreview("activity-dark") { AccountDetailActivityDarkPreview() },
     ScreenPreview("waiting-swap") { AccountDetailWaitingSwapPreview() },
     ScreenPreview("waiting-swap-dark") { AccountDetailWaitingSwapDarkPreview() },

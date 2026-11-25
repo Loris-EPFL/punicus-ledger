@@ -1,5 +1,6 @@
 package eth.serotine.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -9,19 +10,31 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
@@ -117,6 +130,9 @@ import eth.serotine.ui.update.UpdateRequiredViewModel
 import eth.serotine.ui.watch.WatchRoute
 import eth.serotine.ui.withdraw.WithdrawRoute
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
@@ -182,6 +198,8 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
             // changes: that destination is the empty detail pane on a wide window, whatever the tab, so that
             // as it fades out on a tab switch it does not draw the whole list where the pane was.
             val wide = rememberUpdatedState(maxWidth >= WIDE_WINDOW)
+            // Wider still: an Activity row's detail beside its account, a third column (owner's request, 2026-11-25).
+            val widest = rememberUpdatedState(maxWidth >= WIDEST_WINDOW)
             // The Accounts tab's start, and the account open beside the list: looked up again as the screen
             // shown changes, through NavController's public API (its back stack's flow is the library's own,
             // @RestrictTo).
@@ -227,6 +245,7 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
                             debug,
                             dappRequests,
                             wide,
+                            widest,
                             Modifier.padding(padding).consumeWindowInsets(padding).imePadding(),
                         )
                     }
@@ -363,6 +382,7 @@ private fun OpenInSettings(
  * other: the one navigation no screen asks for (docs/architecture.md).
  */
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 private fun Destinations(
     graph: AppGraph,
     navController: NavHostController,
@@ -372,6 +392,7 @@ private fun Destinations(
     debug: DebugViewModel,
     dappRequests: DappRequestsWaitingViewModel,
     wide: State<Boolean>,
+    widest: State<Boolean>,
     modifier: Modifier = Modifier,
 ) {
     val updateState by update.uiState.collectAsStateWithLifecycle()
@@ -452,33 +473,80 @@ private fun Destinations(
             }
             withAccount(Destination.ACCOUNT, navController) { account ->
                 val chainId = account.network.chainId
-                AccountDetailRoute(
-                    viewModel = viewModel { graph.accountDetailViewModel(account) },
-                    lightClient = lightClient.item(account.network),
-                    onBack = { navController.leave(Destination.ACCOUNT) },
-                    onGone = { navController.leave(Destination.ACCOUNT) },
-                    onSend = { contract -> navController.send(account, contract) },
-                    onPropose = { contract -> navController.propose(account, contract) },
-                    onSwap = { contract -> navController.swap(account, contract) },
-                    onSafeSwap = { contract -> navController.safeSwap(account, contract) },
-                    onReceive = { navController.open(AccountAction.Receive(chainId, account.address.hex)) },
-                    onRename = { navController.open(AccountAction.Rename(chainId, account.address.hex)) },
-                    onRemove = { navController.open(AccountAction.Remove(chainId, account.address.hex)) },
-                    onAddOnNetwork = { navController.open(AccountAction.AddOnNetwork(chainId, account.address.hex)) },
-                    onDerive = { navController.open(AccountAction.Derive(chainId, account.address.hex)) },
-                    onOpenSafeTx = { hash -> navController.openSafeTx(account, hash) },
-                    onImportRequest = { navController.importRequest(account) },
-                    onSafeSettings = { navController.safeSettings(account) },
-                    onGnosisPay = { navController.gnosisPay(account) },
-                    onSwarm = { navController.swarm(account) },
-                    onOpenActivity = { key -> navController.openActivityDetail(account, key) },
-                    onContinueSwap = { sell -> navController.continueSwap(account, sell) },
-                    onSendElsewhere = { contract -> navController.sendElsewhere(account, contract) },
-                    perAppActions = PerAppActions(
-                        onOpen = { chain, address -> navController.open(AccountAction.Open(chain, address)) },
-                        onRestore = { phrase -> navController.perApp(phrase) },
-                    ),
-                )
+                // On the widest window an Activity row's detail opens beside the account, in a third column, and
+                // the account stays as it was (owner's request, 2026-11-25). Kept in this entry: another account
+                // opened from the list is another entry, with none open.
+                val pane = viewModel { OpenedActivity() }
+                val besideIt by pane.key.collectAsStateWithLifecycle()
+                val inPane = widest.value
+                // A window narrowed below that closes the column: the account is shown as it was, whatever covers
+                // it now, and its row opens its detail on a screen of its own again.
+                LaunchedEffect(inPane) { if (!inPane) pane.close() }
+                // Back closes the detail beside the account first, while the account is the screen in front: a
+                // dialog or a flow over it takes its own back.
+                val inFront = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value
+                    .isAtLeast(Lifecycle.State.RESUMED)
+                BackHandler(enabled = inPane && inFront && besideIt != null) { pane.close() }
+                Row(Modifier.fillMaxSize()) {
+                    AccountDetailRoute(
+                        viewModel = viewModel { graph.accountDetailViewModel(account) },
+                        lightClient = lightClient.item(account.network),
+                        onBack = { navController.leave(Destination.ACCOUNT) },
+                        onGone = { navController.leave(Destination.ACCOUNT) },
+                        onSend = { contract -> navController.send(account, contract) },
+                        onPropose = { contract -> navController.propose(account, contract) },
+                        onSwap = { contract -> navController.swap(account, contract) },
+                        onSafeSwap = { contract -> navController.safeSwap(account, contract) },
+                        onReceive = { navController.open(AccountAction.Receive(chainId, account.address.hex)) },
+                        onRename = { navController.open(AccountAction.Rename(chainId, account.address.hex)) },
+                        onRemove = { navController.open(AccountAction.Remove(chainId, account.address.hex)) },
+                        onAddOnNetwork = {
+                            navController.open(AccountAction.AddOnNetwork(chainId, account.address.hex))
+                        },
+                        onDerive = { navController.open(AccountAction.Derive(chainId, account.address.hex)) },
+                        onOpenSafeTx = { hash -> navController.openSafeTx(account, hash) },
+                        onImportRequest = { navController.importRequest(account) },
+                        onSafeSettings = { navController.safeSettings(account) },
+                        onGnosisPay = { navController.gnosisPay(account) },
+                        onSwarm = { navController.swarm(account) },
+                        onOpenActivity = { key ->
+                            // A CoW order and a queued transfer open their status, never beside the account; a key
+                            // the detail's routes would refuse opens nothing there either, as on a narrower window.
+                            if (inPane && !key.cowOrder && !key.queued && key.forDetail() != null) {
+                                pane.open(key)
+                            } else {
+                                navController.openActivityDetail(account, key)
+                            }
+                        },
+                        onContinueSwap = { sell -> navController.continueSwap(account, sell) },
+                        onSendElsewhere = { contract -> navController.sendElsewhere(account, contract) },
+                        perAppActions = PerAppActions(
+                            onOpen = { chain, address -> navController.open(AccountAction.Open(chain, address)) },
+                            onRestore = { phrase -> navController.perApp(phrase) },
+                        ),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        selectedActivity = besideIt.takeIf { inPane },
+                    )
+                    besideIt?.takeIf { inPane }?.let { opened ->
+                        val key = opened.forDetail() ?: return@let
+                        VerticalDivider()
+                        Box(Modifier.weight(1f).fillMaxHeight().testTag(ACTIVITY_PANE_TAG)) {
+                            // Its ViewModel in a store of its own, cleared as the detail closes or another row
+                            // opens: a row opened again is checked again, and none is kept for nothing.
+                            key(opened) {
+                                WithOwnViewModels {
+                                    ActivityDetailRoute(
+                                        viewModel = viewModel { graph.activityDetailViewModel(account, key) },
+                                        lightClient = lightClient.item(account.network),
+                                        onBack = { pane.close() },
+                                        onStatus = { sent -> navController.openTransfer(account.network, sent) },
+                                        onAddToken = { contract -> navController.addToken(account.network, contract) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
             composable(
                 ACTIVITY_DETAIL_ROUTE,
@@ -1788,3 +1856,57 @@ private val TRANSACTION_HASH = Regex("^0x[0-9a-f]{64}$")
  */
 private val WIDE_WINDOW = 840.dp
 
+/**
+ * The width from which an Activity row's detail opens beside its account, a third column (owner's request,
+ * 2026-11-25): Material's large window size class, room for the list, the account and the detail.
+ */
+private val WIDEST_WINDOW = 1200.dp
+
+/** Test tag of the column beside the account that shows an Activity row's detail, for UI tests. */
+internal const val ACTIVITY_PANE_TAG = "activity-pane"
+
+/**
+ * Which Activity row's detail is open beside its account on the widest window ([key]; null: none), kept in the
+ * account's back-stack entry so that it outlives a configuration change and goes with the entry.
+ */
+private class OpenedActivity : ViewModel() {
+    private val opened = MutableStateFlow<ActivityKey?>(null)
+
+    /** The row open beside the account, as its row names it; null: none. Not kept past the process's end. */
+    val key: StateFlow<ActivityKey?> = opened.asStateFlow()
+
+    fun open(key: ActivityKey) {
+        opened.value = key
+    }
+
+    fun close() {
+        opened.value = null
+    }
+}
+
+/**
+ * This key as the detail's routes take it: the transaction's hash in lower case, an addr1 row's empty when it has
+ * none of the right shape, and null for a key those routes refuse (a hash of the wrong shape, a negative log index),
+ * so that a detail opened beside the account is the one a narrower window would open.
+ */
+private fun ActivityKey.forDetail(): ActivityKey? {
+    val shaped = hash.lowercase().takeIf(TRANSACTION_HASH::matches)
+    if (index != null) return copy(hash = shaped.orEmpty())
+    if (logIndex != null && logIndex < 0) return null
+    return shaped?.let { copy(hash = it) }
+}
+
+/**
+ * [content] with a [ViewModelStoreOwner] of its own, its ViewModels cleared as it leaves the composition: for a
+ * detail shown beside its account, whose ViewModel would otherwise stay in the account's entry until it is popped.
+ */
+@Composable
+private fun WithOwnViewModels(content: @Composable () -> Unit) {
+    val owner = remember {
+        object : ViewModelStoreOwner {
+            override val viewModelStore = ViewModelStore()
+        }
+    }
+    DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
+    CompositionLocalProvider(LocalViewModelStoreOwner provides owner, content = content)
+}

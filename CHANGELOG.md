@@ -94,6 +94,10 @@ and issues of this repository.
 
 ### Changed
 
+- Simple mode: the switch for heavy downloads on metered connections says
+  what it holds back, catching up on activity since you added an account.
+  It said "older activity", which in simple mode names the rows from the
+  addr1 index, and those read on any connection, mobile data too (#375).
 - The website's address is <https://punicus.eth.limo/>; the old GitHub Pages
   address no longer answers since the move to VesperBats (#373).
 - The embedded Myotis engine is 0.1.24 (was 0.1.21-rc1). It brings the

@@ -10,9 +10,9 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 
 | Screen | Folder | States |
 |---|---|---|
-| [Account detail](#account-detail) | `account-detail/` | 75 |
+| [Account detail](#account-detail) | `account-detail/` | 74 |
 | [Accounts](#accounts) | `accounts/` | 41 |
-| [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 3 |
+| [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 5 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 15 |
 | [Add on networks (dialog)](#add-on-networks-dialog) | `add-on-networks-dialog/` | 5 |
 | [Add token](#add-token) | `add-token/` | 11 |
@@ -47,7 +47,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Settings](#settings) | `settings/` | 37 |
 | [Account detail (simple mode)](#simple-account-detail) | `simple-account-detail/` | 13 |
 | [Home (simple mode)](#simple-accounts) | `simple-accounts/` | 18 |
-| [Home on a tablet (simple mode)](#simple-accounts-tablet) | `simple-accounts-tablet/` | 3 |
+| [Home on a tablet (simple mode)](#simple-accounts-tablet) | `simple-accounts-tablet/` | 5 |
 | [Activity detail (simple mode)](#simple-activity-detail) | `simple-activity-detail/` | 4 |
 | [Add token (simple mode)](#simple-add-token) | `simple-add-token/` | 2 |
 | [CoW order (simple mode)](#simple-cow-order) | `simple-cow-order/` | 3 |
@@ -75,7 +75,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="account-detail"></a>
 ## Account detail
 
-`account-detail/`, 75 states: `assets`, `assets-dark`, `swarm-node`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `per-app-tab-no-network`, `activity`, `activity-selected`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`, `activity-index`, `activity-index-dark`, `activity-index-loading`, `activity-index-loading-more`, `activity-index-checking`, `activity-index-end`, `activity-index-gaps`, `activity-index-left-out`, `activity-index-left-out-dark`, `activity-index-not-in-this-build`, `activity-index-setting-off`, `activity-index-tor`, `activity-index-network-not-served`, `activity-index-checkpoint-alarm`, `activity-index-stale-anchor`, `activity-index-no-engine`, `activity-index-wrong-importer`, `activity-index-rejected`, `activity-index-syncing`, `activity-index-unproven`, `activity-index-paused`, `activity-index-paused-dark`
+`account-detail/`, 74 states: `assets`, `assets-dark`, `swarm-node`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `per-app-tab-no-network`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`, `activity-index`, `activity-index-dark`, `activity-index-loading`, `activity-index-loading-more`, `activity-index-checking`, `activity-index-end`, `activity-index-gaps`, `activity-index-left-out`, `activity-index-left-out-dark`, `activity-index-not-in-this-build`, `activity-index-setting-off`, `activity-index-tor`, `activity-index-network-not-served`, `activity-index-checkpoint-alarm`, `activity-index-stale-anchor`, `activity-index-no-engine`, `activity-index-wrong-importer`, `activity-index-rejected`, `activity-index-syncing`, `activity-index-unproven`, `activity-index-paused`, `activity-index-paused-dark`
 
 <a href="account-detail/assets.png"><img src="account-detail/assets.png" width="206" alt="assets"></a>
 <a href="account-detail/assets-dark.png"><img src="account-detail/assets-dark.png" width="206" alt="assets-dark"></a>
@@ -101,7 +101,6 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="account-detail/per-app-tab-empty-dark.png"><img src="account-detail/per-app-tab-empty-dark.png" width="206" alt="per-app-tab-empty-dark"></a>
 <a href="account-detail/per-app-tab-no-network.png"><img src="account-detail/per-app-tab-no-network.png" width="206" alt="per-app-tab-no-network"></a>
 <a href="account-detail/activity.png"><img src="account-detail/activity.png" width="206" alt="activity"></a>
-<a href="account-detail/activity-selected.png"><img src="account-detail/activity-selected.png" width="206" alt="activity-selected"></a>
 <a href="account-detail/activity-dark.png"><img src="account-detail/activity-dark.png" width="206" alt="activity-dark"></a>
 <a href="account-detail/waiting-swap.png"><img src="account-detail/waiting-swap.png" width="206" alt="waiting-swap"></a>
 <a href="account-detail/waiting-swap-dark.png"><img src="account-detail/waiting-swap-dark.png" width="206" alt="waiting-swap-dark"></a>
@@ -203,11 +202,13 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="accounts-tablet"></a>
 ## Accounts on a tablet
 
-`accounts-tablet/`, 3 states: `account-open`, `account-open-dark`, `no-account-open`
+`accounts-tablet/`, 5 states: `account-open`, `account-open-dark`, `no-account-open`, `activity-detail-open`, `activity-detail-open-dark`
 
 <a href="accounts-tablet/account-open.png"><img src="accounts-tablet/account-open.png" width="640" alt="account-open"></a>
 <a href="accounts-tablet/account-open-dark.png"><img src="accounts-tablet/account-open-dark.png" width="640" alt="account-open-dark"></a>
 <a href="accounts-tablet/no-account-open.png"><img src="accounts-tablet/no-account-open.png" width="640" alt="no-account-open"></a>
+<a href="accounts-tablet/activity-detail-open.png"><img src="accounts-tablet/activity-detail-open.png" width="640" alt="activity-detail-open"></a>
+<a href="accounts-tablet/activity-detail-open-dark.png"><img src="accounts-tablet/activity-detail-open-dark.png" width="640" alt="activity-detail-open-dark"></a>
 
 <a name="activity-detail"></a>
 ## Activity detail
@@ -944,11 +945,13 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="simple-accounts-tablet"></a>
 ## Home on a tablet (simple mode)
 
-`simple-accounts-tablet/`, 3 states: `account-open`, `account-open-dark`, `no-account-open`
+`simple-accounts-tablet/`, 5 states: `account-open`, `account-open-dark`, `no-account-open`, `activity-detail-open`, `activity-detail-open-dark`
 
 <a href="simple-accounts-tablet/account-open.png"><img src="simple-accounts-tablet/account-open.png" width="640" alt="account-open"></a>
 <a href="simple-accounts-tablet/account-open-dark.png"><img src="simple-accounts-tablet/account-open-dark.png" width="640" alt="account-open-dark"></a>
 <a href="simple-accounts-tablet/no-account-open.png"><img src="simple-accounts-tablet/no-account-open.png" width="640" alt="no-account-open"></a>
+<a href="simple-accounts-tablet/activity-detail-open.png"><img src="simple-accounts-tablet/activity-detail-open.png" width="640" alt="activity-detail-open"></a>
+<a href="simple-accounts-tablet/activity-detail-open-dark.png"><img src="simple-accounts-tablet/activity-detail-open-dark.png" width="640" alt="activity-detail-open-dark"></a>
 
 <a name="simple-activity-detail"></a>
 ## Activity detail (simple mode)

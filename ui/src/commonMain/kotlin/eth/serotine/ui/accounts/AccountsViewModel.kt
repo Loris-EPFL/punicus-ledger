@@ -18,6 +18,7 @@ import eth.serotine.domain.usecase.EnsNameCheck
 import eth.serotine.domain.usecase.FetchFreshCheckpoint
 import eth.serotine.domain.usecase.HoldNetworksWhileEmpty
 import eth.serotine.domain.usecase.ObserveAmountsHidden
+import eth.serotine.domain.usecase.ObserveBareKeys
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.ObserveEnsNames
 import eth.serotine.domain.usecase.ObserveGnosisPays
@@ -135,6 +136,11 @@ class AccountsViewModel(
      * Null: none is read, and every Safe's badge is its owners'.
      */
     observeGnosisPays: ObserveGnosisPays? = null,
+    /**
+     * The accounts whose key was imported bare, in hex: New account from the same phrase greyed out for them, a tap
+     * saying why (owner ruling, 2026-11-25). Null: none is read, and the key store refuses one there.
+     */
+    observeBareKeys: ObserveBareKeys? = null,
 ) : ViewModel() {
 
     init {
@@ -288,6 +294,10 @@ class AccountsViewModel(
                     .joinToString(" ")
                     .ifEmpty { null },
             )
+        }
+        // A key imported bare has no phrase to add accounts from. Empty until read: the action is then offered.
+        .combine((observeBareKeys?.invoke() ?: flowOf(emptySet())).onStart { emit(emptySet()) }) { state, bare ->
+            if (state is AccountsUiState.Ready) state.withBareKeys(bare.mapTo(HashSet()) { it.hex }) else state
         }
         // Masked last, on the finished state; nothing is drawn before the choice is read, so a hidden
         // amount never shows for a moment at the start.

@@ -70,8 +70,9 @@ fun RemoveAccountDialog(state: RemoveAccountUiState, onRemove: () -> Unit, onCan
                                     "Its key stays on this device for the same address on ${it.keyStaysFor}. " +
                                         "You can add it on ${it.network} again from there."
                                 } else if (it.keyed) {
-                                    "Its key is deleted from this device. Only its recovery phrase brings this " +
-                                        "account back: make sure you have it."
+                                    "Its key is deleted from this device. Only its recovery phrase, or its " +
+                                        "private key if it was added from one, brings this account back: make " +
+                                        "sure you have it."
                                 } else {
                                     "Punicus stops watching this address. You can watch it again at any time."
                                 },

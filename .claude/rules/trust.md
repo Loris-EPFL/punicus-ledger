@@ -399,7 +399,7 @@ port that takes a request and returns a signature. The UI never touches a key.
 
 Each exception is an owner ruling, dated here, with its conditions in
 docs/keys-and-signing.md. A case not on the list follows the rule. Adding one
-is the owner's decision, never a PR author's. Today the list has one entry:
+is the owner's decision, never a PR author's. Today the list has two entries:
 
 - **The mnemonic screens** (owner ruling, 2026-10-15): the backup words shown
   at creation, and the words typed at restore.
@@ -418,6 +418,25 @@ is the owner's decision, never a PR author's. Today the list has one entry:
     stays under the rule above.
   - Open, the owner's to decide: whether Create account, one screen using
     both legs of the path, is within the entry (#40).
+- **A private key typed in hex** (owner ruling, 2026-11-25), on the import
+  screen, instead of a seed phrase; docs/keys-and-signing.md, *Importing a
+  private key*.
+  - It travels only as the dedicated `PrivateKey` type with a redacted
+    `toString()`, one way: typed on the import screen, through its ViewModel
+    and a use case, into the key store. It never goes back: it is never
+    shown or exported.
+  - Nothing on that path stores, logs or caches it. The input is cleared
+    when the screen is left, as the words are (the entry above).
+  - The key store checks it (64 hex digits, an optional `0x`, a valid
+    secp256k1 key) and seals it in an envelope of its own under the wallet
+    password and the device's hardware secret, as every key is.
+  - Such an account has no seed: New account from the same phrase and
+    per-app addresses are greyed out for it, a tap saying why.
+  - How it is applied, not part of the ruling: a per-app address is made
+    from a phrase the user picks, not from an account, so a bare key is not
+    among the phrases offered; where no phrase is held at all, the dApp
+    connection's new per-app address is greyed out, saying why, as before.
+    New account from the same phrase is greyed out on the account itself.
 
 ### Privacy Pools note secrets are key material
 
@@ -481,8 +500,8 @@ This is the summary a reviewer holds a diff against.
   per-use Class 3 biometric authorization. Disabling it deletes that key.
   Weak biometrics never qualify.
 - **The plaintext key exists only inside the key-store adapter**, creation
-  and import included (the mnemonic words leave it only under the exception
-  above). In signing it exists only inside the call, in native code, as a
+  and import included (the mnemonic words leave it, and a typed private key
+  reaches it, only under the exceptions above). In signing it exists only inside the call, in native code, as a
   byte array zeroed afterwards. The ciphertext is excluded from cloud backup
   AND from device-to-device transfer.
 - **A Safe may be owned by a hardware P-256 key directly.** Such a key is

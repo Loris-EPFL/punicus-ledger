@@ -130,7 +130,7 @@ private fun AccountsCreateSafeReasonPreview() = SerotineTheme {
         UnavailableNotice(
             "Create Safe",
             CREATE_SAFE_NEEDS_A_KEY,
-            listOf(UnavailableFix("Import recovery phrase") {}, UnavailableFix("Create account") {}),
+            listOf(UnavailableFix("Import phrase or key") {}, UnavailableFix("Create account") {}),
         ),
         onDismiss = {},
     )

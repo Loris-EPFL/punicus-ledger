@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AppHost
 import eth.serotine.domain.model.AppIsolation
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Mnemonic
+import eth.serotine.domain.model.PrivateKey
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.BiometricChange
@@ -22,6 +23,7 @@ import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.PasswordCost
 import eth.serotine.domain.repository.PerAppDerivation
 import eth.serotine.domain.repository.PerAppKeys
+import eth.serotine.domain.repository.PrivateKeys
 import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
@@ -42,9 +44,10 @@ import kotlinx.io.readString
 import kotlinx.serialization.json.Json
 
 /**
- * [KeyStore], [PerAppKeys] and [Signer] in the key adapter: each imported seed sealed in its own
+ * [KeyStore], [PerAppKeys], [PrivateKeys] and [Signer] in the key adapter: each imported seed sealed in its own
  * envelope ([Envelope]), one file per account (`<address>.seed`) under [directory], a per-app
- * address's among them. [hardware] is this device's hardware secret, or null on a computer
+ * address's among them, and each private key imported in hex sealed the same way as a bare key
+ * ([SealedSeed.bareKey]), which signs and derives nothing further. [hardware] is this device's hardware secret, or null on a computer
  * without one; [withoutHardware] is then what the key store reports, [KeyProtection.PASSWORD_ONLY]
  * or, on a computer whose TPM is not used yet,
  * [KeyProtection.PASSWORD_ONLY_TPM_NOT_USED]. Argon2id runs at the lighter cost only
@@ -79,7 +82,7 @@ class EnvelopeKeyStore internal constructor(
     private val biometricKey: BiometricKey?,
     private val passwordOnlyTier: PasswordOnlyTier,
     private val stretch: PasswordStretch,
-) : KeyStore, PerAppKeys, Signer {
+) : KeyStore, PerAppKeys, PrivateKeys, Signer {
 
     constructor(
         directory: String,
@@ -135,9 +138,11 @@ class EnvelopeKeyStore internal constructor(
                 val words = mnemonic.words
                 Bip39.problemWith(words)?.let { return@withContext KeyImport.Invalid(it) }
                 var passwordBytes = ByteArray(0)
+                var seed = ByteArray(0)
                 try {
                     passwordBytes = EnvelopeCrypto.passwordBytes(password.text)
-                    import(words, password.isLongEnough, passwordBytes)
+                    seed = Bip39.seed(words)
+                    import(seed, firstAddressOf(seed), bareKey = false, password.isLongEnough, passwordBytes)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Argon2idOutOfMemory) {
@@ -151,9 +156,56 @@ class EnvelopeKeyStore internal constructor(
                     KeyImport.Unavailable
                 } finally {
                     passwordBytes.fill(0)
+                    seed.fill(0)
                 }
             }
         }
+
+    /**
+     * [PrivateKeys.importPrivateKey]: [key] read ([readPrivateKey]) and sealed as a bare key under its address, as an
+     * imported seed is sealed, the password checked or set alike. The key's bytes and the password's are zeroed before
+     * this returns; nothing of the key is reported.
+     */
+    override suspend fun importPrivateKey(key: PrivateKey, password: WalletPassword): KeyImport =
+        lock.withLock {
+            withContext(dispatcher) {
+                if (!EnvelopeCrypto.available()) return@withContext KeyImport.Unavailable
+                var passwordBytes = ByteArray(0)
+                var bytes = ByteArray(0)
+                try {
+                    bytes = when (val read = readPrivateKey(key)) {
+                        is ReadKey.Invalid -> return@withContext KeyImport.Invalid(read.problem)
+                        is ReadKey.Key -> read.bytes
+                    }
+                    passwordBytes = EnvelopeCrypto.passwordBytes(password.text)
+                    import(bytes, addressOf(bytes), bareKey = true, password.isLongEnough, passwordBytes)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Argon2idOutOfMemory) {
+                    report("not enough memory for Argon2id: nothing was stored")
+                    KeyImport.NotEnoughMemory(MemoryStep.PROTECT)
+                } catch (e: Throwable) {
+                    // Throwable: libsodium, libsecp256k1 and the platform's key store are native code.
+                    report("the key store failed (${e::class.simpleName})")
+                    KeyImport.Unavailable
+                } finally {
+                    passwordBytes.fill(0)
+                    bytes.fill(0)
+                }
+            }
+        }
+
+    // Without the lock, as phrases() is: it only reads the envelopes.
+    override suspend fun bareKeys(): Set<Address> = withContext(dispatcher) {
+        try {
+            envelopes().filter { it.sealed.bareKey }.mapNotNullTo(HashSet()) { Address.parse(it.address) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            report("the envelopes cannot be listed (${e::class.simpleName})")
+            emptySet()
+        }
+    }
 
     override suspend fun deriveAccount(from: Address, password: WalletPassword, held: Set<Address>): KeyDerivation =
         withEnvelopeOf(
@@ -333,6 +385,10 @@ class EnvelopeKeyStore internal constructor(
         sweepTemporaries()
         val sealed = read(file) ?: return Unsealed.Unavailable
         if (!Envelope.canOpen(sealed, hardware, from.hex)) return Unsealed.Unavailable
+        if (sealed.bareKey) {
+            report("the envelope of ${from.hex} holds a bare key, which has no seed to derive from")
+            return Unsealed.Unavailable
+        }
         val seed = when (val opened = Envelope.open(sealed, password, hardware, stretch)) {
             is Envelope.Opened.Seed -> opened.bytes
             Envelope.Opened.WrongPassword ->
@@ -532,17 +588,22 @@ class EnvelopeKeyStore internal constructor(
 
     /**
      * [digest] signed by the key at [sealed]'s path of [seed], which must derive [account], of the phrase [sealed]
-     * names ([phraseIfItsKey]); zeroes [seed].
+     * names ([phraseIfItsKey]); or, for a bare key's envelope, by [seed] itself, the key, which must be [account]'s.
+     * Zeroes [seed].
      */
     private fun signWith(seed: ByteArray, sealed: SealedSeed, account: Address, digest: Digest): Signing {
         var key = ByteArray(0)
         val message = digest.hex.fromHex()
         try {
-            val path = sealed.path() ?: return Signing.Unavailable
-            key = Bip32.derive(seed, path.bip32)
+            key = if (sealed.bareKey) {
+                seed.copyOf()
+            } else {
+                Bip32.derive(seed, (sealed.path() ?: return Signing.Unavailable).bip32)
+            }
             // The envelope's name is the address it was sealed under; the key must be that account's, and its
             // phrase the one the envelope names.
-            if (addressOf(key) != account || phraseIfItsKey(seed, sealed, account) == null) {
+            val itsPhrase = sealed.bareKey || phraseIfItsKey(seed, sealed, account) != null
+            if (addressOf(key) != account || !itsPhrase) {
                 report("the envelope of ${account.hex} does not hold its key")
                 return Signing.Unavailable
             }
@@ -759,67 +820,76 @@ class EnvelopeKeyStore internal constructor(
         }
     }
 
-    private suspend fun import(words: List<String>, longEnough: Boolean, password: ByteArray): KeyImport {
+    /**
+     * The import both [importMnemonic] and [importPrivateKey] make: [secret] (a seed, or with [bareKey] a private key)
+     * sealed for [account] under [password], once the password is checked against the stored envelopes or, on the
+     * first import, found [longEnough]. An envelope stored for [account] that opens under the password is kept,
+     * unless it holds a bare key and [secret] is a seed: the phrase's envelope holds more, and replaces it. The caller
+     * zeroes [secret] and [password].
+     */
+    private suspend fun import(
+        secret: ByteArray,
+        account: Address,
+        bareKey: Boolean,
+        longEnough: Boolean,
+        password: ByteArray,
+    ): KeyImport {
         val provisioned = hardware?.isProvisioned() ?: true
         sweepTemporaries()
         val envelopes = envelopes()
         if (hardwareKeyLost(provisioned, envelopes)) return KeyImport.Unavailable
         val protection = protection()
-        val seed = Bip39.seed(words)
-        try {
-            val account = firstAddressOf(seed)
-            val address = account.hex
-            // A password is set once a seed is stored, and this must be the same one. Its
-            // own envelope is asked first, so an import that is already done stays cheap; and
-            // at most MAX_PASSWORD_CHECKS are asked, so a mistyped password costs that many
-            // Argon2id runs, not one per account.
-            val stored = envelopes.sortedBy { if (it.address == address) 0 else 1 }.take(MAX_PASSWORD_CHECKS)
-            var alreadyStored = false
-            var verified = false
-            // One envelope's GCM tag cannot tell a wrong password from damage to that file, so
-            // a refusal does not end the search: another envelope may still open. The extra
-            // Argon2id runs happen only when the password is wrong or a file is damaged.
-            val refused = mutableListOf<String>()
-            for (envelope in stored) {
-                val opened = try {
-                    Envelope.verify(envelope.sealed, password, hardware, stretch)
-                } catch (e: Argon2idOutOfMemory) {
-                    report("not enough memory for Argon2id to check the password: nothing was stored")
-                    return KeyImport.NotEnoughMemory(MemoryStep.CHECK_PASSWORD)
-                }
-                when (opened) {
-                    Envelope.Opened.Verified -> {
-                        verified = true
-                        alreadyStored = envelope.address == address
-                        break
-                    }
-                    Envelope.Opened.WrongPassword -> refused += envelope.address
-                    // Damaged past what canOpen sees: passed over like an unreadable file.
-                    else -> report("the envelope of ${envelope.address} cannot be opened")
-                }
+        val address = account.hex
+        // A password is set once a seed is stored, and this must be the same one. Its
+        // own envelope is asked first, so an import that is already done stays cheap; and
+        // at most MAX_PASSWORD_CHECKS are asked, so a mistyped password costs that many
+        // Argon2id runs, not one per account.
+        val stored = envelopes.sortedBy { if (it.address == address) 0 else 1 }.take(MAX_PASSWORD_CHECKS)
+        var alreadyStored = false
+        var verified = false
+        // One envelope's GCM tag cannot tell a wrong password from damage to that file, so
+        // a refusal does not end the search: another envelope may still open. The extra
+        // Argon2id runs happen only when the password is wrong or a file is damaged.
+        val refused = mutableListOf<String>()
+        for (envelope in stored) {
+            val opened = try {
+                Envelope.verify(envelope.sealed, password, hardware, stretch)
+            } catch (e: Argon2idOutOfMemory) {
+                report("not enough memory for Argon2id to check the password: nothing was stored")
+                return KeyImport.NotEnoughMemory(MemoryStep.CHECK_PASSWORD)
             }
-            // Every envelope is under the one wallet password: none opened and one refused it,
-            // so it is wrong. Sealing anyway would put the wallet under two passwords.
-            if (!verified && refused.isNotEmpty()) return KeyImport.WrongPassword
-            // One opened, so those that refused the same password are damaged.
-            refused.forEach { report("the envelope of $it does not open under the wallet password") }
-            if (!verified && !longEnough) return KeyImport.PasswordTooShort
-            var steppedDown = false
-            if (!alreadyStored) {
-                // Also over a file of this name that cannot be opened: its seed is at hand.
-                when (val stored = store(seed, address, AccountPath.Ordinary(0), account, password, protection)) {
-                    is Storing.Stored -> steppedDown = stored.steppedDown
-                    Storing.NotSaved -> return KeyImport.NotSaved
-                    Storing.OutOfMemory -> {
-                        report("not enough memory for Argon2id at the lightest cost: nothing was stored")
-                        return KeyImport.NotEnoughMemory(MemoryStep.PROTECT)
-                    }
+            when (opened) {
+                Envelope.Opened.Verified -> {
+                    verified = true
+                    // A bare key's envelope gives way to the phrase's; a phrase's never to a bare key's.
+                    alreadyStored = envelope.address == address && (bareKey || !envelope.sealed.bareKey)
+                    break
                 }
+                Envelope.Opened.WrongPassword -> refused += envelope.address
+                // Damaged past what canOpen sees: passed over like an unreadable file.
+                else -> report("the envelope of ${envelope.address} cannot be opened")
             }
-            return KeyImport.Stored(account, protection, steppedDown)
-        } finally {
-            seed.fill(0)
         }
+        // Every envelope is under the one wallet password: none opened and one refused it,
+        // so it is wrong. Sealing anyway would put the wallet under two passwords.
+        if (!verified && refused.isNotEmpty()) return KeyImport.WrongPassword
+        // One opened, so those that refused the same password are damaged.
+        refused.forEach { report("the envelope of $it does not open under the wallet password") }
+        if (!verified && !longEnough) return KeyImport.PasswordTooShort
+        var steppedDown = false
+        if (!alreadyStored) {
+            // Also over a file of this name that cannot be opened: its seed, or its key, is at hand.
+            val phrase = account.takeUnless { bareKey }
+            when (val stored = store(secret, address, AccountPath.Ordinary(0), phrase, password, protection, bareKey)) {
+                is Storing.Stored -> steppedDown = stored.steppedDown
+                Storing.NotSaved -> return KeyImport.NotSaved
+                Storing.OutOfMemory -> {
+                    report("not enough memory for Argon2id at the lightest cost: nothing was stored")
+                    return KeyImport.NotEnoughMemory(MemoryStep.PROTECT)
+                }
+            }
+        }
+        return KeyImport.Stored(account, protection, steppedDown)
     }
 
     /** How [store] went. */
@@ -833,16 +903,17 @@ class EnvelopeKeyStore internal constructor(
     /**
      * [seed] sealed for [address], its account at [path] of [phrase] (the seed's first account), under
      * [password] at the first cost that fits, written as `<address>.seed`, and, while the biometric
-     * path is on, its DEK wrapped too.
+     * path is on, its DEK wrapped too. With [bareKey], [seed] is a private key, with no phrase.
      * The biometric path failing never fails the store: the password still opens the envelope.
      */
     private suspend fun store(
         seed: ByteArray,
         address: String,
         path: AccountPath,
-        phrase: Address,
+        phrase: Address?,
         password: ByteArray,
         protection: KeyProtection,
+        bareKey: Boolean = false,
     ): Storing {
         val key = try {
             biometricKey?.takeIf { it.exists() && !it.isInvalidated() }
@@ -852,7 +923,7 @@ class EnvelopeKeyStore internal constructor(
         }
         var wrapped: ByteArray? = null
         val sealed = try {
-            sealAtTierThatFits(seed, address, path, phrase, password, protection) { dek ->
+            sealAtTierThatFits(seed, address, path, phrase, password, protection, bareKey) { dek ->
                 wrapped = try {
                     key?.wrap(dek)
                 } catch (e: Exception) {
@@ -897,20 +968,25 @@ class EnvelopeKeyStore internal constructor(
         seed: ByteArray,
         address: String,
         path: AccountPath,
-        phrase: Address,
+        phrase: Address?,
         password: ByteArray,
         protection: KeyProtection,
+        bareKey: Boolean,
         withDek: (ByteArray) -> Unit,
     ): SealedSeed {
         val costs = costs(protection)
         for (cost in costs.dropLast(1)) {
             try {
-                return Envelope.seal(seed, address, password, hardware, cost, stretch, path, phrase.hex, withDek)
+                return Envelope.seal(
+                    seed, address, password, hardware, cost, stretch, path, phrase?.hex, bareKey, withDek,
+                )
             } catch (e: Argon2idOutOfMemory) {
                 report("not enough memory for Argon2id over ${cost.memLimitBytes / MIB} MiB: a lighter tier")
             }
         }
-        return Envelope.seal(seed, address, password, hardware, costs.last(), stretch, path, phrase.hex, withDek)
+        return Envelope.seal(
+            seed, address, password, hardware, costs.last(), stretch, path, phrase?.hex, bareKey, withDek,
+        )
     }
 
     /**

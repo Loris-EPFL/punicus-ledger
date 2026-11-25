@@ -412,6 +412,9 @@ class AccountDetailViewModel(
         }
     }.distinctUntilChanged()
 
+    /** Whether this account's key was imported bare ([PerAppOverview.bare]): false until the envelopes are read. */
+    private val bareKey: Flow<Boolean> = perAppOverview.map { address in it?.bare.orEmpty() }.distinctUntilChanged()
+
     /** Whether the unlisted collections' NFTs are shown: collapsed until the user opens them (owner ruling, #246). */
     private val unlistedNftsOpen = MutableStateFlow(false)
 
@@ -553,8 +556,12 @@ class AccountDetailViewModel(
                     state
                 }
             }
-            .combine(combine(perAppTab, perAppAliases, ::Pair)) { state, (tab, aliases) ->
-                if (state is AccountDetailUiState.Ready) state.copy(perApp = tab, perAppAliases = aliases) else state
+            .combine(combine(perAppTab, perAppAliases, bareKey, ::Triple)) { state, (tab, aliases, bare) ->
+                if (state is AccountDetailUiState.Ready) {
+                    state.copy(perApp = tab, perAppAliases = aliases, bareKey = bare)
+                } else {
+                    state
+                }
             }
             // Masked last, on the finished state (the Activity masks its own, as it is built).
             .combine(amountsHidden) { state, hidden -> state.withAmountsHidden(hidden) }

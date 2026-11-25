@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import eth.serotine.domain.model.Mnemonic
+import eth.serotine.domain.model.PrivateKey
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.ui.components.NO_NETWORK_TICKED
 import eth.serotine.ui.components.NetworkChoice
@@ -28,6 +29,8 @@ class MnemonicImportScreenTest {
     private val twelveWords = "one two three four five six seven eight nine ten eleven twelve"
 
     private val typed = mutableListOf<String>()
+    private val keysTyped = mutableListOf<String>()
+    private val sources = mutableListOf<ImportSource>()
     private val passwords = mutableListOf<String>()
     private val repeats = mutableListOf<String>()
     private var imports = 0
@@ -44,8 +47,36 @@ class MnemonicImportScreenTest {
                 onImport = { imports++ },
                 onBack = { backs++ },
                 onDone = { dones++ },
+                onKeyChange = { keysTyped += it },
+                onSourceChange = { sources += it },
             )
         }
+    }
+
+    @Test
+    fun aPrivateKeyIsAskedInAMaskedFieldThatCountsItsDigits() {
+        val key = "0x" + "0123456789abcdef".repeat(4)
+        show(
+            MnemonicImportUiState.Entering(
+                Mnemonic.EMPTY,
+                key = PrivateKey(key),
+                source = ImportSource.KEY,
+                password = WalletPassword("correct horse"),
+                step = PasswordStep.Existing(protection = "Kept in hardware."),
+                networks = listOf(sepolia.copy(chosen = true)),
+            ),
+        )
+
+        rule.onNodeWithTag(MNEMONIC_FIELD_TAG).assertDoesNotExist()
+        rule.onNodeWithText("64 of 64 digits").assertIsDisplayed()
+        // Masked on screen: what is drawn is dots, one per character typed.
+        rule.onNodeWithText("\u2022".repeat(key.length)).assertIsDisplayed()
+        rule.onNodeWithTag(PRIVATE_KEY_FIELD_TAG).performTextInput("0")
+        assertEquals(1, keysTyped.size)
+        rule.onNodeWithTag(MNEMONIC_IMPORT_BUTTON_TAG).assertIsEnabled().performClick()
+        assertEquals(1, imports)
+        rule.onNodeWithText("Seed phrase").performClick()
+        assertEquals(listOf(ImportSource.PHRASE), sources)
     }
 
     @Test

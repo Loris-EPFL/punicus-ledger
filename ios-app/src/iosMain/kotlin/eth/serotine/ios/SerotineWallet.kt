@@ -341,6 +341,7 @@ class SerotineWallet {
             dappRequests = dapps.requests,
             // Per-app addresses (issue #252): the key store's, and each site's accounts last approved.
             perAppKeys = keyStore,
+            privateKeys = keyStore,
             dappSites = FileDappSites("$dataDir/walletconnect/sites.json"),
             perAppAliases = FileDappAliases("$dataDir/walletconnect/aliases.json"),
             dappConnectionsOff = dappProjectId.isEmpty(),

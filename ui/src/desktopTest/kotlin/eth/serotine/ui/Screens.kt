@@ -92,7 +92,7 @@ internal object Screens {
     val postage = Screen("postage", "Postage batch", postageScreenPreviews)
     val withdraw = Screen("withdraw", "Withdraw from the chequebook", withdrawScreenPreviews)
     val handoff = Screen("handoff", "Send from another wallet", handoffScreenPreviews)
-    val mnemonicImport = Screen("mnemonic-import", "Import recovery phrase", mnemonicImportScreenPreviews)
+    val mnemonicImport = Screen("mnemonic-import", "Import phrase or key", mnemonicImportScreenPreviews)
     val noAccountOpen = Screen("no-account-open", "No account open (wide window)", noAccountOpenScreenPreviews)
     val pairDapp = Screen("pair-dapp", "Connect a dApp", pairDappScreenPreviews)
     val perApp = Screen("per-app", "Per-app addresses", perAppScreenPreviews)

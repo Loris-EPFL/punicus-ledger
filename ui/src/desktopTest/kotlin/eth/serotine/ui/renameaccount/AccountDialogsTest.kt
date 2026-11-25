@@ -89,7 +89,7 @@ class AccountDialogsTest {
 
         rule.onNodeWithText("Remove Daily on Sepolia?").assertIsDisplayed()
         rule.onNodeWithText(DAILY).assertIsDisplayed()
-        rule.onNodeWithText("Only its recovery phrase brings this account back", substring = true).assertIsDisplayed()
+        rule.onNodeWithText("Only its recovery phrase, or its private key", substring = true).assertIsDisplayed()
         rule.onNodeWithText("Remove").performClick()
 
         assertEquals(listOf("remove"), events)

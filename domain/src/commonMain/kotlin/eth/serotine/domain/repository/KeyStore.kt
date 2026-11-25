@@ -1,8 +1,8 @@
 package eth.serotine.domain.repository
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.ImportProblem
 import eth.serotine.domain.model.Mnemonic
-import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.WalletPassword
 
 /**
@@ -235,19 +235,22 @@ sealed interface BiometricChange {
     data object Failed : BiometricChange
 }
 
-/** The outcome of [KeyStore.importMnemonic]. */
+/** The outcome of [KeyStore.importMnemonic] and [PrivateKeys.importPrivateKey]. */
 sealed interface KeyImport {
 
     /**
-     * The seed is stored; [address] is its first account. [steppedDown] when it was sealed at a
+     * The seed, or the private key, is stored; [address] is its first account, or the key's. [steppedDown] when it was sealed at a
      * lighter password cost than this device's own, as Argon2id could not have that memory just
      * then (the owner's ruling of 2026-10-18): the envelope keeps that cost, and the user is told.
      */
     data class Stored(val address: Address, val protection: KeyProtection, val steppedDown: Boolean = false) :
         KeyImport
 
-    /** The words are not a BIP-39 mnemonic, for the reason [problem] gives. */
-    data class Invalid(val problem: MnemonicProblem) : KeyImport
+    /**
+     * What was typed is not what was to be imported, for the reason [problem] gives: a
+     * [eth.serotine.domain.model.MnemonicProblem] for words, a [eth.serotine.domain.model.PrivateKeyProblem] for a key.
+     */
+    data class Invalid(val problem: ImportProblem) : KeyImport
 
     /** A wallet password is set, and this is not it. Nothing was stored. */
     data object WrongPassword : KeyImport

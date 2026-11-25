@@ -44,7 +44,8 @@ data class PerAppEntry(
  * ([enabled]), which a restored address goes on, and [knownBy]: for each phrase whose name is known, the address of
  * the account it is known by (docs/wallet-ux.md, 4), the one that has its Per-app tab. [names] is what each phrase is
  * called on screen: the name of the account it is known by, else of the account it is restored from. [unreadable]
- * while the account list cannot be read: nothing is listed then, which is not "none".
+ * while the account list cannot be read: nothing is listed then, which is not "none". [bare] are the accounts whose key
+ * was imported bare ([PerAppKeys.bareKeys]): no phrase, so none of [sources], and nothing derives from them.
  */
 data class PerAppOverview(
     val entries: List<PerAppEntry>,
@@ -53,6 +54,7 @@ data class PerAppOverview(
     val knownBy: Map<Address, Address> = emptyMap(),
     val names: Map<Address, String> = emptyMap(),
     val unreadable: Boolean = false,
+    val bare: Set<Address> = emptySet(),
 ) {
     /** What [source]'s phrase is called on screen: by [names] where its name is known, else by its own account. */
     fun nameOf(source: PhraseSource): String = phraseName(names, source)
@@ -71,17 +73,27 @@ class ObservePerAppAddresses(
     private val keys: PerAppKeys,
     private val networks: NetworkSettings,
     private val aliases: PerAppAliases,
+    /**
+     * The app's one [WalletChanges]: the envelopes are read again after each change, which may replace one and leave
+     * the list as it was. Null: read again on a change of the list alone.
+     */
+    private val changes: WalletChanges? = null,
 ) {
     operator fun invoke(): Flow<PerAppOverview> {
         val listedWithPhrases = accounts.observeAccounts()
             .map { list -> (list as? AccountList.Loaded)?.accounts }
             .distinctUntilChanged()
-            .map { listed -> listed to listed?.let { keys.phrases() }.orEmpty() }
-        return combine(listedWithPhrases, networks.observe(), aliases.observe()) { (listed, phrases), enabled, links ->
+            .alsoAfter(changes)
+            .map { listed ->
+                Triple(listed, listed?.let { keys.phrases() }.orEmpty(), listed?.let { keys.bareKeys() }.orEmpty())
+            }
+        return combine(listedWithPhrases, networks.observe(), aliases.observe()) { keyed, enabled, links ->
+            val (listed, phrases, bare) = keyed
             if (listed == null) return@combine PerAppOverview(emptyList(), emptyList(), enabled, unreadable = true)
-            val sources = phraseSources(listed, phrases)
+            val sources = phraseSources(listed, phrases, bare)
             val knownBy = phraseAccounts(listed, sources)
-            PerAppOverview(perAppEntries(listed, links), sources, enabled, knownBy, phraseNames(listed, knownBy))
+            val names = phraseNames(listed, knownBy)
+            PerAppOverview(perAppEntries(listed, links), sources, enabled, knownBy, names, bare = bare)
         }.distinctUntilChanged()
     }
 }
@@ -251,3 +263,7 @@ class LinkMadePerAppAlias(private val make: MakePerAppAddress, private val link:
 
 /** The outcome of [LinkMadePerAppAlias]: how the [making] went, and the [linking] once it was made, else null. */
 data class MadeLinking(val making: PerAppMaking, val linking: AliasLinking?)
+
+/** This flow's value again after each change [changes] ends, so the envelopes are read again; as it is without one. */
+internal fun <T> Flow<T>.alsoAfter(changes: WalletChanges?): Flow<T> =
+    if (changes == null) this else combine(this, changes.ended) { value, _ -> value }

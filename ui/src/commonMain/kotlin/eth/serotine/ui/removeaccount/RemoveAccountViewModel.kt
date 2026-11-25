@@ -79,8 +79,8 @@ class RemoveAccountViewModel(
                 AccountRemoval.NotFound -> RemoveAccountUiState.Gone
                 AccountRemoval.RemovedKeyKept -> RemoveAccountUiState.Notice(
                     "${confirm.label} is removed, but its key could not be deleted from this device, so " +
-                        "the wallet password stays the one you set. Importing its recovery phrase again " +
-                        "brings the account back.",
+                        "the wallet password stays the one you set. Importing its recovery phrase or its " +
+                        "private key again brings the account back.",
                 )
                 AccountRemoval.NotSaved ->
                     RemoveAccountUiState.Notice("${confirm.label} could not be removed. Nothing has changed.")

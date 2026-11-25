@@ -6,7 +6,7 @@ import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.PasswordCost
 
 /**
- * Which password a seed screen (Import recovery phrase, Create account) asks for, as the key store
+ * Which password a seed screen (Import phrase or key, Create account) asks for, as the key store
  * described itself: the password step both screens draw.
  */
 sealed interface PasswordStep {

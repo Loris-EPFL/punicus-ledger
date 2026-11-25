@@ -527,6 +527,7 @@ class SerotineApplication : Application() {
             // Per-app addresses (issue #252): the key store's, and each site's accounts last approved, beside the
             // sessions' state, app-private like it.
             perAppKeys = keyStore,
+            privateKeys = keyStore,
             dappSites = FileDappSites(filesDir.resolve("walletconnect/sites.json").path),
             perAppAliases = FileDappAliases(filesDir.resolve("walletconnect/aliases.json").path),
             dappConnectionsOff = WalletConnectDapps.projectIdFor(debuggable).isEmpty(),

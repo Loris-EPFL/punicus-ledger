@@ -165,7 +165,7 @@ fun CreateAccountScreen(
                 }
                 CreateAccountUiState.NotListed -> Text(
                     "The key is stored, but the account list could not be saved, and the phrase is gone from " +
-                        "this screen. To finish, import the phrase you wrote down (Import recovery phrase) with " +
+                        "this screen. To finish, import the phrase you wrote down (Import phrase or key) with " +
                         "the wallet password.",
                     color = MaterialTheme.colorScheme.error,
                 )

@@ -72,6 +72,14 @@ class PerAppAddressesTest {
     }
 
     @Test
+    fun aKeyImportedBareIsNoPhrase() {
+        // `other` would stand for a phrase of its own, as an older envelope naming none does; its key is bare.
+        val phrases = mapOf(first.address to first.address)
+        val sources = phraseSources(listOf(first, other), phrases, bare = setOf(other.address))
+        assertEquals(listOf(PhraseSource(first.address, first)), sources)
+    }
+
+    @Test
     fun aPerAppAccountNamesItsPhraseItself() {
         val mark = PerAppAccount(testHost("uniswap.org"), AppIsolation.pathOf(testHost("uniswap.org")), first.address)
         val perApp = account(Network.ETHEREUM, '6', perApp = mark)

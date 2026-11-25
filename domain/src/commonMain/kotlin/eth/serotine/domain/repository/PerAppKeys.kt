@@ -37,6 +37,13 @@ interface PerAppKeys {
      * Empty when the envelopes cannot be read. Never throws.
      */
     suspend fun phrases(): Map<Address, Address>
+
+    /**
+     * The accounts whose envelope holds a bare private key, imported in hex ([PrivateKeys.importPrivateKey]): no seed,
+     * so no per-app address and no further account can come from one. Read from the envelopes without the unlock, as
+     * [phrases] are. Empty when the envelopes cannot be read. Never throws.
+     */
+    suspend fun bareKeys(): Set<Address>
 }
 
 /** The outcome of [PerAppKeys.derivePerApp]. */

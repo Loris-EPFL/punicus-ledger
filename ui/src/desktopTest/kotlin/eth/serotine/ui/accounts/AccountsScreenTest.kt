@@ -291,7 +291,7 @@ class AccountsScreenTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
             .performClick()
         rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertIsDisplayed()
-        rule.onNodeWithText("Import recovery phrase").performClick()
+        rule.onNodeWithText("Import phrase or key").performClick()
 
         assertEquals(listOf("import"), calls, "the way to a key, never the Safe")
     }
@@ -473,9 +473,9 @@ class AccountsScreenTest {
 
         rule.onNodeWithContentDescription("Add account").performClick()
         rule.onNodeWithText("Watch address").performClick()
-        rule.onNodeWithText("Import recovery phrase").assertDoesNotExist()
+        rule.onNodeWithText("Import phrase or key").assertDoesNotExist()
         rule.onNodeWithContentDescription("Add account").performClick()
-        rule.onNodeWithText("Import recovery phrase").performClick()
+        rule.onNodeWithText("Import phrase or key").performClick()
 
         assertEquals(listOf("watch", "import"), adds)
     }

@@ -3,13 +3,17 @@ package eth.serotine.ui.mnemonicimport
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Mnemonic
+import eth.serotine.domain.model.ImportProblem
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PrivateKey
+import eth.serotine.domain.model.PrivateKeyProblem
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
-import eth.serotine.domain.usecase.MnemonicImport
+import eth.serotine.domain.usecase.ImportPrivateKeyAccount
+import eth.serotine.domain.usecase.AccountImport
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.ui.components.PasswordStep
@@ -28,18 +32,19 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * The seed-phrase screen's ViewModel: holds the words and the wallet password as they are
+ * The import screen's ViewModel: holds the words, or a private key in hex, and the wallet password as they are
  * typed, with the networks to add the account to (docs/networks.md, N9; one that is off turned on
- * here first), and hands them to [ImportMnemonicAccount]. One of the ViewModels the [Mnemonic] and the
- * [WalletPassword] pass through (CLAUDE.md, *Trust*): it never logs, saves or caches them,
- * and drops them from its state as soon as the screen is not shown — hidden ([onHidden]) or
- * gone from the back stack ([onCleared]).
+ * here first), and hands them to [ImportMnemonicAccount] or [ImportPrivateKeyAccount]. One of the ViewModels the
+ * [Mnemonic] and the [WalletPassword] pass through, and the one the [PrivateKey] does (CLAUDE.md, *Trust*): it never
+ * logs, saves or caches them, and drops them from its state as soon as the screen is not shown — hidden
+ * ([onHidden]) or gone from the back stack ([onCleared]).
  */
 class MnemonicImportViewModel(
     private val importMnemonicAccount: ImportMnemonicAccount,
     private val describeKeyStore: DescribeKeyStore,
     observeEnabledNetworks: ObserveEnabledNetworks,
     private val setNetworkEnabled: SetNetworkEnabled,
+    private val importPrivateKeyAccount: ImportPrivateKeyAccount,
 ) : ViewModel() {
 
     /** The networks on in this wallet, as last read; null before, when no network is listed yet. */
@@ -96,6 +101,17 @@ class MnemonicImportViewModel(
     /** The words field now reads [text]. Ignored while an attempt runs and after a success. */
     fun onPhraseChange(text: String) = edit { it.copy(phrase = Mnemonic(text)) }
 
+    /** The private-key field now reads [text]. Ignored while an attempt runs and after a success. */
+    fun onKeyChange(text: String) = edit { it.copy(key = PrivateKey(text)) }
+
+    /**
+     * The user chose to add the account from [source]: what was typed for the other goes, so that only one secret is
+     * ever held. The password and the networks stay.
+     */
+    fun onSourceChange(source: ImportSource) = edit {
+        if (it.source == source) it else it.copy(source = source, phrase = Mnemonic.EMPTY, key = PrivateKey.EMPTY)
+    }
+
     /** The password field now reads [text]. */
     fun onPasswordChange(text: String) = edit { it.copy(password = WalletPassword(text)) }
 
@@ -113,7 +129,7 @@ class MnemonicImportViewModel(
     }
 
     /**
-     * Add the account the typed words control, its seed stored under the password. Ignored
+     * Add the account the typed words, or the typed key, control, its seed or key stored under the password. Ignored
      * unless [Entering.canImport]. An attempt is not abandoned when the screen is hidden:
      * the use case finishes it as one step, and its outcome lands in the state as it is
      * then, which holds no words once [onHidden] has run.
@@ -124,30 +140,40 @@ class MnemonicImportViewModel(
         state.value = current.copy(importing = true, error = null, passwordError = null)
         viewModelScope.launch {
             val result = try {
-                importMnemonicAccount(current.phrase, current.password, current.networks.chosenNetworks())
+                val networks = current.networks.chosenNetworks()
+                when (current.source) {
+                    ImportSource.PHRASE -> importMnemonicAccount(current.phrase, current.password, networks)
+                    ImportSource.KEY -> importPrivateKeyAccount(current.key, current.password, networks)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 // Every port on this path promises not to throw; this is the backstop for a
                 // broken promise. The exception's text is not shown: nothing from the key
                 // path reaches the screen.
-                MnemonicImport.Unavailable
+                AccountImport.Unavailable
             }
             state.update { now -> if (now is Entering) now.copy(importing = false).after(result) else now }
             // Whatever happened, the key store may have changed: a password set, a key stored.
-            if (result !is MnemonicImport.Added) describe()
+            if (result !is AccountImport.Added) describe()
         }
     }
 
     /**
      * The screen stopped being shown: the app went to the background or its window was
      * hidden. The seed UiState exists only while its screen is shown (CLAUDE.md, *Trust*), so
-     * the words and the password go. An attempt still running goes on without them.
+     * the words or the key, and the password, go. An attempt still running goes on without them.
      */
     fun onHidden() {
         state.update { current ->
             if (current is Entering) {
-                Entering(Mnemonic.EMPTY, step = step, importing = current.importing, networks = current.networks)
+                Entering(
+                    Mnemonic.EMPTY,
+                    source = current.source,
+                    step = step,
+                    importing = current.importing,
+                    networks = current.networks,
+                )
             } else {
                 current
             }
@@ -155,7 +181,7 @@ class MnemonicImportViewModel(
     }
 
     override fun onCleared() {
-        // The screen is gone, and the words and the password go with it.
+        // The screen is gone, and the words or the key, and the password, go with it.
         state.value = Entering(Mnemonic.EMPTY, step = step, networks = choices())
     }
 
@@ -178,37 +204,41 @@ class MnemonicImportViewModel(
         }
     }
 
-    private fun Entering.after(result: MnemonicImport): MnemonicImportUiState = when (result) {
-        is MnemonicImport.Added -> Imported(result.account.label, STEPPED_DOWN_TEXT.takeIf { result.steppedDown })
+    private fun Entering.after(result: AccountImport): MnemonicImportUiState = when (result) {
+        is AccountImport.Added -> Imported(result.account.label, STEPPED_DOWN_TEXT.takeIf { result.steppedDown })
         // A watched address whose key is stored now: the import did what was asked.
-        is MnemonicImport.KeyAdded -> Imported(result.account.label, STEPPED_DOWN_TEXT.takeIf { result.steppedDown })
-        is MnemonicImport.AlreadyAdded -> copy(
+        is AccountImport.KeyAdded -> Imported(result.account.label, STEPPED_DOWN_TEXT.takeIf { result.steppedDown })
+        is AccountImport.AlreadyAdded -> copy(
             error = "“${result.account.label}” is in the wallet already; its key is stored on this device now." +
                 if (result.steppedDown) " $STEPPED_DOWN_TEXT" else "",
         )
-        is MnemonicImport.Invalid -> copy(error = result.problem.message)
-        MnemonicImport.WrongPassword -> copy(passwordError = "That is not the wallet password.")
-        MnemonicImport.PasswordTooShort ->
+        is AccountImport.Invalid -> copy(error = message(result.problem))
+        AccountImport.WrongPassword -> copy(passwordError = "That is not the wallet password.")
+        AccountImport.PasswordTooShort ->
             copy(passwordError = "A wallet password has at least ${WalletPassword.MIN_LENGTH} characters.")
         // After describe() said the key store works, a failure here is most likely passing
         // (memory for Argon2id, a Keystore hiccup): said so, not as a verdict on the device.
-        MnemonicImport.Unavailable -> copy(
+        AccountImport.Unavailable -> copy(
             error = "The key store failed. Nothing was added. Try again; if it keeps failing, this device " +
                 "cannot store the key.",
         )
-        MnemonicImport.KeyNotSaved -> copy(error = "The key could not be stored on this device. Nothing was added.")
-        is MnemonicImport.NotEnoughMemory -> copy(error = notEnoughMemoryText(result.step, "Nothing was added."))
-        MnemonicImport.ListNotSaved -> copy(
-            error = "The key is stored, but the account list could not be saved. Add the same words again " +
-                "to finish.",
+        AccountImport.KeyNotSaved -> copy(error = "The key could not be stored on this device. Nothing was added.")
+        is AccountImport.NotEnoughMemory -> copy(error = notEnoughMemoryText(result.step, "Nothing was added."))
+        AccountImport.ListNotSaved -> copy(
+            error = "The key is stored, but the account list could not be saved. Add the same " +
+                (if (source == ImportSource.KEY) "key" else "words") + " again to finish.",
         )
     }
 
-    private val MnemonicProblem.message: String
-        get() = when (this) {
-            is MnemonicProblem.WordCount -> "A seed phrase has 12, 15, 18, 21 or 24 words, not $count."
-            is MnemonicProblem.UnknownWord -> "Word $position is not in the BIP-39 English word list."
-            MnemonicProblem.Checksum ->
-                "These words are not a valid seed phrase. Check for a typo or two words in the wrong order."
-        }
+    private fun message(problem: ImportProblem): String = when (problem) {
+        is MnemonicProblem.WordCount -> "A seed phrase has 12, 15, 18, 21 or 24 words, not ${problem.count}."
+        is MnemonicProblem.UnknownWord -> "Word ${problem.position} is not in the BIP-39 English word list."
+        MnemonicProblem.Checksum ->
+            "These words are not a valid seed phrase. Check for a typo or two words in the wrong order."
+        is PrivateKeyProblem.Length ->
+            "A private key has ${PrivateKey.DIGITS} hex digits, not ${problem.count}. A leading 0x is optional."
+        is PrivateKeyProblem.NotHex ->
+            "Character ${problem.position} is not a hex digit: a private key has only 0 to 9 and a to f."
+        PrivateKeyProblem.OutOfRange -> "These 64 digits are not a valid private key: no key has that value."
+    }
 }

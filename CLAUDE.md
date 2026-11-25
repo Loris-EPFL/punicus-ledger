@@ -258,9 +258,10 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
 - What a dApp sends is untrusted input, held to a closed method list;
   `eth_sign` is refused in every case (owner rulings, 2026-11-03, #22).
 - **Key material** lives in the key-store adapter and nowhere else. The
-  exceptions are a closed list of owner rulings; today only the mnemonic
-  screens (owner ruling, 2026-10-15): the words travel as the dedicated
-  mnemonic type along one path and are cleared when the screen is left.
+  exceptions are a closed list of owner rulings: the mnemonic screens (owner
+  ruling, 2026-10-15), the words travelling as the dedicated mnemonic type
+  along one path and cleared when the screen is left; and a private key
+  typed in hex, the same way, one way only (owner ruling, 2026-11-25).
 - How keys are held: docs/keys-and-signing.md is the contract. On the
   password path BOTH the Argon2id-stretched password AND a secret of the
   device's hardware key store must be cryptographically necessary to unwrap a

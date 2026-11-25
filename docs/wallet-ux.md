@@ -96,9 +96,10 @@ the text wins.
   2026-10-16, *Prices* below): a hint next to an amount, a total, a sort key,
   never an input that becomes a signed amount.
 - **The UI never touches a key.** Signing is a port: a request in, a signature
-  out. The password field and the recovery phrase are the only secrets a
-  screen holds, under the rules in docs/keys-and-signing.md, and the screens
-  that show them call `protectFromScreenCapture()`.
+  out. The password field, the recovery phrase and a private key typed on
+  screen 11 are the only secrets a screen holds, under the rules in
+  docs/keys-and-signing.md, and the screens that show them call
+  `protectFromScreenCapture()`.
 - **Every address has a blockie.** The ethereum/blockies identicon (seeded
   with the lowercase address) appears next to every address on screen: rows,
   headers, from and to, review, owners, detection, receive. A Safe's blockie
@@ -333,20 +334,22 @@ columns** (owner's request, 2026-11-25). Material's large window size class:
    - With no account yet, it names every way the FAB adds one (watch,
      import, create) and says that Create Safe, there too, can be used once
      an account's key is on this device, the account that pays for it.
-2. **FAB fan-out**: Watch address (10) · Import recovery phrase (11) · Create
+2. **FAB fan-out**: Watch address (10) · Import phrase or key (11) · Create
    account (12) · Create Safe (13). Create Safe is always there, and greyed
    out until the user holds an EOA's key: an EOA pays for the deployment. A
-   tap on it then says so, with Import recovery phrase and Create account
+   tap on it then says so, with Import phrase or key and Create account
    as the ways to get one (owner ruling, 2026-10-18, #55).
 3. **Account menu**: Send (greyed out when watch-only, a tap saying why;
    for a Safe, usable once an owner of it is held here, and it opens the
    proposal of a Safe transaction, 16) · Send from another wallet (7H; an
    EOA whose key is not on this device) · Receive · Copy address · Rename · New
-   account from the same phrase (an EOA's; greyed out when watch-only, a tap
-   saying why) · Remove. The account detail's top-bar menu (4) also offers
+   account from the same phrase (an EOA's; greyed out when watch-only, or
+   when its key was imported on its own, as a private key, which has no
+   phrase; a tap saying why) · Remove. The account detail's top-bar menu (4) also offers
    Swarm node… for an EOA on Gnosis Chain (*Swarm nodes* below). Removing
    an account the user
-   holds a key for says that only its recovery phrase brings it back, and
+   holds a key for says that only its recovery phrase, or its private key if
+   it was added from one, brings it back, and
    asks for a confirmation, not the wallet password (owner ruling,
    2026-10-18, #17). The key store keeps one envelope per account, under its
    address, so the removal deletes that account's envelope and its biometric
@@ -691,9 +694,19 @@ columns** (owner's request, 2026-11-25). Material's large window size class:
       or more networks on, a network whose registry names another address
       than the first network's says so under its card ("Not Ethereum's
       address", #273).
-11. **Import recovery phrase**: today's seed screen, with the account's name,
+11. **Import phrase or key**: today's seed screen, with the account's name,
     the wallet password (on the first key) and the biometric opt-in (still to
     come; until then it is turned on in Security, 21).
+    - At its top, a choice: *Seed phrase* or *Private key* (owner ruling,
+      2026-11-25; docs/keys-and-signing.md, *Importing a private key*). A
+      private key is 64 hex digits, `0x` in front or not, typed into a
+      masked field whose hint counts the digits; Add account is greyed out
+      until there are 64. The key store's refusal is said under the field:
+      too many or too few digits, a character that is not a hex digit, no
+      key of that value. Switching drops what was typed for the other.
+    - The account added is the key's own. It has no phrase: the footer says
+      that no further account and no per-app address comes from it, and that
+      only the key brings it back.
 12. **Create account**: the new phrase, shown on this screen alone and only
     until it is stored, protected from screen capture, the display kept on;
     then a check of three of its words; then the wallet password and
@@ -2228,7 +2241,6 @@ Applied:
 Still the owner's decisions (CLAUDE.md, docs/keys-and-signing.md and issue
 #11):
 
-- importing a raw private key (an EOA comes from a recovery phrase);
 - the synced-passkey owner tier and hardware external signers (#42);
 - which recovery modules come (none is pinned, so none is offered when a
   Safe is created, screen 14), and how: still open (issues #54, #72);

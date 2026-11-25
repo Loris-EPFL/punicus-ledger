@@ -148,6 +148,17 @@ private fun ActivityDetailPreview(state: ActivityDetailUiState, darkTheme: Boole
 @Composable
 private fun ActivityDetailSentPreview() = ActivityDetailPreview(sent)
 
+/** A sent transfer's detail, in the theme it is drawn in: beside its account on a tablet. */
+@Composable
+internal fun ActivityDetailSentSample() = ActivityDetailScreen(
+    state = sent,
+    lightClient = verifiedStripSample,
+    onBack = {},
+    onCopy = {},
+    onStatus = {},
+    onAddToken = {},
+)
+
 @Preview
 @Composable
 private fun ActivityDetailSentDarkPreview() = ActivityDetailPreview(sent, darkTheme = true)

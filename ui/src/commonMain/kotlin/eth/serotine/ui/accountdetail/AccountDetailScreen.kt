@@ -200,6 +200,8 @@ fun AccountDetailRoute(
     onContinueSwap: (sell: String) -> Unit = {},
     onSendElsewhere: (contract: String?) -> Unit = {},
     perAppActions: PerAppActions = PerAppActions(),
+    /** The Activity row whose detail is shown beside the account, drawn selected; null: none. */
+    selectedActivity: ActivityKey? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
@@ -232,6 +234,7 @@ fun AccountDetailRoute(
             onOpenSafeTx = onOpenSafeTx,
             onImportRequest = onImportRequest,
             onOpenActivity = onOpenActivity,
+            selectedActivity = selectedActivity,
             onRefresh = viewModel::refresh,
             modifier = modifier,
             onTurnOnNetwork = viewModel::turnOnNetwork,
@@ -273,6 +276,7 @@ fun AccountDetailRoute(
             onOpenSafeTx = onOpenSafeTx,
             onImportRequest = onImportRequest,
             onOpenActivity = onOpenActivity,
+            selectedActivity = selectedActivity,
             modifier = modifier,
             onTurnOnNetwork = viewModel::turnOnNetwork,
             onAddOnNetwork = onAddOnNetwork,
@@ -357,6 +361,8 @@ fun AccountDetailScreen(
     onMoreActivity: () -> Unit = {},
     onSendElsewhere: (contract: String?) -> Unit = {},
     perAppActions: PerAppActions = PerAppActions(),
+    /** The Activity row whose detail is shown beside the account, drawn selected; null: none. */
+    selectedActivity: ActivityKey? = null,
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -565,6 +571,7 @@ fun AccountDetailScreen(
                     onOpenSafeTx = onOpenSafeTx,
                     onImportRequest = onImportRequest,
                     onOpenActivity = onOpenActivity,
+                    selectedActivity = selectedActivity,
                     onContinueSwap = continueSwap,
                     onDismissWaiting = onDismissWaiting,
                     onSafeSettings = safeSettings,
@@ -608,6 +615,7 @@ private fun Details(
     onOpenSafeTx: (String) -> Unit,
     onImportRequest: () -> Unit,
     onOpenActivity: (ActivityKey) -> Unit,
+    selectedActivity: ActivityKey?,
     onContinueSwap: (String) -> Unit,
     onDismissWaiting: (String) -> Unit,
     onSafeSettings: () -> Unit,
@@ -767,6 +775,7 @@ private fun Details(
                 onDismiss = onDismissWaiting,
                 continueAvailable = state.canSwap,
                 onMore = onMoreActivity,
+                selected = selectedActivity,
             )
             state.segment == DetailSegment.OWNERS -> item {
                 SafeOwners(

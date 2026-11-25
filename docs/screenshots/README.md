@@ -12,7 +12,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 |---|---|---|
 | [Account detail](#account-detail) | `account-detail/` | 74 |
 | [Accounts](#accounts) | `accounts/` | 41 |
-| [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 3 |
+| [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 5 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 15 |
 | [Add on networks (dialog)](#add-on-networks-dialog) | `add-on-networks-dialog/` | 5 |
 | [Add token](#add-token) | `add-token/` | 11 |
@@ -46,8 +46,8 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Send](#send) | `send/` | 37 |
 | [Settings](#settings) | `settings/` | 37 |
 | [Account detail (simple mode)](#simple-account-detail) | `simple-account-detail/` | 13 |
-| [Home (simple mode)](#simple-accounts) | `simple-accounts/` | 20 |
-| [Home on a tablet (simple mode)](#simple-accounts-tablet) | `simple-accounts-tablet/` | 3 |
+| [Home (simple mode)](#simple-accounts) | `simple-accounts/` | 18 |
+| [Home on a tablet (simple mode)](#simple-accounts-tablet) | `simple-accounts-tablet/` | 5 |
 | [Activity detail (simple mode)](#simple-activity-detail) | `simple-activity-detail/` | 4 |
 | [Add token (simple mode)](#simple-add-token) | `simple-add-token/` | 2 |
 | [CoW order (simple mode)](#simple-cow-order) | `simple-cow-order/` | 3 |
@@ -202,11 +202,13 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="accounts-tablet"></a>
 ## Accounts on a tablet
 
-`accounts-tablet/`, 3 states: `account-open`, `account-open-dark`, `no-account-open`
+`accounts-tablet/`, 5 states: `account-open`, `account-open-dark`, `no-account-open`, `activity-detail-open`, `activity-detail-open-dark`
 
 <a href="accounts-tablet/account-open.png"><img src="accounts-tablet/account-open.png" width="640" alt="account-open"></a>
 <a href="accounts-tablet/account-open-dark.png"><img src="accounts-tablet/account-open-dark.png" width="640" alt="account-open-dark"></a>
 <a href="accounts-tablet/no-account-open.png"><img src="accounts-tablet/no-account-open.png" width="640" alt="no-account-open"></a>
+<a href="accounts-tablet/activity-detail-open.png"><img src="accounts-tablet/activity-detail-open.png" width="640" alt="activity-detail-open"></a>
+<a href="accounts-tablet/activity-detail-open-dark.png"><img src="accounts-tablet/activity-detail-open-dark.png" width="640" alt="activity-detail-open-dark"></a>
 
 <a name="activity-detail"></a>
 ## Activity detail
@@ -919,7 +921,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="simple-accounts"></a>
 ## Home (simple mode)
 
-`simple-accounts/`, 20 states: `everyday`, `everyday-dark`, `refreshing`, `syncing`, `unreachable`, `live`, `stale-anchor`, `network-off`, `needs-update`, `empty`, `empty-syncing`, `empty-stale-anchor`, `loading`, `set-aside`, `list-unavailable`, `hidden`, `hidden-dark`, `queued`, `queued-dark`, `lost-queued`
+`simple-accounts/`, 18 states: `everyday`, `everyday-dark`, `refreshing`, `syncing`, `unreachable`, `live`, `stale-anchor`, `empty`, `empty-syncing`, `empty-stale-anchor`, `loading`, `set-aside`, `list-unavailable`, `hidden`, `hidden-dark`, `queued`, `queued-dark`, `lost-queued`
 
 <a href="simple-accounts/everyday.png"><img src="simple-accounts/everyday.png" width="206" alt="everyday"></a>
 <a href="simple-accounts/everyday-dark.png"><img src="simple-accounts/everyday-dark.png" width="206" alt="everyday-dark"></a>
@@ -928,8 +930,6 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="simple-accounts/unreachable.png"><img src="simple-accounts/unreachable.png" width="206" alt="unreachable"></a>
 <a href="simple-accounts/live.png"><img src="simple-accounts/live.png" width="206" alt="live"></a>
 <a href="simple-accounts/stale-anchor.png"><img src="simple-accounts/stale-anchor.png" width="206" alt="stale-anchor"></a>
-<a href="simple-accounts/network-off.png"><img src="simple-accounts/network-off.png" width="206" alt="network-off"></a>
-<a href="simple-accounts/needs-update.png"><img src="simple-accounts/needs-update.png" width="206" alt="needs-update"></a>
 <a href="simple-accounts/empty.png"><img src="simple-accounts/empty.png" width="206" alt="empty"></a>
 <a href="simple-accounts/empty-syncing.png"><img src="simple-accounts/empty-syncing.png" width="206" alt="empty-syncing"></a>
 <a href="simple-accounts/empty-stale-anchor.png"><img src="simple-accounts/empty-stale-anchor.png" width="206" alt="empty-stale-anchor"></a>
@@ -945,11 +945,13 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="simple-accounts-tablet"></a>
 ## Home on a tablet (simple mode)
 
-`simple-accounts-tablet/`, 3 states: `account-open`, `account-open-dark`, `no-account-open`
+`simple-accounts-tablet/`, 5 states: `account-open`, `account-open-dark`, `no-account-open`, `activity-detail-open`, `activity-detail-open-dark`
 
 <a href="simple-accounts-tablet/account-open.png"><img src="simple-accounts-tablet/account-open.png" width="640" alt="account-open"></a>
 <a href="simple-accounts-tablet/account-open-dark.png"><img src="simple-accounts-tablet/account-open-dark.png" width="640" alt="account-open-dark"></a>
 <a href="simple-accounts-tablet/no-account-open.png"><img src="simple-accounts-tablet/no-account-open.png" width="640" alt="no-account-open"></a>
+<a href="simple-accounts-tablet/activity-detail-open.png"><img src="simple-accounts-tablet/activity-detail-open.png" width="640" alt="activity-detail-open"></a>
+<a href="simple-accounts-tablet/activity-detail-open-dark.png"><img src="simple-accounts-tablet/activity-detail-open-dark.png" width="640" alt="activity-detail-open-dark"></a>
 
 <a name="simple-activity-detail"></a>
 ## Activity detail (simple mode)

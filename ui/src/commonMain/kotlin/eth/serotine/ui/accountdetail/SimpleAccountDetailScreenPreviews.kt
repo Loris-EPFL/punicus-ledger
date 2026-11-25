@@ -82,9 +82,10 @@ private fun SimpleAccountDetailPreview(state: AccountDetailUiState, darkTheme: B
 internal fun SimpleAccountDetailMainSample() = SimpleAccountDetailSample(main)
 
 @Composable
-private fun SimpleAccountDetailSample(state: AccountDetailUiState) {
+private fun SimpleAccountDetailSample(state: AccountDetailUiState, selectedActivity: ActivityKey? = null) {
     SimpleAccountDetailScreen(
         state = state,
+        selectedActivity = selectedActivity,
         onBack = {},
         onSend = {},
         onSwap = {},
@@ -201,70 +202,79 @@ private fun SimpleAccountActivityQueuedPreview() = SimpleAccountDetailPreview(
 )
 
 /** H5: the Activity, a time where one is known and how each ended in words, no block. */
-@Preview
-@Composable
-private fun SimpleAccountActivityPreview() = SimpleAccountDetailPreview(
-    main.copy(
-        segment = DetailSegment.ACTIVITY,
-        activity = ActivityUiState.Shown(
-            rows = listOf(
-                ActivityRow(
-                    key = "0x" + "a1".repeat(32),
-                    title = "Sent 250 USDC",
-                    detail = "To vitalik.eth · 0xd8dA…6045",
-                    about = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-                    time = "Oct 27, 2026, 2:02 PM",
-                    status = "In block 23,614,012",
-                    state = ActivityState.DONE,
-                    opens = ActivityKey("0x" + "a1".repeat(32)),
-                    simpleStatus = "Confirmed",
-                    day = "Today · Tuesday, October 27, 2026",
-                    clock = "2:02 PM",
-                    direction = ActivityDirection.OUT,
-                    amount = "\u2212250 USDC",
-                    headline = "Sent USDC",
-                ),
-                // Dated by its block's verified header, which the engine reported with it.
-                ActivityRow(
-                    key = "0x" + "b2".repeat(32) + ":4",
-                    title = "Received 0.5 ETH",
-                    detail = "From Family Safe · 0xdbF0…C6FB",
-                    about = FAMILY_SAFE,
-                    time = "Oct 25, 2026, 9:15 AM",
-                    status = "On chain",
-                    state = ActivityState.DONE,
-                    opens = ActivityKey("0x" + "b2".repeat(32), 4),
-                    day = "Sunday, October 25, 2026",
-                    clock = "9:15 AM",
-                    direction = ActivityDirection.IN,
-                    amount = "+0.5 ETH",
-                    headline = "Received ETH",
-                ),
-                // Dated by its block alone: in simple mode, with no time.
-                ActivityRow(
-                    key = "0x" + "c3".repeat(32) + ":0",
-                    title = "Received 100 USDC",
-                    detail = "From 0x5aAe…eAed",
-                    about = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
-                    time = "Block 23,590,120",
-                    status = "On chain",
-                    state = ActivityState.DONE,
-                    opens = ActivityKey("0x" + "c3".repeat(32), 0),
-                    simpleTime = null,
-                    day = "Date not reported: in block order",
-                    simpleDay = "Date not available",
-                    direction = ActivityDirection.IN,
-                    amount = "+100 USDC",
-                    headline = "Received USDC",
-                ),
+private val mainActivity = main.copy(
+    segment = DetailSegment.ACTIVITY,
+    activity = ActivityUiState.Shown(
+        rows = listOf(
+            ActivityRow(
+                key = "0x" + "a1".repeat(32),
+                title = "Sent 250 USDC",
+                detail = "To vitalik.eth · 0xd8dA…6045",
+                about = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                time = "Oct 27, 2026, 2:02 PM",
+                status = "In block 23,614,012",
+                state = ActivityState.DONE,
+                opens = ActivityKey("0x" + "a1".repeat(32)),
+                simpleStatus = "Confirmed",
+                day = "Today · Tuesday, October 27, 2026",
+                clock = "2:02 PM",
+                direction = ActivityDirection.OUT,
+                amount = "\u2212250 USDC",
+                headline = "Sent USDC",
             ),
-            coverage = "Transactions sent from this device. On chain from block 23,590,000 on, when it was added " +
-                "here: its token transfers.",
-            simpleCoverage = "Activity since you added it. Its ETH transfers are listed only where the network " +
-                "logs them, and transactions sent from it elsewhere are not listed yet.",
+            // Dated by its block's verified header, which the engine reported with it.
+            ActivityRow(
+                key = "0x" + "b2".repeat(32) + ":4",
+                title = "Received 0.5 ETH",
+                detail = "From Family Safe · 0xdbF0…C6FB",
+                about = FAMILY_SAFE,
+                time = "Oct 25, 2026, 9:15 AM",
+                status = "On chain",
+                state = ActivityState.DONE,
+                opens = ActivityKey("0x" + "b2".repeat(32), 4),
+                day = "Sunday, October 25, 2026",
+                clock = "9:15 AM",
+                direction = ActivityDirection.IN,
+                amount = "+0.5 ETH",
+                headline = "Received ETH",
+            ),
+            // Dated by its block alone: in simple mode, with no time.
+            ActivityRow(
+                key = "0x" + "c3".repeat(32) + ":0",
+                title = "Received 100 USDC",
+                detail = "From 0x5aAe…eAed",
+                about = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+                time = "Block 23,590,120",
+                status = "On chain",
+                state = ActivityState.DONE,
+                opens = ActivityKey("0x" + "c3".repeat(32), 0),
+                simpleTime = null,
+                day = "Date not reported: in block order",
+                simpleDay = "Date not available",
+                direction = ActivityDirection.IN,
+                amount = "+100 USDC",
+                headline = "Received USDC",
+            ),
         ),
+        coverage = "Transactions sent from this device. On chain from block 23,590,000 on, when it was added " +
+            "here: its token transfers.",
+        simpleCoverage = "Activity since you added it. Its ETH transfers are listed only where the network " +
+            "logs them, and transactions sent from it elsewhere are not listed yet.",
     ),
 )
+
+/** H5: the Activity, a time where one is known and how each ended in words, no block. */
+@Preview
+@Composable
+private fun SimpleAccountActivityPreview() = SimpleAccountDetailPreview(mainActivity)
+
+/**
+ * Main's Activity, its "Sent 250 USDC" row selected: what the account shows on a tablet while that row's detail is
+ * open beside it (eth.serotine.ui.accounts.SimpleAccountsTabletScreenPreviews.kt; owner's request, 2026-11-25).
+ */
+@Composable
+internal fun SimpleAccountActivitySelectedSample() =
+    SimpleAccountDetailSample(mainActivity, selectedActivity = ActivityKey("0x" + "a1".repeat(32)))
 
 /**
  * The Activity with the addr1 index's rows, in simple mode's words: no block number, the publisher's key named, and

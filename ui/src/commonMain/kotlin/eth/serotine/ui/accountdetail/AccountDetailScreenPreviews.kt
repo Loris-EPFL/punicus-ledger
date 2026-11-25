@@ -418,8 +418,9 @@ private fun AccountDetailPreview(
     state: AccountDetailUiState,
     darkTheme: Boolean = false,
     lightClient: LightClientItem = verifiedStripSample,
+    selectedActivity: ActivityKey? = null,
 ) {
-    SerotineTheme(darkTheme = darkTheme) { AccountDetailSample(state, lightClient) }
+    SerotineTheme(darkTheme = darkTheme) { AccountDetailSample(state, lightClient, selectedActivity) }
 }
 
 /**
@@ -430,7 +431,11 @@ private fun AccountDetailPreview(
 internal fun AccountDetailDailySample() = AccountDetailSample(daily, verifiedStripSample)
 
 @Composable
-private fun AccountDetailSample(state: AccountDetailUiState, lightClient: LightClientItem) {
+private fun AccountDetailSample(
+    state: AccountDetailUiState,
+    lightClient: LightClientItem,
+    selectedActivity: ActivityKey? = null,
+) {
     AccountDetailScreen(
         state = state,
         chrome = AccountChrome.Strip(lightClient),
@@ -448,6 +453,7 @@ private fun AccountDetailSample(state: AccountDetailUiState, lightClient: LightC
         onOpenSafeTx = {},
         onImportRequest = {},
         onOpenActivity = {},
+        selectedActivity = selectedActivity,
     )
 }
 
@@ -691,6 +697,17 @@ private fun AccountDetailNotASafePreview() = AccountDetailPreview(
 @Composable
 private fun AccountDetailActivityPreview() = AccountDetailPreview(
     daily.copy(segment = DetailSegment.ACTIVITY, activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE)),
+)
+
+/**
+ * Daily's Activity, its "Sent 0.25 ETH" row selected: what the account shows on a tablet while that row's detail is
+ * open beside it (eth.serotine.ui.accounts.AccountsTabletScreenPreviews.kt; owner's request, 2026-11-25).
+ */
+@Composable
+internal fun AccountDetailActivitySelectedSample() = AccountDetailSample(
+    daily.copy(segment = DetailSegment.ACTIVITY, activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE)),
+    verifiedStripSample,
+    selectedActivity = activityRows.first { it.title == "Sent 0.25 ETH" }.opens,
 )
 
 /** Lenient mode: what the account has queued, first whichever way the rows run (docs/lenient-mode.md). */

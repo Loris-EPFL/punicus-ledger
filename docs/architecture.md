@@ -189,8 +189,13 @@ review finding, whatever it saves.
   Accounts list in a pane of its own beside the `NavHost`, with the
   ViewModel of the Accounts destination's back-stack entry, and that
   destination draws the empty detail pane instead of the list. The back
-  stack is the same at every width. The screens themselves are
-  docs/wallet-ux.md.
+  stack is the same at every width below 1200 dp. From 1200 dp on, an
+  Activity row's detail opens beside its account inside the account's
+  destination, with no destination of its own (owner's request,
+  2026-11-25): the account's back-stack entry keeps which row is open and the
+  store of that detail's ViewModel, which outlives a configuration change
+  and is cleared as the row closes, another opens, or the account is popped.
+  The screens themselves are docs/wallet-ux.md.
 - **A ViewModel exposes `StateFlow<UiState>` and intent methods.** It derives
   state from use cases with `stateIn(viewModelScope, WhileSubscribed(5s), …)`,
   handles user intents by calling use cases, and holds no platform reference

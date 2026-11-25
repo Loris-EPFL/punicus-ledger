@@ -164,7 +164,9 @@ that, and nothing it adds narrows what is already shown.
    build. Build and Test regenerates it and fails on a difference.
 6. **Conformance tests.** The registry's `testsv2/*.tests.json` for the chosen
    files, vendored and pinned with them, become tests of the runtime
-   formatter (A3). A descriptor the
+   formatter (A3). They run in `:data` (part 4), which reads JSON:
+   `:domain` reaches JSON only through a port (`.claude/rules/architecture.md`),
+   so its own tests write the descriptors out by hand. A descriptor the
    formatter cannot render as its own tests expect fails the build.
 
 **Refresh** (decision 6): only through a PR that moves `PINNED`, the commit
@@ -308,9 +310,12 @@ the five steps of docs/architecture.md:
    (D5, D6) and docs/wallet-ux.md (screen 17).
 2. **The generator and the pins** (A1), with the first list and the CI job
    that runs the schema check and the linter.
-3. **`:domain`** (A3): the model, the formatter, the conformance tests.
-4. **`:data`** (A4): the binding check, the resource, the wiring in the
-   composition roots.
+3. **`:domain`** (A3): the model, the strict ABI decoder, the paths, the
+   formatter and the binding check as pure functions, tested on the
+   registry's vectors written out by hand.
+4. **`:data`** (A4): reading the catalog, the verified code reads for the
+   binding check, the attestations, the conformance tests over every
+   vendored vector, and the wiring in the composition roots.
 5. **`:ui`** (A5): D6 first, then D5 and the Safe review, with previews,
    screenshots and the `CHANGELOG.md` entry.
 6. **The final PR**, `feature/clear-signing` → `main`.

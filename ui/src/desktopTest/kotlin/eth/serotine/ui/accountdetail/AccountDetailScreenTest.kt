@@ -639,6 +639,9 @@ class AccountDetailScreenTest {
 
         rule.onNodeWithText("Row 39").assertIsDisplayed()
         rule.onNodeWithText(today).assertIsDisplayed()
+        // A tap on the pinned heading opens nothing, though a row lies under it.
+        rule.onNodeWithText(today).performClick()
+        assertEquals(emptyList<String>(), events)
     }
 
     @Test

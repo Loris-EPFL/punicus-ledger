@@ -1,5 +1,6 @@
 package eth.serotine.ui.activity
 
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -300,8 +301,8 @@ private fun ActivityGhost(withTime: Boolean = true) {
 }
 
 /**
- * The heading of a day's rows: "Today · Monday, November 23, 2026". Opaque, in the screen's background colour, since
- * the day's rows scroll under it while it stays on top.
+ * The heading of a day's rows: "Today · Monday, November 23, 2026". Opaque, in the screen's background colour, and to
+ * a tap, since the day's rows scroll under it while it stays on top.
  */
 @Composable
 private fun DayHeading(day: String) {
@@ -309,6 +310,8 @@ private fun DayHeading(day: String) {
         day,
         Modifier.fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)
+            // Opaque to a tap too: without it, the hit test goes on to the row scrolled under the pinned heading.
+            .pointerInput(Unit) {}
             .padding(top = 16.dp, bottom = 4.dp)
             .testTag(ACTIVITY_DAY_TAG)
             .semantics { heading() },

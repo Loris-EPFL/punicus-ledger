@@ -26,20 +26,21 @@ interface AddressIndexArchive {
 }
 
 /**
- * An account's addr1 history as it was read and verified: the [rows] only once their block was finalized, so that
- * none of them can change (a row of a block not final yet may still be replaced by a reorganisation: its entry is
- * kept in [recheck] instead, and checked again).
+ * An account's addr1 history as it was read and verified, every entry it holds an answer for by itself, so that a
+ * later read neither checks nor counts any of them again: the [rows] only once their block was finalized, so that none
+ * of them can change.
  *
  * - [coverage]: what the index covered at the newest read, and the importer key the list rests on;
- * - [top]: the newest block the list was read through. Every entry of the index at or below it, down to where
- *   [next] goes on, was read once: a row, left out and counted (below), or in [recheck]. An entry above it is
- *   new;
+ * - [top]: the newest block the list was read through: every entry of the index at or below it, down to where [next]
+ *   goes on, was read, but in the [unread] ranges. An entry above it is new. It lies below every block whose verdict
+ *   was not final yet at the read (a row of such a block, or a contradiction against it), so that those are read
+ *   again from the index, and a reorganisation's corrected entries with them;
  * - [rows]: the verified rows, each of a finalized block, newest first, each entry once;
- * - [recheck]: the entries read whose check has not given a lasting answer yet (no peer served their block, or
- *   their block not final yet): checked again at the next read;
- * - the entries left out for good, counted: [unverified], the engine cannot verify them; [contradicted], the chain
- *   says otherwise, a warning against the importer's key; [traceOnly], their one role is `TRACE`, never checked.
- *   An entry no check answered yet is not among them: it is in [recheck];
+ * - [recheck]: the entries read whose check gave no answer yet (no peer served their block): checked again later;
+ * - the entries left out for good: [unverified], the engine cannot verify them; [contradicted], the chain says
+ *   otherwise against a finalized block, a warning against the importer's key; [traceOnly], their one role is
+ *   `TRACE`, never checked;
+ * - [unread]: the ranges at or below [top] a read could not get from Swarm (a page's gaps), read again later;
  * - [next]: where the older pages go on, null once the end of what the index covers was reached.
  */
 data class KeptAddressIndex(
@@ -47,9 +48,10 @@ data class KeptAddressIndex(
     val top: Long,
     val rows: List<AddressIndexRow>,
     val recheck: List<AddressIndexEntry>,
-    val unverified: Int,
-    val contradicted: Int,
-    val traceOnly: Int,
+    val unverified: List<AddressIndexEntry>,
+    val contradicted: List<AddressIndexEntry>,
+    val traceOnly: List<AddressIndexEntry>,
+    val unread: List<LongRange>,
     val next: AddressIndexCursor?,
 ) {
     init {
@@ -60,9 +62,16 @@ data class KeptAddressIndex(
                 a.entry.block > b.entry.block || (a.entry.block == b.entry.block && a.entry.slot > b.entry.slot)
             },
         ) { "the rows are kept newest first, each entry once" }
-        require(unverified >= 0 && contradicted >= 0 && traceOnly >= 0) { "a count of entries" }
-        require(recheck.none { entry -> rows.any { it.entry.block == entry.block && it.entry.slot == entry.slot } }) {
-            "an entry is a row or waits for its check, never both"
+        val keys = rows.map { it.entry.block to it.entry.slot } +
+            (recheck + unverified + contradicted + traceOnly).map { it.block to it.slot }
+        require(keys.size == keys.toSet().size) { "each entry is kept once: a row, waiting, or left out" }
+        require(unread.all { !it.isEmpty() && it.first >= 0 && it.last <= top }) {
+            "an unread range lies at or below the top"
         }
     }
+
+    /** Every entry the list holds an answer for, or waits for one: by block and slot. */
+    val known: Set<Pair<Long, Int>>
+        get() = (rows.map { it.entry } + recheck + unverified + contradicted + traceOnly)
+            .mapTo(HashSet()) { it.block to it.slot }
 }

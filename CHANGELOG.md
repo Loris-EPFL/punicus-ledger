@@ -23,8 +23,8 @@ and issues of this repository.
   without it, the setting is greyed out, saying so (#334). What was read is
   kept between runs: opening an account's Activity again shows its verified
   rows at once and reads only the newer entries, which come in at the top.
-  Only rows of finalized blocks are kept as they are; the others are
-  checked again.
+  Only rows of finalized blocks are kept; the newest blocks, and any range
+  Swarm did not deliver, are read again.
 - Activity at a glance: the rows are grouped by day under a heading
   ("Today", "Yesterday", then the date), each with its time in your time
   zone; a green arrow for value in and a red one for value out, and the

@@ -92,9 +92,12 @@ class FileAddressIndexArchiveTest {
             ),
         ),
         recheck = listOf(AddressIndexEntry(21_120_000, 9, setOf(AddressIndexRole.WORD))),
-        unverified = 1,
-        contradicted = 2,
-        traceOnly = 3,
+        unverified = listOf(AddressIndexEntry(21_119_000, 1, setOf(AddressIndexRole.AUTH))),
+        contradicted = listOf(
+            AddressIndexEntry(21_118_000, 2, setOf(AddressIndexRole.EMITTER, AddressIndexRole.TOPIC)),
+        ),
+        traceOnly = listOf(AddressIndexEntry(21_117_000, 3, setOf(AddressIndexRole.TRACE))),
+        unread = listOf(21_100_000L..21_100_999L),
         next = AddressIndexCursor("7:21120000:9"),
     )
 
@@ -122,10 +125,10 @@ class FileAddressIndexArchiveTest {
     fun eachAccountKeepsItsOwnList() = runTest {
         val archive = archive()
         archive.write(onEthereum, kept)
-        archive.write(onGnosis, kept.copy(top = 9, rows = emptyList(), next = null))
+        archive.write(onGnosis, kept.copy(top = 21_100_999, rows = emptyList(), next = null))
 
         assertEquals(kept, archive.read(onEthereum))
-        assertEquals(9, archive.read(onGnosis)?.top)
+        assertEquals(21_100_999, archive.read(onGnosis)?.top)
         assertEquals(2, SystemFileSystem.list(directory).size, "one file per account")
     }
 
@@ -137,6 +140,19 @@ class FileAddressIndexArchiveTest {
 
         assertNull(archive().read(onEthereum))
         assertTrue(SystemFileSystem.list(directory).isEmpty(), "no file names the address any more")
+    }
+
+    @Test
+    fun forgettingAlsoDeletesADamagedCopySetAsideAndNoOtherAccountsFile() = runTest {
+        val archive = archive()
+        archive.write(onEthereum, kept)
+        archive.write(onGnosis, kept)
+        val ethereumFile = SystemFileSystem.list(directory).single { it.name.contains("-1-") }
+        SystemFileSystem.sink(Path(directory, ethereumFile.name + ".damaged-1f")).buffered().use { it.writeString("{") }
+
+        assertTrue(archive().forget(onEthereum))
+
+        assertEquals(listOf("address-index-100-${alice.hex}.json"), SystemFileSystem.list(directory).map { it.name })
     }
 
     @Test

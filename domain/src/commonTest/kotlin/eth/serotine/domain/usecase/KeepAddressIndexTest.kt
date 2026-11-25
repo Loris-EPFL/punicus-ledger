@@ -9,6 +9,7 @@ import eth.serotine.domain.model.AddressIndexCoverage
 import eth.serotine.domain.model.AddressIndexCursor
 import eth.serotine.domain.model.AddressIndexEntry
 import eth.serotine.domain.model.AddressIndexRole.FROM
+import eth.serotine.domain.model.AddressIndexRole.TRACE
 import eth.serotine.domain.model.AddressIndexRow
 import eth.serotine.domain.model.AddressIndexTransaction
 import eth.serotine.domain.model.Network
@@ -36,11 +37,13 @@ class KeepAddressIndexTest {
     private val wallet = ListAccountRepository(
         Account(Network.ETHEREUM, alice, AccountKind.EOA, "Alice", AccountCustody.Watched),
     )
-    private val keep = KeepAddressIndex(archive, wallet, importer)
-    private val none = AddressIndexLeftOut()
+    private val keep = KeepAddressIndex(archive, wallet, WalletChanges(), importer)
+    private val none = AddressIndexLeftOutEntries()
+
+    private fun entry(block: Long, slot: Int) = AddressIndexEntry(block, slot, setOf(FROM))
 
     private fun row(block: Long, slot: Int, final: Boolean = true) = AddressIndexRow(
-        entry = AddressIndexEntry(block, slot, setOf(FROM)),
+        entry = entry(block, slot),
         blockHash = "0x" + "bb".repeat(32),
         final = final,
         confirmed = setOf(FROM),
@@ -56,71 +59,98 @@ class KeepAddressIndexTest {
         return assertNotNull(load.next)
     }
 
-    @Test
-    fun onlyRowsOfFinalizedBlocksAreKeptAsRowsTheOthersAreCheckedAgain() = runTest {
-        val final = row(21_150_000, 2)
-        val notFinal = row(21_190_000, 1, final = false)
-        val unread = AddressIndexEntry(21_140_000, 3, setOf(FROM))
-
-        assertTrue(
-            keep.keep(
-                account,
-                coverage,
-                top = 21_200_000,
-                rows = listOf(final, notFinal),
-                recheck = listOf(unread),
-                leftOut = AddressIndexLeftOut(unverified = 1, contradicted = 2, traceOnly = 3, unavailable = 4),
-                next = continuation("7:21140000:3"),
-            ),
-        )
-
-        val kept = assertNotNull(archive.kept[account])
-        assertEquals(listOf(final), kept.rows)
-        assertEquals(setOf(unread, notFinal.entry), kept.recheck.toSet())
-        assertEquals(listOf(1, 2, 3), listOf(kept.unverified, kept.contradicted, kept.traceOnly))
-        assertEquals(AddressIndexCursor("7:21140000:3"), kept.next)
-        assertEquals(21_200_000, kept.top)
-    }
+    private suspend fun keepPlain(
+        top: Long = 21_200_000,
+        rows: List<AddressIndexRow> = emptyList(),
+        recheck: List<AddressIndexEntry> = emptyList(),
+        out: AddressIndexLeftOutEntries = none,
+        notFinal: List<AddressIndexEntry> = emptyList(),
+        unread: List<LongRange> = emptyList(),
+        next: AddressIndexContinuation? = null,
+        on: AddressIndexCoverage = coverage,
+        with: KeepAddressIndex = keep,
+    ) = with.keep(account, on, top, rows, recheck, out, notFinal, unread, next)
 
     @Test
-    fun aKeptListIsGivenBackWithItsContinuationAndCounts() = runTest {
+    fun everyAnswerIsKeptByItsEntryAndGivenBackWithTheContinuation() = runTest {
         val next = continuation("7:21140000:3")
-        val leftOut = AddressIndexLeftOut(contradicted = 1)
-        keep.keep(account, coverage, 21_200_000, listOf(row(21_150_000, 2)), emptyList(), leftOut, next)
+        val out = AddressIndexLeftOutEntries(
+            unverified = listOf(entry(21_130_000, 1)),
+            contradicted = listOf(entry(21_120_000, 2)),
+            traceOnly = listOf(AddressIndexEntry(21_110_000, 3, setOf(TRACE))),
+        )
+        val unread = listOf(21_100_000L..21_100_999L)
+        val rows = listOf(row(21_150_000, 2))
+        val recheck = listOf(entry(21_140_000, 3))
+        assertTrue(keepPlain(rows = rows, recheck = recheck, out = out, unread = unread, next = next))
 
         val resume = assertNotNull(keep.restore(account))
 
         assertEquals(listOf(row(21_150_000, 2)), resume.kept.rows)
+        assertEquals(listOf(entry(21_140_000, 3)), resume.kept.recheck)
+        assertEquals(out, resume.out)
+        assertEquals(AddressIndexLeftOut(unverified = 1, contradicted = 1, traceOnly = 1), resume.leftOut)
+        assertEquals(unread, resume.kept.unread)
         assertEquals(next, resume.next)
-        assertEquals(AddressIndexLeftOut(contradicted = 1), resume.leftOut)
+        assertEquals(
+            setOf(21_150_000L to 2, 21_140_000L to 3, 21_130_000L to 1, 21_120_000L to 2, 21_110_000L to 3),
+            resume.kept.known,
+        )
+    }
+
+    @Test
+    fun aVerdictAgainstABlockNotFinalKeepsTheTopBelowItSoThatTheIndexIsReadThereAgain() = runTest {
+        val final = row(21_150_000, 2)
+        val notFinal = row(21_190_000, 1, final = false)
+        val contradictedNotFinal = entry(21_180_000, 4)
+
+        assertTrue(keepPlain(rows = listOf(notFinal, final), notFinal = listOf(notFinal.entry, contradictedNotFinal)))
+
+        val kept = assertNotNull(archive.kept[account])
+        assertEquals(listOf(final), kept.rows, "only the row of a finalized block")
+        assertEquals(21_179_999, kept.top, "below every verdict that may still be undone")
+        assertEquals(emptyList(), kept.recheck, "read again from the index, not checked again as it was")
+    }
+
+    @Test
+    fun anEntryIsKeptOnceARowBeforeLeftOutBeforeWaiting() = runTest {
+        val e = entry(21_150_000, 2)
+
+        val out = AddressIndexLeftOutEntries(unverified = listOf(e))
+        keepPlain(rows = listOf(row(21_150_000, 2)), recheck = listOf(e), out = out)
+
+        val kept = assertNotNull(archive.kept[account])
+        assertEquals(1, kept.rows.size)
+        assertEquals(emptyList(), kept.recheck)
+        assertEquals(emptyList(), kept.unverified)
     }
 
     @Test
     fun aListRestingOnAnotherKeyIsNeitherKeptNorGivenBack() = runTest {
         val otherKeys = coverage.copy(importer = other)
-        assertFalse(keep.keep(account, otherKeys, 1, emptyList(), emptyList(), none, null))
+        assertFalse(keepPlain(on = otherKeys))
         assertNull(archive.kept[account])
 
-        KeepAddressIndex(archive, wallet, other).keep(account, otherKeys, 1, emptyList(), emptyList(), none, null)
+        keepPlain(on = otherKeys, with = KeepAddressIndex(archive, wallet, WalletChanges(), other))
 
         assertNull(keep.restore(account), "a list kept under the key pinned before starts again from the index")
-    }
-
-    @Test
-    fun aForgottenListIsNoLongerGivenBack() = runTest {
-        keep.keep(account, coverage, 1, emptyList(), emptyList(), none, null)
-
-        assertTrue(keep.forget(account))
-
-        assertNull(keep.restore(account))
     }
 
     @Test
     fun aListOfAnAccountNoLongerInTheWalletIsNotWrittenBack() = runTest {
         wallet.accounts.value = emptyList()
 
-        assertFalse(keep.keep(account, coverage, 1, emptyList(), emptyList(), none, null))
+        assertFalse(keepPlain())
 
         assertNull(archive.kept[account], "a page finished after the removal writes nothing back")
+    }
+
+    @Test
+    fun aForgottenListIsNoLongerGivenBack() = runTest {
+        keepPlain()
+
+        assertTrue(keep.forget(account))
+
+        assertNull(keep.restore(account))
     }
 }

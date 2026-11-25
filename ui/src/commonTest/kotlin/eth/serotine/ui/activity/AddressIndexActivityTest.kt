@@ -25,6 +25,7 @@ import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.usecase.KeepAddressIndex
 import eth.serotine.domain.usecase.LoadAddressIndexPage
+import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.ObserveAccountCowOrders
 import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccounts
@@ -114,7 +115,7 @@ class AddressIndexActivityTest {
                 AddressIndexActivity(
                     ObserveAddressIndexStatus(index, setting, it),
                     LoadAddressIndexPage(index, it),
-                    keep = archive?.let { kept -> KeepAddressIndex(kept, accounts, it) },
+                    keep = archive?.let { kept -> KeepAddressIndex(kept, accounts, WalletChanges(), it) },
                 )
             },
             now = { 600 },
@@ -636,7 +637,7 @@ class AddressIndexActivityTest {
     }
 
     @Test
-    fun aRowOfABlockNotFinalYetIsNotKeptAsARowButCheckedAgainAtTheNextOpening() = runTest {
+    fun aRowOfABlockNotFinalYetIsNotKeptButItsBlockIsReadAgainFromTheIndex() = runTest {
         val archive = MemoryAddressIndexArchive()
         val account = AccountId(Network.ETHEREUM, alice.address)
         val recent = indexRow(9_390_000, 2, alice.address, bob, final = false)
@@ -644,17 +645,66 @@ class AddressIndexActivityTest {
         assertEquals(1, shown(activity(archive = archive)).rows.size, "shown while the app runs")
         val kept = checkNotNull(archive.kept[account])
         assertEquals(emptyList(), kept.rows)
-        assertEquals(listOf(recent.entry), kept.recheck)
+        assertEquals(9_389_999, kept.top, "below the block whose verdict may still be undone")
 
         val final = recent.copy(final = true)
         index.verifiedRows[recent.entry] = final
         index.checked.clear()
         val reopened = shown(activity(archive = archive))
 
-        assertEquals(listOf(listOf(recent.entry)), index.checked, "checked again, no page read for it")
+        assertEquals(listOf(listOf(recent.entry)), index.checked, "read again from the index, and checked")
         assertEquals(1, reopened.rows.size)
         assertEquals(listOf(final), checkNotNull(archive.kept[account]).rows)
-        assertEquals(emptyList(), checkNotNull(archive.kept[account]).recheck)
+        assertEquals(9_400_000, checkNotNull(archive.kept[account]).top)
+    }
+
+    @Test
+    fun aWaitingEntryNoCheckAnswersLeavesTheListAsItWasAndATapReadsNoWrongPage() = runTest {
+        val archive = MemoryAddressIndexArchive()
+        val account = AccountId(Network.ETHEREUM, alice.address)
+        val unread = AddressIndexEntry(9_200_000, 4, setOf(AddressIndexRole.TO))
+        index.page(null, listOf(indexRow(9_300_000, 3, alice.address, bob)), next = null, others = listOf(unread))
+        index.verdictOf = { entry ->
+            index.verifiedRows[entry]?.let { AddressIndexVerdict.Verified(it) }
+                ?: AddressIndexVerdict.Unavailable(entry, "no peer served the receipts")
+        }
+        shown(activity(archive = archive))
+        // Past the retries of the entry no peer serves.
+        advanceTimeBy(1.minutes)
+        assertEquals(listOf(unread), checkNotNull(archive.kept[account]).recheck)
+
+        index.checkRefusal = AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING)
+        index.asked.clear()
+        val reopened = activity(archive = archive)
+        advanceTimeBy(1.minutes)
+        val shown = shown(reopened)
+
+        assertEquals(1, shown.rows.size)
+        assertIs<IndexFooter.End>(shown.index?.footer, "nothing refused: the entry waits for the next opening")
+        assertEquals(listOf(unread), checkNotNull(archive.kept[account]).recheck)
+        val asked = index.asked.size
+        more.value = 1
+        shown(reopened)
+        assertEquals(asked, index.asked.size, "a list read to its end reads no page more")
+    }
+
+    @Test
+    fun aRangeAReadCouldNotGetIsNamedAndReadAgainAtTheNextOpening() = runTest {
+        val archive = MemoryAddressIndexArchive()
+        val account = AccountId(Network.ETHEREUM, alice.address)
+        val gap = 9_100_000L..9_100_999L
+        index.page(null, listOf(indexRow(9_300_000, 3, alice.address, bob)), next = null, gaps = listOf(gap))
+        val first = shown(activity(archive = archive))
+        assertTrue(first.index?.lines.orEmpty().any { it.contains("blocks 9,100,000 to 9,100,999") })
+        assertEquals(listOf(gap), checkNotNull(archive.kept[account]).unread)
+
+        index.page(null, listOf(indexRow(9_300_000, 3, alice.address, bob)), next = null)
+        index.page(null, listOf(indexRow(9_100_500, 1, bob, alice.address)), next = null, range = gap)
+        val reopened = shown(activity(archive = archive))
+
+        assertEquals(2, reopened.rows.size, "the entry the read missed before")
+        assertTrue(reopened.index?.lines.orEmpty().none { it.contains("9,100,000") }, "no longer a gap")
+        assertEquals(emptyList(), checkNotNull(archive.kept[account]).unread)
     }
 
     @Test

@@ -1059,7 +1059,7 @@ class AppGraph(
         return AddressIndexActivity(
             ObserveAddressIndexStatus(history, setting, importer),
             LoadAddressIndexPage(history, importer),
-            keep = addressIndexArchive?.let { KeepAddressIndex(it, accounts, importer) },
+            keep = addressIndexArchive?.let { KeepAddressIndex(it, accounts, walletChanges, importer) },
         )
     }
 
@@ -1085,7 +1085,7 @@ class AppGraph(
         // the check itself (NotInThisBuild), which the detail says.
         checkIndexEntry = addressIndex?.let { history ->
             addressIndexSetting?.let { setting ->
-                addressIndexImporter?.let { CheckAddressIndexEntry(history, setting, it) }
+                addressIndexImporter?.let { CheckAddressIndexEntry(history, setting, it, addressIndexArchive) }
             }
         },
     )

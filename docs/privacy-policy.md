@@ -32,6 +32,9 @@ Last updated: 2026-11-25.
   device has one (docs/keys-and-signing.md).
 - The light client's own state, the balances it last verified, the record of
   what you sent, and your dApp sessions.
+- On the desktop and Android, with the experimental addr1 history on, what
+  was read and checked of each account's history from it. Removing the
+  account deletes it.
 
 These files are private to the app. Keys and session secrets are kept out of
 cloud backups and device-to-device transfers. Removing the app deletes them.

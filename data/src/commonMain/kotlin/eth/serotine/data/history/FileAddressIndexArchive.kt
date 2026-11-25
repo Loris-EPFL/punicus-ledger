@@ -53,16 +53,24 @@ class FileAddressIndexArchive(
         fileOf(account).change(notSaved = false) { Decision(true, Kept(kept)) }
     }
 
-    /** Deletes the account's file, so that nothing on the device names the address any more. */
+    /**
+     * Deletes the account's file, and with it every file named after it (a copy of a damaged one set aside, a write's
+     * leftover), so that nothing in [directory] names the address any more.
+     */
     override suspend fun forget(account: AccountId): Boolean = lock.withLock {
         files -= account
-        val path = Path(pathOf(account))
+        val prefix = Path(pathOf(account)).name
         withContext(dispatcher) {
+            val dir = Path(directory)
             try {
-                SystemFileSystem.delete(path, mustExist = false)
+                if (SystemFileSystem.exists(dir)) {
+                    SystemFileSystem.list(dir).filter { it.name.startsWith(prefix) }.forEach {
+                        SystemFileSystem.delete(it, mustExist = false)
+                    }
+                }
                 true
             } catch (e: Exception) {
-                println("Punicus: could not delete the addr1 history at $path (${e::class.simpleName})")
+                println("Punicus: could not delete an addr1 history (${e::class.simpleName})")
                 false
             }
         }
@@ -101,9 +109,10 @@ class FileAddressIndexArchive(
         val top: Long,
         val rows: List<StoredRow>,
         val recheck: List<StoredEntry>,
-        val unverified: Int,
-        val contradicted: Int,
-        val traceOnly: Int,
+        val unverified: List<StoredEntry>,
+        val contradicted: List<StoredEntry>,
+        val traceOnly: List<StoredEntry>,
+        val unread: List<StoredRange>,
         val next: String? = null,
     ) {
         constructor(kept: KeptAddressIndex) : this(
@@ -111,9 +120,10 @@ class FileAddressIndexArchive(
             kept.top,
             kept.rows.map(::StoredRow),
             kept.recheck.map(::StoredEntry),
-            kept.unverified,
-            kept.contradicted,
-            kept.traceOnly,
+            kept.unverified.map(::StoredEntry),
+            kept.contradicted.map(::StoredEntry),
+            kept.traceOnly.map(::StoredEntry),
+            kept.unread.map(::StoredRange),
             kept.next?.token,
         )
 
@@ -122,9 +132,10 @@ class FileAddressIndexArchive(
             top = top,
             rows = rows.map { it.toRow() },
             recheck = recheck.map { it.toEntry() },
-            unverified = unverified,
-            contradicted = contradicted,
-            traceOnly = traceOnly,
+            unverified = unverified.map { it.toEntry() },
+            contradicted = contradicted.map { it.toEntry() },
+            traceOnly = traceOnly.map { it.toEntry() },
+            unread = unread.map { it.toRange() },
             next = next?.let(::AddressIndexCursor),
         )
     }

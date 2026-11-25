@@ -575,4 +575,59 @@ class AddressIndexHistoriesTest {
         assertEquals(coverage, load.coverage)
         assertEquals(next, load.next)
     }
+
+    @Test
+    fun entriesTheListKnowsArePassedOverNeitherCheckedNorCounted() = runTest {
+        val known = entry(21_190_000, 2, FROM)
+        val traced = entry(21_185_000, 1, TRACE)
+        val new = entry(21_180_000, 1, TO)
+        index.pages[null] = page(listOf(known, traced, new))
+        verifyingAll()
+
+        val load = assertIs<AddressIndexLoad.Loaded>(
+            loader()(account, known = setOf(known.block to known.slot, traced.block to traced.slot)).last(),
+        )
+
+        assertEquals(listOf(listOf(new)), index.checks)
+        assertEquals(listOf(rowOf(new)), load.rows)
+        assertEquals(AddressIndexLeftOut(), load.leftOut)
+        assertEquals(21_180_000, load.reached, "the page reached its lowest entry, a known one or not")
+    }
+
+    @Test
+    fun aRangeIsAskedOfTheIndex() = runTest {
+        index.pages[null] = page(emptyList())
+
+        loader()(account, range = 21_100_000L..21_100_999L).last()
+
+        val query = index.queries.single().third
+        assertEquals(21_100_000, query.fromBlock)
+        assertEquals(21_100_999, query.toBlock)
+    }
+
+    @Test
+    fun aVerdictAgainstABlockNotFinalIsNamedAndAContradictionOfItNotCounted() = runTest {
+        val recent = entry(21_195_000, 2, FROM)
+        val wrongRecent = entry(21_194_000, 1, TO)
+        val wrongFinal = entry(21_150_000, 3, TO)
+        index.pages[null] = page(listOf(recent, wrongRecent, wrongFinal))
+        index.check = { entries, _ ->
+            AddressIndexCheck.Verdicts(
+                entries.map {
+                    when (it) {
+                        recent -> AddressIndexVerdict.Verified(rowOf(it).copy(final = false))
+                        wrongRecent -> AddressIndexVerdict.Contradicted(it, "0x" + "dd".repeat(32), false, setOf(TO))
+                        else -> AddressIndexVerdict.Contradicted(it, "0x" + "dd".repeat(32), true, setOf(TO))
+                    }
+                },
+            )
+        }
+
+        val load = assertIs<AddressIndexLoad.Loaded>(loader()(account).last())
+
+        assertEquals(listOf(recent, wrongRecent), load.notFinal)
+        assertEquals(1, load.leftOut.contradicted, "only the contradiction against a finalized block")
+        assertEquals(listOf(wrongFinal), load.out.contradicted)
+        assertEquals(1, load.rows.size, "a row for now")
+    }
 }

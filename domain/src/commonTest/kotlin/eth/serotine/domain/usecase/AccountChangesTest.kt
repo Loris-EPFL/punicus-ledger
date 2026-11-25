@@ -2,6 +2,7 @@ package eth.serotine.domain.usecase
 
 import eth.serotine.domain.repository.KeptAddressIndex
 import eth.serotine.domain.model.AddressIndexCoverage
+import eth.serotine.domain.model.AddressIndexEntry
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
@@ -149,7 +150,8 @@ class AccountChangesTest {
     fun removingAnAccountForgetsItsKeptAddr1HistoryAndNoOtherAccounts() = runTest {
         val archive = MemoryAddressIndexArchive()
         val coverage = AddressIndexCoverage(Address.of("0x" + "1e".repeat(20)), 1, 1L..9L, null, null, emptyList())
-        val kept = KeptAddressIndex(coverage, 9, emptyList(), emptyList(), 0, 0, 0, null)
+        val none = emptyList<AddressIndexEntry>()
+        val kept = KeptAddressIndex(coverage, 9, emptyList(), none, none, none, none, emptyList(), null)
         archive.kept[keyed.id] = kept
         archive.kept[watched.id] = kept
 
@@ -163,7 +165,8 @@ class AccountChangesTest {
     fun anEntryThatCannotBeRemovedKeepsItsAddr1HistoryToo() = runTest {
         val archive = MemoryAddressIndexArchive()
         val coverage = AddressIndexCoverage(Address.of("0x" + "1e".repeat(20)), 1, 1L..9L, null, null, emptyList())
-        archive.kept[keyed.id] = KeptAddressIndex(coverage, 9, emptyList(), emptyList(), 0, 0, 0, null)
+        val none = emptyList<AddressIndexEntry>()
+        archive.kept[keyed.id] = KeptAddressIndex(coverage, 9, emptyList(), none, none, none, none, emptyList(), null)
         repository.failSaves = true
 
         val remove = RemoveAccount(repository, keys, WalletChanges(), MemoryAliases(), archive)

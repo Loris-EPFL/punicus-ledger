@@ -1366,8 +1366,10 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
         the rows verified before at once, then reads only the entries newer
         than those, each a ghost row at the top until its check answers, and
         prepends them; older pages go on where the kept list ended. A row is
-        kept only once its block is finalized; one of a block not final yet,
-        and an entry no check answered, are checked again at that opening. A footer holds its room while a page is read and checked ("Reading
+        kept only once its block is finalized; the index is read again at a
+        block that was not final yet. Up to 20 entries no check answered are
+        checked again at each opening, and a range a read could not get is
+        named among the index's gaps and read again. A footer holds its room while a page is read and checked ("Reading
         more of the addr1 index …"), and the end of its coverage is marked
         ("The addr1 index starts at block 9,000,000: nothing older comes from
         it"). Turned oldest first, the footer goes above the rows, in sight

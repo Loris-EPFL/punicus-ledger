@@ -1,5 +1,7 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.repository.KeptAddressIndex
+import eth.serotine.domain.model.AddressIndexCoverage
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexEntry
@@ -201,6 +203,20 @@ class AddressIndexSettingsTest {
 
         assertEquals(AddressIndexEntryCheck.Refused(AddressIndexRefusal.NotNow(ReadUnavailable.SYNCING)), refused)
         assertNull((refused as? AddressIndexEntryCheck.Checked)?.verdict)
+    }
+
+    @Test
+    fun aDetailCheckRefusedForTheCheckpointAlarmDeletesTheKeptList() = runTest {
+        turnedOn()
+        val archive = MemoryAddressIndexArchive()
+        val coverage = AddressIndexCoverage(fixtureImporter, 1, 1L..9L, null, null, emptyList())
+        val none = emptyList<AddressIndexEntry>()
+        archive.kept[account] = KeptAddressIndex(coverage, 9, emptyList(), none, none, none, none, emptyList(), null)
+        index.check = { _, _ -> AddressIndexCheck.Refused(AddressIndexRefusal.CheckpointAlarm("table alarm")) }
+
+        CheckAddressIndexEntry(index, setting, fixtureImporter, archive)(account, entry)
+
+        assertNull(archive.kept[account], "the alarm withdraws the trust the kept rows rest on")
     }
 
     @Test

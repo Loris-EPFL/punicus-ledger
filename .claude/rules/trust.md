@@ -125,8 +125,8 @@ index from Swarm*.)
   them locally"). How it is applied, not part of the request: only a row of
   a block the beacon chain had finalized when it was verified, since a
   finalized block cannot change, and neither can the engine's verdict on
-  it. A row of a block not final yet is checked again. A row's detail still
-  checks its entry anew.
+  it. The index is read again at a block whose verdict was not final yet.
+  A row's detail still checks its entry anew.
 
 ## Past the weak-subjectivity window only on the user's word
 

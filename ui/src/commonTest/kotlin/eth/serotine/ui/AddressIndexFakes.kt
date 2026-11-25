@@ -38,6 +38,9 @@ internal val FIXTURE_IMPORTER: Address = Address.of("0x" + "1e".repeat(20))
  */
 internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressIndexHistory {
     val pages = mutableMapOf<AddressIndexCursor?, AddressIndexPage>()
+
+    /** The pages of a range asked (its `fromBlock` to `toBlock`), whatever the cursor. */
+    val ranges = mutableMapOf<LongRange, AddressIndexPage>()
     var pageRefusal: AddressIndexRefusal? = null
     var checkRefusal: AddressIndexRefusal? = null
     val verifiedRows = mutableMapOf<AddressIndexEntry, AddressIndexRow>()
@@ -63,6 +66,12 @@ internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressInde
     override suspend fun page(network: Network, address: Address, query: AddressIndexQuery): AddressIndexReading {
         asked += query.cursor
         pageRefusal?.let { return AddressIndexReading.Refused(it) }
+        val from = query.fromBlock
+        val to = query.toBlock
+        if (from != null && to != null) {
+            return ranges[from..to]?.let { AddressIndexReading.Page(it) }
+                ?: AddressIndexReading.Refused(AddressIndexRefusal.Rejected("no such range"))
+        }
         val page = pages[query.cursor]
             ?: return AddressIndexReading.Refused(AddressIndexRefusal.Rejected("no such cursor"))
         return AddressIndexReading.Page(page)
@@ -81,8 +90,8 @@ internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressInde
     }
 
     /**
-     * A page signed by [importer], covering [covered] with the head gap above it, of [rows] (each verified) and
-     * [others] (left to [verdictOf]), going on at [next].
+     * A page signed by [importer], covering [covered] with the head gap above it and [gaps] inside, of [rows] (each
+     * verified) and [others] (left to [verdictOf]), going on at [next]; the page of [range] when one is given.
      */
     fun page(
         cursor: String?,
@@ -91,22 +100,25 @@ internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressInde
         others: List<AddressIndexEntry> = emptyList(),
         covered: LongRange = 9_000_000L..9_400_000L,
         importer: Address = FIXTURE_IMPORTER,
+        gaps: List<LongRange> = emptyList(),
+        range: LongRange? = null,
     ) {
         rows.forEach { verifiedRows[it.entry] = it }
         val entries = (rows.map { it.entry } + others)
             .sortedWith(compareByDescending<AddressIndexEntry> { it.block }.thenByDescending { it.slot })
-        pages[cursor?.let(::AddressIndexCursor)] = AddressIndexPage(
+        val page = AddressIndexPage(
             AddressIndexCoverage(
                 importer = importer,
                 headUpdate = 3,
                 covered = covered,
-                headGap = AddressIndexHeadGap(covered.last + 1, covered.last + 120),
-                tailGap = if (covered.first > 0) 0L until covered.first else null,
-                gaps = emptyList(),
+                headGap = if (range == null) AddressIndexHeadGap(covered.last + 1, covered.last + 120) else null,
+                tailGap = if (range == null && covered.first > 0) 0L until covered.first else null,
+                gaps = gaps,
             ),
             entries,
             next?.let(::AddressIndexCursor),
         )
+        if (range != null) ranges[range] = page else pages[cursor?.let(::AddressIndexCursor)] = page
     }
 }
 

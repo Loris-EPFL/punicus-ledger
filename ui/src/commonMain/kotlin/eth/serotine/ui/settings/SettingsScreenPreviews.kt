@@ -370,7 +370,10 @@ private fun SettingsAddressIndexNoKeyPreview() =
 private fun SettingsAddressIndexNoKeyDarkPreview() =
     SettingsPreview(synced.copy(addressIndex = addressIndexGreyed), darkTheme = true, atTheEnd = true)
 
-/** A key pinned, but an engine without the Swarm reader: greyed out for that alone, as the desktop shows since #359. */
+/**
+ * A key pinned, but an engine without the Swarm reader: greyed out for that alone, as the desktop showed from #359 to
+ * Myotis 0.1.23.
+ */
 @Preview
 @Composable
 private fun SettingsAddressIndexNoReaderPreview() = SettingsPreview(

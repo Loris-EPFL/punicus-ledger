@@ -130,7 +130,10 @@ sealed interface AddressIndexRefusal {
     val retryable: Boolean
         get() = this is NotNow
 
-    /** This build's engine has no Swarm reader: the history is not available here (Android, iOS, a release). */
+    /**
+     * This build's engine has no Swarm reader: the history is not available here (iOS; any engine before Myotis
+     * 0.1.23).
+     */
     data object NotInThisBuild : AddressIndexRefusal
 
     /**

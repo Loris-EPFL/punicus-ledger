@@ -760,7 +760,7 @@ user to update — before it, and, after it, nothing else.
   applied checkpoint is said with its operators and the peers that confirmed
   it. The remembered choice (`setStaleAnchorPolicy`) is not used: Punicus
   asks each time. The engine has it from Myotis 0.1.21; pinned
-  at 0.1.22.
+  at 0.1.23.
 - **A parameter that can change the answer is applied or refused**, never
   accepted and ignored — the Myotis rule, and the reason a port's contract
   spells out what each argument does.

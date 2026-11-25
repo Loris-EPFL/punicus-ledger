@@ -297,12 +297,21 @@ contradicted entries and what others learn.)
   names the pinned key. The user may turn it off, and a choice to keep it
   off stays (owner's decision, 2026-11-22, #334, amending "off by default"
   of 2026-11-21). With no key pinned, or no Swarm reader, it reads nothing.
-  In its first version the engine's Swarm reader is in no published Myotis
-  build (Myotis #908), the desktop's included: an engine
-  without it refuses with the permanent `-32602`. There the setting is greyed
-  out, a tap saying this build's engine has no Swarm reader (`ui.md`, the
-  greyed-out rule), and the history stays the log index's. Android and iOS
-  have no such setting.
+  The engine's Swarm reader ships from Myotis 0.1.23 on, in its desktop
+  natives and its Android AAR (Myotis #920), so the desktop reads the index.
+  An engine without the reader (iOS, a build without its `swarm` feature)
+  refuses with the permanent `-32602`, as every engine does while Tor
+  routing is on. There the setting is greyed out, a tap saying why
+  (`ui.md`, the greyed-out rule), and the history stays the log index's.
+  Android and iOS have no such setting. Android's AAR carries the reader,
+  but its composition root sets no importer, and the engine starts its
+  Swarm node only on a read, so Android contacts no Swarm peer.
+- **A panic in the reader ends the app** (recorded at the owner's request,
+  2026-11-24). Myotis accepted for now that a panic inside `ant`, its
+  embedded Swarm node, ends the host process (2026-11-24,
+  freedom-hq/ant#271). On the desktop the host process is the wallet. The
+  node runs only for a read, so with the setting off it never runs. The
+  changelog says so.
 - How it is applied, not part of the ruling: the list says how many entries
   of the index it left out because they could not be verified, and,
   separately, how many the chain contradicts. That follows from this ruling
@@ -463,6 +472,11 @@ docs/walletconnect.md is the contract.)
   2026-11-23, on #347). Its transaction must also hold an xBZZ `Transfer`
   to the PostageStamp from an account of the wallet. Anyone can create a
   batch naming any owner; a batch someone else bought is added by hand.
+- How it is applied, not part of the decision: that `Transfer` must move
+  exactly the batch's own total, the first word of its `BatchCreated`. A
+  `Transfer` of nothing counts as no payment and names no chequebook, since
+  anyone can emit one from any account (`transferFrom` of nothing needs no
+  allowance).
 - **Or bought here, or added by hand:** a chequebook by address, a batch by
   id, kept once proven. The candidates are public data, kept in an
   app-private file.

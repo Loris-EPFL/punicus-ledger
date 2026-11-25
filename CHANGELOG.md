@@ -19,9 +19,8 @@ and issues of this repository.
   scrolls. Which entries the index holds rests on its importer, whose key the
   release pins and the list names; the list says what the index does not
   cover, how many entries it left out, and warns when the chain contradicts
-  one. It reads nothing until the engine has a Swarm reader, which no
-  published engine has yet: until then the setting is greyed out, saying so
-  (#334).
+  one. The engine's Swarm reader comes with Myotis 0.1.23; with an engine
+  without it, the setting is greyed out, saying so (#334).
 - Activity at a glance: the rows are grouped by day under a heading
   ("Today", "Yesterday", then the date), each with its time in your time
   zone; a green arrow for value in and a red one for value out, and the
@@ -64,6 +63,15 @@ and issues of this repository.
 
 ### Changed
 
+- The embedded Myotis engine is 0.1.23 (was 0.1.21-rc1). It brings the
+  engine's address history with its Swarm reader on the desktop and Android,
+  the mainnet checkpoint table up to block 26,485,995, and the embedded
+  checkpoints of 2026-11-24 for Ethereum, Gnosis Chain and Sepolia. Android
+  has no addr1 setting and never starts the reader, which runs only on a
+  read; it adds about 11 MB to the Android app, which carries the engine for
+  two processor types. On the desktop the reader runs inside the app: a
+  crash of the reader on what a Swarm peer sends ends the app, a limit Myotis
+  accepts for now (freedom-hq/ant#271).
 - A CoW order no longer depends on Uniswap: its minimum is CoW's own
   estimate less your tolerance, and every pair CoW quotes is offered. The
   review says the minimum rests on CoW's estimate, which is not checked on

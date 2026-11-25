@@ -31,7 +31,9 @@ batches*) and `.claude/rules/data-sources.md` (*Swarm nodes*) carry as rules.
    can create a batch that names an account of the wallet. A batch found in
    the log index is kept by itself only when its transaction also holds an
    xBZZ `Transfer` to the PostageStamp from an account of the wallet. A
-   batch someone else bought for the node is added by its id, by hand.
+   batch someone else bought for the node is added by its id, by hand. As
+   applied: that `Transfer` moves exactly the batch's own total, and one of
+   nothing is never a payment (*Where the candidates come from*).
 
 ## The contracts
 
@@ -115,7 +117,9 @@ So:
   - **A chequebook.** Bee funds its chequebook with xBZZ from the node, so
     the funding leaves a `Transfer` that names the node as its sender
     (topic 1) in the node's own index. Its recipient, other than the
-    PostageStamp, is a chequebook candidate.
+    PostageStamp, is a chequebook candidate. A `Transfer` of nothing names
+    none: anyone can emit one from any account, since `transferFrom` of
+    nothing needs no allowance.
   - **A batch.** The index also follows the pinned PostageStamp as an
     emitter (`LogWatchKey.Emitter`), from the earliest start among the
     wallet's Swarm nodes on Gnosis Chain, for its `BatchCreated` logs alone.
@@ -123,7 +127,10 @@ So:
     One whose owner is an EOA of the wallet makes its batch id a candidate
     only when the same transaction holds an xBZZ `Transfer` to the
     PostageStamp from an account of the wallet, as that account's own entry
-    shows (decision 5): the wallet paid for it. A batch a stranger created
+    shows, of exactly the batch's own total, the first word of its
+    `BatchCreated` (decision 5): the wallet paid for it. A `Transfer` of
+    nothing is no payment, and puts no account among those whose payments
+    have the PostageStamp followed. A batch a stranger created
     for an account of the wallet is never added by this. A past
     transaction's receipt cannot be had by its hash
     (docs/embedding-myotis.md, `EngineReceipts`), so nothing here waits on
@@ -226,6 +233,10 @@ the blocks its figures were read at.
   nonce, immutable)` with a nonce of 32 random bytes made here. The batch id
   is remembered as it is sent.
 - An allowance that already covers the total skips the approval.
+- **What the buyer has to pay with:** its verified xBZZ, less what its
+  own transactions not mined yet still move and what its live CoW orders
+  selling xBZZ may still take, as Send holds them back (docs/swaps.md).
+  Short of the total, nothing is approved.
 - **A paused PostageStamp** refuses Buy, Top up and Dilute at Review,
   saying so: `createBatch`, `topUp` and `increaseDepth` all revert while it
   is paused. The Swarm screen does not read the PostageStamp before then,
@@ -303,22 +314,29 @@ transaction.
 
 ## Delivery
 
-Through `feature/swarm`, one part per PR:
+Delivered through `feature/swarm`, one part per PR, and merged into `main`
+with #357 on 2026-11-24:
 
-1. This page, and the rules that carry the decisions.
+1. This page, and the rules that carry the decisions (#342).
 2. Domain and adapters: the pins, xBZZ in the token list, the verified
    reads of a chequebook and a batch, the candidates' store, and adding and
-   removing a candidate by hand.
+   removing a candidate by hand (#344).
 3. Discovery in the log index: the chequebook from the node's xBZZ
    transfers, and the batches from the PostageStamp's `BatchCreated` logs,
-   followed as an emitter.
+   followed as an emitter (#347).
 4. The Swarm screen, read only: the node, the chequebook, the batches,
    adding by hand, the entries from the account's screen, and the reading
-   held for an hour.
+   held for an hour (#348).
 5. The batches' transactions, domain and data: the calls, the PostageStamp's
    and xBZZ's fresh read, the quotes and the sends of buy, top up and
    dilute, their record (format 14 of the sent transactions) and their
-   rows in Activity.
-6. The batches' forms and reviews on the Swarm screen.
-7. The chequebook's withdrawal.
-8. `feature/swarm` into `main`, the owner's to merge.
+   rows in Activity (#349).
+6. The batches' forms and reviews on the Swarm screen (#351).
+7. The chequebook's withdrawal (#355).
+8. `main` merged into `feature/swarm` (#356), then `feature/swarm` into
+   `main` (#357), merged by the owner.
+
+Not delivered, for a later PR: a purchase that is never mined keeps its
+batch id among the node's candidates, so its row stays ("not created yet,
+or expired and deleted"), and its owner still counts as a Swarm node for
+the review's warning about Bee.

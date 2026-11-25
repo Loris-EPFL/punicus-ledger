@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 
 /** The width of the list's pane beside its detail on a wide window: Material's list pane. */
@@ -31,5 +32,30 @@ fun ListBesideDetail(
             VerticalDivider()
         }
         Box(Modifier.weight(1f).fillMaxHeight()) { detail() }
+    }
+}
+
+/** Test tag of the column beside an account that shows an Activity row's detail, for UI tests. */
+const val ACTIVITY_PANE_TAG = "activity-pane"
+
+/**
+ * An account and, while [detailShown], an Activity row's detail beside it, in two columns of half the width each with
+ * a divider between (docs/wallet-ux.md, *Navigation*, from 1200 dp on); otherwise the [account] alone. Drawn by
+ * `App`'s account destination and by the tablet's previews. The [account] keeps its place in the composition whether
+ * the detail is shown or not, so it stays as it was, scrolled where it was.
+ */
+@Composable
+fun DetailBesideAccount(
+    detailShown: Boolean,
+    account: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    detail: @Composable () -> Unit,
+) {
+    Row(modifier) {
+        Box(Modifier.weight(1f).fillMaxHeight()) { account() }
+        if (detailShown) {
+            VerticalDivider()
+            Box(Modifier.weight(1f).fillMaxHeight().testTag(ACTIVITY_PANE_TAG)) { detail() }
+        }
     }
 }

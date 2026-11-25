@@ -162,6 +162,7 @@ import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
 import eth.serotine.ui.activity.ACTIVITY_SELECTED_TAG
 import eth.serotine.ui.activitydetail.ACTIVITY_DETAIL_FIELD_TAG
 import eth.serotine.ui.addtoken.ADD_TOKEN_ADDRESS_TAG
+import eth.serotine.ui.components.ACTIVITY_PANE_TAG
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LIGHT_CLIENT_STRIP_TAG
 import eth.serotine.ui.components.NETWORK_CHOICE_TAG

@@ -240,9 +240,10 @@ replaces the bar (Material's expanded window size class):
 - The list leaves with the tab: Settings and Debug take the whole width
   beside the rail, and a flow that covers the bar (send, import, create
   account, a Safe transaction) covers the list too.
-- The back stack is the same at every width, so a window that crosses
-  840 dp keeps the screen it shows: narrowed, the account alone, back from it
-  to the list; widened, the list joins it.
+- The back stack is the same at every width below 1200 dp, so a window that
+  crosses 840 dp keeps the screen it shows: narrowed, the account alone, back
+  from it to the list; widened, the list joins it. From 1200 dp on, a row's
+  detail beside its account is no screen of its own (below).
 - Its screenshots are drawn on a tablet held sideways, 1280 × 800 dp
   (owner's request, 2026-11-18): `docs/screenshots/accounts-tablet/` and
   `simple-accounts-tablet/`.
@@ -266,8 +267,10 @@ columns** (owner's request, 2026-11-25). Material's large window size class:
   belongs to the account it was opened from.
 - A window narrowed below 1200 dp closes the column, and the account is
   shown as it was; there a row's tap opens its detail on a screen of its
-  own. The row open beside the account is not kept past the end of the app's
-  process.
+  own. A detail opened that way stays a screen of its own when the window is
+  widened past 1200 dp again: beside the list, over the account. The row
+  open beside the account outlives a configuration change, not the end of
+  the app's process.
 
 ## Screens
 

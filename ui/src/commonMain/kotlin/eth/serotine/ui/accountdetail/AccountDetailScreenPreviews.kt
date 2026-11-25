@@ -700,14 +700,14 @@ private fun AccountDetailActivityPreview() = AccountDetailPreview(
 )
 
 /**
- * On the widest window: the row whose detail is open beside the account, drawn selected (owner's request,
- * 2026-11-25).
+ * Daily's Activity, its "Sent 0.25 ETH" row selected: what the account shows on a tablet while that row's detail is
+ * open beside it (eth.serotine.ui.accounts.AccountsTabletScreenPreviews.kt; owner's request, 2026-11-25).
  */
-@Preview
 @Composable
-private fun AccountDetailActivitySelectedPreview() = AccountDetailPreview(
+internal fun AccountDetailActivitySelectedSample() = AccountDetailSample(
     daily.copy(segment = DetailSegment.ACTIVITY, activity = ActivityUiState.Shown(activityRows, ACTIVITY_COVERAGE)),
-    selectedActivity = activityRows[1].opens,
+    verifiedStripSample,
+    selectedActivity = activityRows.first { it.title == "Sent 0.25 ETH" }.opens,
 )
 
 /** Lenient mode: what the account has queued, first whichever way the rows run (docs/lenient-mode.md). */
@@ -1387,7 +1387,6 @@ internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("per-app-tab-empty-dark") { AccountDetailPerAppTabEmptyPreview() },
     ScreenPreview("per-app-tab-no-network") { AccountDetailPerAppTabNoNetworkPreview() },
     ScreenPreview("activity") { AccountDetailActivityPreview() },
-    ScreenPreview("activity-selected") { AccountDetailActivitySelectedPreview() },
     ScreenPreview("activity-dark") { AccountDetailActivityDarkPreview() },
     ScreenPreview("waiting-swap") { AccountDetailWaitingSwapPreview() },
     ScreenPreview("waiting-swap-dark") { AccountDetailWaitingSwapDarkPreview() },

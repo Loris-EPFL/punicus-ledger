@@ -36,6 +36,11 @@ private val sent = ActivityDetailUiState.Shown(
     opensStatus = "0x" + "1".repeat(64),
 )
 
+/** A sent transfer's detail in simple mode, in the theme it is drawn in: beside its account on a tablet. */
+@Composable
+internal fun SimpleActivityDetailSentSample() =
+    SimpleActivityDetailScreen(sent, onBack = {}, onCopy = {}, onStatus = {}, onAddToken = {})
+
 @Composable
 private fun SimpleActivityDetailPreview(state: ActivityDetailUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {

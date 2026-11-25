@@ -71,7 +71,9 @@ import eth.serotine.ui.activity.IndexEntryKey
 import eth.serotine.ui.activitydetail.ActivityDetailRoute
 import eth.serotine.ui.addnetwork.AddOnNetworksRoute
 import eth.serotine.ui.addtoken.AddTokenRoute
+import eth.serotine.ui.components.ACTIVITY_PANE_TAG
 import eth.serotine.ui.components.AppTabs
+import eth.serotine.ui.components.DetailBesideAccount
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.ListBesideDetail
 import eth.serotine.ui.components.TabBar
@@ -487,64 +489,62 @@ private fun Destinations(
                 val inFront = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value
                     .isAtLeast(Lifecycle.State.RESUMED)
                 BackHandler(enabled = inPane && inFront && besideIt != null) { pane.close() }
-                Row(Modifier.fillMaxSize()) {
-                    AccountDetailRoute(
-                        viewModel = viewModel { graph.accountDetailViewModel(account) },
-                        lightClient = lightClient.item(account.network),
-                        onBack = { navController.leave(Destination.ACCOUNT) },
-                        onGone = { navController.leave(Destination.ACCOUNT) },
-                        onSend = { contract -> navController.send(account, contract) },
-                        onPropose = { contract -> navController.propose(account, contract) },
-                        onSwap = { contract -> navController.swap(account, contract) },
-                        onSafeSwap = { contract -> navController.safeSwap(account, contract) },
-                        onReceive = { navController.open(AccountAction.Receive(chainId, account.address.hex)) },
-                        onRename = { navController.open(AccountAction.Rename(chainId, account.address.hex)) },
-                        onRemove = { navController.open(AccountAction.Remove(chainId, account.address.hex)) },
-                        onAddOnNetwork = {
-                            navController.open(AccountAction.AddOnNetwork(chainId, account.address.hex))
-                        },
-                        onDerive = { navController.open(AccountAction.Derive(chainId, account.address.hex)) },
-                        onOpenSafeTx = { hash -> navController.openSafeTx(account, hash) },
-                        onImportRequest = { navController.importRequest(account) },
-                        onSafeSettings = { navController.safeSettings(account) },
-                        onGnosisPay = { navController.gnosisPay(account) },
-                        onSwarm = { navController.swarm(account) },
-                        onOpenActivity = { key ->
-                            // A CoW order and a queued transfer open their status, never beside the account; a key
-                            // the detail's routes would refuse opens nothing there either, as on a narrower window.
-                            if (inPane && !key.cowOrder && !key.queued && key.forDetail() != null) {
-                                pane.open(key)
-                            } else {
-                                navController.openActivityDetail(account, key)
-                            }
-                        },
-                        onContinueSwap = { sell -> navController.continueSwap(account, sell) },
-                        onSendElsewhere = { contract -> navController.sendElsewhere(account, contract) },
-                        perAppActions = PerAppActions(
-                            onOpen = { chain, address -> navController.open(AccountAction.Open(chain, address)) },
-                            onRestore = { phrase -> navController.perApp(phrase) },
-                        ),
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                        selectedActivity = besideIt.takeIf { inPane },
-                    )
-                    besideIt?.takeIf { inPane }?.let { opened ->
-                        val key = opened.forDetail() ?: return@let
-                        VerticalDivider()
-                        Box(Modifier.weight(1f).fillMaxHeight().testTag(ACTIVITY_PANE_TAG)) {
-                            // Its ViewModel in a store of its own, cleared as the detail closes or another row
-                            // opens: a row opened again is checked again, and none is kept for nothing.
-                            key(opened) {
-                                WithOwnViewModels {
-                                    ActivityDetailRoute(
-                                        viewModel = viewModel { graph.activityDetailViewModel(account, key) },
-                                        lightClient = lightClient.item(account.network),
-                                        onBack = { pane.close() },
-                                        onStatus = { sent -> navController.openTransfer(account.network, sent) },
-                                        onAddToken = { contract -> navController.addToken(account.network, contract) },
-                                    )
+                val detailKey = besideIt?.takeIf { inPane }?.forDetail()
+                DetailBesideAccount(
+                    detailShown = detailKey != null,
+                    account = {
+                        AccountDetailRoute(
+                            viewModel = viewModel { graph.accountDetailViewModel(account) },
+                            lightClient = lightClient.item(account.network),
+                            onBack = { navController.leave(Destination.ACCOUNT) },
+                            onGone = { navController.leave(Destination.ACCOUNT) },
+                            onSend = { contract -> navController.send(account, contract) },
+                            onPropose = { contract -> navController.propose(account, contract) },
+                            onSwap = { contract -> navController.swap(account, contract) },
+                            onSafeSwap = { contract -> navController.safeSwap(account, contract) },
+                            onReceive = { navController.open(AccountAction.Receive(chainId, account.address.hex)) },
+                            onRename = { navController.open(AccountAction.Rename(chainId, account.address.hex)) },
+                            onRemove = { navController.open(AccountAction.Remove(chainId, account.address.hex)) },
+                            onAddOnNetwork = {
+                                navController.open(AccountAction.AddOnNetwork(chainId, account.address.hex))
+                            },
+                            onDerive = { navController.open(AccountAction.Derive(chainId, account.address.hex)) },
+                            onOpenSafeTx = { hash -> navController.openSafeTx(account, hash) },
+                            onImportRequest = { navController.importRequest(account) },
+                            onSafeSettings = { navController.safeSettings(account) },
+                            onGnosisPay = { navController.gnosisPay(account) },
+                            onSwarm = { navController.swarm(account) },
+                            onOpenActivity = { key ->
+                                // A CoW order and a queued transfer open their status, never beside the account; a key
+                                // the detail's routes would refuse opens nothing there either, as on a narrower window.
+                                if (inPane && !key.cowOrder && !key.queued && key.forDetail() != null) {
+                                    pane.open(key)
+                                } else {
+                                    navController.openActivityDetail(account, key)
                                 }
-                            }
-                        }
+                            },
+                            onContinueSwap = { sell -> navController.continueSwap(account, sell) },
+                            onSendElsewhere = { contract -> navController.sendElsewhere(account, contract) },
+                            perAppActions = PerAppActions(
+                                onOpen = { chain, address -> navController.open(AccountAction.Open(chain, address)) },
+                                onRestore = { phrase -> navController.perApp(phrase) },
+                            ),
+                            selectedActivity = besideIt.takeIf { inPane },
+                        )
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    val key = detailKey ?: return@DetailBesideAccount
+                    // Its ViewModel in the store the account's entry keeps for the row open ([OpenedActivity]):
+                    // it outlives a configuration change, and goes as the row closes or another opens.
+                    CompositionLocalProvider(LocalViewModelStoreOwner provides pane) {
+                        ActivityDetailRoute(
+                            viewModel = viewModel { graph.activityDetailViewModel(account, key) },
+                            lightClient = lightClient.item(account.network),
+                            onBack = { pane.close() },
+                            onStatus = { sent -> navController.openTransfer(account.network, sent) },
+                            onAddToken = { contract -> navController.addToken(account.network, contract) },
+                        )
                     }
                 }
             }
@@ -1862,26 +1862,31 @@ private val WIDE_WINDOW = 840.dp
  */
 private val WIDEST_WINDOW = 1200.dp
 
-/** Test tag of the column beside the account that shows an Activity row's detail, for UI tests. */
-internal const val ACTIVITY_PANE_TAG = "activity-pane"
-
 /**
  * Which Activity row's detail is open beside its account on the widest window ([key]; null: none), kept in the
- * account's back-stack entry so that it outlives a configuration change and goes with the entry.
+ * account's back-stack entry, so that it outlives a configuration change and goes with the entry; and the store of
+ * that detail's ViewModel ([viewModelStore]), as a destination's entry would keep it: cleared as the row closes or
+ * another opens (a row opened again is checked again), and with the entry. Not kept past the process's end.
  */
-private class OpenedActivity : ViewModel() {
+private class OpenedActivity : ViewModel(), ViewModelStoreOwner {
     private val opened = MutableStateFlow<ActivityKey?>(null)
 
-    /** The row open beside the account, as its row names it; null: none. Not kept past the process's end. */
+    /** The row open beside the account, as its row names it; null: none. */
     val key: StateFlow<ActivityKey?> = opened.asStateFlow()
 
+    override val viewModelStore = ViewModelStore()
+
     fun open(key: ActivityKey) {
+        if (opened.value != key) viewModelStore.clear()
         opened.value = key
     }
 
     fun close() {
+        viewModelStore.clear()
         opened.value = null
     }
+
+    override fun onCleared() = viewModelStore.clear()
 }
 
 /**
@@ -1894,19 +1899,4 @@ private fun ActivityKey.forDetail(): ActivityKey? {
     if (index != null) return copy(hash = shaped.orEmpty())
     if (logIndex != null && logIndex < 0) return null
     return shaped?.let { copy(hash = it) }
-}
-
-/**
- * [content] with a [ViewModelStoreOwner] of its own, its ViewModels cleared as it leaves the composition: for a
- * detail shown beside its account, whose ViewModel would otherwise stay in the account's entry until it is popped.
- */
-@Composable
-private fun WithOwnViewModels(content: @Composable () -> Unit) {
-    val owner = remember {
-        object : ViewModelStoreOwner {
-            override val viewModelStore = ViewModelStore()
-        }
-    }
-    DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
-    CompositionLocalProvider(LocalViewModelStoreOwner provides owner, content = content)
 }

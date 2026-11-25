@@ -326,7 +326,10 @@ private fun ActivityItem(row: ActivityRow, onClick: () -> Unit, shown: Boolean =
             .then(if (shown) Modifier.selectedRow(true, ACTIVITY_SELECTED_TAG) else Modifier.testTag(ACTIVITY_ROW_TAG))
             .clickable(onClick = onClick),
         colors = selectedRowColors(shown),
-        leadingContent = { DirectedAvatar(row.about, row.direction, muted = !row.settled) },
+        leadingContent = {
+            val disc = selectedRowColors(shown).containerColor
+            DirectedAvatar(row.about, row.direction, muted = !row.settled, disc = disc)
+        },
         // When, above what it did: beside it, the date would squeeze each row into narrow lines.
         overlineContent = (row.clock ?: row.time).takeIf { it.isNotEmpty() }?.let { time -> { Text(time) } },
         headlineContent = { Text(row.headline ?: row.title) },
@@ -352,17 +355,23 @@ private fun ActivityItem(row: ActivityRow, onClick: () -> Unit, shown: Boolean =
 
 /**
  * The blockie of a row's other side, with an arrow on its corner for the way value went ([direction]): green in and
- * red out, or [muted] while what moved is not settled.
+ * red out, or [muted] while what moved is not settled; the arrow on a disc of the row's own colour ([disc]), so that it
+ * stands out as part of the row, selected or not.
  */
 @Composable
-private fun DirectedAvatar(about: String, direction: ActivityDirection, muted: Boolean) {
+private fun DirectedAvatar(
+    about: String,
+    direction: ActivityDirection,
+    muted: Boolean,
+    disc: Color = MaterialTheme.colorScheme.surface,
+) {
     Box {
         AccountAvatar(about)
         if (direction != ActivityDirection.NONE) {
             val incoming = direction == ActivityDirection.IN
             Box(
                 Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp).size(20.dp)
-                    .background(MaterialTheme.colorScheme.surface, CircleShape),
+                    .background(disc, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

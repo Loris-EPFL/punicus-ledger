@@ -291,9 +291,11 @@ carve-out of 2026-11-10 and its rulings of 2026-11-11 and 2026-11-13 on #761;
 actions below, and how a chequebook and a batch are found. The detail is
 docs/swarm.md's, which is the contract.)
 
-- **A node's account is watched.** No `swarm.key` and no raw key is
-  imported. Where the node's address is an account held here, its key signs
-  what only the node may sign.
+- **A node's account is watched.** No `swarm.key` is imported, and the
+  Swarm screens import no key. Where the node's address is an account held
+  here, its key signs what only the node may sign. Its key may be imported
+  in hex on the import screen like any key (owner ruling, 2026-11-25,
+  amending "no raw key is imported" of 2026-11-23).
 - **Recognised on chain.** An EOA on Gnosis Chain is a Swarm node when a
   chequebook or a postage batch is proven its own, with verified calls at
   one block. A chequebook: its code hashes to the pinned EIP-1167 proxy of
@@ -432,10 +434,11 @@ is the owner's decision, never a PR author's. Today the list has two entries:
     password and the device's hardware secret, as every key is.
   - Such an account has no seed: New account from the same phrase and
     per-app addresses are greyed out for it, a tap saying why.
-  - How it is applied, not part of the ruling: a per-app address is made
-    from a phrase the user picks, not from an account, so a bare key is not
-    among the phrases offered; where no phrase is held at all, the dApp
-    connection's new per-app address is greyed out, saying why, as before.
+  - For per-app addresses (owner's decision, 2026-11-25, on PR #376): a
+    per-app address is made from a phrase the user picks, not from an
+    account, so a bare key is left out of the phrases offered, not listed
+    greyed out. Where no phrase is held, the dApp connection's new per-app
+    address is greyed out, its reason naming the keys imported on their own.
     New account from the same phrase is greyed out on the account itself.
 
 ### Privacy Pools note secrets are key material

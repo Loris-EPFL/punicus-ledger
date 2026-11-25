@@ -23,8 +23,8 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 
 private const val WORDS = "one two three four five six seven eight nine ten eleven twelve"
 
-// A made-up key: the hex digits counted out four times, no one's key. The field masks it anyway.
-private const val KEY = "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+// A made-up key that is no key: 64 f's are not below secp256k1's order. The field masks it anyway.
+private const val KEY = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 
 // What the screen says under the password on a device with secure hardware, from the one source.
 private val HARDWARE = KeyProtection.HARDWARE.protectionText
@@ -51,7 +51,7 @@ private val typed = MnemonicImportUiState.Entering(
 )
 
 /** The same, a private key typed instead of the words. */
-private val keyTyped = typed.copy(phrase = Mnemonic.EMPTY, key = PrivateKey(KEY), source = ImportSource.KEY)
+private val keyTyped = typed.copy(typed = Typed.Key(PrivateKey(KEY)))
 
 @Composable
 private fun MnemonicImportPreview(state: MnemonicImportUiState, darkTheme: Boolean = false) {
@@ -144,7 +144,7 @@ private fun MnemonicImportPrivateKeyDarkPreview() = MnemonicImportPreview(keyTyp
 @Composable
 private fun MnemonicImportInvalidKeyPreview() = MnemonicImportPreview(
     keyTyped.copy(
-        key = PrivateKey(KEY.dropLast(2)),
+        typed = Typed.Key(PrivateKey(KEY.dropLast(2))),
         error = "A private key has 64 hex digits, not 62. A leading 0x is optional.",
     ),
 )

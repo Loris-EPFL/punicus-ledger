@@ -491,11 +491,14 @@ internal fun deriveBlockedReason(control: Control, bareKey: Boolean = false): St
     control != Control.FULL_CONTROL ->
         "This account is watch-only: its key is not on this device, so no account of its recovery phrase can be " +
             "added from it. Import its recovery phrase to add its accounts."
-    bareKey ->
-        "This account's key was imported on its own, as a private key, so there is no recovery phrase to add " +
-            "accounts from. Import the recovery phrase it comes from, if it has one, to add its accounts."
+    bareKey -> DERIVE_BARE_KEY_REASON
     else -> null
 }
+
+/** Why no account of a phrase comes from a key imported on its own (owner ruling, 2026-11-25). */
+internal const val DERIVE_BARE_KEY_REASON =
+    "This account's key was imported on its own, as a private key, so there is no recovery phrase to add " +
+        "accounts from. Import the recovery phrase it comes from, if it has one, to add its accounts."
 
 /** What the account menus call adding the next account of an account's recovery phrase. */
 internal const val DERIVE_ACTION = "New account from the same phrase"

@@ -58,9 +58,7 @@ class MnemonicImportScreenTest {
         val key = "0x" + "0123456789abcdef".repeat(4)
         show(
             MnemonicImportUiState.Entering(
-                Mnemonic.EMPTY,
-                key = PrivateKey(key),
-                source = ImportSource.KEY,
+                Typed.Key(PrivateKey(key)),
                 password = WalletPassword("correct horse"),
                 step = PasswordStep.Existing(protection = "Kept in hardware."),
                 networks = listOf(sepolia.copy(chosen = true)),

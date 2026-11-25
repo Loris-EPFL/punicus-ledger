@@ -1055,8 +1055,13 @@ holds that flow to:
   unchanged. The envelope says it holds a bare key (`key: true`); its 32
   bytes are sealed where a seed's are, under the additional data
   `serotine-key-v1|<address>` instead of `serotine-seed-v1|<address>`, so
-  an envelope whose flag is edited, or one an older build reads as a seed,
-  opens to nothing. It names no index, no per-app path and no phrase.
+  an envelope whose flag is edited opens to nothing. It names no index, no
+  per-app path and no phrase. An older build of the app, whose envelope
+  reader refuses a field it does not know, passes such an envelope over as
+  unreadable: it never opens the key as a seed. Downgraded, a wallet whose
+  envelopes are all bare keys looks to that build like one with no password
+  set, and an import there would set a second one. A downgrade is the
+  desktop's case only, and is not guarded against.
 - **No seed, so nothing derives from it.** New account from the same phrase
   is greyed out for such an account, a tap saying why; it is no phrase a
   per-app address comes from (`PerAppKeys.bareKeys`); the adapter refuses

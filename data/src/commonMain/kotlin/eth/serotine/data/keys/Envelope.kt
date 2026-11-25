@@ -29,8 +29,9 @@ import kotlinx.serialization.Serializable
  * An envelope may hold a bare private key instead of a seed ([SealedSeed.bareKey], stored as `key`): a key imported in
  * hex (owner ruling, 2026-11-25), its 32 bytes sealed where a seed's are, under the additional data
  * `"serotine-key-v1|<address>"`. That tag is the one thing bound to the kind, so an envelope whose flag is edited on
- * disk, or one an older build that knows no bare keys reads as a seed, opens to nothing: the GCM tag refuses it. A
- * bare key's envelope names no path, no index and no phrase.
+ * disk opens to nothing: the GCM tag refuses it. A bare key's envelope names no path, no index and no phrase. An older
+ * build, whose reader refuses the unknown `key` field, passes it over as unreadable (docs/keys-and-signing.md,
+ * *Importing a private key*).
  *
  * Both factors are necessary (rule 1): the password is mixed into the KEK, never compared.
  * The salt and the Argon2id parameters are bound as the DEK wrap's additional data and

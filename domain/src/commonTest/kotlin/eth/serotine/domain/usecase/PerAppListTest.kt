@@ -69,6 +69,16 @@ class PerAppListTest {
     }
 
     @Test
+    fun aFirstAccountBroughtBackFromItsKeyAloneIsNotWhatThePhraseIsKnownBy() {
+        // The phrase's first account removed, then added again from its private key: held here, but bare.
+        val phrases = mapOf(further.address to first.address)
+        val listed = listOf(first, further)
+        val bare = setOf(first.address)
+        val known = phraseAccounts(listed, phraseSources(listed, phrases, bare), bare)
+        assertEquals(mapOf(first.address to further.address), known)
+    }
+
+    @Test
     fun withoutItsFirstAccountAPhraseIsKnownByItsAccountListedFirst() {
         val phrases = mapOf(further.address to first.address)
         val listed = listOf(further)

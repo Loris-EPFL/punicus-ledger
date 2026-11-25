@@ -84,7 +84,7 @@ which is not published.
   screens are cut above the notice. When such a screen's layout changes, its
   `--rows` in `guide.html` has to follow.
 - **A line of the app that is out of date is not published.** Two screens end
-  in one today, and are cut above it: Import recovery phrase ("It cannot send
+  in one today, and are cut above it: Import phrase or key ("It cannot send
   transactions yet") and Connect a dApp ("Only on Sepolia for now"). Once the
   app's text is corrected, the cut can go.
 - **The certificate digest** in the download section is the one pinned in

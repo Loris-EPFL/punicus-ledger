@@ -61,6 +61,11 @@ data class PerAppChoice(
     val aliased: List<Account> = emptyList(),
     val others: List<PerAppEntry> = emptyList(),
     val names: Map<Address, String> = emptyMap(),
+    /**
+     * An account whose key was imported bare is held here ([PerAppKeys.bareKeys]): no phrase, so it gives no per-app
+     * address, and a screen with no [sources] says so rather than that only watched accounts are held.
+     */
+    val bareHeld: Boolean = false,
 ) {
     /** What [source]'s phrase is called on screen, as D9 calls it: one name everywhere (owner, 2026-11-19). */
     fun nameOf(source: PhraseSource): String = phraseName(names, source)
@@ -161,7 +166,8 @@ class ObservePerAppChoice(
                 alias = alias,
                 aliased = listed.filter { alias != null && it.address == alias && it.perApp != null },
                 others = perAppEntries(listed, links).filter { it.site != site },
-                names = phraseNames(listed, phraseAccounts(listed, sources)),
+                names = phraseNames(listed, phraseAccounts(listed, sources, bare)),
+                bareHeld = listed.any { it.address in bare && it.custody == AccountCustody.InKeyStore },
             )
         }.distinctUntilChanged()
     }

@@ -91,7 +91,7 @@ class ObservePerAppAddresses(
             val (listed, phrases, bare) = keyed
             if (listed == null) return@combine PerAppOverview(emptyList(), emptyList(), enabled, unreadable = true)
             val sources = phraseSources(listed, phrases, bare)
-            val knownBy = phraseAccounts(listed, sources)
+            val knownBy = phraseAccounts(listed, sources, bare)
             val names = phraseNames(listed, knownBy)
             PerAppOverview(perAppEntries(listed, links), sources, enabled, knownBy, names, bare = bare)
         }.distinctUntilChanged()
@@ -104,9 +104,14 @@ class ObservePerAppAddresses(
  * listed first that is not a per-app address. A phrase whose name is not known (an envelope sealed before part 2 of
  * #252), or held here by per-app addresses alone, is known by none.
  */
-fun phraseAccounts(listed: List<Account>, sources: List<PhraseSource>): Map<Address, Address> {
+fun phraseAccounts(
+    listed: List<Account>,
+    sources: List<PhraseSource>,
+    bare: Set<Address> = emptySet(),
+): Map<Address, Address> {
+    // A key imported bare is no account of a phrase, though its address may be a phrase's first ([bare]).
     val held = listed.filter { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore }
-        .map { it.address }.toSet()
+        .map { it.address }.filterTo(HashSet()) { it !in bare }
     // A per-app address is never the account its phrase is known by: its tab would list itself among its siblings.
     return sources.mapNotNull { source ->
         val phrase = source.phrase ?: return@mapNotNull null
@@ -200,7 +205,7 @@ class LinkPerAppAlias(
     private val changes: WalletChanges,
 ) {
     suspend operator fun invoke(site: AppHost, address: Address): AliasLinking =
-        withContext(NonCancellable) { changes.serialized { link(site, address) } }
+        withContext(NonCancellable) { changes.serialized(keys = false) { link(site, address) } }
 
     private suspend fun link(site: AppHost, address: Address): AliasLinking {
         val listed = (accounts.observeAccounts().first() as? AccountList.Loaded)?.accounts

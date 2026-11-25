@@ -146,6 +146,13 @@ private fun AccountsSendReasonPreview() = SerotineTheme {
     )
 }
 
+/** The dialog a tap on a greyed-out New account from the same phrase opens, for a key imported on its own. */
+@Preview
+@Composable
+private fun AccountsDeriveBareKeyReasonPreview() = SerotineTheme {
+    UnavailableDialog(UnavailableNotice(DERIVE_ACTION, DERIVE_BARE_KEY_REASON), onDismiss = {})
+}
+
 @Preview
 @Composable
 private fun AccountsAccountsPreview() = AccountsPreview(withAccounts)
@@ -737,6 +744,7 @@ internal val accountsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("create-safe-greyed-out") { AccountsCreateSafeGreyedOutPreview() },
     ScreenPreview("create-safe-reason") { AccountsCreateSafeReasonPreview() },
     ScreenPreview("send-reason") { AccountsSendReasonPreview() },
+    ScreenPreview("derive-bare-key-reason") { AccountsDeriveBareKeyReasonPreview() },
     ScreenPreview("loading") { AccountsLoadingPreview() },
     ScreenPreview("loading-create-safe-greyed-out") { AccountsLoadingCreateSafeGreyedOutPreview() },
     ScreenPreview("list-set-aside") { AccountsListSetAsidePreview() },

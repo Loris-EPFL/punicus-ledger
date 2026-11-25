@@ -99,17 +99,21 @@ class MnemonicImportViewModel(
     }
 
     /** The words field now reads [text]. Ignored while an attempt runs and after a success. */
-    fun onPhraseChange(text: String) = edit { it.copy(phrase = Mnemonic(text)) }
+    fun onPhraseChange(text: String) = edit {
+        if (it.typed is Typed.Phrase) it.copy(typed = Typed.Phrase(Mnemonic(text))) else it
+    }
 
     /** The private-key field now reads [text]. Ignored while an attempt runs and after a success. */
-    fun onKeyChange(text: String) = edit { it.copy(key = PrivateKey(text)) }
+    fun onKeyChange(text: String) = edit {
+        if (it.typed is Typed.Key) it.copy(typed = Typed.Key(PrivateKey(text))) else it
+    }
 
     /**
      * The user chose to add the account from [source]: what was typed for the other goes, so that only one secret is
      * ever held. The password and the networks stay.
      */
     fun onSourceChange(source: ImportSource) = edit {
-        if (it.source == source) it else it.copy(source = source, phrase = Mnemonic.EMPTY, key = PrivateKey.EMPTY)
+        if (it.source == source) it else it.copy(typed = Typed.empty(source))
     }
 
     /** The password field now reads [text]. */
@@ -141,9 +145,9 @@ class MnemonicImportViewModel(
         viewModelScope.launch {
             val result = try {
                 val networks = current.networks.chosenNetworks()
-                when (current.source) {
-                    ImportSource.PHRASE -> importMnemonicAccount(current.phrase, current.password, networks)
-                    ImportSource.KEY -> importPrivateKeyAccount(current.key, current.password, networks)
+                when (val typed = current.typed) {
+                    is Typed.Phrase -> importMnemonicAccount(typed.phrase, current.password, networks)
+                    is Typed.Key -> importPrivateKeyAccount(typed.key, current.password, networks)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -168,8 +172,7 @@ class MnemonicImportViewModel(
         state.update { current ->
             if (current is Entering) {
                 Entering(
-                    Mnemonic.EMPTY,
-                    source = current.source,
+                    Typed.empty(current.source),
                     step = step,
                     importing = current.importing,
                     networks = current.networks,

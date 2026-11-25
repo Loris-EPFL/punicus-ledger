@@ -1182,7 +1182,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       by the day they go by, in the user's own time zone, under a heading
       per day ("Today · Monday, November 23, 2026", "Yesterday · …", then
       the date), and each row says its time of day ("3:00 PM") in place of
-      the date. A row dated by its block alone sits among them by its block:
+      the date. A day's heading stays on top while its rows scroll under it,
+      until the next day's heading pushes it away (owner's request,
+      2026-11-25). A row dated by its block alone sits among them by its block:
       under the day of the rows just above and below it where both are dated
       by their blocks' times and on the same day (a block's time never runs
       backwards), with no time of its own; else under a heading that says so,

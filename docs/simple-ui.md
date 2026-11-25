@@ -378,9 +378,12 @@ failed.
 - **T1 · Settings.** Display: Currency, Tokens. Networks: each with its
   switch and its state ("Up to date", "Test network · live", "Catching
   up…", "Can't check right now", "Off"), and under them *Heavy downloads
-  on metered connections* ("Off: older activity is checked only on Wi-Fi or
-  another unmetered connection"; owner ruling, 2026-10-20; docs/wallet-ux.md,
-  screen 18). Security: password and
+  on metered connections* ("Off: the full history is downloaded only on
+  Wi-Fi or another unmetered connection"; owner ruling, 2026-10-20;
+  docs/wallet-ux.md, screen 18). It names the log index's walk, not "older
+  activity": simple mode calls the addr1 rows that, and on Android they read
+  on any connection whatever this switch says (owner's decision, 2026-11-25,
+  on #367). Security: password and
   fingerprint. Advanced: *Detailed view* ("Show the light client's state,
   blocks and proofs on every screen"), off by default: what Detailed view
   shows up front, since simple mode keeps the fee levels behind a row and

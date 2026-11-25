@@ -122,9 +122,12 @@ data class TurnOffConfirmation(
     val waiting: String? = null,
 )
 
-/** [METERED_DOWNLOADS_OFF] in simple mode's words, which do not say how the history is read. */
-internal const val METERED_DOWNLOADS_OFF_SIMPLE = "Off: older activity is checked only on Wi-Fi or another " +
+/**
+ * [METERED_DOWNLOADS_OFF] in simple mode's words, which do not say how the history is read. Not "older activity":
+ * simple mode calls the addr1 rows that, and they read on any connection (owner's decision, 2026-11-25, on #367).
+ */
+internal const val METERED_DOWNLOADS_OFF_SIMPLE = "Off: the full history is downloaded only on Wi-Fi or another " +
     "unmetered connection"
 
 /** [METERED_DOWNLOADS_ON] in simple mode's words. */
-internal const val METERED_DOWNLOADS_ON_SIMPLE = "On: older activity is checked on any connection, mobile data too"
+internal const val METERED_DOWNLOADS_ON_SIMPLE = "On: the full history is downloaded on any connection, mobile data too"

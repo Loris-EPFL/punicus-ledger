@@ -470,10 +470,10 @@ class SettingsViewModel(
                 unavailableReason = "This device does not report whether its connection is metered, so Punicus " +
                     "takes it as unmetered and walks the account history back on any connection. There is no " +
                     "metered connection here to allow it on.",
-                simpleText = "This device doesn't say whether its connection is metered: older activity is " +
-                    "checked on any connection",
-                simpleUnavailableReason = "This device doesn't say whether its connection is metered, so older " +
-                    "activity is checked on any connection. There's nothing here to allow.",
+                simpleText = "This device doesn't say whether its connection is metered: the full history is " +
+                    "downloaded on any connection",
+                simpleUnavailableReason = "This device doesn't say whether its connection is metered, so the full " +
+                    "history is downloaded on any connection. There's nothing here to allow.",
             )
         }
         val unreadable = choice is MeteredDownloadsChoice.Unreadable
@@ -496,7 +496,7 @@ class SettingsViewModel(
             text = (if (allowedOnMetered) METERED_DOWNLOADS_ON else METERED_DOWNLOADS_OFF) + remark + waiting,
             unavailableReason = reason,
             simpleUnavailableReason = if (unreadable) {
-                "Your saved choice can't be read, so older activity is checked only on Wi-Fi or another " +
+                "Your saved choice can't be read, so the full history is downloaded only on Wi-Fi or another " +
                     "unmetered connection. Punicus keeps trying to read it, and the switch works again once it can."
             } else {
                 null

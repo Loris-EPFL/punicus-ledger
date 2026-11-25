@@ -32,6 +32,10 @@ Last updated: 2026-11-25.
   device has one (docs/keys-and-signing.md).
 - The light client's own state, the balances it last verified, the record of
   what you sent, and your dApp sessions.
+- For each dApp site you connected, the accounts you approved for it last,
+  so that they are preselected when it connects again; and the sites you
+  linked to another site's per-app address. Neither is restored with your
+  recovery phrase.
 - On the desktop and Android, with the experimental addr1 history on, what
   was read and checked of each account's history from it. Removing the
   account deletes it.
@@ -148,7 +152,13 @@ IP address. Their privacy policies apply.
 - Keep Uniswap as the swap venue, and CoW is never contacted.
 - Turn the experimental addr1 history off (Settings →
   Experimental), and no Swarm peer is asked for your history.
-- Remove an account or the app to delete what is stored for it.
+- Remove an account or the app to delete what is stored for it: removing an
+  account also takes it out of what each site remembers, and the last
+  account of a per-app address takes its links to other sites with it. If
+  the device cannot save that change, a site's memory of the account stays
+  until that site is approved again; it never preselects an account that is
+  gone.
+- Remove a site's link to another site's address on that address's details.
 
 ## Children
 

@@ -14,6 +14,15 @@ and issues of this repository.
 
 ### Added
 
+- Per-app addresses: each site a dApp connects from is offered an address
+  of its own, made from your recovery phrase, so that no site can see your
+  activity on another. The connection request preselects it, and the sites
+  are remembered. Per-app addresses lists them, with each one's site,
+  networks, phrase and path, and restores one by site. A dApp that moved
+  may use its old site's address, after a question saying the two sites can
+  then link your activity. The signing screen names the address's site and
+  warns when a sign-in is for another site (#252; #297, #311, #313, #326,
+  #328, #329, #330).
 - Add an account from its private key: Import phrase or key (formerly
   Import recovery phrase) now asks for a seed phrase or a private key, 64 hex
   digits with or without 0x. The key is checked, then sealed on this device

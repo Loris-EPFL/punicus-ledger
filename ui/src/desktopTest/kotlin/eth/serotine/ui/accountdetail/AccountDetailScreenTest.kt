@@ -623,6 +623,25 @@ class AccountDetailScreenTest {
     }
 
     @Test
+    fun aDaysHeadingStaysOnTopWhileItsRowsScrollUnderIt() {
+        val today = "Today · Monday, October 19, 2026"
+        val rows = (0 until 40).map { n ->
+            sent.copy(key = "0x" + n.toString(16).padStart(64, '0'), title = "Row $n", day = today, clock = "2:02 PM")
+        }
+        show(
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(rows, "Covered."),
+            ),
+        )
+
+        rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Row 39"))
+
+        rule.onNodeWithText("Row 39").assertIsDisplayed()
+        rule.onNodeWithText(today).assertIsDisplayed()
+    }
+
+    @Test
     fun theRowsAreGroupedByDayEachTimedWithAnArrowAndASignedAmount() {
         val received = sent.copy(
             key = "0x" + "3".repeat(64),

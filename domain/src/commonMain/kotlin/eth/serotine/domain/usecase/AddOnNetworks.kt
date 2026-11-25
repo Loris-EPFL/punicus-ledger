@@ -28,7 +28,7 @@ class AddOnNetworks(
 ) {
     /** Adds [account] on each of [networks] it is not on yet. */
     suspend operator fun invoke(account: AccountId, networks: List<Network>): NetworksAdd =
-        withContext(NonCancellable) { changes.serialized { add(account, networks) } }
+        withContext(NonCancellable) { changes.serialized(keys = false) { add(account, networks) } }
 
     private suspend fun add(id: AccountId, networks: List<Network>): NetworksAdd {
         val listed = when (val list = accounts.observeAccounts().first()) {

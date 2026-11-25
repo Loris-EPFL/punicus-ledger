@@ -524,7 +524,7 @@ fun AccountDetailScreen(
                                     }
                                 }.takeIf { state.kind == AccountKind.EOA },
                                 // The next account of its phrase; greyed out while its key is not here.
-                                deriveBlockedReason(state.control).let { reason ->
+                                deriveBlockedReason(state.control, state.bareKey).let { reason ->
                                     MenuAction("$DERIVE_ACTION…", SerotineIcons.Key, unavailable = reason != null) {
                                         if (reason == null) {
                                             onDerive()

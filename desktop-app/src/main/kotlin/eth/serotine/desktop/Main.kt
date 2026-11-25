@@ -580,6 +580,7 @@ private fun openWallet(dataDir: File) {
                 dappRequests = dapps.requests,
                 // Per-app addresses (issue #252): the key store's, and each site's accounts last approved.
                 perAppKeys = keyStore,
+                privateKeys = keyStore,
                 dappSites = FileDappSites(dataDir.resolve("walletconnect/sites.json").path),
                 perAppAliases = FileDappAliases(dataDir.resolve("walletconnect/aliases.json").path),
                 dappConnectionsOff = dappProjectId.isEmpty(),

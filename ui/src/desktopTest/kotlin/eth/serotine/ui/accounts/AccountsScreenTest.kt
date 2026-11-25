@@ -271,6 +271,22 @@ class AccountsScreenTest {
     }
 
     @Test
+    fun aKeyImportedOnItsOwnHasNoPhraseToAddAccountsFromAndSaysSo() {
+        show(ready(listOf(daily.copy(bareKey = true))))
+
+        rule.onNodeWithText("Daily").performTouchInput { longClick() }
+        // The ruling of 2026-11-25: greyed out, and a tap says there is no phrase.
+        rule.onNodeWithText("New account from the same phrase…")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
+            .performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(
+            "This account's key was imported on its own, as a private key, so there is no recovery phrase to add " +
+                "accounts from. Import the recovery phrase it comes from, if it has one, to add its accounts.",
+        )
+        assertEquals(emptyList(), actions)
+    }
+
+    @Test
     fun createSafeIsAlwaysOfferedAndGreyedOutUntilAKeyIsHeldHere() {
         val calls = mutableListOf<String>()
         rule.setContent {
@@ -291,7 +307,7 @@ class AccountsScreenTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
             .performClick()
         rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertIsDisplayed()
-        rule.onNodeWithText("Import recovery phrase").performClick()
+        rule.onNodeWithText("Import phrase or key").performClick()
 
         assertEquals(listOf("import"), calls, "the way to a key, never the Safe")
     }
@@ -473,9 +489,9 @@ class AccountsScreenTest {
 
         rule.onNodeWithContentDescription("Add account").performClick()
         rule.onNodeWithText("Watch address").performClick()
-        rule.onNodeWithText("Import recovery phrase").assertDoesNotExist()
+        rule.onNodeWithText("Import phrase or key").assertDoesNotExist()
         rule.onNodeWithContentDescription("Add account").performClick()
-        rule.onNodeWithText("Import recovery phrase").performClick()
+        rule.onNodeWithText("Import phrase or key").performClick()
 
         assertEquals(listOf("watch", "import"), adds)
     }

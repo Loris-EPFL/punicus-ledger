@@ -1,5 +1,7 @@
 package eth.serotine.ui
 
+import eth.serotine.domain.model.PrivateKey
+import eth.serotine.domain.repository.PrivateKeys
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
@@ -475,6 +477,10 @@ class AppNavigationTest {
         dappSessions = OffDappSessions,
         dappRequests = dappRequests,
         perAppKeys = FakePerAppKeys(),
+        privateKeys = object : PrivateKeys {
+            override suspend fun importPrivateKey(key: PrivateKey, password: WalletPassword): KeyImport =
+                KeyImport.Unavailable
+        },
         dappSites = MemoryDappSites(),
         perAppAliases = MemoryAliases(),
         dappConnectionsOff = true,
@@ -609,7 +615,7 @@ class AppNavigationTest {
     fun aWalletConnectLinkWaitsWhileAFlowCoversTheTabBar() {
         showApp()
         rule.onNodeWithContentDescription("Add account").performClick()
-        rule.onNodeWithText("Import recovery phrase").performClick()
+        rule.onNodeWithText("Import phrase or key").performClick()
         rule.onNodeWithTag(MNEMONIC_FIELD_TAG).assertIsDisplayed()
         val link = "wc:" + "a".repeat(64) + "@2?relay-protocol=irn&symKey=" + "b".repeat(64)
         graph.incomingDappLink.offer(link)
@@ -669,7 +675,7 @@ class AppNavigationTest {
     fun aDappsRequestToSignWaitsWhileAFlowCoversTheTabBar() {
         showApp()
         rule.onNodeWithContentDescription("Add account").performClick()
-        rule.onNodeWithText("Import recovery phrase").performClick()
+        rule.onNodeWithText("Import phrase or key").performClick()
         rule.onNodeWithTag(MNEMONIC_FIELD_TAG).assertIsDisplayed()
         dappRequests.waiting.value = listOf(signInRequest(1))
         rule.waitForIdle()
@@ -687,7 +693,7 @@ class AppNavigationTest {
         rule.onNodeWithContentDescription("Add account").performClick()
         rule.onNodeWithText("Create Safe")
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
-        rule.onNodeWithText("Import recovery phrase").performClick()
+        rule.onNodeWithText("Import phrase or key").performClick()
         rule.onNodeWithTag(MNEMONIC_FIELD_TAG).performTextInput(
             "one two three four five six seven eight nine ten eleven twelve",
         )
@@ -707,7 +713,7 @@ class AppNavigationTest {
     fun aRequiredUpdateReplacesEveryScreenUntilTheLightClientVerifiesAgain() {
         showApp()
         rule.onNodeWithContentDescription("Add account").performClick()
-        rule.onNodeWithText("Import recovery phrase").performClick()
+        rule.onNodeWithText("Import phrase or key").performClick()
         rule.onNodeWithTag(MNEMONIC_FIELD_TAG).assertIsDisplayed()
 
         // Activated by peers' report, and the light client agrees it is not verifying.
@@ -761,7 +767,7 @@ class AppNavigationTest {
         showApp()
 
         rule.onNodeWithContentDescription("Add account").performClick()
-        rule.onNodeWithText("Import recovery phrase").performClick()
+        rule.onNodeWithText("Import phrase or key").performClick()
         rule.onNodeWithContentDescription("Back").performClick()
 
         rule.onNodeWithText("No accounts yet").assertIsDisplayed()
@@ -1007,7 +1013,7 @@ class AppNavigationTest {
 
         // Add account covers the bar, and the list with it.
         rule.onNodeWithContentDescription("Add account").performClick()
-        rule.onNodeWithText("Import recovery phrase").performClick()
+        rule.onNodeWithText("Import phrase or key").performClick()
         rule.onNodeWithTag(ACCOUNTS_LIST_TAG).assertDoesNotExist()
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNode(hasTestTag(ACCOUNTS_SELECTED_TAG) and hasAnyDescendant(hasText("Daily"))).assertExists()
@@ -1062,7 +1068,7 @@ class AppNavigationTest {
         rule.onNodeWithText("Daily").performClick()
         rule.onNodeWithContentDescription("More actions").performClick()
         rule.onNodeWithText("Remove").performClick()
-        rule.onNodeWithText("Only its recovery phrase brings this account back", substring = true).assertIsDisplayed()
+        rule.onNodeWithText("Only its recovery phrase, or its private key", substring = true).assertIsDisplayed()
         rule.onNodeWithText("Remove").performClick()
 
         rule.waitUntil { rule.onAllNodesWithText("No accounts yet").fetchSemanticsNodes().isNotEmpty() }

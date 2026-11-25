@@ -130,7 +130,7 @@ private fun AccountsCreateSafeReasonPreview() = SerotineTheme {
         UnavailableNotice(
             "Create Safe",
             CREATE_SAFE_NEEDS_A_KEY,
-            listOf(UnavailableFix("Import recovery phrase") {}, UnavailableFix("Create account") {}),
+            listOf(UnavailableFix("Import phrase or key") {}, UnavailableFix("Create account") {}),
         ),
         onDismiss = {},
     )
@@ -144,6 +144,13 @@ private fun AccountsSendReasonPreview() = SerotineTheme {
         UnavailableNotice("Send", sendBlockedReason(AccountKind.EOA, Control.WATCH_ONLY).orEmpty()),
         onDismiss = {},
     )
+}
+
+/** The dialog a tap on a greyed-out New account from the same phrase opens, for a key imported on its own. */
+@Preview
+@Composable
+private fun AccountsDeriveBareKeyReasonPreview() = SerotineTheme {
+    UnavailableDialog(UnavailableNotice(DERIVE_ACTION, DERIVE_BARE_KEY_REASON), onDismiss = {})
 }
 
 @Preview
@@ -737,6 +744,7 @@ internal val accountsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("create-safe-greyed-out") { AccountsCreateSafeGreyedOutPreview() },
     ScreenPreview("create-safe-reason") { AccountsCreateSafeReasonPreview() },
     ScreenPreview("send-reason") { AccountsSendReasonPreview() },
+    ScreenPreview("derive-bare-key-reason") { AccountsDeriveBareKeyReasonPreview() },
     ScreenPreview("loading") { AccountsLoadingPreview() },
     ScreenPreview("loading-create-safe-greyed-out") { AccountsLoadingCreateSafeGreyedOutPreview() },
     ScreenPreview("list-set-aside") { AccountsListSetAsidePreview() },

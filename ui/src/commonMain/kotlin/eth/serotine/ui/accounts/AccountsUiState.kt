@@ -108,6 +108,13 @@ sealed interface AccountsUiState {
             }
         }
 
+        /** [bare] accounts marked as holding a key imported on its own ([AccountItem.bareKey]). */
+        fun withBareKeys(bare: Set<String>): Ready = copy(
+            sections = sections.map { section ->
+                section.copy(accounts = section.accounts.map { it.copy(bareKey = it.address.lowercase() in bare) })
+            },
+        )
+
         /** Every account, section after section. */
         val accounts: List<AccountItem>
             get() = sections.flatMap { it.accounts }
@@ -283,6 +290,8 @@ data class AccountItem(
      * through its Delay, whose own owners held here cannot sign (owner's request, 2026-11-17).
      */
     val sendsThroughGnosisPay: Boolean = false,
+    /** Its key was imported bare, in hex: no recovery phrase, so no further account of one (owner ruling, 2026-11-25). */
+    val bareKey: Boolean = false,
 ) {
     /** `0x1234…abcd`, for a list row; the full address stays in [address]. */
     val shortAddress: String
@@ -505,15 +514,21 @@ internal fun swapBlockedReason(kind: AccountKind, control: Control): String? = w
 /**
  * Why no account of an externally owned account's recovery phrase can be added from it under
  * [control], and how to get there, or null when one can: the reason a greyed-out New account from
- * the same phrase says on a tap (owner ruling, 2026-10-18, #55).
+ * the same phrase says on a tap (owner ruling, 2026-10-18, #55). A key imported bare ([bareKey]) has no phrase
+ * (owner ruling, 2026-11-25).
  */
-internal fun deriveBlockedReason(control: Control): String? =
-    if (control == Control.FULL_CONTROL) {
-        null
-    } else {
+internal fun deriveBlockedReason(control: Control, bareKey: Boolean = false): String? = when {
+    control != Control.FULL_CONTROL ->
         "This account is watch-only: its key is not on this device, so no account of its recovery phrase can be " +
             "added from it. Import its recovery phrase to add its accounts."
-    }
+    bareKey -> DERIVE_BARE_KEY_REASON
+    else -> null
+}
+
+/** Why no account of a phrase comes from a key imported on its own (owner ruling, 2026-11-25). */
+internal const val DERIVE_BARE_KEY_REASON =
+    "This account's key was imported on its own, as a private key, so there is no recovery phrase to add " +
+        "accounts from. Import the recovery phrase it comes from, if it has one, to add its accounts."
 
 /** What the account menus call adding the next account of an account's recovery phrase. */
 internal const val DERIVE_ACTION = "New account from the same phrase"

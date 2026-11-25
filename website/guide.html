@@ -84,7 +84,7 @@
           <ol class="steps">
             <li>
               <span class="ui">Tap the + button</span> at the bottom right.
-              <p>Four choices open: Watch address, Import recovery phrase, Create account and Create Safe.</p>
+              <p>Four choices open: Watch address, Import phrase or key, Create account and Create Safe.</p>
             </li>
             <li>
               <span class="ui">Create Safe is grey at first.</span>
@@ -106,7 +106,7 @@
           </li>
           <li>
             <figure>
-              <img loading="lazy" src="../docs/screenshots/accounts/create-safe-greyed-out.png" width="412" height="892" alt="The + button opened: Watch address, Import recovery phrase, Create account, and Create Safe greyed out with a lock.">
+              <img loading="lazy" src="../docs/screenshots/accounts/create-safe-greyed-out.png" width="412" height="892" alt="The + button opened: Watch address, Import phrase or key, Create account, and Create Safe greyed out with a lock.">
               <figcaption>The + button, opened</figcaption>
             </figure>
           </li>
@@ -169,13 +169,14 @@
       <div class="wrap walk">
         <div>
           <h2>Bring in an account you already have</h2>
-          <p class="when">For an account from another wallet app, when you have its recovery phrase.</p>
+          <p class="when">For an account from another wallet app, when you have its recovery phrase or its private key.</p>
           <ol class="steps">
             <li>
-              Tap <span class="ui">+</span>, then <span class="ui">Import recovery phrase</span>.
+              Tap <span class="ui">+</span>, then <span class="ui">Import phrase or key</span>.
             </li>
             <li>
               <span class="ui">Type the words</span>, 12 to 24 of them, with spaces between.
+              <p>Or choose <span class="ui">Private key</span> at the top and type its 64 hex digits. An account added from its key has no phrase, so no further account comes from it.</p>
             </li>
             <li>
               <span class="ui">Enter your wallet password</span>, or choose one if this is your first key.
@@ -185,12 +186,12 @@
               <p>Punicus adds the first account of the phrase, the one most wallets show first.</p>
             </li>
           </ol>
-          <p class="proofline">The phrase is stored encrypted on this device, under your wallet password and, where Punicus uses one, your device's security chip (not yet on Windows and Linux). It goes nowhere else.</p>
+          <p class="proofline">The phrase or the key is stored encrypted on this device, under your wallet password and, where Punicus uses one, your device's security chip (not yet on Windows and Linux). It goes nowhere else.</p>
         </div>
         <ul class="shots">
           <li>
             <figure>
-              <img class="crop" style="--rows: 754" loading="lazy" src="../docs/screenshots/mnemonic-import/new-password.png" width="412" height="892" alt="Add account: a field for the seed phrase, the wallet password typed twice, the networks, and the Add account button.">
+              <img class="crop" style="--rows: 816" loading="lazy" src="../docs/screenshots/mnemonic-import/new-password.png" width="412" height="892" alt="Add account: the choice of seed phrase or private key, a field for the seed phrase, the wallet password typed twice, the networks, and the Add account button.">
               <figcaption>Importing a recovery phrase</figcaption>
             </figure>
           </li>

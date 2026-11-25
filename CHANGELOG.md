@@ -12,6 +12,12 @@ and issues of this repository.
 
 ### Added
 
+- Add an account from its private key: Import phrase or key (formerly
+  Import recovery phrase) now asks for a seed phrase or a private key, 64 hex
+  digits with or without 0x. The key is checked, then sealed on this device
+  under the wallet password like every key, and never shown again. Such an
+  account has no recovery phrase, so New account from the same phrase and
+  per-app addresses are not offered for it; only the key brings it back.
 - Account history from the addr1 index (desktop and Android, experimental,
   on by default in Settings → Experimental): an account's Activity also lists its
   older transactions from the addr1 address index on Swarm, each entry

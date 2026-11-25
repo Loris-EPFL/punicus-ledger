@@ -5,6 +5,8 @@ import eth.serotine.domain.model.AppHost
 import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.AppIsolation
 import eth.serotine.domain.model.PerAppPath
+import eth.serotine.domain.model.PrivateKey
+import eth.serotine.domain.model.PrivateKeyProblem
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
@@ -564,15 +566,118 @@ class EnvelopeKeyStoreTest {
         envelopeOf(address).writeText(Json.encodeToString(SealedSeed.serializer(), edited))
     }
 
-    /** This envelope with its path and phrase as given, everything else as it was. */
+    /** This envelope with its path, phrase and kind as given, everything else as it was. */
     private fun SealedSeed.with(
         index: Int = this.index,
         perApp: PerAppIndices? = this.perApp,
         phrase: String? = this.phraseAccount,
+        bareKey: Boolean = this.bareKey,
     ) = SealedSeed(
         version, address, hardware, salt, opsLimit, memLimitBytes, dekNonce, dek, seedNonce, seed,
-        index, perApp, phrase,
+        index, perApp, phrase, bareKey,
     )
+
+    // A private key imported in hex (owner ruling, 2026-11-25): Hardhat's first published test key, whose account is
+    // the first account of the `hardhat` phrase above.
+    private val hardhatKey = PrivateKey("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
+
+    @Test
+    fun aPrivateKeyIsSealedAsABareKeyThatSigns() = runTest {
+        val store = store()
+
+        assertEquals(passwordOnly(hardhatAddress), store.importPrivateKey(hardhatKey, password))
+
+        val sealed = sealedIn(envelopeOf(hardhatAddress))
+        assertTrue(sealed.bareKey)
+        assertEquals(null, sealed.phraseAccount, "a bare key names no phrase")
+        assertFalse(envelopeOf(hardhatAddress).readText().contains(hardhatKey.text.drop(2)), "the key is sealed")
+        val signed = store.sign(hardhatAddress, digest, Unlock.WithPassword(password))
+        assertIs<Signing.Signed>(signed)
+        assertTrue(signs(signed.signature, hardhatAddress))
+        assertEquals(Signing.WrongPassword, store.sign(hardhatAddress, digest, notThePassword))
+        assertEquals(setOf(hardhatAddress), store.bareKeys())
+        assertEquals(emptyMap(), store.phrases(), "a bare key is no phrase")
+    }
+
+    @Test
+    fun aKeyIsReadInEitherCaseWithOrWithoutItsPrefixAndSpacesAround() = runTest {
+        val digits = hardhatKey.text.drop(2)
+        for (typed in listOf(digits, "  0X${digits.uppercase()} \n", "0x$digits")) {
+            directory.listFiles()!!.forEach { it.deleteRecursively() }
+            assertEquals(passwordOnly(hardhatAddress), store().importPrivateKey(PrivateKey(typed), password), typed)
+        }
+    }
+
+    @Test
+    fun textThatIsNotAPrivateKeyIsRefusedAndNothingIsStored() = runTest {
+        val store = store()
+        val order = "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"
+        for ((typed, problem) in listOf(
+            "0x" + "ab".repeat(31) to PrivateKeyProblem.Length(62),
+            "ab".repeat(33) to PrivateKeyProblem.Length(66),
+            "" to PrivateKeyProblem.Length(0),
+            "0x" + "ab".repeat(15) + "g" + "b".repeat(33) to PrivateKeyProblem.NotHex(31),
+            "0x" + "ab cd" to PrivateKeyProblem.NotHex(3),
+            "0".repeat(64) to PrivateKeyProblem.OutOfRange,
+            order to PrivateKeyProblem.OutOfRange,
+        )) {
+            assertEquals(KeyImport.Invalid(problem), store.importPrivateKey(PrivateKey(typed), password), typed)
+        }
+        assertEquals(emptyList(), directory.list()?.toList().orEmpty())
+    }
+
+    @Test
+    fun aBareKeyDerivesNoFurtherAccountAndNoPerAppAddress() = runTest {
+        val store = store()
+        store.importPrivateKey(hardhatKey, password)
+
+        assertEquals(KeyDerivation.Unavailable, store.deriveAccount(hardhatAddress, password, setOf(hardhatAddress)))
+        assertEquals(PerAppDerivation.Unavailable, store.derivePerApp(hardhatAddress, host("example.com"), password))
+        assertEquals(1, directory.list()!!.size, "nothing stored")
+    }
+
+    @Test
+    fun aKindEditedOnDiskSignsNothing() = runTest {
+        val store = store()
+        store.importPrivateKey(hardhatKey, password)
+        store.importMnemonic(abandon, password)
+        // The key read as a seed, and a seed read as a key: the tag of each refuses the other kind.
+        rewrite(hardhatAddress) { it.with(bareKey = false) }
+        rewrite(abandonAddress) { it.with(bareKey = true) }
+
+        assertEquals(Signing.Unavailable, store.sign(hardhatAddress, digest, Unlock.WithPassword(password)))
+        assertEquals(Signing.Unavailable, store.sign(abandonAddress, digest, Unlock.WithPassword(password)))
+    }
+
+    @Test
+    fun thePhraseReplacesABareKeyOfItsFirstAccountAndABareKeyNeverReplacesThePhrase() = runTest {
+        val store = store()
+        store.importPrivateKey(hardhatKey, password)
+
+        assertEquals(passwordOnly(hardhatAddress), store.importMnemonic(hardhat, password))
+        assertFalse(sealedIn(envelopeOf(hardhatAddress)).bareKey, "the phrase's envelope holds more")
+        assertEquals(emptySet(), store.bareKeys())
+        assertIs<KeyDerivation.Stored>(store.deriveAccount(hardhatAddress, password, setOf(hardhatAddress)))
+
+        val before = envelopeOf(hardhatAddress).readText()
+        assertEquals(passwordOnly(hardhatAddress), store.importPrivateKey(hardhatKey, password))
+        assertEquals(before, envelopeOf(hardhatAddress).readText(), "the phrase's envelope stays")
+    }
+
+    @Test
+    fun aKeyImportChecksTheWalletPasswordAsAPhraseImportDoes() = runTest {
+        val store = store()
+        store.importMnemonic(abandon, password)
+
+        assertEquals(KeyImport.WrongPassword, store.importPrivateKey(hardhatKey, WalletPassword("not the password")))
+        assertFalse(envelopeOf(hardhatAddress).exists())
+    }
+
+    @Test
+    fun aFirstKeyImportRefusesATooShortPassword() = runTest {
+        assertEquals(KeyImport.PasswordTooShort, store().importPrivateKey(hardhatKey, WalletPassword("short")))
+        assertFalse(envelopeOf(hardhatAddress).exists())
+    }
 
     @Test
     fun perAppAddressesAreTheFixedVectors() {

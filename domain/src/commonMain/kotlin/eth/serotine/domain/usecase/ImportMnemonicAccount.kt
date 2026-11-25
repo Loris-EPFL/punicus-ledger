@@ -2,8 +2,8 @@ package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.ImportProblem
 import eth.serotine.domain.model.Mnemonic
-import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountRepository
@@ -37,34 +37,37 @@ class ImportMnemonicAccount(
      * Adds the account on each of [networks], which are asked before the seal and never after it
      * (docs/networks.md, *Adding accounts*); at least one.
      */
-    suspend operator fun invoke(mnemonic: Mnemonic, password: WalletPassword, networks: List<Network>): MnemonicImport {
+    suspend operator fun invoke(mnemonic: Mnemonic, password: WalletPassword, networks: List<Network>): AccountImport {
         require(networks.isNotEmpty()) { "an account is added on at least one network" }
-        return withContext(NonCancellable) { changes.serialized { import(mnemonic, password, networks.distinct()) } }
+        return withContext(NonCancellable) {
+            changes.serialized { keys.importMnemonic(mnemonic, password).listedOn(networks.distinct(), accounts) }
+        }
     }
-
-    private suspend fun import(mnemonic: Mnemonic, password: WalletPassword, networks: List<Network>): MnemonicImport =
-        when (val stored = keys.importMnemonic(mnemonic, password)) {
-            is KeyImport.Invalid -> MnemonicImport.Invalid(stored.problem)
-            KeyImport.WrongPassword -> MnemonicImport.WrongPassword
-            KeyImport.PasswordTooShort -> MnemonicImport.PasswordTooShort
-            KeyImport.Unavailable -> MnemonicImport.Unavailable
-            KeyImport.NotSaved -> MnemonicImport.KeyNotSaved
-            is KeyImport.NotEnoughMemory -> MnemonicImport.NotEnoughMemory(stored.step)
-            is KeyImport.Stored -> addOn(networks, stored)
-        }
-
-    /** The words' address held on each of [networks], and wherever else it is watched ([addHeld]). */
-    private suspend fun addOn(networks: List<Network>, stored: KeyImport.Stored): MnemonicImport =
-        when (val added = accounts.addHeld(stored.address, networks)) {
-            is HeldAdd.Added -> MnemonicImport.Added(added.account, stored.protection, stored.steppedDown)
-            is HeldAdd.AlreadyHeld -> MnemonicImport.AlreadyAdded(added.account, stored.steppedDown)
-            is HeldAdd.NowHeld -> MnemonicImport.KeyAdded(added.account, stored.steppedDown)
-            HeldAdd.ListNotSaved -> MnemonicImport.ListNotSaved
-        }
 }
 
-/** The outcome of [ImportMnemonicAccount]. */
-sealed interface MnemonicImport {
+/**
+ * What a key store's import became once its account is listed: a stored key's address held on each of [networks],
+ * and wherever else it is watched ([addHeld]); any other answer said as it is, with nothing listed. The step
+ * [ImportMnemonicAccount] and [ImportPrivateKeyAccount] share, inside their [WalletChanges].
+ */
+internal suspend fun KeyImport.listedOn(networks: List<Network>, accounts: AccountRepository): AccountImport =
+    when (this) {
+        is KeyImport.Invalid -> AccountImport.Invalid(problem)
+        KeyImport.WrongPassword -> AccountImport.WrongPassword
+        KeyImport.PasswordTooShort -> AccountImport.PasswordTooShort
+        KeyImport.Unavailable -> AccountImport.Unavailable
+        KeyImport.NotSaved -> AccountImport.KeyNotSaved
+        is KeyImport.NotEnoughMemory -> AccountImport.NotEnoughMemory(step)
+        is KeyImport.Stored -> when (val added = accounts.addHeld(address, networks)) {
+            is HeldAdd.Added -> AccountImport.Added(added.account, protection, steppedDown)
+            is HeldAdd.AlreadyHeld -> AccountImport.AlreadyAdded(added.account, steppedDown)
+            is HeldAdd.NowHeld -> AccountImport.KeyAdded(added.account, steppedDown)
+            HeldAdd.ListNotSaved -> AccountImport.ListNotSaved
+        }
+    }
+
+/** The outcome of [ImportMnemonicAccount] and [ImportPrivateKeyAccount]. */
+sealed interface AccountImport {
 
     /**
      * [account] is new and in the wallet, its seed stored with [protection]; [steppedDown] when
@@ -72,44 +75,46 @@ sealed interface MnemonicImport {
      * ([KeyImport.Stored.steppedDown]), which the user is told.
      */
     data class Added(val account: Account, val protection: KeyProtection, val steppedDown: Boolean = false) :
-        MnemonicImport
+        AccountImport
 
     /**
-     * The words' first account was in the wallet already, as [account]; its seed is stored
-     * now (an account added before keys were kept gets its key this way); [steppedDown] as for
-     * [Added].
+     * The words' first account, or the key's account, was in the wallet already, as [account]; its seed or key is
+     * stored now (an account added before keys were kept gets its key this way); [steppedDown] as for [Added].
      */
-    data class AlreadyAdded(val account: Account, val steppedDown: Boolean = false) : MnemonicImport
+    data class AlreadyAdded(val account: Account, val steppedDown: Boolean = false) : AccountImport
 
     /**
-     * The words' first account was in the wallet as a watched address, [account]; its key is
+     * The words' first account, or the key's, was in the wallet as a watched address, [account]; its key is
      * stored now, and the account is held in the key store from here on; [steppedDown] as for
      * [Added].
      */
-    data class KeyAdded(val account: Account, val steppedDown: Boolean = false) : MnemonicImport
-
-    /** The words are not a BIP-39 mnemonic, for the reason [problem] gives; nothing changed. */
-    data class Invalid(val problem: MnemonicProblem) : MnemonicImport
-
-    /** A wallet password is set, and this is not it; nothing changed. */
-    data object WrongPassword : MnemonicImport
-
-    /** This import would set the wallet password, and it is too short; nothing changed. */
-    data object PasswordTooShort : MnemonicImport
-
-    /** The key store cannot run on this device; nothing changed. */
-    data object Unavailable : MnemonicImport
-
-    /** The seed could not be stored; nothing changed. */
-    data object KeyNotSaved : MnemonicImport
-
-    /** Not enough free memory at [step], to check the password or to protect the seed; nothing changed. */
-    data class NotEnoughMemory(val step: MemoryStep) : MnemonicImport
+    data class KeyAdded(val account: Account, val steppedDown: Boolean = false) : AccountImport
 
     /**
-     * The seed is stored (and with it the wallet password, if this import set it), but the
-     * account list could not be read or saved, so the account is not in it. Importing the
-     * same words again adds it.
+     * The words are not a BIP-39 mnemonic, or the key not a private key, for the reason [problem] gives; nothing
+     * changed.
      */
-    data object ListNotSaved : MnemonicImport
+    data class Invalid(val problem: ImportProblem) : AccountImport
+
+    /** A wallet password is set, and this is not it; nothing changed. */
+    data object WrongPassword : AccountImport
+
+    /** This import would set the wallet password, and it is too short; nothing changed. */
+    data object PasswordTooShort : AccountImport
+
+    /** The key store cannot run on this device; nothing changed. */
+    data object Unavailable : AccountImport
+
+    /** The seed, or the key, could not be stored; nothing changed. */
+    data object KeyNotSaved : AccountImport
+
+    /** Not enough free memory at [step], to check the password or to protect the seed; nothing changed. */
+    data class NotEnoughMemory(val step: MemoryStep) : AccountImport
+
+    /**
+     * The seed, or the key, is stored (and with it the wallet password, if this import set it), but the
+     * account list could not be read or saved, so the account is not in it. Importing the
+     * same words, or the same key, again adds it.
+     */
+    data object ListNotSaved : AccountImport
 }

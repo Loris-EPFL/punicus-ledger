@@ -291,9 +291,11 @@ carve-out of 2026-11-10 and its rulings of 2026-11-11 and 2026-11-13 on #761;
 actions below, and how a chequebook and a batch are found. The detail is
 docs/swarm.md's, which is the contract.)
 
-- **A node's account is watched.** No `swarm.key` and no raw key is
-  imported. Where the node's address is an account held here, its key signs
-  what only the node may sign.
+- **A node's account is watched.** No `swarm.key` is imported, and the
+  Swarm screens import no key. Where the node's address is an account held
+  here, its key signs what only the node may sign. Its key may be imported
+  in hex on the import screen like any key (owner ruling, 2026-11-25,
+  amending "no raw key is imported" of 2026-11-23).
 - **Recognised on chain.** An EOA on Gnosis Chain is a Swarm node when a
   chequebook or a postage batch is proven its own, with verified calls at
   one block. A chequebook: its code hashes to the pinned EIP-1167 proxy of
@@ -399,7 +401,7 @@ port that takes a request and returns a signature. The UI never touches a key.
 
 Each exception is an owner ruling, dated here, with its conditions in
 docs/keys-and-signing.md. A case not on the list follows the rule. Adding one
-is the owner's decision, never a PR author's. Today the list has one entry:
+is the owner's decision, never a PR author's. Today the list has two entries:
 
 - **The mnemonic screens** (owner ruling, 2026-10-15): the backup words shown
   at creation, and the words typed at restore.
@@ -418,6 +420,26 @@ is the owner's decision, never a PR author's. Today the list has one entry:
     stays under the rule above.
   - Open, the owner's to decide: whether Create account, one screen using
     both legs of the path, is within the entry (#40).
+- **A private key typed in hex** (owner ruling, 2026-11-25), on the import
+  screen, instead of a seed phrase; docs/keys-and-signing.md, *Importing a
+  private key*.
+  - It travels only as the dedicated `PrivateKey` type with a redacted
+    `toString()`, one way: typed on the import screen, through its ViewModel
+    and a use case, into the key store. It never goes back: it is never
+    shown or exported.
+  - Nothing on that path stores, logs or caches it. The input is cleared
+    when the screen is left, as the words are (the entry above).
+  - The key store checks it (64 hex digits, an optional `0x`, a valid
+    secp256k1 key) and seals it in an envelope of its own under the wallet
+    password and the device's hardware secret, as every key is.
+  - Such an account has no seed: New account from the same phrase and
+    per-app addresses are greyed out for it, a tap saying why.
+  - For per-app addresses (owner's decision, 2026-11-25, on PR #376): a
+    per-app address is made from a phrase the user picks, not from an
+    account, so a bare key is left out of the phrases offered, not listed
+    greyed out. Where no phrase is held, the dApp connection's new per-app
+    address is greyed out, its reason naming the keys imported on their own.
+    New account from the same phrase is greyed out on the account itself.
 
 ### Privacy Pools note secrets are key material
 
@@ -481,8 +503,8 @@ This is the summary a reviewer holds a diff against.
   per-use Class 3 biometric authorization. Disabling it deletes that key.
   Weak biometrics never qualify.
 - **The plaintext key exists only inside the key-store adapter**, creation
-  and import included (the mnemonic words leave it only under the exception
-  above). In signing it exists only inside the call, in native code, as a
+  and import included (the mnemonic words leave it, and a typed private key
+  reaches it, only under the exceptions above). In signing it exists only inside the call, in native code, as a
   byte array zeroed afterwards. The ciphertext is excluded from cloud backup
   AND from device-to-device transfer.
 - **A Safe may be owned by a hardware P-256 key directly.** Such a key is

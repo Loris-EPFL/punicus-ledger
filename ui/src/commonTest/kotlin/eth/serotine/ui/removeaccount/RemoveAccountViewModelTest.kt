@@ -88,8 +88,8 @@ class RemoveAccountViewModelTest {
         assertEquals(
             RemoveAccountUiState.Notice(
                 "Daily is removed, but its key could not be deleted from this device, so " +
-                    "the wallet password stays the one you set. Importing its recovery phrase again " +
-                    "brings the account back.",
+                    "the wallet password stays the one you set. Importing its recovery phrase or its " +
+                    "private key again brings the account back.",
             ),
             viewModel.uiState.value,
         )

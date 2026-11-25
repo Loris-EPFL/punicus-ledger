@@ -38,7 +38,7 @@ class Mnemonic(val text: String) {
 }
 
 /** Why a [Mnemonic] is not a BIP-39 mnemonic, as the key adapter reports it. */
-sealed interface MnemonicProblem {
+sealed interface MnemonicProblem : ImportProblem {
 
     /** [count] words, which is none of [Mnemonic.WORD_COUNTS]. */
     data class WordCount(val count: Int) : MnemonicProblem

@@ -129,6 +129,11 @@ sealed interface AccountDetailUiState {
          */
         val perAppAliases: List<String> = emptyList(),
         /**
+         * Its key was imported bare, in hex: no recovery phrase, so New account from the same phrase is greyed out,
+         * a tap saying why (owner ruling, 2026-11-25).
+         */
+        val bareKey: Boolean = false,
+        /**
          * For the account a recovery phrase is known by (docs/wallet-ux.md, 4), its Per-app tab: that phrase's
          * per-app addresses as screen D9 lists them; null for any other account, which has no such tab.
          */

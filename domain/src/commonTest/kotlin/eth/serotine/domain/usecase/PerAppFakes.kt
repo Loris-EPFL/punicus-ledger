@@ -32,11 +32,12 @@ internal class MemorySites : DappSiteMemory {
 }
 
 /**
- * A [PerAppKeys] that knows [phrases] and answers each derivation from [password] with [address] at the site's path,
+ * A [PerAppKeys] that knows [phrases] and [bare] keys and answers each derivation from [password] with [address] at the site's path,
  * of the phrase [phraseOf] names for the account derived from; it records each call in [derived].
  */
 internal class FakePerAppKeys(
     var phrases: Map<Address, Address> = emptyMap(),
+    var bare: Set<Address> = emptySet(),
     var address: Address = Address.of("0x" + "a".repeat(40)),
     private val password: String = "correct horse",
 ) : PerAppKeys {
@@ -52,6 +53,8 @@ internal class FakePerAppKeys(
     }
 
     override suspend fun phrases(): Map<Address, Address> = phrases
+
+    override suspend fun bareKeys(): Set<Address> = bare
 }
 
 /** [PerAppAliases] in memory, which can be made to [failSaves]. */

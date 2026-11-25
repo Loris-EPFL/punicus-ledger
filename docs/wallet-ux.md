@@ -1296,7 +1296,7 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       same history once the record has forgotten a transaction.
     - **And, on the desktop and Android, the addr1 index** (owner ruling,
       2026-11-21, #334, and the owner's decisions of that day on #335; Android
-      since the owner's decision of 2026-11-24;
+      since the owner's decisions of 2026-11-24 and 2026-11-25;
       `.claude/rules/data-sources.md`, *The history may also take the addr1
       index from Swarm*), while its experimental setting is on (18; on by
       default since 2026-11-22, #334): the engine reads the account's part

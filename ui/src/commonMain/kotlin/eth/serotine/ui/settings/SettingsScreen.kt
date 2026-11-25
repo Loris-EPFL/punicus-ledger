@@ -61,7 +61,7 @@ const val SETTINGS_SIGN_WHILE_SYNCING_TAG = "settings-sign-while-syncing"
 /** Test tag of the row that switches the heavy downloads on a metered connection, for UI tests. */
 const val SETTINGS_METERED_TAG = "settings-metered"
 
-/** Test tag of the desktop's experimental addr1 history switch, for UI tests. */
+/** Test tag of the experimental addr1 history switch (the desktop and Android), for UI tests. */
 const val SETTINGS_ADDRESS_INDEX_TAG = "settings-address-index"
 
 /**

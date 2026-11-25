@@ -487,7 +487,7 @@ class AppGraph(
     val dappConnectionsOff: Boolean,
     /**
      * An account's history from the addr1 index on Swarm (owner ruling, 2026-11-21, #334): the desktop's and Android's
-     * (owner's decision, 2026-11-24), behind its experimental setting; null on a host that offers no such setting
+     * (owner's decisions, 2026-11-24 and 2026-11-25), behind its experimental setting; null on a host that offers no such setting
      * (iOS), and nothing is shown of it.
      */
     private val addressIndex: AddressIndexHistory? = null,

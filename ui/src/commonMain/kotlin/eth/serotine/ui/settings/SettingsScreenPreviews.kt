@@ -359,7 +359,7 @@ private val addressIndexGreyed = AddressIndexItem(
         "reader, so the index cannot be read here. The history stays the light client's log index.",
 )
 
-/** The desktop's experimental addr1 history, greyed out for both reasons at once (owner ruling, #55). */
+/** The experimental addr1 history, greyed out for both reasons at once (owner ruling, #55). */
 @Preview
 @Composable
 private fun SettingsAddressIndexNoKeyPreview() =

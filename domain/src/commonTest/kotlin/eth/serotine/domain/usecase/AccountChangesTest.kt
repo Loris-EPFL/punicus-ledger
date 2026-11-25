@@ -123,7 +123,7 @@ class AccountChangesTest {
         val removal = async { RemoveAccount(repository, keys, changes, MemoryAliases())(watched.id) }
         advanceUntilIdle()
 
-        assertEquals(MnemonicImport.KeyAdded(watched.copy(custody = AccountCustody.InKeyStore)), import.await())
+        assertEquals(AccountImport.KeyAdded(watched.copy(custody = AccountCustody.InKeyStore)), import.await())
         // The removal ran after it: it found the entry held, and its key went with it.
         assertEquals(AccountRemoval.Removed, removal.await())
         assertEquals(listOf(keyed), repository.accounts.value)

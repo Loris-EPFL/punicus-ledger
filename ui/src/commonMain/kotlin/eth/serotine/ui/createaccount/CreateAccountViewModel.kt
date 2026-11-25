@@ -9,7 +9,7 @@ import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
-import eth.serotine.domain.usecase.MnemonicImport
+import eth.serotine.domain.usecase.AccountImport
 import eth.serotine.domain.usecase.NewRecoveryPhrase
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.SetNetworkEnabled
@@ -195,11 +195,11 @@ class CreateAccountViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                MnemonicImport.Unavailable // the port promises not to throw; the backstop
+                AccountImport.Unavailable // the port promises not to throw; the backstop
             }
             state.update { now -> if (now is Securing) now.after(result) else outcomeWithoutPhrase(result) }
             // As on the import screen: whatever failed, the key store may have changed (a password set).
-            if (result !is MnemonicImport.Added && result !is MnemonicImport.KeyAdded) describe()
+            if (result !is AccountImport.Added && result !is AccountImport.KeyAdded) describe()
         }
     }
 
@@ -245,30 +245,30 @@ class CreateAccountViewModel(
         }
     }
 
-    private fun Securing.after(result: MnemonicImport): CreateAccountUiState = when (result) {
-        is MnemonicImport.Added -> created(result.account.label, result.steppedDown)
-        is MnemonicImport.KeyAdded -> created(result.account.label, result.steppedDown)
+    private fun Securing.after(result: AccountImport): CreateAccountUiState = when (result) {
+        is AccountImport.Added -> created(result.account.label, result.steppedDown)
+        is AccountImport.KeyAdded -> created(result.account.label, result.steppedDown)
         // 128 bits of fresh entropy already in the wallet: only a broken generator does that.
-        is MnemonicImport.AlreadyAdded -> CreateAccountUiState.Restart(
+        is AccountImport.AlreadyAdded -> CreateAccountUiState.Restart(
             "These words are an account the wallet has already. Start again for a new phrase.",
         )
         // The adapter made these words: they are valid unless something is very wrong.
-        is MnemonicImport.Invalid -> CreateAccountUiState.Restart("The phrase could not be used. Start again.")
-        MnemonicImport.WrongPassword -> copy(creating = false, passwordError = "That is not the wallet password.")
-        MnemonicImport.PasswordTooShort -> copy(
+        is AccountImport.Invalid -> CreateAccountUiState.Restart("The phrase could not be used. Start again.")
+        AccountImport.WrongPassword -> copy(creating = false, passwordError = "That is not the wallet password.")
+        AccountImport.PasswordTooShort -> copy(
             creating = false,
             passwordError = "A wallet password has at least ${WalletPassword.MIN_LENGTH} characters.",
         )
-        MnemonicImport.Unavailable -> copy(
+        AccountImport.Unavailable -> copy(
             creating = false,
             error = "The key store failed. Nothing was created. Try again; if it keeps failing, this device " +
                 "cannot store the key.",
         )
-        MnemonicImport.KeyNotSaved ->
+        AccountImport.KeyNotSaved ->
             copy(creating = false, error = "The key could not be stored on this device. Nothing was created.")
-        is MnemonicImport.NotEnoughMemory ->
+        is AccountImport.NotEnoughMemory ->
             copy(creating = false, error = notEnoughMemoryText(result.step, "Nothing was created."))
-        MnemonicImport.ListNotSaved -> copy(
+        AccountImport.ListNotSaved -> copy(
             creating = false,
             error = "The key is stored, but the account list could not be saved. Try again to finish.",
         )
@@ -279,10 +279,10 @@ class CreateAccountViewModel(
         CreateAccountUiState.Created(label, STEPPED_DOWN_TEXT.takeIf { steppedDown })
 
     /** How an attempt that finished after the screen was left went, said without its phrase. */
-    private fun outcomeWithoutPhrase(result: MnemonicImport): CreateAccountUiState = when (result) {
-        is MnemonicImport.Added -> created(result.account.label, result.steppedDown)
-        is MnemonicImport.KeyAdded -> created(result.account.label, result.steppedDown)
-        MnemonicImport.ListNotSaved -> CreateAccountUiState.NotListed
+    private fun outcomeWithoutPhrase(result: AccountImport): CreateAccountUiState = when (result) {
+        is AccountImport.Added -> created(result.account.label, result.steppedDown)
+        is AccountImport.KeyAdded -> created(result.account.label, result.steppedDown)
+        AccountImport.ListNotSaved -> CreateAccountUiState.NotListed
         else -> CreateAccountUiState.Restart(
             "The account was not created, and the phrase is gone. Cross out what you wrote of it, then start again.",
         )

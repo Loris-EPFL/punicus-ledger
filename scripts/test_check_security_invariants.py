@@ -198,6 +198,21 @@ class ArchitectureChecks(unittest.TestCase):
         tree.write("ui/src/commonMain/kotlin/eth/serotine/ui/send/SendViewModel.kt", "// a comment naming Mnemonic is fine\n")
         self.assertNotIn("KEY-MNEMONIC-PATH", tree.ids(CHECKER.check_architecture))
 
+    def test_the_private_key_type_off_its_path_is_a_violation(self) -> None:
+        tree = self.minimal_tree()
+        tree.write("ui/src/commonMain/kotlin/eth/serotine/ui/send/SendViewModel.kt",
+                   "import eth.serotine.domain.model.PrivateKey\nval key: PrivateKey = PrivateKey.EMPTY\n")
+        self.assertIn("KEY-PRIVATE-KEY-PATH", tree.ids(CHECKER.check_architecture))
+        tree.write("data/src/androidMain/kotlin/eth/serotine/data/keys/Keystore.kt",
+                   "import java.security.PrivateKey\nval key: PrivateKey? = null\n")
+        tree.write("ui/src/commonMain/kotlin/eth/serotine/ui/send/SendViewModel.kt", "val key = 1\n")
+        self.assertNotIn("KEY-PRIVATE-KEY-PATH", tree.ids(CHECKER.check_architecture), "another type of that name")
+        tree.write("ui/src/commonMain/kotlin/eth/serotine/ui/send/SendViewModel.kt",
+                   "fun f(k: eth.serotine.domain.model.PrivateKey) {}\n")
+        self.assertIn("KEY-PRIVATE-KEY-PATH", tree.ids(CHECKER.check_architecture), "named in full, with no import")
+        tree.write("ui/src/commonMain/kotlin/eth/serotine/ui/send/SendViewModel.kt", "val keys: PrivateKeys? = null\n")
+        self.assertNotIn("KEY-PRIVATE-KEY-PATH", tree.ids(CHECKER.check_architecture))
+
     def test_a_serialized_password_is_a_violation(self) -> None:
         tree = self.minimal_tree()
         tree.write("data/src/commonMain/kotlin/eth/serotine/data/x/Stored.kt",

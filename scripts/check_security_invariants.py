@@ -330,6 +330,17 @@ MNEMONIC_PATH = (
     "ui/src/commonMain/kotlin/eth/serotine/ui/mnemonicimport/",
 )
 
+# The private key typed in hex, one way: the import screen, its ViewModel and use case, the key adapter (owner ruling,
+# 2026-11-25; CLAUDE.md, Trust).
+PRIVATE_KEY_PATH = (
+    "domain/src/commonMain/kotlin/eth/serotine/domain/model/PrivateKey.kt",
+    "domain/src/commonMain/kotlin/eth/serotine/domain/repository/PrivateKeys.kt",
+    "domain/src/commonMain/kotlin/eth/serotine/domain/usecase/ImportPrivateKeyAccount.kt",
+    "data/src/commonMain/kotlin/eth/serotine/data/keys/EnvelopeKeyStore.kt",
+    "data/src/commonMain/kotlin/eth/serotine/data/keys/PrivateKeyHex.kt",
+    "ui/src/commonMain/kotlin/eth/serotine/ui/mnemonicimport/",
+)
+
 CAPTURE_PROTECTED = (
     "ui/src/commonMain/kotlin/eth/serotine/ui/mnemonicimport/MnemonicImportScreen.kt",
     "ui/src/commonMain/kotlin/eth/serotine/ui/createaccount/CreateAccountScreen.kt",
@@ -370,6 +381,21 @@ def check_architecture(c: Checker) -> None:
         if re.search(r"\bMnemonic\b", strip_comments(path.read_text(encoding="utf-8"))):
             c.fail("KEY-MNEMONIC-PATH", rel, f"{rel} names the Mnemonic type off its one path")
     c.ran("KEY-MNEMONIC-PATH")
+
+    # KEY-PRIVATE-KEY-PATH: the typed private key's type appears only on its one path (CLAUDE.md, Trust).
+    for path in c.kotlin_files("domain/src", "data/src", "ui/src", "android-app/src", "desktop-app/src", "ios-app/src", main_only=True):
+        rel = c.rel(path)
+        if any(rel == allowed or rel.startswith(allowed) for allowed in PRIVATE_KEY_PATH):
+            continue
+        text = strip_comments(path.read_text(encoding="utf-8"))
+        # The domain's type, imported or named in its own package; java.security.PrivateKey is another one.
+        domain_type = re.search(r"^\s*import\s+eth\.serotine\.domain\.model\.(PrivateKey\b|\*)", text, re.M) or (
+            re.search(r"^\s*package\s+eth\.serotine\.domain\.model\s*$", text, re.M)
+        )
+        qualified = re.search(r"\beth\.serotine\.domain\.model\.PrivateKey\b", text)
+        if qualified or (domain_type and re.search(r"\bPrivateKey\b", text)):
+            c.fail("KEY-PRIVATE-KEY-PATH", rel, f"{rel} names the PrivateKey type off its one path")
+    c.ran("KEY-PRIVATE-KEY-PATH")
 
     # KEY-NO-SERIALIZED-SECRET: no serializable class carries a password or a phrase.
     secret_field = re.compile(r"\bval\s+(password|mnemonic|phrase|privateKey|seedPhrase|words)\s*:")

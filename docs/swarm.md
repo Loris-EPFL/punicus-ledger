@@ -10,9 +10,10 @@ batches*) and `.claude/rules/data-sources.md` (*Swarm nodes*) carry as rules.
 
 ## The owner's decisions (2026-11-23)
 
-1. **A node's account is watched.** Punicus imports no `swarm.key`, and no raw
-   key: a node's address comes in as any address does (docs/wallet-ux.md,
-   screen 10, *Watch address*).
+1. **A node's account is watched.** Punicus imports no `swarm.key`: a node's
+   address comes in as any address does (docs/wallet-ux.md, screen 10,
+   *Watch address*). Its raw key may be imported in hex on screen 11 like any
+   key (owner ruling, 2026-11-25, amending "and no raw key" of this decision).
    Where the node's address is an account held here, as when Bee was started
    with a key of this wallet, its key signs what only the node may sign.
 2. **Four actions are signed here:** buying a batch, topping one up,

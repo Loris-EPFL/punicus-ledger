@@ -250,7 +250,8 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
   expire (owner ruling and decision, 2026-11-18).
 - A Swarm node is added as a watched address (no `swarm.key` import); its
   batches and chequebook are managed through pinned contracts only (owner's
-  decisions, 2026-11-23; docs/swarm.md).
+  decisions, 2026-11-23; docs/swarm.md). Its key may be imported in hex like
+  any key (owner ruling, 2026-11-25).
 - Network-upgrade warnings are peer reports and say so (owner's request,
   2026-10-17).
 - A parameter that can change the answer is APPLIED or REFUSED, never
@@ -258,9 +259,10 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
 - What a dApp sends is untrusted input, held to a closed method list;
   `eth_sign` is refused in every case (owner rulings, 2026-11-03, #22).
 - **Key material** lives in the key-store adapter and nowhere else. The
-  exceptions are a closed list of owner rulings; today only the mnemonic
-  screens (owner ruling, 2026-10-15): the words travel as the dedicated
-  mnemonic type along one path and are cleared when the screen is left.
+  exceptions are a closed list of owner rulings: the mnemonic screens (owner
+  ruling, 2026-10-15), the words travelling as the dedicated mnemonic type
+  along one path and cleared when the screen is left; and a private key
+  typed in hex, the same way, one way only (owner ruling, 2026-11-25).
 - How keys are held: docs/keys-and-signing.md is the contract. On the
   password path BOTH the Argon2id-stretched password AND a secret of the
   device's hardware key store must be cryptographically necessary to unwrap a

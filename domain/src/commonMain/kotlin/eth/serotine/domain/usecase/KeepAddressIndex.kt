@@ -96,7 +96,7 @@ class KeepAddressIndex(
             }.distinct(),
             next = next?.cursor,
         )
-        return changes.serialized {
+        return changes.serialized(keys = false) {
             val listed = (accounts.observeAccounts().first() as? AccountList.Loaded)?.accounts
             if (listed?.any { it.id == account } != true) false else archive.write(account, kept)
         }

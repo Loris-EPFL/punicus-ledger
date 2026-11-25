@@ -46,6 +46,7 @@ import eth.serotine.domain.repository.NftContracts
 import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.PerAppAliases
 import eth.serotine.domain.repository.PerAppKeys
+import eth.serotine.domain.repository.PrivateKeys
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
@@ -111,6 +112,7 @@ import eth.serotine.domain.usecase.HoldNetwork
 import eth.serotine.domain.usecase.HoldNetworksWhileEmpty
 import eth.serotine.domain.usecase.HoldSafeSignature
 import eth.serotine.domain.usecase.ImportMnemonicAccount
+import eth.serotine.domain.usecase.ImportPrivateKeyAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.KeepWaitingSwap
 import eth.serotine.domain.usecase.LinkMadePerAppAlias
@@ -129,6 +131,7 @@ import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveAddressIndexStatus
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveAmountsHidden
+import eth.serotine.domain.usecase.ObserveBareKeys
 import eth.serotine.domain.usecase.ObserveChequebook
 import eth.serotine.domain.usecase.ObserveCowOrder
 import eth.serotine.domain.usecase.ObserveCowOrderLife
@@ -478,6 +481,8 @@ class AppGraph(
     private val dappRequests: DappRequests,
     /** The key store's per-app addresses (issue #252): the host's key store, the instance [keys] is. */
     private val perAppKeys: PerAppKeys,
+    /** The key store's import of a private key in hex (owner ruling, 2026-11-25): the instance [keys] is. */
+    private val privateKeys: PrivateKeys,
     /** The accounts last approved for each dApp site, preselected when a host of it connects again (issue #252). */
     private val dappSites: DappSiteMemory,
     /** The aliases the user linked: a site that sees another site's per-app address (issue #252). */
@@ -543,6 +548,7 @@ class AppGraph(
             offerHandoff = OfferHandoff(walletHandoff),
             holdNetworksWhileEmpty = HoldNetworksWhileEmpty(accounts, networkSettings, networkDemand),
             observeGnosisPays = ObserveGnosisPays(accounts, observeGnosisPay()),
+            observeBareKeys = ObserveBareKeys(accounts, perAppKeys, walletChanges),
         )
 
     /** The light clients' status strips of the screens that depend on them: one for the app, in the host's scope. */
@@ -579,7 +585,8 @@ class AppGraph(
             offerHandoff = OfferHandoff(walletHandoff),
             observeGnosisPay = observeGnosisPay(),
             observeSwarmNode = ObserveSwarmNode(swarmCandidates, swarmContracts),
-            observePerAppAddresses = ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases),
+            observePerAppAddresses =
+                ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases, walletChanges),
             unlinkPerAppAlias = UnlinkPerAppAlias(perAppAliases),
         )
 
@@ -1257,7 +1264,7 @@ class AppGraph(
         observeDappConnections(),
         ApproveDappProposal(dappSessions, accounts, networkSettings, dappSites, perAppAliases),
         RejectDappProposal(dappSessions),
-        ObservePerAppChoice(accounts, perAppKeys, dappSites, networkSettings, perAppAliases),
+        ObservePerAppChoice(accounts, perAppKeys, dappSites, networkSettings, perAppAliases, walletChanges),
         MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases),
         LinkPerAppAlias(accounts, perAppAliases, walletChanges),
         LinkMadePerAppAlias(
@@ -1272,7 +1279,7 @@ class AppGraph(
      */
     fun perAppViewModel(phrase: Address?, restoring: Boolean = false): PerAppViewModel = PerAppViewModel(
         phrase,
-        ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases),
+        ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases, walletChanges),
         RestorePerAppAddress(MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases), networkSettings),
         restoring,
     )
@@ -1327,5 +1334,6 @@ class AppGraph(
             DescribeKeyStore(keys),
             ObserveEnabledNetworks(networkSettings),
             SetNetworkEnabled(networkSettings),
+            ImportPrivateKeyAccount(privateKeys, accounts, walletChanges),
         )
 }

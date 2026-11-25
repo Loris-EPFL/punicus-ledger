@@ -383,7 +383,7 @@ class DappProposalViewModel(
             proposal.refusal != null -> refusalLine(proposal.refusal!!)
             host == null || site == null -> hostLine(choice.host)
             source == null && madeFrom != null -> PHRASE_GONE
-            source == null -> NO_PHRASE
+            source == null -> noPhrase(choice)
             choice.collision != null -> collisionLine(choice.collision!!)
             networks.isEmpty() -> NO_NETWORK
             else -> null
@@ -528,7 +528,7 @@ class DappProposalViewModel(
             if (own == null) local.update { now -> now.copy(pickedAlias = now.pickedAlias?.copy(via = host.site)) }
             return
         }
-        val source = sourceOf(choice, local.value) ?: return explainTyped(NO_PHRASE)
+        val source = sourceOf(choice, local.value) ?: return explainTyped(noPhrase(choice))
         // The networks a new address would go on, of the kind the accounts ticked decide, as its row says.
         val ticked = shown.value.plan.chosen.mapNotNull(::idOf)
         val networks = perAppNetworks(proposal, choice.enabled, ticked, emptyList())
@@ -819,6 +819,14 @@ class DappProposalViewModel(
 
         const val NO_PHRASE = "A per-app address needs a recovery phrase held on this device, and there is none: " +
             "only watched accounts or Safes. Import or create one under Accounts."
+
+        /** [NO_PHRASE] where a key imported on its own is held: it is no phrase (owner ruling, 2026-11-25). */
+        const val NO_PHRASE_BARE_KEYS = "A per-app address needs a recovery phrase held on this device, and there " +
+            "is none: the keys here were imported on their own, as private keys, which have no phrase. Import or " +
+            "create a phrase under Accounts."
+
+        /** Why no per-app address can be made from a phrase: none is held, and what is held instead. */
+        fun noPhrase(choice: PerAppChoice): String = if (choice.bareHeld) NO_PHRASE_BARE_KEYS else NO_PHRASE
 
         const val NO_NETWORK = "None of the networks this dApp asks for, of the kind of funds chosen, is on. Turn " +
             "one on in Settings, under Networks."

@@ -1,5 +1,6 @@
 package eth.serotine.ui.accountdetail
 
+import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
@@ -304,6 +305,25 @@ class AccountDetailViewModelTest {
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
+
+    @Test
+    fun aKeyImportedOnItsOwnIsMarkedUntilItsPhraseReplacesIt() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        accounts.accounts.value = listOf(daily)
+        val keys = FakePerAppKeys(bare = setOf(daily.address))
+        val changes = WalletChanges()
+        val vm = viewModel(perApp = ObservePerAppAddresses(accounts, keys, networks, aliases, changes))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+
+        val bare = vm.uiState.value as AccountDetailUiState.Ready
+        assertTrue(bare.bareKey)
+        assertNull(bare.perApp, "no phrase, so no Per-app tab")
+
+        changes.serialized { keys.bare = emptySet(); keys.phrases = mapOf(daily.address to daily.address) }
+        runCurrent()
+        assertFalse((vm.uiState.value as AccountDetailUiState.Ready).bareKey)
+    }
 
     @Test
     fun aPhrasesFirstAccountHasAPerAppTabAndAPerAppAddressItsMark() = runTest {

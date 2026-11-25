@@ -61,6 +61,11 @@ data class PerAppChoice(
     val aliased: List<Account> = emptyList(),
     val others: List<PerAppEntry> = emptyList(),
     val names: Map<Address, String> = emptyMap(),
+    /**
+     * An account whose key was imported bare is held here ([PerAppKeys.bareKeys]): no phrase, so it gives no per-app
+     * address, and a screen with no [sources] says so rather than that only watched accounts are held.
+     */
+    val bareHeld: Boolean = false,
 ) {
     /** What [source]'s phrase is called on screen, as D9 calls it: one name everywhere (owner, 2026-11-19). */
     fun nameOf(source: PhraseSource): String = phraseName(names, source)
@@ -68,14 +73,20 @@ data class PerAppChoice(
 
 /**
  * The phrases of the wallet's accounts held here, each named by its first account in [listed] that is not a per-app
- * address, or by a per-app address where it has no other ([PhraseSource]).
+ * address, or by a per-app address where it has no other ([PhraseSource]). An account whose key was imported bare
+ * ([bare], [PerAppKeys.bareKeys]) has no phrase and is none.
  */
-fun phraseSources(listed: List<Account>, phrases: Map<Address, Address>): List<PhraseSource> {
+fun phraseSources(
+    listed: List<Account>,
+    phrases: Map<Address, Address>,
+    bare: Set<Address> = emptySet(),
+): List<PhraseSource> {
     // An older envelope's further account, whose phrase is learnt only when it is opened, stands for one of its own:
     // it may be one listed already, which then shows twice, and either gives the same addresses.
     // A per-app address names its phrase only where no other account of it is held: "Phrase of uniswap.org" says
     // less than the name of an ordinary account of it, though either envelope gives the same addresses.
     val held = listed.filter { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore }
+        .filter { it.address !in bare }
         .sortedBy { it.perApp != null }
     // A per-app account records its phrase itself; an older envelope's further account names none. An account whose
     // address names a phrase known so is that phrase's first account, whatever its envelope says.
@@ -122,6 +133,8 @@ class ObservePerAppChoice(
     private val sites: DappSiteMemory,
     private val networks: NetworkSettings,
     private val aliases: PerAppAliases,
+    /** The app's one [WalletChanges], as for [ObservePerAppAddresses]. Null: read again on a change of the list alone. */
+    private val changes: WalletChanges? = null,
 ) {
     operator fun invoke(url: String): Flow<PerAppChoice> {
         val host = AppHost.ofUrl(url)
@@ -129,15 +142,16 @@ class ObservePerAppChoice(
         val listedWithPhrases = accounts.observeAccounts()
             .map { list -> (list as? AccountList.Loaded)?.accounts.orEmpty() }
             .distinctUntilChanged()
-            .map { listed -> listed to keys.phrases() }
+            .alsoAfter(changes)
+            .map { listed -> Triple(listed, keys.phrases(), keys.bareKeys()) }
         return combine(
             listedWithPhrases,
             sites.observe(),
             networks.observe(),
             aliases.observe(),
-        ) { (listed, phrases), memory, enabled, links ->
+        ) { (listed, phrases, bare), memory, enabled, links ->
             val perApp = listed.mapNotNull { it.perApp }
-            val sources = phraseSources(listed, phrases)
+            val sources = phraseSources(listed, phrases, bare)
             val made = if (site == null) emptyList() else listed.filter { it.perApp?.site == site }
             // The site's own address wins over an alias, should both stand (owner, 2026-11-19, on #328).
             val alias = site?.let { links[it] }?.takeIf { made.isEmpty() }
@@ -152,7 +166,8 @@ class ObservePerAppChoice(
                 alias = alias,
                 aliased = listed.filter { alias != null && it.address == alias && it.perApp != null },
                 others = perAppEntries(listed, links).filter { it.site != site },
-                names = phraseNames(listed, phraseAccounts(listed, sources)),
+                names = phraseNames(listed, phraseAccounts(listed, sources, bare)),
+                bareHeld = listed.any { it.address in bare && it.custody == AccountCustody.InKeyStore },
             )
         }.distinctUntilChanged()
     }

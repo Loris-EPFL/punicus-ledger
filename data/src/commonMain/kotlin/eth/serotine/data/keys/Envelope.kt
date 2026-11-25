@@ -26,6 +26,13 @@ import kotlinx.serialization.Serializable
  * at that path, and refuses one that is not the account the envelope is filed under or whose phrase is not the one
  * named, so a path or a phrase edited on disk signs nothing.
  *
+ * An envelope may hold a bare private key instead of a seed ([SealedSeed.bareKey], stored as `key`): a key imported in
+ * hex (owner ruling, 2026-11-25), its 32 bytes sealed where a seed's are, under the additional data
+ * `"serotine-key-v1|<address>"`. That tag is the one thing bound to the kind, so an envelope whose flag is edited on
+ * disk opens to nothing: the GCM tag refuses it. A bare key's envelope names no path, no index and no phrase. An older
+ * build, whose reader refuses the unknown `key` field, passes it over as unreadable (docs/keys-and-signing.md,
+ * *Importing a private key*).
+ *
  * Both factors are necessary (rule 1): the password is mixed into the KEK, never compared.
  * The salt and the Argon2id parameters are bound as the DEK wrap's additional data and
  * checked against a floor and a ceiling when opening (rule 2), so a parameter block edited
@@ -72,7 +79,8 @@ internal object Envelope {
 
     /**
      * [seed] sealed for [address], the account at [path] of the phrase whose first account is [phrase], under
-     * [password] and [hardware]. [withDek] is handed the new
+     * [password] and [hardware]; or, when [bareKey], a private key's 32 bytes in [seed], with no path and no phrase.
+     * [withDek] is handed the new
      * DEK before it is zeroed, for the biometric path to wrap it too (rule 4: its own key, the
      * password path untouched); it must not keep it. The password is stretched first, by
      * [stretch], so [Argon2idOutOfMemory] leaves before anything else is made.
@@ -86,8 +94,12 @@ internal object Envelope {
         stretch: PasswordStretch = PasswordStretch.Sodium,
         path: AccountPath = AccountPath.Ordinary(0),
         phrase: String? = null,
+        bareKey: Boolean = false,
         withDek: (ByteArray) -> Unit = {},
     ): SealedSeed {
+        require(!bareKey || (path == AccountPath.Ordinary(0) && phrase == null && seed.size == KEY_BYTES)) {
+            "a bare key is 32 bytes, with no path and no phrase"
+        }
         val salt = EnvelopeCrypto.randomBytes(SALT_BYTES)
         val hardwareTag = hardware?.tag ?: NO_HARDWARE
         val kek = kek(password, salt, cost.opsLimit, cost.memLimitBytes, hardware, stretch)
@@ -111,10 +123,11 @@ internal object Envelope {
                     dekAad(address, hardwareTag, salt, cost.opsLimit, cost.memLimitBytes),
                 ).toHex(),
                 seedNonce = seedNonce.toHex(),
-                seed = EnvelopeCrypto.aesGcmSeal(dek, seedNonce, seed, seedAad(address)).toHex(),
+                seed = EnvelopeCrypto.aesGcmSeal(dek, seedNonce, seed, secretAad(address, bareKey)).toHex(),
                 index = (path as? AccountPath.Ordinary)?.index ?: 0,
                 perApp = (path as? AccountPath.PerApp)?.path?.let { PerAppIndices(it.account, it.change, it.index) },
                 phraseAccount = phrase,
+                bareKey = bareKey,
             )
         } finally {
             kek.fill(0)
@@ -125,15 +138,15 @@ internal object Envelope {
     /**
      * Whether [sealed] is an envelope this code may try to open with [hardware], judged
      * without the password: this version, this device's hardware tag, parameters within the
-     * floor and the ceiling, a well-formed salt and nonces, a path in range ([SealedSeed.path]), a phrase that is
-     * an address or none, and — when [address] is given —
+     * floor and the ceiling, a well-formed salt and nonces, a path in range ([SealedSeed.path]) or, for a bare key,
+     * none at all, a phrase that is an address or none, and — when [address] is given —
      * that address, the one its file is named after.
      */
     fun canOpen(sealed: SealedSeed, hardware: HardwareSecret?, address: String? = null): Boolean =
         sealed.version == VERSION &&
             sealed.hardware == (hardware?.tag ?: NO_HARDWARE) &&
             withinBounds(sealed.opsLimit, sealed.memLimitBytes) &&
-            sealed.path() != null &&
+            (if (sealed.bareKey) sealed.isPlainBareKey() else sealed.path() != null) &&
             (sealed.phraseAccount == null || Address.parse(sealed.phraseAccount)?.hex == sealed.phraseAccount) &&
             (address == null || sealed.address == address) &&
             hexOfLength(sealed.salt, SALT_BYTES) &&
@@ -217,8 +230,12 @@ internal object Envelope {
                 dek,
                 sealed.seedNonce.fromHex(),
                 sealed.seed.fromHex(),
-                seedAad(sealed.address),
+                secretAad(sealed.address, sealed.bareKey),
             ) ?: return Opened.Refused
+            if (sealed.bareKey && seed.size != KEY_BYTES) {
+                seed.fill(0)
+                return Opened.Refused
+            }
             return Opened.Seed(seed)
         } catch (e: IllegalArgumentException) {
             return Opened.Refused
@@ -228,7 +245,7 @@ internal object Envelope {
     }
 
     sealed interface Opened {
-        /** The seed; the caller zeroes it. */
+        /** The seed, or a bare key's 32 bytes ([SealedSeed.bareKey]); the caller zeroes it. */
         class Seed(val bytes: ByteArray) : Opened
 
         /** The DEK ([dek]); the caller zeroes it. */
@@ -303,7 +320,12 @@ internal object Envelope {
     private fun dekAad(address: String, hardware: String, salt: ByteArray, ops: Long, mem: Long): ByteArray =
         "serotine-envelope-v$VERSION|$address|$hardware|${salt.toHex()}|$ops|$mem".encodeToByteArray()
 
-    private fun seedAad(address: String): ByteArray = "serotine-seed-v$VERSION|$address".encodeToByteArray()
+    /** The sealed secret's additional data: a seed's, or a bare key's, which differ so neither opens as the other. */
+    private fun secretAad(address: String, bareKey: Boolean): ByteArray =
+        (if (bareKey) "serotine-key-v$VERSION|$address" else "serotine-seed-v$VERSION|$address").encodeToByteArray()
+
+    /** A secp256k1 private key's size. */
+    const val KEY_BYTES = 32
 
     private const val NO_HARDWARE = "none"
     private val KEK_INFO = "serotine-envelope-v1 kek".encodeToByteArray()
@@ -314,7 +336,9 @@ internal object Envelope {
  * of the seed it is filed for, left out when it is the first (0), as every envelope sealed before
  * further accounts could be derived is. [perApp] is a per-app address's path instead, left out for
  * an ordinary account; [phraseAccount] (stored as `phrase`) the address of the phrase's first
- * account, left out by envelopes sealed before it was written.
+ * account, left out by envelopes sealed before it was written. [bareKey] (stored as `key`, left out
+ * when false) says [seed] holds a private key imported in hex, not a seed: then neither a path nor a
+ * phrase is named.
  */
 @Serializable
 internal class SealedSeed(
@@ -331,12 +355,17 @@ internal class SealedSeed(
     val index: Int = 0,
     val perApp: PerAppIndices? = null,
     @SerialName("phrase") val phraseAccount: String? = null,
+    @SerialName("key") val bareKey: Boolean = false,
 ) {
+    /** A bare key's envelope names nothing beside its key: the first index, no per-app path, no phrase. */
+    fun isPlainBareKey(): Boolean = bareKey && index == 0 && perApp == null && phraseAccount == null
+
     /**
      * The account's path in its seed, or null when it is out of range or both [index] and [perApp] name one: such an
-     * envelope is damaged.
+     * envelope is damaged. Null for a bare key's envelope too ([bareKey]), which holds no seed to derive from.
      */
     fun path(): AccountPath? {
+        if (bareKey) return null
         val app = perApp ?: return if (index >= 0) AccountPath.Ordinary(index) else null
         if (index != 0) return null
         val inRange = app.a >= AppIsolation.ACCOUNT_FLOOR && app.b >= 0 && app.c >= 0

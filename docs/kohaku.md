@@ -77,9 +77,9 @@ becomes the source of the vectors and the pin moves to it.
   no signing path at all, and a Safe, which has no seed of its own (it may
   still shield, *A Safe*). The actions that need notes are greyed out and
   say why (owner ruling, 2026-10-18, #55); Kohaku's own refusal is
-  `UnsupportedAccountError`. Importing a raw private key is not offered
-  (docs/wallet-ux.md, still the owner's, #11); an account imported that way
-  would be the same case.
+  `UnsupportedAccountError`. An account imported as a bare private key
+  (owner ruling, 2026-11-25; docs/keys-and-signing.md, *Importing a private
+  key*) is the same case: its envelope holds no seed.
 
 ### Railgun keys
 

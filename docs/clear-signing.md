@@ -164,7 +164,9 @@ that, and nothing it adds narrows what is already shown.
    build. Build and Test regenerates it and fails on a difference.
 6. **Conformance tests.** The registry's `testsv2/*.tests.json` for the chosen
    files, vendored and pinned with them, become tests of the runtime
-   formatter (A3). A descriptor the
+   formatter (A3). They run in `:data` (part 4), which reads JSON:
+   `:domain` reaches JSON only through a port (`.claude/rules/architecture.md`),
+   so its own tests write the descriptors out by hand. A descriptor the
    formatter cannot render as its own tests expect fails the build.
 
 **Refresh** (decision 6): only through a PR that moves `PINNED`, the commit
@@ -245,9 +247,30 @@ part of the decisions:
   D6 for hand-decoded and clear-signed calls alike.
 - **A nested call** (`calldata`) is formatted with its own descriptor, up to
   depth 3, only when its callee passes A4's steps itself, at the same block
-  as its parent. Otherwise it stays raw inside its parent, with its reason.
-  An approval is flagged at every depth: an `approve` or a Permit2 grant
-  inside a batch is still an approval.
+  as its parent. Otherwise it stays raw inside its parent, with its reason;
+  its bytes are shown either way. Past depth 3 the bytes are not read, so
+  the whole call is not covered: an approval down there could not be seen.
+  An approval is flagged at every depth, by its selector, covered or not:
+  an `approve` or a Permit2 grant inside a batch is still an approval. A
+  nested call keeps the user's sender and value only when it goes into the
+  contract's own address and the deployment's reviewed declaration says
+  that contract delegates into itself (a multicall, A1 step 4); any other
+  is the contract calling out, and its value, which the bytes do not say,
+  is unknown, never zero.
+- **Arrays.** A parameter's path that walks the same array as its field
+  (`tokenPath: details.[].token` beside `details.[].amount`) is read at the
+  field's own item. A `bundled` group shows its children item by item and
+  refuses arrays of unequal length; a `sequential` one shows each child
+  over all its items. A group's label is shown over its fields.
+- **Addresses.** An `addressName` shows the wallet's own name for an address
+  beside the address, never an ENS name (`sources` other than `local` are
+  not looked up); a value among its `senderAddress` reads "Sender", the
+  decoded address kept as its raw value; an address whose verified kind is
+  not among its `types` is flagged.
+- **NFTs.** An `nftName` names a collection only when it is a built-in one
+  (`.claude/rules/data-sources.md`, *An account's NFTs*); any other is shown
+  as "#id of <address>", marked as not built in, never by the name its own
+  contract returns.
 - **The hand-written decoders take precedence, by type.** Where one claims a
   struct type (`encodeType`) or a selector, its answer stands, "not decoded"
   included: `TypedDataMeaning` (Permit, Permit2, CoW; a GPv2 order with a
@@ -308,9 +331,12 @@ the five steps of docs/architecture.md:
    (D5, D6) and docs/wallet-ux.md (screen 17).
 2. **The generator and the pins** (A1), with the first list and the CI job
    that runs the schema check and the linter.
-3. **`:domain`** (A3): the model, the formatter, the conformance tests.
-4. **`:data`** (A4): the binding check, the resource, the wiring in the
-   composition roots.
+3. **`:domain`** (A3): the model, the strict ABI decoder, the paths, the
+   formatter and the binding check as pure functions, tested on the
+   registry's vectors written out by hand.
+4. **`:data`** (A4): reading the catalog, the verified code reads for the
+   binding check, the attestations, the conformance tests over every
+   vendored vector, and the wiring in the composition roots.
 5. **`:ui`** (A5): D6 first, then D5 and the Safe review, with previews,
    screenshots and the `CHANGELOG.md` entry.
 6. **The final PR**, `feature/clear-signing` → `main`.

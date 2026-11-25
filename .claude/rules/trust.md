@@ -419,7 +419,11 @@ docs/clear-signing.md, *What a clear-signed line proves*.)
     view at least. Simple mode keeps the "described by" label.
   - A token outside the built-in list is shown by its address, its amount
     raw, never by its own symbol, as the dApp review's hand-written decoders
-    do today.
+    do today; so is an NFT collection that is not a built-in one, never by
+    its own `name()`.
+  - Calls nested deeper than three are not read, so the whole call is not
+    covered; a nested call out of the contract has no value but what its
+    bytes say.
   - The hand-written decoders take precedence by type: where one claims a
     struct type or a selector (`TypedDataMeaning`'s Permit, Permit2 and CoW
     order, `Erc20`'s `transfer` and `approve`, SwapRouter02's swaps, Safe's

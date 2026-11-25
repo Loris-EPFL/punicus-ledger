@@ -94,8 +94,8 @@ can prove, from verified figures alone.
   it never sees a plain send, and its rows carry no nonce. The sources are the
   addr1 index's rows (a `FROM` entry) and the transactions sent from here that
   were mined; a dropped or replaced one does not count. So check A runs only
-  where the addr1 index is on (the desktop, its setting on) and claims to
-  cover the range checked. On Android and iOS it would flag every send made
+  where the addr1 index is on (the desktop and Android, its setting on) and
+  claims to cover the range checked. On iOS it would flag every send made
   from another wallet.
 - **Check:** the nonces of the sent transactions so listed must run without a
   gap from the first one listed to the newest one listed.
@@ -337,8 +337,8 @@ Parts, each its own PR into the feature branch, through the Workflow:
    `:data`, fed where balances are proven today. No screen yet.
 3. **Check B, tokens**: the use case and the warning rows in Activity and its
    detail, with previews.
-4. **Check A, nonces**: after Part 0's bump, on the desktop with the addr1
-   index on.
+4. **Check A, nonces**: after Part 0's bump, on the desktop and Android with
+   the addr1 index on.
 5. **Check C, ETH**: on networks with block access lists, over the blocks the
    address-activity follower checked, after Part 0's bump.
 6. The final PR, `feature/balance-reconciliation` → `main`.

@@ -1,5 +1,6 @@
 package eth.serotine.ui.accountdetail
 
+import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.repository.CowVenueReading
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
@@ -58,12 +59,14 @@ import eth.serotine.domain.usecase.AddEnsName
 import eth.serotine.domain.usecase.AddNft
 import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.HasSwapVenue
+import eth.serotine.domain.usecase.LoadAddressIndexPage
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveAccountCowOrders
 import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
+import eth.serotine.domain.usecase.ObserveAddressIndexStatus
 import eth.serotine.domain.usecase.ObserveAmountsHidden
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
@@ -90,8 +93,10 @@ import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.ToggleAmountsHidden
 import eth.serotine.domain.usecase.UnlinkPerAppAlias
+import eth.serotine.ui.FIXTURE_IMPORTER
 import eth.serotine.ui.FakeCowChain
 import eth.serotine.ui.FakeAccounts
+import eth.serotine.ui.FakeAddressIndexHistory
 import eth.serotine.ui.FakeBalances
 import eth.serotine.ui.FakeEnsNfts
 import eth.serotine.ui.FakeFeeds
@@ -107,6 +112,7 @@ import eth.serotine.ui.FakeTokenBalances
 import eth.serotine.ui.FakeTokenCatalog
 import eth.serotine.ui.FakeUpgradeReports
 import eth.serotine.ui.MemoryAddedNfts
+import eth.serotine.ui.MemoryAddressIndexSetting
 import eth.serotine.ui.MemoryAliases
 import eth.serotine.ui.MemoryAmountsHidden
 import eth.serotine.ui.MemoryCowOrders
@@ -122,11 +128,14 @@ import eth.serotine.ui.MemoryWaitingSwaps
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityOrder
 import eth.serotine.ui.activity.ActivityUiState
+import eth.serotine.ui.activity.AddressIndexActivity
+import eth.serotine.ui.activity.IndexFooter
 import eth.serotine.ui.components.AMOUNT_MASK
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.shortAddress
+import eth.serotine.ui.indexRow
 import eth.serotine.ui.upgradeWarnings
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -219,6 +228,7 @@ class AccountDetailViewModelTest {
         address: Address = daily.address,
         perApp: ObservePerAppAddresses? = null,
         network: Network = Network.SEPOLIA,
+        activity: AccountActivity = activity(),
         swarm: ObserveSwarmNode? = null,
     ) = AccountDetailViewModel(
         AccountId(network, address),
@@ -234,7 +244,7 @@ class AccountDetailViewModelTest {
         ObserveKnownTokens(catalog, userTokens, metadata),
         SetTokenHidden(userTokens),
         ObserveEnsNames(accounts, names),
-        activity(),
+        activity,
         ObserveEnabledNetworks(networks),
         SetNetworkEnabled(networks),
         upgradeWarnings(networks, accounts, upgradeReports, upgradeStatus),
@@ -280,7 +290,7 @@ class AccountDetailViewModelTest {
 
     private val networks = MemoryNetworkSettings()
 
-    private fun activity() = AccountActivity(
+    private fun activity(addressIndex: AddressIndexActivity? = null) = AccountActivity(
         ObserveAccountHistory(history),
         ObserveAccounts(accounts),
         ObserveSafeHistory(logIndex, historyStarts),
@@ -290,10 +300,30 @@ class AccountDetailViewModelTest {
         ObserveAccountCowOrders(cowOrders),
         ObserveWaitingSwaps(waitingSwaps),
         ObserveOutbox(MemoryOutbox()),
+        addressIndex = addressIndex,
     ) { "at $it" }
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
+
+    @Test
+    fun aKeyImportedOnItsOwnIsMarkedUntilItsPhraseReplacesIt() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        accounts.accounts.value = listOf(daily)
+        val keys = FakePerAppKeys(bare = setOf(daily.address))
+        val changes = WalletChanges()
+        val vm = viewModel(perApp = ObservePerAppAddresses(accounts, keys, networks, aliases, changes))
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+
+        val bare = vm.uiState.value as AccountDetailUiState.Ready
+        assertTrue(bare.bareKey)
+        assertNull(bare.perApp, "no phrase, so no Per-app tab")
+
+        changes.serialized { keys.bare = emptySet(); keys.phrases = mapOf(daily.address to daily.address) }
+        runCurrent()
+        assertFalse((vm.uiState.value as AccountDetailUiState.Ready).bareKey)
+    }
 
     @Test
     fun aPhrasesFirstAccountHasAPerAppTabAndAPerAppAddressItsMark() = runTest {
@@ -1533,5 +1563,73 @@ class AccountDetailViewModelTest {
             ensNamesLine(AccountNames("daily.eth", listOf("pay.eth"), checked = true), "daily.eth"),
         )
         assertEquals(null, ensNamesLine(AccountNames(null, listOf("pay.eth"), checked = true), "pay.eth"))
+    }
+
+    @Test
+    fun theActivityAsksTheAddr1IndexForItsNextPageWhenTheListNearsItsEnd() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val other = Address.of("0x" + "77".repeat(20))
+        val index = FakeAddressIndexHistory()
+        index.page(null, listOf(indexRow(9_300_000, 3, daily.address, other, wei = "250000000000000000")), next = "p2")
+        index.page("p2", listOf(indexRow(9_100_000, 1, daily.address, other)), next = null)
+        val setting = MemoryAddressIndexSetting(on = FIXTURE_IMPORTER)
+        val viewModel = viewModel(
+            activity = activity(
+                AddressIndexActivity(
+                    ObserveAddressIndexStatus(index, setting, FIXTURE_IMPORTER),
+                    LoadAddressIndexPage(index, FIXTURE_IMPORTER),
+                ),
+            ),
+        )
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        viewModel.show(DetailSegment.ACTIVITY)
+        runCurrent()
+        val first = assertIs<ActivityUiState.Shown>((viewModel.uiState.value as AccountDetailUiState.Ready).activity)
+        assertEquals(listOf("Sent 0.25 ETH"), first.rows.map { it.title })
+        assertEquals(IndexFooter.More, first.index?.footer)
+
+        viewModel.loadMoreActivity()
+        runCurrent()
+
+        val second = assertIs<ActivityUiState.Shown>((viewModel.uiState.value as AccountDetailUiState.Ready).activity)
+        assertEquals(listOf("Sent 0.25 ETH", "Sent a transaction"), second.rows.map { it.title })
+        assertIs<IndexFooter.End>(second.index?.footer)
+        assertEquals(2, index.asked.size)
+    }
+
+    @Test
+    fun theAddr1PagesReadAreKeptWhenTheScreenIsLeftAndNothingIsReadAgain() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val other = Address.of("0x" + "77".repeat(20))
+        val index = FakeAddressIndexHistory()
+        index.page(null, listOf(indexRow(9_300_000, 3, daily.address, other, wei = "250000000000000000")), next = "p2")
+        index.page("p2", listOf(indexRow(9_100_000, 1, daily.address, other)), next = "p3")
+        val setting = MemoryAddressIndexSetting(on = FIXTURE_IMPORTER)
+        val viewModel = viewModel(
+            activity = activity(
+                AddressIndexActivity(
+                    ObserveAddressIndexStatus(index, setting, FIXTURE_IMPORTER),
+                    LoadAddressIndexPage(index, FIXTURE_IMPORTER),
+                ),
+            ),
+        )
+        val shown = launch { viewModel.uiState.collect {} }
+        viewModel.show(DetailSegment.ACTIVITY)
+        runCurrent()
+        viewModel.loadMoreActivity()
+        runCurrent()
+        assertEquals(2, index.asked.size)
+
+        // A row's detail opened: the screen stops collecting for longer than its 5 s.
+        shown.cancel()
+        advanceTimeBy(60_000)
+        runCurrent()
+        val back = launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        val activity = assertIs<ActivityUiState.Shown>((viewModel.uiState.value as AccountDetailUiState.Ready).activity)
+        assertEquals(listOf("Sent 0.25 ETH", "Sent a transaction"), activity.rows.map { it.title }, "what was read")
+        assertEquals(2, index.asked.size, "nothing read again, page 1 not either")
+        back.cancel()
     }
 }

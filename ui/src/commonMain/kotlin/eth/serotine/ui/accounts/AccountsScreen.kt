@@ -154,7 +154,7 @@ fun AccountsRoute(
 /**
  * The Accounts screen as a pure function of [state]; stateless, so a test can render any
  * state directly. Its floating action button fans out into Watch address ([onWatchAddress]),
- * Import recovery phrase ([onImportPhrase]), Create account ([onCreateAccount]) and Create Safe
+ * Import phrase or key ([onImportPhrase]), Create account ([onCreateAccount]) and Create Safe
  * ([onCreateSafe]), greyed out until an account's key is known to be held here to pay for its
  * deployment (while the list is read, too), a tap then saying why, with the ways to get one; a
  * row's tap and its long-press menu (a right click on desktop) ask [onAccountAction], its Send
@@ -283,7 +283,7 @@ internal fun AddAccountButton(
     val createSafeReason = state.createSafeReason
     val createSafeFixes = if (state is AccountsUiState.Ready) {
         listOf(
-            UnavailableFix("Import recovery phrase", onImportPhrase),
+            UnavailableFix("Import phrase or key", onImportPhrase),
             UnavailableFix("Create account", onCreateAccount),
         )
     } else {
@@ -292,7 +292,7 @@ internal fun AddAccountButton(
     SpeedDialFab(
         actions = listOf(
             SpeedDialAction("Watch address", SerotineIcons.Visibility, onClick = onWatchAddress),
-            SpeedDialAction("Import recovery phrase", SerotineIcons.Download, onClick = onImportPhrase),
+            SpeedDialAction("Import phrase or key", SerotineIcons.Download, onClick = onImportPhrase),
             SpeedDialAction("Create account", Icons.Filled.Add, onClick = onCreateAccount),
             SpeedDialAction("Create Safe", Icons.Filled.Lock, unavailable = createSafeReason != null) {
                 if (createSafeReason == null) {
@@ -585,7 +585,7 @@ internal fun accountMenu(
             }
         }.takeIf { account.kind == AccountKind.EOA },
         // The next account of its phrase, from the seed stored here; greyed out while its key is not.
-        deriveBlockedReason(account.control).let { reason ->
+        deriveBlockedReason(account.control, account.bareKey).let { reason ->
             MenuAction("$DERIVE_ACTION…", SerotineIcons.Key, unavailable = reason != null) {
                 if (reason == null) {
                     act(AccountAction.Derive(chainId, address))
@@ -599,11 +599,12 @@ internal fun accountMenu(
 }
 
 /**
- * The row of the account whose detail is shown beside the list, [shown]: said selected to a screen
- * reader and tagged, the colour being the row's own ([selectedRowColors]). Nothing for any other row.
+ * The row whose detail is shown beside its list, [shown] (an account beside the Accounts list, an Activity row beside
+ * its account): said selected to a screen reader and tagged [tag], the colour being the row's own
+ * ([selectedRowColors]). Nothing for any other row.
  */
-internal fun Modifier.selectedRow(shown: Boolean): Modifier =
-    if (shown) semantics { selected = true }.testTag(ACCOUNTS_SELECTED_TAG) else this
+internal fun Modifier.selectedRow(shown: Boolean, tag: String = ACCOUNTS_SELECTED_TAG): Modifier =
+    if (shown) semantics { selected = true }.testTag(tag) else this
 
 /** A row's colours: the secondary container behind the account shown beside the list ([shown]). */
 @Composable

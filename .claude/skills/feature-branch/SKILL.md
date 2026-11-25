@@ -137,22 +137,21 @@ base branch; see the comments in `ci.yml`, `android-apk.yml` and siblings),
 which gives part PRs the tests and the Claude review. Do not narrow them to
 `main`.
 
-**The artifact builds are the exception** (owner ruling, 2026-10-09): the
-Android APKs, the macOS dmg and the Windows msi skip a PR whose base is not
-`main` (a job-level `if` in those workflows; the checks show as skipped, not
-absent), because a packaging leg per part costs more than it tells. The
-final `feature/<topic>` → `main` PR builds everything. A part that touches
-what those legs alone check (the packaging configuration, the minSdk-29
-budget: `check_apk_min_api.py` runs only in the APK workflow) can dispatch
-the workflow on its branch from the Actions tab. A PR retargeted to `main`
-after it was opened keeps its skipped checks (a base change is an `edited`
-event, which these workflows do not run on), so push a commit or dispatch the
-workflows before it merges, or the first artifact build of that head is the
-post-merge run on `main`.
+**The artifact builds are the exception** (owner ruling, 2026-10-09): a
+part PR builds none of them, because a packaging leg per part costs more
+than it tells, and the final `feature/<topic>` → `main` PR builds
+everything. Since 2026-11-25 no PR builds them, part or not: the Android
+APKs, the macOS dmg, the Windows msi and the iOS app build in the merge
+queue, which only a PR into `main` passes through (owner's request;
+`.claude/rules/github-workflows.md`, *The merge queue*). On every PR their
+checks show as skipped, not absent. A part that touches what those legs
+alone check (the packaging configuration, the minSdk-29 budget:
+`check_apk_min_api.py` runs only in the APK workflow) can dispatch the
+workflow on its branch from the Actions tab.
 
-Any other PR into `main` is scoped by what it changes (owner's request,
-2026-11-18; `.claude/rules/github-workflows.md`): the dmg builds only for a
-packaging or build change, and the iOS device link only for an iOS host or
-build change. The final PR keeps building everything, as above: `pr-scope.yml`
-builds everything for a `feature/` branch into `main`. That is why the plan's
-branch is named `feature/<topic>`.
+Any other PR into `main` is scoped in the queue by what it changes (owner's
+request, 2026-11-18): the dmg builds only for a packaging or build change,
+the msi only for its packaging files, and the iOS device link only for an
+iOS host or build change. The final PR keeps building everything in the
+queue: `pr-scope.yml` builds everything for a `feature/` branch into
+`main`. That is why the plan's branch is named `feature/<topic>`.

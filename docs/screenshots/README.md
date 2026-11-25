@@ -10,10 +10,10 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 
 | Screen | Folder | States |
 |---|---|---|
-| [Account detail](#account-detail) | `account-detail/` | 52 |
-| [Accounts](#accounts) | `accounts/` | 41 |
-| [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 3 |
-| [Activity detail](#activity-detail) | `activity-detail/` | 11 |
+| [Account detail](#account-detail) | `account-detail/` | 74 |
+| [Accounts](#accounts) | `accounts/` | 42 |
+| [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 5 |
+| [Activity detail](#activity-detail) | `activity-detail/` | 15 |
 | [Add on networks (dialog)](#add-on-networks-dialog) | `add-on-networks-dialog/` | 5 |
 | [Add token](#add-token) | `add-token/` | 11 |
 | [Connected dApps](#connections) | `connections/` | 6 |
@@ -28,7 +28,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
 | [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 36 |
 | [Send from another wallet](#handoff) | `handoff/` | 18 |
-| [Import recovery phrase](#mnemonic-import) | `mnemonic-import/` | 12 |
+| [Import phrase or key](#mnemonic-import) | `mnemonic-import/` | 15 |
 | [No account open (wide window)](#no-account-open) | `no-account-open/` | 4 |
 | [Connect a dApp](#pair-dapp) | `pair-dapp/` | 11 |
 | [Per-app addresses](#per-app) | `per-app/` | 12 |
@@ -44,10 +44,10 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Screen capture warning (dialog)](#screen-capture-warning-dialog) | `screen-capture-warning-dialog/` | 3 |
 | [Security](#security) | `security/` | 15 |
 | [Send](#send) | `send/` | 37 |
-| [Settings](#settings) | `settings/` | 29 |
-| [Account detail (simple mode)](#simple-account-detail) | `simple-account-detail/` | 12 |
-| [Home (simple mode)](#simple-accounts) | `simple-accounts/` | 18 |
-| [Home on a tablet (simple mode)](#simple-accounts-tablet) | `simple-accounts-tablet/` | 3 |
+| [Settings](#settings) | `settings/` | 37 |
+| [Account detail (simple mode)](#simple-account-detail) | `simple-account-detail/` | 13 |
+| [Home (simple mode)](#simple-accounts) | `simple-accounts/` | 20 |
+| [Home on a tablet (simple mode)](#simple-accounts-tablet) | `simple-accounts-tablet/` | 5 |
 | [Activity detail (simple mode)](#simple-activity-detail) | `simple-activity-detail/` | 4 |
 | [Add token (simple mode)](#simple-add-token) | `simple-add-token/` | 2 |
 | [CoW order (simple mode)](#simple-cow-order) | `simple-cow-order/` | 3 |
@@ -75,7 +75,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="account-detail"></a>
 ## Account detail
 
-`account-detail/`, 52 states: `assets`, `assets-dark`, `swarm-node`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `per-app-tab-no-network`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`
+`account-detail/`, 74 states: `assets`, `assets-dark`, `swarm-node`, `checking`, `head-too-old`, `by-name-with-impostor`, `safe-assets`, `safe-owners`, `safe-queue`, `safe-queue-dark`, `safe-queue-empty`, `safe-queue-unverified`, `safe-queue-unreadable`, `safe-reading`, `not-a-safe`, `loading`, `list-unavailable`, `ens-name-moved`, `ens-names`, `per-app-address`, `per-app-tab`, `per-app-tab-empty-dark`, `per-app-tab-no-network`, `activity`, `activity-dark`, `waiting-swap`, `waiting-swap-dark`, `activity-empty`, `activity-loading`, `activity-unavailable`, `activity-tokens`, `safe-activity`, `safe-activity-dark`, `narrow`, `safe-queue-reading`, `checking-dark`, `ethereum`, `network-off`, `safe-owners-network-off`, `assets-hidden`, `assets-hidden-dark`, `nfts`, `nfts-unlisted-open-dark`, `nfts-checking`, `nfts-none`, `nft-add`, `nft-add-unavailable`, `nft-adding`, `activity-queued`, `activity-queued-conflict-dark`, `gnosis-pay-owners`, `gnosis-pay-controlled`, `activity-index`, `activity-index-dark`, `activity-index-loading`, `activity-index-loading-more`, `activity-index-checking`, `activity-index-end`, `activity-index-gaps`, `activity-index-left-out`, `activity-index-left-out-dark`, `activity-index-not-in-this-build`, `activity-index-setting-off`, `activity-index-tor`, `activity-index-network-not-served`, `activity-index-checkpoint-alarm`, `activity-index-stale-anchor`, `activity-index-no-engine`, `activity-index-wrong-importer`, `activity-index-rejected`, `activity-index-syncing`, `activity-index-unproven`, `activity-index-paused`, `activity-index-paused-dark`
 
 <a href="account-detail/assets.png"><img src="account-detail/assets.png" width="206" alt="assets"></a>
 <a href="account-detail/assets-dark.png"><img src="account-detail/assets-dark.png" width="206" alt="assets-dark"></a>
@@ -129,11 +129,33 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="account-detail/activity-queued-conflict-dark.png"><img src="account-detail/activity-queued-conflict-dark.png" width="206" alt="activity-queued-conflict-dark"></a>
 <a href="account-detail/gnosis-pay-owners.png"><img src="account-detail/gnosis-pay-owners.png" width="206" alt="gnosis-pay-owners"></a>
 <a href="account-detail/gnosis-pay-controlled.png"><img src="account-detail/gnosis-pay-controlled.png" width="206" alt="gnosis-pay-controlled"></a>
+<a href="account-detail/activity-index.png"><img src="account-detail/activity-index.png" width="206" alt="activity-index"></a>
+<a href="account-detail/activity-index-dark.png"><img src="account-detail/activity-index-dark.png" width="206" alt="activity-index-dark"></a>
+<a href="account-detail/activity-index-loading.png"><img src="account-detail/activity-index-loading.png" width="206" alt="activity-index-loading"></a>
+<a href="account-detail/activity-index-loading-more.png"><img src="account-detail/activity-index-loading-more.png" width="206" alt="activity-index-loading-more"></a>
+<a href="account-detail/activity-index-checking.png"><img src="account-detail/activity-index-checking.png" width="206" alt="activity-index-checking"></a>
+<a href="account-detail/activity-index-end.png"><img src="account-detail/activity-index-end.png" width="206" alt="activity-index-end"></a>
+<a href="account-detail/activity-index-gaps.png"><img src="account-detail/activity-index-gaps.png" width="206" alt="activity-index-gaps"></a>
+<a href="account-detail/activity-index-left-out.png"><img src="account-detail/activity-index-left-out.png" width="206" alt="activity-index-left-out"></a>
+<a href="account-detail/activity-index-left-out-dark.png"><img src="account-detail/activity-index-left-out-dark.png" width="206" alt="activity-index-left-out-dark"></a>
+<a href="account-detail/activity-index-not-in-this-build.png"><img src="account-detail/activity-index-not-in-this-build.png" width="206" alt="activity-index-not-in-this-build"></a>
+<a href="account-detail/activity-index-setting-off.png"><img src="account-detail/activity-index-setting-off.png" width="206" alt="activity-index-setting-off"></a>
+<a href="account-detail/activity-index-tor.png"><img src="account-detail/activity-index-tor.png" width="206" alt="activity-index-tor"></a>
+<a href="account-detail/activity-index-network-not-served.png"><img src="account-detail/activity-index-network-not-served.png" width="206" alt="activity-index-network-not-served"></a>
+<a href="account-detail/activity-index-checkpoint-alarm.png"><img src="account-detail/activity-index-checkpoint-alarm.png" width="206" alt="activity-index-checkpoint-alarm"></a>
+<a href="account-detail/activity-index-stale-anchor.png"><img src="account-detail/activity-index-stale-anchor.png" width="206" alt="activity-index-stale-anchor"></a>
+<a href="account-detail/activity-index-no-engine.png"><img src="account-detail/activity-index-no-engine.png" width="206" alt="activity-index-no-engine"></a>
+<a href="account-detail/activity-index-wrong-importer.png"><img src="account-detail/activity-index-wrong-importer.png" width="206" alt="activity-index-wrong-importer"></a>
+<a href="account-detail/activity-index-rejected.png"><img src="account-detail/activity-index-rejected.png" width="206" alt="activity-index-rejected"></a>
+<a href="account-detail/activity-index-syncing.png"><img src="account-detail/activity-index-syncing.png" width="206" alt="activity-index-syncing"></a>
+<a href="account-detail/activity-index-unproven.png"><img src="account-detail/activity-index-unproven.png" width="206" alt="activity-index-unproven"></a>
+<a href="account-detail/activity-index-paused.png"><img src="account-detail/activity-index-paused.png" width="206" alt="activity-index-paused"></a>
+<a href="account-detail/activity-index-paused-dark.png"><img src="account-detail/activity-index-paused-dark.png" width="206" alt="activity-index-paused-dark"></a>
 
 <a name="accounts"></a>
 ## Accounts
 
-`accounts/`, 41 states: `accounts`, `accounts-dark`, `catching-up`, `head-too-old`, `head-too-old-dark`, `no-accounts`, `no-accounts-syncing`, `no-accounts-syncing-dark`, `no-accounts-stale-anchor`, `create-safe-greyed-out`, `create-safe-reason`, `send-reason`, `loading`, `loading-create-safe-greyed-out`, `list-set-aside`, `upgrade-ahead`, `upgrade-activated-dark`, `list-unavailable`, `catching-up-dark`, `narrow`, `ens-names`, `three-networks`, `three-networks-dark`, `one-network-catching-up`, `network-off`, `network-off-dark`, `send-needs-network`, `network-blocked`, `no-rate-on-a-network`, `network-blocked-dark`, `stale-anchor`, `stale-anchor-dark`, `stale-anchor-dialog`, `stale-anchor-fetching`, `stale-anchor-unconfirmed`, `stale-anchor-refused`, `hidden`, `hidden-dark`, `queued`, `queued-dark`, `lost-queued`
+`accounts/`, 42 states: `accounts`, `accounts-dark`, `catching-up`, `head-too-old`, `head-too-old-dark`, `no-accounts`, `no-accounts-syncing`, `no-accounts-syncing-dark`, `no-accounts-stale-anchor`, `create-safe-greyed-out`, `create-safe-reason`, `send-reason`, `derive-bare-key-reason`, `loading`, `loading-create-safe-greyed-out`, `list-set-aside`, `upgrade-ahead`, `upgrade-activated-dark`, `list-unavailable`, `catching-up-dark`, `narrow`, `ens-names`, `three-networks`, `three-networks-dark`, `one-network-catching-up`, `network-off`, `network-off-dark`, `send-needs-network`, `network-blocked`, `no-rate-on-a-network`, `network-blocked-dark`, `stale-anchor`, `stale-anchor-dark`, `stale-anchor-dialog`, `stale-anchor-fetching`, `stale-anchor-unconfirmed`, `stale-anchor-refused`, `hidden`, `hidden-dark`, `queued`, `queued-dark`, `lost-queued`
 
 <a href="accounts/accounts.png"><img src="accounts/accounts.png" width="206" alt="accounts"></a>
 <a href="accounts/accounts-dark.png"><img src="accounts/accounts-dark.png" width="206" alt="accounts-dark"></a>
@@ -147,6 +169,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="accounts/create-safe-greyed-out.png"><img src="accounts/create-safe-greyed-out.png" width="206" alt="create-safe-greyed-out"></a>
 <a href="accounts/create-safe-reason.png"><img src="accounts/create-safe-reason.png" width="206" alt="create-safe-reason"></a>
 <a href="accounts/send-reason.png"><img src="accounts/send-reason.png" width="206" alt="send-reason"></a>
+<a href="accounts/derive-bare-key-reason.png"><img src="accounts/derive-bare-key-reason.png" width="206" alt="derive-bare-key-reason"></a>
 <a href="accounts/loading.png"><img src="accounts/loading.png" width="206" alt="loading"></a>
 <a href="accounts/loading-create-safe-greyed-out.png"><img src="accounts/loading-create-safe-greyed-out.png" width="206" alt="loading-create-safe-greyed-out"></a>
 <a href="accounts/list-set-aside.png"><img src="accounts/list-set-aside.png" width="206" alt="list-set-aside"></a>
@@ -180,16 +203,18 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="accounts-tablet"></a>
 ## Accounts on a tablet
 
-`accounts-tablet/`, 3 states: `account-open`, `account-open-dark`, `no-account-open`
+`accounts-tablet/`, 5 states: `account-open`, `account-open-dark`, `no-account-open`, `activity-detail-open`, `activity-detail-open-dark`
 
 <a href="accounts-tablet/account-open.png"><img src="accounts-tablet/account-open.png" width="640" alt="account-open"></a>
 <a href="accounts-tablet/account-open-dark.png"><img src="accounts-tablet/account-open-dark.png" width="640" alt="account-open-dark"></a>
 <a href="accounts-tablet/no-account-open.png"><img src="accounts-tablet/no-account-open.png" width="640" alt="no-account-open"></a>
+<a href="accounts-tablet/activity-detail-open.png"><img src="accounts-tablet/activity-detail-open.png" width="640" alt="activity-detail-open"></a>
+<a href="accounts-tablet/activity-detail-open-dark.png"><img src="accounts-tablet/activity-detail-open-dark.png" width="640" alt="activity-detail-open-dark"></a>
 
 <a name="activity-detail"></a>
 ## Activity detail
 
-`activity-detail/`, 11 states: `sent`, `sent-dark`, `unconfirmed`, `unlisted-token`, `safe-event`, `loading`, `unavailable`, `unfamiliar-sender`, `hidden`, `hidden-dark`, `eth-logged`
+`activity-detail/`, 15 states: `sent`, `sent-dark`, `unconfirmed`, `unlisted-token`, `safe-event`, `loading`, `unavailable`, `unfamiliar-sender`, `hidden`, `hidden-dark`, `eth-logged`, `index-row`, `index-row-dark`, `index-row-refused`, `index-row-try-again`
 
 <a href="activity-detail/sent.png"><img src="activity-detail/sent.png" width="206" alt="sent"></a>
 <a href="activity-detail/sent-dark.png"><img src="activity-detail/sent-dark.png" width="206" alt="sent-dark"></a>
@@ -202,6 +227,10 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="activity-detail/hidden.png"><img src="activity-detail/hidden.png" width="206" alt="hidden"></a>
 <a href="activity-detail/hidden-dark.png"><img src="activity-detail/hidden-dark.png" width="206" alt="hidden-dark"></a>
 <a href="activity-detail/eth-logged.png"><img src="activity-detail/eth-logged.png" width="206" alt="eth-logged"></a>
+<a href="activity-detail/index-row.png"><img src="activity-detail/index-row.png" width="206" alt="index-row"></a>
+<a href="activity-detail/index-row-dark.png"><img src="activity-detail/index-row-dark.png" width="206" alt="index-row-dark"></a>
+<a href="activity-detail/index-row-refused.png"><img src="activity-detail/index-row-refused.png" width="206" alt="index-row-refused"></a>
+<a href="activity-detail/index-row-try-again.png"><img src="activity-detail/index-row-try-again.png" width="206" alt="index-row-try-again"></a>
 
 <a name="add-on-networks-dialog"></a>
 ## Add on networks (dialog)
@@ -506,9 +535,9 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="handoff/cannot.png"><img src="handoff/cannot.png" width="206" alt="cannot"></a>
 
 <a name="mnemonic-import"></a>
-## Import recovery phrase
+## Import phrase or key
 
-`mnemonic-import/`, 12 states: `checking`, `new-password`, `new-password-dark`, `password-hint`, `wrong-password`, `invalid-words`, `not-enough-memory`, `importing`, `key-store-unavailable`, `imported`, `imported-stepped-down`, `no-network`
+`mnemonic-import/`, 15 states: `checking`, `new-password`, `new-password-dark`, `password-hint`, `wrong-password`, `invalid-words`, `not-enough-memory`, `importing`, `key-store-unavailable`, `imported`, `imported-stepped-down`, `no-network`, `private-key`, `private-key-dark`, `invalid-key`
 
 <a href="mnemonic-import/checking.png"><img src="mnemonic-import/checking.png" width="206" alt="checking"></a>
 <a href="mnemonic-import/new-password.png"><img src="mnemonic-import/new-password.png" width="206" alt="new-password"></a>
@@ -522,6 +551,9 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="mnemonic-import/imported.png"><img src="mnemonic-import/imported.png" width="206" alt="imported"></a>
 <a href="mnemonic-import/imported-stepped-down.png"><img src="mnemonic-import/imported-stepped-down.png" width="206" alt="imported-stepped-down"></a>
 <a href="mnemonic-import/no-network.png"><img src="mnemonic-import/no-network.png" width="206" alt="no-network"></a>
+<a href="mnemonic-import/private-key.png"><img src="mnemonic-import/private-key.png" width="206" alt="private-key"></a>
+<a href="mnemonic-import/private-key-dark.png"><img src="mnemonic-import/private-key-dark.png" width="206" alt="private-key-dark"></a>
+<a href="mnemonic-import/invalid-key.png"><img src="mnemonic-import/invalid-key.png" width="206" alt="invalid-key"></a>
 
 <a name="no-account-open"></a>
 ## No account open (wide window)
@@ -832,7 +864,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="settings"></a>
 ## Settings
 
-`settings/`, 29 states: `synced`, `synced-dark`, `starting`, `unreadable`, `head-too-old`, `head-too-old-dark`, `debug-build`, `debug-build-capture-allowed`, `debug-screen`, `debug-screen-not-saved`, `idle`, `network-not-saved`, `turn-off`, `stale-anchor`, `checkpoint-applied`, `detailed-view`, `detailed-view-not-saved`, `connections-off`, `sign-while-syncing`, `sign-while-syncing-dark`, `sign-while-syncing-queued`, `sign-while-syncing-not-saved`, `metered-allowed`, `metered-paused`, `metered-not-reported`, `metered-not-reported-dark`, `metered-unreadable`, `metered-not-saved`, `metered-set-aside`
+`settings/`, 37 states: `synced`, `synced-dark`, `starting`, `unreadable`, `head-too-old`, `head-too-old-dark`, `debug-build`, `debug-build-capture-allowed`, `debug-screen`, `debug-screen-not-saved`, `idle`, `network-not-saved`, `turn-off`, `stale-anchor`, `checkpoint-applied`, `detailed-view`, `detailed-view-not-saved`, `connections-off`, `sign-while-syncing`, `sign-while-syncing-dark`, `sign-while-syncing-queued`, `sign-while-syncing-not-saved`, `metered-allowed`, `metered-paused`, `metered-not-reported`, `metered-not-reported-dark`, `metered-unreadable`, `metered-not-saved`, `metered-set-aside`, `address-index-no-key`, `address-index-no-key-dark`, `address-index-no-reader`, `address-index-reader-not-known`, `address-index-on`, `address-index-turn-off`, `address-index-turn-off-dark`, `address-index-set-aside`
 
 <a href="settings/synced.png"><img src="settings/synced.png" width="206" alt="synced"></a>
 <a href="settings/synced-dark.png"><img src="settings/synced-dark.png" width="206" alt="synced-dark"></a>
@@ -863,11 +895,19 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="settings/metered-unreadable.png"><img src="settings/metered-unreadable.png" width="206" alt="metered-unreadable"></a>
 <a href="settings/metered-not-saved.png"><img src="settings/metered-not-saved.png" width="206" alt="metered-not-saved"></a>
 <a href="settings/metered-set-aside.png"><img src="settings/metered-set-aside.png" width="206" alt="metered-set-aside"></a>
+<a href="settings/address-index-no-key.png"><img src="settings/address-index-no-key.png" width="206" alt="address-index-no-key"></a>
+<a href="settings/address-index-no-key-dark.png"><img src="settings/address-index-no-key-dark.png" width="206" alt="address-index-no-key-dark"></a>
+<a href="settings/address-index-no-reader.png"><img src="settings/address-index-no-reader.png" width="206" alt="address-index-no-reader"></a>
+<a href="settings/address-index-reader-not-known.png"><img src="settings/address-index-reader-not-known.png" width="206" alt="address-index-reader-not-known"></a>
+<a href="settings/address-index-on.png"><img src="settings/address-index-on.png" width="206" alt="address-index-on"></a>
+<a href="settings/address-index-turn-off.png"><img src="settings/address-index-turn-off.png" width="206" alt="address-index-turn-off"></a>
+<a href="settings/address-index-turn-off-dark.png"><img src="settings/address-index-turn-off-dark.png" width="206" alt="address-index-turn-off-dark"></a>
+<a href="settings/address-index-set-aside.png"><img src="settings/address-index-set-aside.png" width="206" alt="address-index-set-aside"></a>
 
 <a name="simple-account-detail"></a>
 ## Account detail (simple mode)
 
-`simple-account-detail/`, 12 states: `assets`, `assets-dark`, `last-verified`, `syncing`, `activity`, `waiting-swap`, `safe`, `network-off`, `hidden`, `hidden-dark`, `nfts`, `activity-queued`
+`simple-account-detail/`, 13 states: `assets`, `assets-dark`, `last-verified`, `syncing`, `activity`, `waiting-swap`, `safe`, `network-off`, `hidden`, `hidden-dark`, `nfts`, `activity-queued`, `activity-index`
 
 <a href="simple-account-detail/assets.png"><img src="simple-account-detail/assets.png" width="206" alt="assets"></a>
 <a href="simple-account-detail/assets-dark.png"><img src="simple-account-detail/assets-dark.png" width="206" alt="assets-dark"></a>
@@ -881,11 +921,12 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="simple-account-detail/hidden-dark.png"><img src="simple-account-detail/hidden-dark.png" width="206" alt="hidden-dark"></a>
 <a href="simple-account-detail/nfts.png"><img src="simple-account-detail/nfts.png" width="206" alt="nfts"></a>
 <a href="simple-account-detail/activity-queued.png"><img src="simple-account-detail/activity-queued.png" width="206" alt="activity-queued"></a>
+<a href="simple-account-detail/activity-index.png"><img src="simple-account-detail/activity-index.png" width="206" alt="activity-index"></a>
 
 <a name="simple-accounts"></a>
 ## Home (simple mode)
 
-`simple-accounts/`, 18 states: `everyday`, `everyday-dark`, `refreshing`, `syncing`, `unreachable`, `live`, `stale-anchor`, `empty`, `empty-syncing`, `empty-stale-anchor`, `loading`, `set-aside`, `list-unavailable`, `hidden`, `hidden-dark`, `queued`, `queued-dark`, `lost-queued`
+`simple-accounts/`, 20 states: `everyday`, `everyday-dark`, `refreshing`, `syncing`, `unreachable`, `live`, `stale-anchor`, `network-off`, `needs-update`, `empty`, `empty-syncing`, `empty-stale-anchor`, `loading`, `set-aside`, `list-unavailable`, `hidden`, `hidden-dark`, `queued`, `queued-dark`, `lost-queued`
 
 <a href="simple-accounts/everyday.png"><img src="simple-accounts/everyday.png" width="206" alt="everyday"></a>
 <a href="simple-accounts/everyday-dark.png"><img src="simple-accounts/everyday-dark.png" width="206" alt="everyday-dark"></a>
@@ -894,6 +935,8 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="simple-accounts/unreachable.png"><img src="simple-accounts/unreachable.png" width="206" alt="unreachable"></a>
 <a href="simple-accounts/live.png"><img src="simple-accounts/live.png" width="206" alt="live"></a>
 <a href="simple-accounts/stale-anchor.png"><img src="simple-accounts/stale-anchor.png" width="206" alt="stale-anchor"></a>
+<a href="simple-accounts/network-off.png"><img src="simple-accounts/network-off.png" width="206" alt="network-off"></a>
+<a href="simple-accounts/needs-update.png"><img src="simple-accounts/needs-update.png" width="206" alt="needs-update"></a>
 <a href="simple-accounts/empty.png"><img src="simple-accounts/empty.png" width="206" alt="empty"></a>
 <a href="simple-accounts/empty-syncing.png"><img src="simple-accounts/empty-syncing.png" width="206" alt="empty-syncing"></a>
 <a href="simple-accounts/empty-stale-anchor.png"><img src="simple-accounts/empty-stale-anchor.png" width="206" alt="empty-stale-anchor"></a>
@@ -909,11 +952,13 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="simple-accounts-tablet"></a>
 ## Home on a tablet (simple mode)
 
-`simple-accounts-tablet/`, 3 states: `account-open`, `account-open-dark`, `no-account-open`
+`simple-accounts-tablet/`, 5 states: `account-open`, `account-open-dark`, `no-account-open`, `activity-detail-open`, `activity-detail-open-dark`
 
 <a href="simple-accounts-tablet/account-open.png"><img src="simple-accounts-tablet/account-open.png" width="640" alt="account-open"></a>
 <a href="simple-accounts-tablet/account-open-dark.png"><img src="simple-accounts-tablet/account-open-dark.png" width="640" alt="account-open-dark"></a>
 <a href="simple-accounts-tablet/no-account-open.png"><img src="simple-accounts-tablet/no-account-open.png" width="640" alt="no-account-open"></a>
+<a href="simple-accounts-tablet/activity-detail-open.png"><img src="simple-accounts-tablet/activity-detail-open.png" width="640" alt="activity-detail-open"></a>
+<a href="simple-accounts-tablet/activity-detail-open-dark.png"><img src="simple-accounts-tablet/activity-detail-open-dark.png" width="640" alt="activity-detail-open-dark"></a>
 
 <a name="simple-activity-detail"></a>
 ## Activity detail (simple mode)

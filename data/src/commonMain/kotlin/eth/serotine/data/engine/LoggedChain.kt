@@ -16,6 +16,10 @@ import kotlin.time.TimeSource
  * is recorded and thrown on. A verified revert is an answer, and so is a status read of an
  * engine still starting. Nothing is built for a request the log would not keep.
  *
+ * With [history], it is also that chain's address history ([AddressHistoryChain]): its page and
+ * check requests are written the same way (`addressHistoryJson`, `verifyAddressHistoryJson`), and
+ * its build check (`supportsAddressHistory`, no I/O) is not. Without one, it is asked none of it.
+ *
  * What it records is public chain data and this node's own requests: addresses, calls, signed
  * transactions (public once broadcast) and the engine's answers. No key ever reaches a chain.
  */
@@ -23,7 +27,8 @@ internal class LoggedChain(
     private val inner: EngineChain,
     private val log: LogSink,
     private val timeSource: TimeSource = TimeSource.Monotonic,
-) : EngineChain {
+    private val history: AddressHistoryChain? = null,
+) : EngineChain, AddressHistoryChain {
 
     override fun snapshot(): EngineSnapshot =
         request("status", { "" }, ::notRunning) { inner.snapshot() }
@@ -133,6 +138,21 @@ internal class LoggedChain(
 
     override fun logs(filterJson: String): String? =
         request("getLogs", { "filter=$filterJson" }, ::jsonAnswered) { inner.logs(filterJson) }
+
+    override fun supportsAddressHistory(): Boolean? = addressHistory().supportsAddressHistory()
+
+    override fun addressHistory(address: String, optionsJson: String): String? =
+        request("addressHistoryJson", { "address=$address, options=$optionsJson" }, ::jsonAnswered) {
+            addressHistory().addressHistory(address, optionsJson)
+        }
+
+    override fun verifyAddressHistory(address: String, entriesJson: String): String? =
+        request("verifyAddressHistoryJson", { "address=$address, entries=$entriesJson" }, ::jsonAnswered) {
+            addressHistory().verifyAddressHistory(address, entriesJson)
+        }
+
+    private fun addressHistory(): AddressHistoryChain =
+        checkNotNull(history) { "this logged chain was given no address history" }
 
     /**
      * [block], the request [name], recorded with what [failure] says of its answer: null when it

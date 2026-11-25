@@ -1,33 +1,32 @@
 name: Desktop DMG (macOS)
 
 on:
-  # Scope push to main + release tags so a branch push that also has an open PR
-  # doesn't build twice (the PR is covered by pull_request below). Tags still
-  # build the release .dmg.
+  # Scope push to main + release tags: a branch builds the dmg only in the
+  # merge queue or on dispatch. Tags still build the release .dmg.
   push:
     branches: [ "main" ]
     tags: [ "v*" ]
-  # pull_request stays unscoped (any base branch) so every PR shows this
-  # workflow's checks — but the JOBS below skip a PR whose base is not main
-  # (CLAUDE.md, "Multi-PR plans"): a part PR of a multi-PR plan targets its
-  # feature branch, and a macOS runner leg per part costs more than it tells;
-  # the final feature → main PR builds everything. A part that needs a dmg can
-  # run this on demand from the Actions tab (workflow_dispatch): the same single
-  # arm64 leg a PR builds; dispatched on a v* tag it builds both legs and
-  # republishes them.
-  # A PR into main builds the dmg only when it changes the desktop packaging or
+  # The dmg is built in the merge queue, not on a PR (owner's request,
+  # 2026-11-25): the queue tests the commit that lands on main, and holds the PR
+  # out of main until it builds. pull_request stays, unscoped (any base branch),
+  # so every PR shows this workflow's check as skipped, which the queue's
+  # ruleset takes as passed; a check that is absent it would wait for. A PR
+  # that needs a dmg before it is queued can run this on demand from the
+  # Actions tab (workflow_dispatch): the same single arm64 leg the queue
+  # builds; dispatched on a v* tag it builds both legs and republishes them.
+  # A queue entry builds the dmg only when it changes the desktop packaging or
   # the build (pr-scope.yml's `dmg` output; owner's request, 2026-11-18). Its
   # failures on PRs until then were compile errors Build and Test reports too,
   # PRs that changed the build (#182, #298, #301), and the macOS UI tests
-  # (#152), which ios.yml now runs on every PR that changes code. main builds
-  # it on every push, and the label `full-ci` on a PR builds it too. Scoped in
-  # the review gate's `if`, not by trigger paths as desktop-windows-msi.yml is,
-  # so the label can override it.
+  # (#152), which ios.yml runs on every PR that changes code. main builds it on
+  # every push, and the label `full-ci` on the PR builds it in the queue too.
   pull_request:
+  merge_group:
   workflow_dispatch:
 
-# Cancel a superseded run when new commits land on the same branch/PR (each of
-# the arch jobs is cancelled/restarted together). The event is part of the
+# Cancel a superseded run when new commits land on the same branch (each of
+# the arch jobs is cancelled/restarted together; each queue entry has a branch
+# of its own). The event is part of the
 # group because a dispatch shares refs with push runs: without it, a dispatch
 # on main cancels an in-flight merge-to-main run, and one on a v* tag cancels
 # that tag's run mid-release-upload.
@@ -36,33 +35,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # What the PR changes (pr-scope.yml). Every output is 'true' on every event but pull_request.
+  # What the queue entry changes (pr-scope.yml). Every output is 'true' on every event but
+  # pull_request and merge_group. Not run on a PR, where nothing below builds.
   scope:
     name: PR scope
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/pr-scope.yml
     permissions:
+      contents: read
       pull-requests: read
 
-  # Holds the builds until this PR's Claude review has finished, so the macOS
-  # jpackage legs do not build a commit the review might still ask to change. It
-  # passes straight through on every other event — see wait-for-claude-review.yml.
-  review-gate:
-    name: Review gate
-    # Everything below needs this job, so skipping it here skips the build legs
-    # too — and on a tag the release uploads. So an `if:` on this job MUST be
-    # true on every non-pull_request event; the safe tests are the PR's base
-    # branch and pr-scope.yml's outputs, which are 'true' on every other event.
-    # `!= 'false'`: a scope job that failed leaves the output empty, and empty
-    # builds. `!cancelled()` runs this job after a failed scope job; the jobs
-    # behind it rely on pr-scope.yml's continue-on-error.
-    needs: scope
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.base_ref == 'main' && needs.scope.outputs.dmg != 'false')) }}
-    uses: ./.github/workflows/wait-for-claude-review.yml
-    permissions:
-      actions: read
-
   build:
-    needs: review-gate
+    needs: scope
+    # Everything below needs this job, so skipping it skips the release upload
+    # on a tag. So this `if:` MUST be true on every event but pull_request and
+    # merge_group; pr-scope.yml's outputs are 'true' there. `!= 'false'`: a
+    # scope job that failed leaves the output empty, and empty builds.
+    # `!cancelled()` runs this job after a failed scope job; the jobs behind it
+    # rely on pr-scope.yml's continue-on-error.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.scope.outputs.dmg != 'false' }}
     name: Build macOS .dmg (${{ matrix.arch }})
     # jpackage bundles a single-architecture JRE and can't emit a universal binary, so one
     # .dmg per arch. jpackage stamps the .app with the architecture of the JDK it runs under,
@@ -77,15 +68,15 @@ jobs:
     # configuration 'macos-14-arm64-us-default' is not supported", 2026-11-06).
     strategy:
       fail-fast: false
-      # PRs — and a dispatch on a branch, which stands in for the PR leg a part
-      # PR into a feature branch skips — build only the arm64 dmg (the arch
-      # developers actually run; proves jpackage end-to-end). The x64/Rosetta
+      # The merge queue — and a dispatch on a branch, which stands in for it
+      # before a PR is queued — builds only the arm64 dmg (the arch developers
+      # actually run; proves jpackage end-to-end). The x64/Rosetta
       # leg is a release/main artifact, so a dispatch ON A TAG (the
       # release-republish path, whose release job needs both dmgs) builds it
       # too. Gated HERE via a conditional matrix, NOT a job-level `if`: the
       # matrix context is unavailable in job-level if.
       matrix:
-        include: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')))
+        include: ${{ (github.event_name == 'merge_group' || (github.event_name == 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')))
           && fromJSON('[{"arch":"arm64","java-arch":"aarch64"}]')
           || fromJSON('[{"arch":"arm64","java-arch":"aarch64"},{"arch":"x64","java-arch":"x64"}]') }}
     runs-on: macos-15
@@ -100,9 +91,8 @@ jobs:
         with:
           # Full history: :ui stamps the app's on-screen version from the nearest
           # v* tag, and `git tag --merged HEAD` needs HEAD's history to REACH that tag.
-          # KNOWN GAP on pull_request: the checkout is the ephemeral merge commit,
-          # so a PR-built artifact stamps a sha that resolves nowhere (see
-          # android-apk.yml).
+          # In the merge queue, checkout defaults to the commit the queue tests,
+          # which is the commit that lands on main.
           fetch-depth: 0
 
       # Rosetta 2 lets the x86_64 JDK (and the jlink/jpackage it drives) execute on the
@@ -241,6 +231,27 @@ jobs:
           # Artifacts are immutable per run; without this, "re-run all jobs" on a
           # tag 409s in every build leg and the release job never runs.
           overwrite: true
+
+  # The one check the merge queue's ruleset requires of this workflow. A
+  # skipped matrix job reports under its unexpanded name (`Build macOS .dmg
+  # (${{ matrix.arch }})`, as on every PR), a built one as `Build macOS .dmg
+  # (arm64)`, so neither name can be required. This job's can: it passes when
+  # the legs passed or were skipped, and fails when one failed or was cancelled.
+  result:
+    name: macOS .dmg result
+    needs: build
+    # always(), not !cancelled(): a cancelled run would skip this job, and the
+    # ruleset takes a skipped check as passed.
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: The legs' result
+        env:
+          RESULT: ${{ needs.build.result }}
+        run: |
+          echo "The dmg legs: $RESULT"
+          [ "$RESULT" = success ] || [ "$RESULT" = skipped ]
 
   # Refuse to publish when the pushed tag disagrees with the version in the tree
   # — the release is named after the tag, while the .dmg's packageVersion comes

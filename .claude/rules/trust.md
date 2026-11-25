@@ -23,9 +23,13 @@ the contract for keys.
 - **Peer-trusted is never an option.** Everything the wallet shows about the
   chain is cryptographically verified by the embedded Myotis engine, or shown
   as not available. The engine's only trust anchors are sync-committee
-  signatures and its embedded accumulators.
+  signatures and its embedded accumulators, and, in the Myotis releases that
+  carry its rule D1 (owner's decision there, 2026-11-20, Myotis #900), its
+  bundled checkpoint table: the hash of every 1024th block, which verifies a
+  block deeper than the light client's window.
 - No JSON-RPC provider, no indexer API and no "temporary" fallback supplies
-  chain state, in any build type.
+  chain state, in any build type. One bounded exception, below: the addr1
+  index's rows, each verified before it is shown.
 - **One older answer is shown, labelled as one** (owner's request,
   2026-10-19; docs/wallet-ux.md). While no verified head is fresh enough to
   read at, a balance the light client proved earlier (in this run, or kept
@@ -96,6 +100,33 @@ docs/lenient-mode.md, which has the detail.)
 - **A network that is off is not syncing.** Its actions stay greyed out with
   "Turn on" as the way to get them, in either mode: nothing is drafted on
   it.
+
+## The addr1 history: every row verified, its completeness on the importer's word
+
+(Owner ruling, 2026-11-21, #334, and the owner's decisions of that day on
+#335; `.claude/rules/data-sources.md`, *The history may also take the addr1
+index from Swarm*.)
+
+- An addr1 entry is shown only once the engine verified it against verified
+  chain data. For a block deeper than the light client's window that rests on
+  Myotis's checkpoint table (rule D1, above). Nothing about the chain is
+  taken from the index's word.
+- What the index alone vouches for is that no entry is missing: the
+  completeness of the list. That rests on the importer key pinned in the
+  release, and the list says so. A contradicted entry is a warning against
+  that key, said in plain words.
+- When the engine raises its checkpoint table's alarm (the table and the
+  beacon chain disagree, Myotis's `StatusSnapshot.checkpointAlarm`), every
+  read resting on the table is refused. The app shows the alarm, and what
+  is kept of the lists (below) is deleted: for now when a read meets the
+  alarm, as for the rows shown; #363 brings the alarm itself into the app.
+- **A row verified earlier may be shown again without a new check** (owner's
+  request, 2026-11-25: "The results will never change. So it's ok to store
+  them locally"). How it is applied, not part of the request: only a row of
+  a block the beacon chain had finalized when it was verified, since a
+  finalized block cannot change, and neither can the engine's verdict on
+  it. The index is read again at a block whose verdict was not final yet.
+  A row's detail still checks its entry anew.
 
 ## Past the weak-subjectivity window only on the user's word
 
@@ -260,9 +291,11 @@ carve-out of 2026-11-10 and its rulings of 2026-11-11 and 2026-11-13 on #761;
 actions below, and how a chequebook and a batch are found. The detail is
 docs/swarm.md's, which is the contract.)
 
-- **A node's account is watched.** No `swarm.key` and no raw key is
-  imported. Where the node's address is an account held here, its key signs
-  what only the node may sign.
+- **A node's account is watched.** No `swarm.key` is imported, and the
+  Swarm screens import no key. Where the node's address is an account held
+  here, its key signs what only the node may sign. Its key may be imported
+  in hex on the import screen like any key (owner ruling, 2026-11-25,
+  amending "no raw key is imported" of 2026-11-23).
 - **Recognised on chain.** An EOA on Gnosis Chain is a Swarm node when a
   chequebook or a postage batch is proven its own, with verified calls at
   one block. A chequebook: its code hashes to the pinned EIP-1167 proxy of
@@ -368,7 +401,7 @@ port that takes a request and returns a signature. The UI never touches a key.
 
 Each exception is an owner ruling, dated here, with its conditions in
 docs/keys-and-signing.md. A case not on the list follows the rule. Adding one
-is the owner's decision, never a PR author's. Today the list has one entry:
+is the owner's decision, never a PR author's. Today the list has two entries:
 
 - **The mnemonic screens** (owner ruling, 2026-10-15): the backup words shown
   at creation, and the words typed at restore.
@@ -387,6 +420,26 @@ is the owner's decision, never a PR author's. Today the list has one entry:
     stays under the rule above.
   - Open, the owner's to decide: whether Create account, one screen using
     both legs of the path, is within the entry (#40).
+- **A private key typed in hex** (owner ruling, 2026-11-25), on the import
+  screen, instead of a seed phrase; docs/keys-and-signing.md, *Importing a
+  private key*.
+  - It travels only as the dedicated `PrivateKey` type with a redacted
+    `toString()`, one way: typed on the import screen, through its ViewModel
+    and a use case, into the key store. It never goes back: it is never
+    shown or exported.
+  - Nothing on that path stores, logs or caches it. The input is cleared
+    when the screen is left, as the words are (the entry above).
+  - The key store checks it (64 hex digits, an optional `0x`, a valid
+    secp256k1 key) and seals it in an envelope of its own under the wallet
+    password and the device's hardware secret, as every key is.
+  - Such an account has no seed: New account from the same phrase and
+    per-app addresses are greyed out for it, a tap saying why.
+  - For per-app addresses (owner's decision, 2026-11-25, on PR #376): a
+    per-app address is made from a phrase the user picks, not from an
+    account, so a bare key is left out of the phrases offered, not listed
+    greyed out. Where no phrase is held, the dApp connection's new per-app
+    address is greyed out, its reason naming the keys imported on their own.
+    New account from the same phrase is greyed out on the account itself.
 
 ### Privacy Pools note secrets are key material
 
@@ -450,8 +503,8 @@ This is the summary a reviewer holds a diff against.
   per-use Class 3 biometric authorization. Disabling it deletes that key.
   Weak biometrics never qualify.
 - **The plaintext key exists only inside the key-store adapter**, creation
-  and import included (the mnemonic words leave it only under the exception
-  above). In signing it exists only inside the call, in native code, as a
+  and import included (the mnemonic words leave it, and a typed private key
+  reaches it, only under the exceptions above). In signing it exists only inside the call, in native code, as a
   byte array zeroed afterwards. The ciphertext is excluded from cloud backup
   AND from device-to-device transfer.
 - **A Safe may be owned by a hardware P-256 key directly.** Such a key is

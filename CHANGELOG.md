@@ -21,6 +21,30 @@ and issues of this repository.
   then link your activity. The signing screen names the address's site and
   warns when a sign-in is for another site (#252; #297, #311, #313, #326,
   #328, #329, #330).
+- Add an account from its private key: Import phrase or key (formerly
+  Import recovery phrase) now asks for a seed phrase or a private key, 64 hex
+  digits with or without 0x. The key is checked, then sealed on this device
+  under the wallet password like every key, and never shown again. Such an
+  account has no recovery phrase, so New account from the same phrase and
+  per-app addresses are not offered for it; only the key brings it back.
+- Account history from the addr1 index (desktop and Android, experimental,
+  on by default in Settings → Experimental): an account's Activity also lists its
+  older transactions from the addr1 address index on Swarm, each entry
+  checked against the chain before it is shown, one by one as the list
+  scrolls. Which entries the index holds rests on its importer, whose key the
+  release pins and the list names; the list says what the index does not
+  cover, how many entries it left out, and warns when the chain contradicts
+  one. The engine's Swarm reader comes with Myotis 0.1.23; with an engine
+  without it, the setting is greyed out, saying so (#334). What was read is
+  kept between runs: opening an account's Activity again shows its verified
+  rows at once and reads only the newer entries, which come in at the top.
+  Only rows of finalized blocks are kept; the newest blocks, and any range
+  Swarm did not deliver, are read again.
+- Activity at a glance: the rows are grouped by day under a heading
+  ("Today", "Yesterday", then the date), each with its time in your time
+  zone; a green arrow for value in and a red one for value out, and the
+  amount on the right, signed and shortened for reading ("+250 USDC",
+  "−0.25 ETH", "1.23M"). The exact amount stays in the row's detail.
 - Buy an exact amount: type the amount to buy, on Uniswap or CoW, and the
   swap buys exactly that for at most its estimate plus your tolerance. The
   first screen says what it would cost, and when your balance cannot cover
@@ -58,6 +82,15 @@ and issues of this repository.
 
 ### Changed
 
+- The embedded Myotis engine is 0.1.23 (was 0.1.21-rc1). It brings the
+  engine's address history with its Swarm reader on the desktop and Android,
+  the mainnet checkpoint table up to block 26,485,995, and the embedded
+  checkpoints of 2026-11-24 for Ethereum, Gnosis Chain and Sepolia. The
+  reader runs only on a read, while an account's Activity is open with the
+  addr1 setting on; it adds about 11 MB to the Android app, which carries
+  the engine for two processor types. The reader runs inside the app: a
+  crash of the reader on what a Swarm peer sends ends the app, a limit Myotis
+  accepts for now (freedom-hq/ant#271).
 - A CoW order no longer depends on Uniswap: its minimum is CoW's own
   estimate less your tolerance, and every pair CoW quotes is offered. The
   review says the minimum rests on CoW's estimate, which is not checked on

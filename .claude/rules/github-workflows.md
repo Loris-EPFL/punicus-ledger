@@ -1,5 +1,5 @@
 ---
-description: "The invariants of the GitHub workflows and scripts: unscoped PR triggers, the artifact builds' base-branch skip, the Claude reviewer and what it reads, how fork PRs are reviewed, the release guards, the minSdk check."
+description: "The invariants of the GitHub workflows and scripts: unscoped PR triggers, the image builds in the merge queue, the queue's required checks, the Claude reviewer and what it reads, how fork PRs are reviewed, the release guards, the minSdk check."
 paths:
   - ".github/**/*"
   - "scripts/**/*"
@@ -18,41 +18,76 @@ two repositories in step when one changes.
   branch). A part PR of a multi-PR plan targets its feature branch and still
   needs Build and Test (`ci.yml`) and the Claude review. Do not narrow them
   to `main`.
-- **The artifact builds are the exception** (owner ruling, 2026-10-09): the
-  Android APKs, the macOS dmg and the Windows msi skip a PR whose base is not
-  `main`, through a job-level `if`, so the checks show as skipped, not
-  absent. Why, what a part PR does about it, and what a retargeted PR must
-  do: `.claude/skills/feature-branch/SKILL.md`, *What the workflows do with
-  part PRs*.
-- **On a PR, the macOS and APK builds run only where they can tell
-  something** (owner's request, 2026-11-18). `pr-scope.yml` lists the
-  PR's files. A PR of docs alone skips the iOS jobs and the APKs. The dmg
-  builds only for a change to the desktop packaging or the build. The iOS
-  device link runs only for a change to the iOS host or the build. `main`
-  builds everything on every push, and so does the final PR of a multi-PR
-  plan (a `feature/` branch into `main`). Build and Test and the Screenshots
-  workflow run on every PR. The desktop UI tests on macOS moved from the dmg
-  leg to ios.yml's targets job, so they still run on every PR that changes
-  code; on a tag they still run in the dmg leg, before the upload.
-- **The label `full-ci` turns this scoping off**: a PR into `main` then
-  builds the iOS jobs, the dmg and the APKs whatever it changes. Add it, then
-  push or use *Re-run all jobs* (*Re-run failed jobs* leaves a skipped job
-  skipped). It does not lift the base-branch skip above, and it does not
-  reach the msi (path-filtered by its trigger) or the deb (no PR trigger).
+- **The image builds run in the merge queue, not on a PR** (owner's request,
+  2026-11-25): the Android APKs, the macOS dmg, the Windows msi and the iOS
+  app (ios.yml's `app` job). A job-level `if` skips them on every PR, so
+  their checks show as skipped, not absent. They run on `merge_group`, on
+  `main`, on `v*` tags and on dispatch. This takes in the base-branch skip
+  of the owner ruling of 2026-10-09: a part PR builds no image, and the
+  final PR builds them all in the queue. What a part PR does about it:
+  `.claude/skills/feature-branch/SKILL.md`, *What the workflows do with part
+  PRs*.
+- **The image builds run only where they can tell something** (owner's
+  request, 2026-11-18; in the queue since 2026-11-25). `pr-scope.yml` lists
+  the queue entry's files: the diff from `main` to the commit the queue
+  tests. A change of docs alone skips them all. The dmg builds only for a
+  change to the desktop packaging or the build. The msi builds only for the
+  paths its PR trigger was filtered on before. The iOS device link runs only
+  for a change to the iOS host or the build. `main` builds everything on
+  every push, and so does the final PR of a multi-PR plan (a `feature/`
+  branch into `main`) in the queue.
+- **On a PR**, Build and Test and the Screenshots workflow run whatever it
+  changes. ios.yml's targets job (the iOS targets and the desktop UI tests
+  on macOS) runs on every PR that changes code, scoped by `pr-scope.yml`
+  from the PR's files, and is skipped in the queue. Build and Test runs
+  again in the queue, on the queue's commit. On a tag the desktop UI tests
+  on macOS still run in the dmg leg, before the upload.
+- **The label `full-ci` turns this scoping off**: the queue then builds the
+  dmg, the msi, the APKs and the iOS app (with its device link) whatever the
+  PR changes, and the PR runs the targets job even for docs. Add it before
+  the PR is queued; on a PR, push or use *Re-run all jobs* (*Re-run failed
+  jobs* leaves a skipped job skipped). It does not reach the deb (no PR
+  trigger).
 - `pr-scope.yml` is fail-open: an API error or a file list it cannot trust
   builds everything. A caller tests its outputs with `!= 'false'`. Its
-  `dmg` and `ios_device` lists skip a path not on them, so a directory a
-  Gradle task reads from must be added there. `scripts/test_pr_scope.py`
-  tests the rules, and ci.yml runs it.
-- A superseded PR run of Build and Test is cancelled; a run on `main` or a
-  tag never is (owner's request, 2026-11-18).
+  `dmg`, `ios_device` and `msi` lists skip a path not on them, so a
+  directory a Gradle task reads from must be added there.
+  `scripts/test_pr_scope.py` tests the rules, and ci.yml runs it.
+- A superseded PR run of Build and Test is cancelled; a run on `main`, a tag
+  or a queue entry never is (owner's request, 2026-11-18).
 - Build and Test and the other push triggers fire only on `main` and on `v*`
   tags. A clean `main` merge into a feature branch is first fully tested by
   the next PR into or out of the feature branch.
-- A job that calls `wait-for-claude-review.yml` may carry an `if:` only if it
-  is true on every event but `pull_request` (that file's header says why).
-  The same holds for a job that needs `pr-scope.yml`: its outputs are `true`
-  on every other event.
+- A job that needs `pr-scope.yml` may carry an `if:` only if it is true on
+  every event but `pull_request` and `merge_group`: a skipped job skips the
+  release uploads behind it on a tag. Its outputs are `true` on every other
+  event, and no release upload runs on those two.
+
+## The merge queue
+
+(Owner's request, 2026-11-24 and 2026-11-25.)
+
+- A ruleset on `main` takes every PR through GitHub's merge queue, which
+  merges with a merge commit, as before. The queue tests the PR merged onto
+  `main` and onto the PRs queued ahead of it, and that tested commit is what
+  lands on `main`.
+- **Adding a PR to the queue merges it.** It is the owner's action, like
+  every merge into `main` (owner ruling, 2026-08-31).
+- The required checks are Build and Test, `Build APKs (debug + unsigned
+  release)`, `macOS .dmg result`, `Build Windows .msi (x64)`, `iOS app
+  (build + start on a simulator)` and `iOS targets + macOS UI tests`, all
+  from GitHub Actions. A PR must pass them to be queued, and the queue's
+  commit must pass them to merge.
+- A required check must report on both `pull_request` and `merge_group`. A
+  job that runs on only one of them is skipped on the other by a job-level
+  `if`, never left out: GitHub takes a skipped check as passed, and waits
+  for an absent one until the queue's timeout. So a required workflow takes
+  no path filter.
+- A skipped matrix job reports under its unexpanded name (`Build macOS .dmg
+  (${{ matrix.arch }})`), so a matrix is required through a result job that
+  needs it, as `desktop-dmg.yml` does.
+- A failure in the queue shows on the queue's run, not among the PR's
+  checks, and takes the PR out of the queue. The PR's timeline says so.
 
 ## The Claude reviewer
 
@@ -72,8 +107,10 @@ two repositories in step when one changes.
   copy of that file differs from `main`'s, such as a feature branch that has
   not merged a change to it. A green `claude-review` job alone is not a
   review.
-- `wait-for-claude-review.yml` holds the artifact builds until the review has
-  finished. It is fail-open.
+- Nothing waits for the review. It held the artifact builds on a PR until
+  those moved to the merge queue (2026-11-25), where the review has long
+  finished; the gate that held them, `wait-for-claude-review.yml`, went with
+  them.
 - The reviewer's prompt opens "Read CLAUDE.md first". The author-side rules
   (`.claude/skills/pr`) are not addressed to it, and it could not follow them
   anyway: `gh api` is not on its allowlist.

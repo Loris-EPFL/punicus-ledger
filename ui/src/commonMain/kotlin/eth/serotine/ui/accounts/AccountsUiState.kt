@@ -13,6 +13,7 @@ import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.HandoffChoice
 import eth.serotine.ui.components.LightClientItem
+import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.components.NOT_CHECKED
 import eth.serotine.ui.components.NetworkLabel
 import eth.serotine.ui.components.StaleAnchorWarning
@@ -61,8 +62,9 @@ sealed interface AccountsUiState {
      * what it leaves out ("1 asset without a price · Sepolia not included"). [message] is said once,
      * until the screen has ([AccountsViewModel.messageShown]): a network that could not be turned on.
      *
-     * What simple mode draws instead of the sections' strips (docs/simple-ui.md, H1 to H3):
-     * [freshness], how fresh the values shown are ("Updated 2 min ago · pull down to refresh",
+     * What simple mode draws instead of the sections' strips (docs/simple-ui.md, H1 to H3): a header per
+     * network over its accounts, with its sync state in a few words ([NetworkSection.simpleStatus]; owner's request,
+     * 2026-11-25); [freshness], how fresh the values shown are ("Updated 2 min ago · pull down to refresh",
      * "Live", "Checking Ethereum and Gnosis Chain…", or "Syncing Ethereum · 2 of 6 periods" while a
      * network catches up, with the age of the rest beside it; null while nothing is proven yet);
      * [unreachable], a banner per network that cannot be checked right now while it shows balances
@@ -105,6 +107,13 @@ sealed interface AccountsUiState {
                 "duplicate accounts in the list: the repository contract is one entry per network and address"
             }
         }
+
+        /** [bare] accounts marked as holding a key imported on its own ([AccountItem.bareKey]). */
+        fun withBareKeys(bare: Set<String>): Ready = copy(
+            sections = sections.map { section ->
+                section.copy(accounts = section.accounts.map { it.copy(bareKey = it.address.lowercase() in bare) })
+            },
+        )
 
         /** Every account, section after section. */
         val accounts: List<AccountItem>
@@ -178,6 +187,9 @@ data class NetworkLightClient(
  * to catch up anyway (owner's request, 2026-10-24): drawn in the error colour too. [queued] is what
  * its accounts have queued in lenient mode, under its status line ("1 waiting to send · Keep
  * Punicus open to send it sooner"; docs/lenient-mode.md, *Where it shows*), null when nothing is.
+ *
+ * Simple mode heads the network's accounts with its [network]'s icon and name and [simpleStatus], its sync state in a
+ * few words (owner's request, 2026-11-25), coloured as [simpleHealth] says.
  */
 data class NetworkSection(
     val chainId: Long,
@@ -191,7 +203,32 @@ data class NetworkSection(
     val blocked: String? = null,
     val staleAnchor: StaleAnchorWarning? = null,
     val queued: String? = null,
-)
+) {
+    /** This network as its icon takes it: from the section's own fields, so that it never names another. */
+    val network: NetworkLabel
+        get() = NetworkLabel(chainId, name, testnet)
+
+    /** The network's sync state in a few words: what blocks it first, then its light client's state. */
+    val simpleStatus: String
+        get() = when {
+            blocked != null -> "Needs an update"
+            staleAnchor != null -> "Checkpoint too old"
+            // An item made without its few words (none of the app's own) still says something, by its colour's
+            // meaning: never the strip's text, which names blocks simple mode does not show.
+            else -> status.simpleHeader.ifEmpty {
+                when (status.health) {
+                    LightClientHealth.VERIFIED -> "Up to date"
+                    LightClientHealth.STALE -> "Waiting for a new block"
+                    LightClientHealth.NOT_VERIFIED -> "Not checked yet"
+                    LightClientHealth.NOT_RUNNING -> "Not running"
+                }
+            }
+        }
+
+    /** The colour of [simpleStatus]: red while this version cannot follow the network, else its light client's. */
+    val simpleHealth: LightClientHealth
+        get() = if (blocked != null || staleAnchor != null) LightClientHealth.NOT_VERIFIED else status.health
+}
 
 /**
  * A network simple mode cannot check right now while it shows its accounts' balances from before
@@ -253,6 +290,8 @@ data class AccountItem(
      * through its Delay, whose own owners held here cannot sign (owner's request, 2026-11-17).
      */
     val sendsThroughGnosisPay: Boolean = false,
+    /** Its key was imported bare, in hex: no recovery phrase, so no further account of one (owner ruling, 2026-11-25). */
+    val bareKey: Boolean = false,
 ) {
     /** `0x1234…abcd`, for a list row; the full address stays in [address]. */
     val shortAddress: String
@@ -475,15 +514,21 @@ internal fun swapBlockedReason(kind: AccountKind, control: Control): String? = w
 /**
  * Why no account of an externally owned account's recovery phrase can be added from it under
  * [control], and how to get there, or null when one can: the reason a greyed-out New account from
- * the same phrase says on a tap (owner ruling, 2026-10-18, #55).
+ * the same phrase says on a tap (owner ruling, 2026-10-18, #55). A key imported bare ([bareKey]) has no phrase
+ * (owner ruling, 2026-11-25).
  */
-internal fun deriveBlockedReason(control: Control): String? =
-    if (control == Control.FULL_CONTROL) {
-        null
-    } else {
+internal fun deriveBlockedReason(control: Control, bareKey: Boolean = false): String? = when {
+    control != Control.FULL_CONTROL ->
         "This account is watch-only: its key is not on this device, so no account of its recovery phrase can be " +
             "added from it. Import its recovery phrase to add its accounts."
-    }
+    bareKey -> DERIVE_BARE_KEY_REASON
+    else -> null
+}
+
+/** Why no account of a phrase comes from a key imported on its own (owner ruling, 2026-11-25). */
+internal const val DERIVE_BARE_KEY_REASON =
+    "This account's key was imported on its own, as a private key, so there is no recovery phrase to add " +
+        "accounts from. Import the recovery phrase it comes from, if it has one, to add its accounts."
 
 /** What the account menus call adding the next account of an account's recovery phrase. */
 internal const val DERIVE_ACTION = "New account from the same phrase"

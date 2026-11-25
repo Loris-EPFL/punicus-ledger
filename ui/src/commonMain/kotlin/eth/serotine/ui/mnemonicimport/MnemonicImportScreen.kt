@@ -22,6 +22,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -39,6 +42,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import eth.serotine.domain.model.PrivateKey
 import eth.serotine.ui.components.NetworkChecklist
 import eth.serotine.ui.components.PasswordStep
 import eth.serotine.ui.components.Unavailable
@@ -52,6 +56,9 @@ import kotlinx.coroutines.Dispatchers
 /** Test tag of the seed-phrase field, for UI tests. */
 const val MNEMONIC_FIELD_TAG = "mnemonic-field"
 
+/** Test tag of the private-key field, for UI tests. */
+const val PRIVATE_KEY_FIELD_TAG = "private-key-field"
+
 /** Test tags of the password fields, for UI tests. */
 const val MNEMONIC_PASSWORD_TAG = "mnemonic-password"
 const val MNEMONIC_REPEAT_TAG = "mnemonic-password-repeat"
@@ -62,8 +69,8 @@ const val MNEMONIC_IMPORT_BUTTON_TAG = "mnemonic-import-button"
 /**
  * Binds [MnemonicImportScreen] to its ViewModel, reports a finished import through
  * [onImported] so the caller can close the screen, and tells the ViewModel when the screen is
- * left, so it drops the words: a stop that is not a configuration change (owner ruling,
- * 2026-10-18, #39).
+ * left, so it drops the words or the key: a stop that is not a configuration change (owner ruling,
+ * 2026-10-18, #39; the same for a key, owner ruling, 2026-11-25).
  */
 @Composable
 fun MnemonicImportRoute(
@@ -82,6 +89,8 @@ fun MnemonicImportRoute(
     MnemonicImportScreen(
         state = state,
         onPhraseChange = viewModel::onPhraseChange,
+        onKeyChange = viewModel::onKeyChange,
+        onSourceChange = viewModel::onSourceChange,
         onPasswordChange = viewModel::onPasswordChange,
         onRepeatChange = viewModel::onRepeatChange,
         onImport = viewModel::onImport,
@@ -99,7 +108,8 @@ fun MnemonicImportRoute(
 }
 
 /**
- * The seed-phrase screen as a function of [state]; [onDone] once an import's note is read. While
+ * The import screen (docs/wallet-ux.md, screen 11) as a function of [state]: a seed phrase, or a private key in hex
+ * ([onSourceChange] chooses), the wallet password and the networks; [onDone] once an import's note is read. While
  * it is shown the window is kept
  * out of screen capture where the platform allows ([protectFromScreenCapture]); where it
  * does not, the screen says so. The field's text is never saved: it lives in the
@@ -120,6 +130,8 @@ fun MnemonicImportScreen(
     onDone: () -> Unit = {},
     onNetworkToggle: (chainId: Long) -> Unit = {},
     onTurnOnNetwork: (chainId: Long) -> Unit = {},
+    onKeyChange: (String) -> Unit = {},
+    onSourceChange: (ImportSource) -> Unit = {},
 ) {
     val captureBlocked = protectFromScreenCapture()
     Scaffold(
@@ -140,6 +152,8 @@ fun MnemonicImportScreen(
                 state = state,
                 captureBlocked = captureBlocked,
                 onPhraseChange = onPhraseChange,
+                onKeyChange = onKeyChange,
+                onSourceChange = onSourceChange,
                 onPasswordChange = onPasswordChange,
                 onRepeatChange = onRepeatChange,
                 onImport = onImport,
@@ -170,6 +184,8 @@ private fun EnteringContent(
     state: MnemonicImportUiState.Entering,
     captureBlocked: Boolean,
     onPhraseChange: (String) -> Unit,
+    onKeyChange: (String) -> Unit,
+    onSourceChange: (ImportSource) -> Unit,
     onPasswordChange: (String) -> Unit,
     onRepeatChange: (String) -> Unit,
     onImport: () -> Unit,
@@ -181,29 +197,21 @@ private fun EnteringContent(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            "Enter the seed phrase of the account to add: its 12 to 24 words, separated by spaces.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        OutlinedTextField(
-            value = state.phrase.text,
-            onValueChange = onPhraseChange,
-            modifier = Modifier.fillMaxWidth().testTag(MNEMONIC_FIELD_TAG),
-            enabled = !state.importing,
-            label = { Text("Seed phrase") },
-            supportingText = { Text(state.error ?: wordCountLabel(state.wordCount)) },
-            isError = state.error != null,
-            // A password field to the keyboard: no suggestions, no autocorrect, and nothing
-            // learned into the keyboard's dictionary — on the keyboards that honour it.
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.None,
-                autoCorrectEnabled = false,
-                keyboardType = KeyboardType.Password,
-                imeAction = ImeAction.Done,
-            ),
-            keyboardActions = KeyboardActions(onDone = { onImport() }),
-            minLines = 3,
-        )
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            ImportSource.entries.forEachIndexed { index, source ->
+                SegmentedButton(
+                    selected = state.source == source,
+                    onClick = { onSourceChange(source) },
+                    enabled = !state.importing,
+                    shape = SegmentedButtonDefaults.itemShape(index, ImportSource.entries.size),
+                    label = { Text(source.label) },
+                )
+            }
+        }
+        when (state.source) {
+            ImportSource.PHRASE -> PhraseField(state, onPhraseChange, onImport)
+            ImportSource.KEY -> KeyField(state, onKeyChange, onImport)
+        }
         // The password fields appear once the key store has said which one is wanted.
         when (val step = state.step) {
             PasswordStep.Checking -> Unit
@@ -228,13 +236,13 @@ private fun EnteringContent(
         // Greyed out while no network is ticked, a tap saying so (owner ruling, 2026-10-18, #55).
         var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
         unavailable?.let { notice -> UnavailableDialog(notice, onDismiss = { unavailable = null }) }
-        val waitsForNetwork = state.wordsAndPasswordReady && state.networkReason != null
+        val waitsForNetwork = state.inputReady && state.networkReason != null
         Button(
             onClick = {
                 val reason = state.networkReason
                 if (reason == null) onImport() else unavailable = UnavailableNotice("Add account", reason)
             },
-            enabled = state.wordsAndPasswordReady,
+            enabled = state.inputReady,
             modifier = Modifier.fillMaxWidth().testTag(MNEMONIC_IMPORT_BUTTON_TAG).unavailable(waitsForNetwork),
             colors = if (waitsForNetwork) Unavailable.buttonColors() else ButtonDefaults.buttonColors(),
         ) {
@@ -245,8 +253,12 @@ private fun EnteringContent(
             }
         }
         Text(
-            "Punicus adds the first account of these words (m/44'/60'/0'/0/0). " +
-                state.step.protection.orEmpty() + " It cannot send transactions yet.",
+            when (state.source) {
+                ImportSource.PHRASE -> "Punicus adds the first account of these words (m/44'/60'/0'/0/0). "
+                ImportSource.KEY -> "Punicus adds the account of this key. A key has no seed phrase: no further " +
+                    "account and no per-app address can come from it, and only this key brings the account back. "
+            } + state.step.protection.orEmpty() +
+                (if (state.source == ImportSource.PHRASE) " It cannot send transactions yet." else ""),
             style = MaterialTheme.typography.bodySmall,
         )
         if (!captureBlocked) {
@@ -258,6 +270,64 @@ private fun EnteringContent(
             )
         }
     }
+}
+
+/** The seed-phrase field, shown in clear: the words are checked against what was written down. */
+@Composable
+private fun PhraseField(state: MnemonicImportUiState.Entering, onPhraseChange: (String) -> Unit, onImport: () -> Unit) {
+    Text(
+        "Enter the seed phrase of the account to add: its 12 to 24 words, separated by spaces.",
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    OutlinedTextField(
+        value = state.phrase.text,
+        onValueChange = onPhraseChange,
+        modifier = Modifier.fillMaxWidth().testTag(MNEMONIC_FIELD_TAG),
+        enabled = !state.importing,
+        label = { Text("Seed phrase") },
+        supportingText = { Text(state.error ?: wordCountLabel(state.wordCount)) },
+        isError = state.error != null,
+        // A password field to the keyboard: no suggestions, no autocorrect, and nothing
+        // learned into the keyboard's dictionary — on the keyboards that honour it.
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.None,
+            autoCorrectEnabled = false,
+            keyboardType = KeyboardType.Password,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(onDone = { onImport() }),
+        minLines = 3,
+    )
+}
+
+/**
+ * The private-key field: 64 hex digits, an optional 0x, masked as a password is, since a key shown on screen is a key
+ * anyone looking can take. Its hint counts the digits.
+ */
+@Composable
+private fun KeyField(state: MnemonicImportUiState.Entering, onKeyChange: (String) -> Unit, onImport: () -> Unit) {
+    Text(
+        "Enter the private key of the account to add: ${PrivateKey.DIGITS} hex digits, with or without 0x in front.",
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    OutlinedTextField(
+        value = state.key.text,
+        onValueChange = onKeyChange,
+        modifier = Modifier.fillMaxWidth().testTag(PRIVATE_KEY_FIELD_TAG),
+        enabled = !state.importing,
+        label = { Text("Private key") },
+        supportingText = { Text(state.error ?: "${state.keyDigits} of ${PrivateKey.DIGITS} digits") },
+        isError = state.error != null,
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.None,
+            autoCorrectEnabled = false,
+            keyboardType = KeyboardType.Password,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(onDone = { onImport() }),
+    )
 }
 
 @Composable

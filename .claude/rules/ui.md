@@ -115,6 +115,8 @@ docs/simple-ui.md.)
 - Simple mode replaces the light client's status strip with a freshness line,
   a banner when a network cannot be checked, and each network's state in
   Settings. Detailed view keeps the strip (owner's request, 2026-10-20).
+  Home also heads each network's accounts with its state in a few words
+  (owner's request, 2026-11-25; docs/simple-ui.md, H1).
 - In simple mode the sync status is visible on every screen where it decides
   what the user can see or do: a sync line while the network's light client
   cannot serve verified reads. A read refused because it is still syncing
@@ -128,9 +130,10 @@ docs/simple-ui.md.)
 ## Secrets on screen
 
 The UI never touches a key. Signing is a port: a request in, a signature out.
-The password field and the recovery phrase are the only secrets a screen
-holds, under the mnemonic rules in `.claude/rules/trust.md`, and the screens
-that show them call `protectFromScreenCapture()`.
+The password field, the recovery phrase and a private key typed in hex on the
+import screen are the only secrets a screen holds, under the exceptions in
+`.claude/rules/trust.md` (owner rulings, 2026-10-15 and 2026-11-25), and the
+screens that show them call `protectFromScreenCapture()`.
 
 ## A PR that changes the UI needs screenshots
 

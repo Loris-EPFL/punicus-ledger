@@ -1,77 +1,101 @@
-# What a PR touches, so the macOS and APK builds run only where they can tell
-# something (owner's request, 2026-11-18). A caller adds this as a job and tests
-# its outputs in an `if:`:
+# What a PR touches, so the image builds run only where they can tell something
+# (owner's request, 2026-11-18). Since the image builds moved from the PR to the
+# merge queue (owner's request, 2026-11-25), the queue is where most of this
+# scoping applies; on a PR it still scopes ios.yml's targets job. A caller adds
+# this as a job and tests its outputs in an `if:`:
 #
 #     scope:
 #       name: PR scope
 #       uses: ./.github/workflows/pr-scope.yml
 #       permissions:
+#         contents: read
 #         pull-requests: read
 #     build:
 #       needs: scope
 #       if: ${{ !cancelled() && needs.scope.outputs.code != 'false' }}
 #
-# Callers: ios.yml, desktop-dmg.yml, android-apk.yml. Build and Test (ci.yml)
-# and the Screenshots workflow run on every PR, whatever it touches.
+# Callers: ios.yml, desktop-dmg.yml, desktop-windows-msi.yml, android-apk.yml.
+# Build and Test (ci.yml) and the Screenshots workflow run on every PR, whatever
+# it touches.
 #
 # THE OUTPUTS, each 'true' or 'false':
-# - code: the PR changes something besides docs (docs/, .claude/, website/,
+# - code: the change touches something besides docs (docs/, .claude/, website/,
 #   LICENSE, a *.md outside a source set). No build reads those; ci.yml still
 #   runs on such a PR.
-# - dmg: the PR changes the desktop packaging or the build: desktop-app/, the
-#   app icon's sources (scripts/gen_app_icons.java and the two Android
+# - dmg: the change touches the desktop packaging or the build: desktop-app/,
+#   the app icon's sources (scripts/gen_app_icons.java and the two Android
 #   launcher files desktop-app/build.gradle.kts reads), gradle/, native/, a
-#   *.gradle.kts, a lockfile, the Gradle wrapper, desktop-dmg.yml, the review
-#   gate it calls, this file. These are what broke the dmg leg on PRs before.
-# - ios_device: the PR changes the iOS host or the build: ios-app/, a cinterop
-#   definition (src/nativeInterop/), gradle/, native/, a *.gradle.kts, a lockfile, the
-#   Gradle wrapper, ios.yml, this file. These are the inputs of the device
-#   link, which a PR otherwise leaves to main.
-# `code` builds for a path it does not know. `dmg` and `ios_device` are lists:
-# they skip a path not on them, so a directory a Gradle task reads from must be
-# added to them (native/, our own native code, is on both already).
-# On every event but pull_request, all three are 'true'. So are they for a PR
-# from a `feature/` branch into main, the final PR of a multi-PR plan, which
-# builds everything (the feature-branch skill). The label `full-ci` on the PR
-# makes all three 'true' too. The label is read from the API when
-# the job runs, not from the event, so adding it and then pushing, or *Re-run
-# all jobs* on the run, builds everything. (*Re-run failed jobs* leaves a
-# skipped job skipped.)
+#   *.gradle.kts, a lockfile, the Gradle wrapper, desktop-dmg.yml, this file.
+#   These are what broke the dmg leg on PRs before.
+# - ios_device: the change touches the iOS host or the build: ios-app/, a
+#   cinterop definition (src/nativeInterop/), gradle/, native/, a *.gradle.kts,
+#   a lockfile, the Gradle wrapper, ios.yml, this file. These are the inputs of
+#   the device link, which is otherwise left to main.
+# - msi: the change touches what the Windows msi was path-filtered on before it
+#   moved to the queue: desktop-windows-msi.yml, desktop-app/build.gradle.kts,
+#   the desktop Main.kt, the root build.gradle.kts, gradle/libs.versions.toml,
+#   and this file, which the msi workflow now calls.
+# `code` builds for a path it does not know. `dmg`, `ios_device` and `msi` are
+# lists: they skip a path not on them, so a directory a Gradle task reads from
+# must be added to them (native/, our own native code, is on dmg and ios_device
+# already).
+# On every event but pull_request and merge_group, all four are 'true'. So are
+# they for a PR from a `feature/` branch into main, the final PR of a multi-PR
+# plan, which builds everything (the feature-branch skill). The label `full-ci`
+# on the PR makes all four 'true' too. The label is read from the API when the
+# job runs, not from the event, so adding it and then pushing, or *Re-run all
+# jobs* on the run, builds everything. (*Re-run failed jobs* leaves a skipped
+# job skipped.)
 #
-# The file list is the PR's whole diff against its base, as GitHub lists it,
-# renames counted by their old path as well as their new one.
+# IN THE MERGE QUEUE, the label and the feature/ rule are read off the one PR
+# the queue's branch is named after, when its entry's checks start. Each PR in
+# the queue has an entry of its own, which holds it and every PR ahead of it,
+# and each entry must pass, so a PR's label always reaches its own entry. It
+# does not reach the entries behind it; those are scoped by their own diff,
+# which holds the labelled PR's files.
+#
+# THE FILE LIST. On a PR, the PR's whole diff against its base, as GitHub lists
+# it. In the merge queue, the diff from the queue's base (main) to the commit
+# the queue tests, which holds this PR and every PR queued ahead of it, so it
+# is never smaller than the PR's own. A comparison reports no file count of its
+# own, so only its 300-file cap tells a truncated list. Either way, renames
+# count by their old path as well as their new one.
 #
 # The rules are tested: scripts/test_pr_scope.py, which ci.yml runs.
 #
 # FAIL-OPEN. An error may only cost a skip, never a check. (A path missing
 # from the lists above can; that is what the test and the lists' comment are
-# for.) An API
-# error, a file list that does not match the PR's file count, or GitHub's
-# 3000-file cap all end in 'true' for every output and a warning. A job that
-# fails anyway leaves the outputs empty, and the callers test `!= 'false'`, so
-# empty runs everything. `continue-on-error` keeps such a failure from skipping
-# the jobs that need this one, and the ones behind those: a job's implicit
-# success() looks at every job up its `needs:` chain. The review gate has the
-# same exposure and the same guard.
+# for.) An API error, a file list that does not match the PR's file count,
+# GitHub's 3000-file cap on a PR's list, its 300-file cap on a comparison, and
+# a queue branch whose name holds no PR number all end in 'true' for every
+# output and a warning. A job that fails anyway leaves the outputs empty, and
+# the callers test `!= 'false'`, so empty runs everything. `continue-on-error`
+# keeps such a failure from skipping the jobs that need this one, and the ones
+# behind those: a job's implicit success() looks at every job up its `needs:`
+# chain.
 #
-# A CALLER'S `if:` MUST BE TRUE ON EVERY EVENT BUT pull_request, as for the
-# review gate (wait-for-claude-review.yml): a skipped job skips the release
-# uploads behind it on a tag. The outputs are 'true' there, so a test of them
-# is safe; a test of anything else is the caller's to prove.
+# A CALLER'S `if:` MUST BE TRUE ON EVERY EVENT BUT pull_request AND
+# merge_group: a skipped job skips the release uploads behind it on a tag. The
+# outputs are 'true' there, so a test of them is safe; a test of anything else
+# is the caller's to prove. No release upload runs on either of those two
+# events.
 name: PR scope
 
 on:
   workflow_call:
     outputs:
       code:
-        description: "'false' when the PR changes only docs"
+        description: "'false' when the change touches only docs"
         value: ${{ jobs.scope.outputs.code }}
       dmg:
-        description: "'false' when the PR changes neither the desktop packaging nor the build"
+        description: "'false' when the change touches neither the desktop packaging nor the build"
         value: ${{ jobs.scope.outputs.dmg }}
       ios_device:
-        description: "'false' when the PR changes neither the iOS host nor the build"
+        description: "'false' when the change touches neither the iOS host nor the build"
         value: ${{ jobs.scope.outputs.ios_device }}
+      msi:
+        description: "'false' when the change touches nothing the Windows msi builds from"
+        value: ${{ jobs.scope.outputs.msi }}
 
 jobs:
   scope:
@@ -81,42 +105,65 @@ jobs:
     continue-on-error: true
     timeout-minutes: 5
     permissions:
+      # The comparison the merge queue is scoped by.
+      contents: read
       pull-requests: read
     outputs:
       code: ${{ steps.scope.outputs.code }}
       dmg: ${{ steps.scope.outputs.dmg }}
       ios_device: ${{ steps.scope.outputs.ios_device }}
+      msi: ${{ steps.scope.outputs.msi }}
     steps:
-      - name: List the PR's files and labels
+      - name: List the change's files and the PR's labels
         id: scope
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          # The merge queue's entry: its branch (named after the PR), the main commit it
+          # starts from, and the commit it tests.
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          QUEUE_BASE_REF: ${{ github.event.merge_group.base_ref }}
+          QUEUE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          QUEUE_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
         run: |
           python3 - <<'PY'
-          # The rules are in decide(), which takes no I/O: scripts/test_pr_scope.py reads this
-          # script out of this file and tests decide(), and ci.yml runs that test on every PR.
-          import json, os, subprocess, sys
+          # The rules are in decide() and queue_pr(), which take no I/O: scripts/test_pr_scope.py
+          # reads this script out of this file and tests them, and ci.yml runs that test on every PR.
+          import json, os, re, subprocess, sys
 
           FULL_LABEL = "full-ci"
           DOCS_DIRS = ("docs/", ".claude/", "website/")
           DOCS_FILES = {"LICENSE"}
           # A directory a Gradle task reads from outside a module's own sources belongs here, or
-          # in the list of the one leg that reads it: these two outputs skip a path not listed.
+          # in the list of the one leg that reads it: these outputs skip a path not listed.
           BUILD_DIRS = ("gradle/", "native/")
           BUILD_FILES = {"gradlew", "gradlew.bat", "gradle.properties", ".github/workflows/pr-scope.yml"}
           DMG_DIRS = ("desktop-app/",)
           DMG_FILES = {
               ".github/workflows/desktop-dmg.yml",
-              ".github/workflows/wait-for-claude-review.yml",
               "scripts/gen_app_icons.java",
               "android-app/src/main/res/drawable/ic_launcher_foreground.xml",
               "android-app/src/main/res/values/ic_launcher_background.xml",
           }
           IOS_DIRS = ("ios-app/",)
           IOS_FILES = {".github/workflows/ios.yml"}
-          EVERYTHING = {"code": True, "dmg": True, "ios_device": True}
+          # The paths desktop-windows-msi.yml's pull_request trigger was filtered on, kept as
+          # they were, and this file, which that workflow now calls.
+          MSI_FILES = {
+              ".github/workflows/desktop-windows-msi.yml",
+              ".github/workflows/pr-scope.yml",
+              "desktop-app/build.gradle.kts",
+              "desktop-app/src/main/kotlin/eth/serotine/desktop/Main.kt",
+              "build.gradle.kts",
+              "gradle/libs.versions.toml",
+          }
+          EVERYTHING = {"code": True, "dmg": True, "ios_device": True, "msi": True}
+          # GitHub lists at most 3000 files of a PR, and at most 300 of a comparison.
+          PR_CAP, COMPARE_CAP = 3000, 300
+          # gh-readonly-queue/<base>/pr-<number>-<the PR head's sha>: the branch of a queue entry.
+          QUEUE_BRANCH = re.compile(r"refs/heads/gh-readonly-queue/.+/pr-([0-9]+)-[0-9a-f]{40,64}")
+          SHA = re.compile(r"[0-9a-f]{40,64}")
 
 
           def under(path, dirs, files):
@@ -140,23 +187,35 @@ jobs:
               return build(path) or under(path, IOS_DIRS, IOS_FILES) or "/src/nativeInterop/" in path
 
 
-          def decide(labels, base, head, rows, expected):
-              """(reason, outputs, warn) for a PR: its labels, base and head branch names, its
-              files as [path, previous path or ""] rows, and the file count the PR reports."""
+          def msi(path):
+              return path in MSI_FILES
+
+
+          def queue_pr(ref):
+              """The number of the PR a merge queue entry's branch is named after, or None."""
+              match = QUEUE_BRANCH.fullmatch(ref)
+              return match.group(1) if match else None
+
+
+          def decide(labels, base, head, rows, expected, cap=PR_CAP):
+              """(reason, outputs, warn) for a change: the PR's labels, its base and head branch
+              names, the files as [path, previous path or ""] rows, the file count expected, and
+              the API's cap on the list."""
               if FULL_LABEL in labels:
                   return f"The PR carries the label `{FULL_LABEL}`: every build runs.", EVERYTHING, False
               # The final PR of a multi-PR plan builds everything (feature-branch skill): its parts
-              # skipped the artifact builds on the strength of that promise (owner ruling, 2026-10-09).
+              # skipped the image builds on the strength of that promise (owner ruling, 2026-10-09).
               if base == "main" and head.startswith("feature/"):
                   # No branch name in the text: what a PR controls never reaches the log or the summary.
                   return "A feature/ branch into main: every build runs.", EVERYTHING, False
-              if not rows or len(rows) != expected or len(rows) >= 3000:
-                  return f"The API listed {len(rows)} files for a PR of {expected}.", EVERYTHING, True
+              if not rows or len(rows) != expected or len(rows) >= cap:
+                  return f"The API listed {len(rows)} files of {expected}.", EVERYTHING, True
               paths = {path for row in rows for path in row if path}
               return f"{len(rows)} files changed.", {
                   "code": any(not docs(path) for path in paths),
                   "dmg": any(dmg(path) for path in paths),
                   "ios_device": any(ios_device(path) for path in paths),
+                  "msi": any(msi(path) for path in paths),
               }, False
 
 
@@ -176,25 +235,40 @@ jobs:
               return subprocess.run(["gh", "api", *args], check=True, capture_output=True, text=True, timeout=120).stdout
 
 
+          def rows_of(text):
+              # One JSON array per line, so no character of a path needs escaping.
+              return [json.loads(line) for line in text.splitlines()]
+
+
           def main():
               event = os.environ["EVENT_NAME"]
-              if event != "pull_request":
+              if event not in ("pull_request", "merge_group"):
                   return write(f"Not a PR ({event}): every build runs.", EVERYTHING)
               repo = os.environ["GITHUB_REPOSITORY"]
-              number = os.environ.get("PR_NUMBER", "")
+              queue = event == "merge_group"
+              number = (queue_pr(os.environ.get("QUEUE_REF", "")) or "") if queue else os.environ.get("PR_NUMBER", "")
               if not number.isdigit():
-                  return write(f"Unexpected PR number '{number}'.", EVERYTHING, warn=True)
+                  return write("No PR number in the event.", EVERYTHING, warn=True)
               try:
                   pr = json.loads(gh(f"repos/{repo}/pulls/{number}"))
                   labels = {label["name"] for label in pr["labels"]}
-                  base, head, expected = pr["base"]["ref"], pr["head"]["ref"], int(pr["changed_files"])
-                  # One JSON array per line, so no character of a path needs escaping.
-                  rows = [json.loads(line) for line in gh(
-                      "--paginate", f"repos/{repo}/pulls/{number}/files?per_page=100",
-                      "--jq", '.[] | [.filename, .previous_filename // ""]').splitlines()]
+                  head = pr["head"]["ref"]
+                  if not queue:
+                      base, expected = pr["base"]["ref"], int(pr["changed_files"])
+                      rows = rows_of(gh("--paginate", f"repos/{repo}/pulls/{number}/files?per_page=100",
+                                        "--jq", '.[] | [.filename, .previous_filename // ""]'))
+                      return write(*decide(labels, base, head, rows, expected))
+                  base = os.environ.get("QUEUE_BASE_REF", "").removeprefix("refs/heads/")
+                  base_sha, head_sha = os.environ.get("QUEUE_BASE_SHA", ""), os.environ.get("QUEUE_HEAD_SHA", "")
+                  if not (SHA.fullmatch(base_sha) and SHA.fullmatch(head_sha)):
+                      return write("Unexpected commits in the queue's event.", EVERYTHING, warn=True)
+                  # The comparison has no file count of its own, so the cap is what tells a
+                  # truncated list.
+                  rows = rows_of(gh(f"repos/{repo}/compare/{base_sha}...{head_sha}",
+                                    "--jq", '.files // [] | .[] | [.filename, .previous_filename // ""]'))
               except Exception as error:  # every way out runs the builds (FAIL-OPEN)
-                  return write(f"Reading the PR from the API failed ({error}).", EVERYTHING, warn=True)
-              write(*decide(labels, base, head, rows, expected))
+                  return write(f"Reading the change from the API failed ({error}).", EVERYTHING, warn=True)
+              write(*decide(labels, base, head, rows, len(rows), cap=COMPARE_CAP))
 
 
           if __name__ == "__main__":

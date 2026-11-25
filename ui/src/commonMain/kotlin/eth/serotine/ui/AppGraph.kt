@@ -8,6 +8,9 @@ import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddedNfts
+import eth.serotine.domain.repository.AddressIndexArchive
+import eth.serotine.domain.repository.AddressIndexHistory
+import eth.serotine.domain.repository.AddressIndexSetting
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.AmountsHiddenSetting
 import eth.serotine.domain.repository.BlockTransactions
@@ -43,6 +46,7 @@ import eth.serotine.domain.repository.NftContracts
 import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.PerAppAliases
 import eth.serotine.domain.repository.PerAppKeys
+import eth.serotine.domain.repository.PrivateKeys
 import eth.serotine.domain.repository.PriceFeeds
 import eth.serotine.domain.repository.ReceiptTracker
 import eth.serotine.domain.repository.SafeApprovals
@@ -76,6 +80,7 @@ import eth.serotine.domain.usecase.AddToken
 import eth.serotine.domain.usecase.AllowHeavyDownloadsOnMetered
 import eth.serotine.domain.usecase.ApproveDappProposal
 import eth.serotine.domain.usecase.ApproveSafeTxOnChain
+import eth.serotine.domain.usecase.CheckAddressIndexEntry
 import eth.serotine.domain.usecase.CheckSafeSwap
 import eth.serotine.domain.usecase.ChooseSwapVenue
 import eth.serotine.domain.usecase.ClearDebugLog
@@ -107,10 +112,13 @@ import eth.serotine.domain.usecase.HoldNetwork
 import eth.serotine.domain.usecase.HoldNetworksWhileEmpty
 import eth.serotine.domain.usecase.HoldSafeSignature
 import eth.serotine.domain.usecase.ImportMnemonicAccount
+import eth.serotine.domain.usecase.ImportPrivateKeyAccount
 import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.KeepWaitingSwap
 import eth.serotine.domain.usecase.LinkMadePerAppAlias
 import eth.serotine.domain.usecase.LinkPerAppAlias
+import eth.serotine.domain.usecase.KeepAddressIndex
+import eth.serotine.domain.usecase.LoadAddressIndexPage
 import eth.serotine.domain.usecase.MakePerAppAddress
 import eth.serotine.domain.usecase.NetworkDemand
 import eth.serotine.domain.usecase.NewRecoveryPhrase
@@ -120,8 +128,10 @@ import eth.serotine.domain.usecase.ObserveAccountHistory
 import eth.serotine.domain.usecase.ObserveAccountNames
 import eth.serotine.domain.usecase.ObserveAccountValue
 import eth.serotine.domain.usecase.ObserveAccounts
+import eth.serotine.domain.usecase.ObserveAddressIndexStatus
 import eth.serotine.domain.usecase.ObserveAddressKind
 import eth.serotine.domain.usecase.ObserveAmountsHidden
+import eth.serotine.domain.usecase.ObserveBareKeys
 import eth.serotine.domain.usecase.ObserveChequebook
 import eth.serotine.domain.usecase.ObserveCowOrder
 import eth.serotine.domain.usecase.ObserveCowOrderLife
@@ -234,6 +244,7 @@ import eth.serotine.domain.usecase.SignDappSafeTx
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.domain.usecase.ToggleAmountsHidden
+import eth.serotine.domain.usecase.TurnAddressIndex
 import eth.serotine.domain.usecase.UnlinkPerAppAlias
 import eth.serotine.domain.usecase.WalletChanges
 import eth.serotine.domain.usecase.WarmFeeHistory
@@ -243,6 +254,7 @@ import eth.serotine.ui.accountdetail.AccountDetailViewModel
 import eth.serotine.ui.accounts.AccountsViewModel
 import eth.serotine.ui.activity.AccountActivity
 import eth.serotine.ui.activity.ActivityKey
+import eth.serotine.ui.activity.AddressIndexActivity
 import eth.serotine.ui.activitydetail.ActivityDetailViewModel
 import eth.serotine.ui.addnetwork.AddOnNetworksViewModel
 import eth.serotine.ui.addtoken.AddTokenViewModel
@@ -469,6 +481,8 @@ class AppGraph(
     private val dappRequests: DappRequests,
     /** The key store's per-app addresses (issue #252): the host's key store, the instance [keys] is. */
     private val perAppKeys: PerAppKeys,
+    /** The key store's import of a private key in hex (owner ruling, 2026-11-25): the instance [keys] is. */
+    private val privateKeys: PrivateKeys,
     /** The accounts last approved for each dApp site, preselected when a host of it connects again (issue #252). */
     private val dappSites: DappSiteMemory,
     /** The aliases the user linked: a site that sees another site's per-app address (issue #252). */
@@ -478,6 +492,28 @@ class AppGraph(
      * off and Settings shows Connected dApps greyed out (ruling 2).
      */
     val dappConnectionsOff: Boolean,
+    /**
+     * An account's history from the addr1 index on Swarm (owner ruling, 2026-11-21, #334): the desktop's and Android's
+     * (owner's decisions, 2026-11-24 and 2026-11-25), behind its experimental setting; null on a host that offers no
+     * such setting (iOS), and nothing is shown of it.
+     */
+    private val addressIndex: AddressIndexHistory? = null,
+    /**
+     * The experimental setting for [addressIndex]: on by default, an explicit off kept (owner's decisions,
+     * 2026-11-22, #334); null with it.
+     */
+    private val addressIndexSetting: AddressIndexSetting? = null,
+    /**
+     * The importer key of the addr1 index pinned in the release, the one key its list may rest on; null while the
+     * release pins none, which greys the setting out (owner's decision, 2026-11-21).
+     */
+    private val addressIndexImporter: Address? = null,
+    /**
+     * Where each account's addr1 history is kept between runs (owner's request, 2026-11-25), so that its Activity
+     * shows what was verified before at once and reads only what is newer; null: nothing is kept, and each opening
+     * reads the index from its newest page.
+     */
+    private val addressIndexArchive: AddressIndexArchive? = null,
 ) {
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
@@ -512,6 +548,7 @@ class AppGraph(
             offerHandoff = OfferHandoff(walletHandoff),
             holdNetworksWhileEmpty = HoldNetworksWhileEmpty(accounts, networkSettings, networkDemand),
             observeGnosisPays = ObserveGnosisPays(accounts, observeGnosisPay()),
+            observeBareKeys = ObserveBareKeys(accounts, perAppKeys, walletChanges),
         )
 
     /** The light clients' status strips of the screens that depend on them: one for the app, in the host's scope. */
@@ -548,7 +585,8 @@ class AppGraph(
             offerHandoff = OfferHandoff(walletHandoff),
             observeGnosisPay = observeGnosisPay(),
             observeSwarmNode = ObserveSwarmNode(swarmCandidates, swarmContracts),
-            observePerAppAddresses = ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases),
+            observePerAppAddresses =
+                ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases, walletChanges),
             unlinkPerAppAlias = UnlinkPerAppAlias(perAppAliases),
         )
 
@@ -1014,7 +1052,23 @@ class AppGraph(
         ObserveAccountCowOrders(cowOrders),
         ObserveWaitingSwaps(waitingSwaps),
         ObserveOutbox(outbox),
+        addressIndex = addressIndexActivity(),
     )
+
+    /**
+     * What an account's Activity reads of the addr1 index: only with its history, its setting and a key pinned in the
+     * release; none otherwise, and the Activity is the log index's alone.
+     */
+    private fun addressIndexActivity(): AddressIndexActivity? {
+        val history = addressIndex ?: return null
+        val setting = addressIndexSetting ?: return null
+        val importer = addressIndexImporter ?: return null
+        return AddressIndexActivity(
+            ObserveAddressIndexStatus(history, setting, importer),
+            LoadAddressIndexPage(history, importer),
+            keep = addressIndexArchive?.let { KeepAddressIndex(it, accounts, walletChanges, importer) },
+        )
+    }
 
     /**
      * The detail of the row [key] of the Activity of the [account] (docs/wallet-ux.md, screen 26),
@@ -1034,6 +1088,13 @@ class AppGraph(
         ObserveSentTo(transactionHistory),
         ObserveAmountsHidden(amountsHidden),
         toggleAmountsHidden,
+        // Gated by the user's choice (AddressIndexStatus.wanted), not by the reader: an engine without one refuses
+        // the check itself (NotInThisBuild), which the detail says.
+        checkIndexEntry = addressIndex?.let { history ->
+            addressIndexSetting?.let { setting ->
+                addressIndexImporter?.let { CheckAddressIndexEntry(history, setting, it, addressIndexArchive) }
+            }
+        },
     )
 
     /** Create Safe (docs/wallet-ux.md, screens 13 to 15). */
@@ -1075,7 +1136,7 @@ class AppGraph(
             account,
             ObserveAccount(accounts),
             ObserveAccounts(accounts),
-            RemoveAccount(accounts, keys, walletChanges, perAppAliases, dappSites),
+            RemoveAccount(accounts, keys, walletChanges, perAppAliases, dappSites, addressIndexArchive),
         )
 
     fun watchViewModel(): WatchViewModel = WatchViewModel(
@@ -1107,6 +1168,12 @@ class AppGraph(
             ObserveOutbox(outbox),
             ObserveHeavyDownloads(connectionMeter, meteredDownloads),
             AllowHeavyDownloadsOnMetered(meteredDownloads),
+            observeAddressIndex = addressIndex?.let { history ->
+                addressIndexSetting?.let { ObserveAddressIndexStatus(history, it, addressIndexImporter) }
+            },
+            turnAddressIndex = addressIndex?.let { history ->
+                addressIndexSetting?.let { TurnAddressIndex(history, it, addressIndexImporter) }
+            },
         )
 
     /** Whether the bottom bar shows the Debug tab: one for the app, in the host's scope. */
@@ -1197,7 +1264,7 @@ class AppGraph(
         observeDappConnections(),
         ApproveDappProposal(dappSessions, accounts, networkSettings, dappSites, perAppAliases),
         RejectDappProposal(dappSessions),
-        ObservePerAppChoice(accounts, perAppKeys, dappSites, networkSettings, perAppAliases),
+        ObservePerAppChoice(accounts, perAppKeys, dappSites, networkSettings, perAppAliases, walletChanges),
         MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases),
         LinkPerAppAlias(accounts, perAppAliases, walletChanges),
         LinkMadePerAppAlias(
@@ -1212,7 +1279,7 @@ class AppGraph(
      */
     fun perAppViewModel(phrase: Address?, restoring: Boolean = false): PerAppViewModel = PerAppViewModel(
         phrase,
-        ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases),
+        ObservePerAppAddresses(accounts, perAppKeys, networkSettings, perAppAliases, walletChanges),
         RestorePerAppAddress(MakePerAppAddress(perAppKeys, accounts, walletChanges, perAppAliases), networkSettings),
         restoring,
     )
@@ -1267,5 +1334,6 @@ class AppGraph(
             DescribeKeyStore(keys),
             ObserveEnabledNetworks(networkSettings),
             SetNetworkEnabled(networkSettings),
+            ImportPrivateKeyAccount(privateKeys, accounts, walletChanges),
         )
 }

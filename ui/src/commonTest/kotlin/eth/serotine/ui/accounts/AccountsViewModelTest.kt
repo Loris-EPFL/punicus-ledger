@@ -1,5 +1,8 @@
 package eth.serotine.ui.accounts
 
+import eth.serotine.ui.FakePerAppKeys
+import eth.serotine.domain.usecase.WalletChanges
+import eth.serotine.domain.usecase.ObserveBareKeys
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
@@ -167,6 +170,7 @@ class AccountsViewModelTest {
     private fun viewModel(
         hiddenSetting: AmountsHiddenSetting = amountsHidden,
         offerHandoff: OfferHandoff? = null,
+        observeBareKeys: ObserveBareKeys? = null,
     ): AccountsViewModel {
         val currencies = ObserveDisplayCurrencies(feeds, currency, repository)
         val value = ObserveAccountValue(
@@ -197,6 +201,7 @@ class AccountsViewModelTest {
             clock = { now },
             formatTime = { "<$it>" },
             offerHandoff = offerHandoff,
+            observeBareKeys = observeBareKeys,
         )
     }
 
@@ -309,6 +314,27 @@ class AccountsViewModelTest {
         runCurrent()
         val cold = (viewModel.uiState.value as AccountsUiState.Ready).accounts.first { it.label == "Cold" }
         assertEquals(HandoffChoice(NO_WALLET), cold.handoff)
+    }
+
+    @Test
+    fun aKeyImportedOnItsOwnIsMarkedUntilItsPhraseReplacesIt() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        repository.accounts = listOf(daily)
+        val keys = FakePerAppKeys(bare = setOf(daily.address))
+        val changes = WalletChanges()
+        val viewModel = viewModel(observeBareKeys = ObserveBareKeys(repository, keys, changes))
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        runCurrent()
+
+        fun row() = (viewModel.uiState.value as AccountsUiState.Ready).accounts.single()
+        assertTrue(row().bareKey, "the EIP-55 address matched against the key store's")
+        assertEquals(DERIVE_BARE_KEY_REASON, deriveBlockedReason(row().control, row().bareKey))
+
+        // Its phrase imported: the envelope is the phrase's now, and the list is as it was.
+        changes.serialized { keys.bare = emptySet() }
+        runCurrent()
+        assertFalse(row().bareKey)
+        assertEquals(null, deriveBlockedReason(row().control, row().bareKey))
     }
 
     @Test
@@ -462,6 +488,7 @@ class AccountsViewModelTest {
                 true,
                 NOT_VERIFIED,
                 simpleText = "Syncing Sepolia · 1 of 4 periods",
+                simpleHeader = "Syncing · 1 of 4 periods",
             ),
             viewModel.sepoliaStatus,
         )
@@ -577,9 +604,16 @@ class AccountsViewModelTest {
         assertEquals(false, section.on)
         assertEquals("Off", section.total)
         assertEquals(
-            LightClientItem("Off in this wallet · nothing is checked", null, false, LightClientHealth.NOT_RUNNING),
+            LightClientItem(
+                "Off in this wallet · nothing is checked",
+                null,
+                false,
+                LightClientHealth.NOT_RUNNING,
+                simpleHeader = "Off",
+            ),
             section.status,
         )
+        assertEquals("Off", section.simpleStatus)
         assertEquals(
             listOf("2.5 ETH" to "Last verified <1792100000> · Sepolia is off", "Not checked" to "Sepolia is off"),
             section.accounts.map { it.balance to it.balanceNote },

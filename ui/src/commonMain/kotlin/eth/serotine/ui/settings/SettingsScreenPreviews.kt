@@ -1,9 +1,12 @@
 package eth.serotine.ui.settings
 
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
+import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.FreshCheckpoint
 import eth.serotine.domain.repository.LightClientStatus
+import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientHealth.NOT_RUNNING
 import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientHealth.STALE
@@ -44,7 +47,12 @@ private val synced = SettingsUiState(
 )
 
 @Composable
-private fun SettingsPreview(state: SettingsUiState, darkTheme: Boolean = false, connectionsOff: Boolean = false) {
+private fun SettingsPreview(
+    state: SettingsUiState,
+    darkTheme: Boolean = false,
+    connectionsOff: Boolean = false,
+    atTheEnd: Boolean = false,
+) {
     SerotineTheme(darkTheme = darkTheme) {
         SettingsScreen(
             state = state,
@@ -55,6 +63,8 @@ private fun SettingsPreview(state: SettingsUiState, darkTheme: Boolean = false, 
             onDebugScreenChange = {},
             onDetailedViewChange = {},
             connectionsOff = connectionsOff,
+            // A row far down is drawn with the list scrolled to its end: the phone shows no more at once.
+            scroll = rememberScrollState(if (atTheEnd) Int.MAX_VALUE else 0),
         )
     }
 }
@@ -332,6 +342,124 @@ private fun SettingsMeteredSetAsidePreview() = SettingsPreview(
     ),
 )
 
+/** A made-up importer key of the addr1 index: no release pins it. */
+private val sampleImporter = Eip55.format(Address.of("0x" + "1e".repeat(20)))
+
+/** A release that pins no importer key, on an engine with no Swarm reader: what the desktop showed until #359. */
+private const val ADDRESS_INDEX_GREYED_TEXT =
+    "Off: no importer key is pinned in this release yet · This build's engine has no Swarm reader"
+
+private val addressIndexGreyed = AddressIndexItem(
+    on = false,
+    // No choice made yet: on by default once it can be read, and Turn off keeps it off ahead (2026-11-22).
+    text = "$ADDRESS_INDEX_GREYED_TEXT · On by default once it can be read: Turn off keeps it off",
+    turnOff = true,
+    unavailableReason = "No importer key is pinned in this release yet. The index is read only on the word of an " +
+        "importer whose key a release pins; a key is never typed in here. This build's engine has no Swarm " +
+        "reader, so the index cannot be read here. The history stays the light client's log index.",
+)
+
+/** The experimental addr1 history, greyed out for both reasons at once (owner ruling, #55). */
+@Preview
+@Composable
+private fun SettingsAddressIndexNoKeyPreview() =
+    SettingsPreview(synced.copy(addressIndex = addressIndexGreyed), atTheEnd = true)
+
+@Preview
+@Composable
+private fun SettingsAddressIndexNoKeyDarkPreview() =
+    SettingsPreview(synced.copy(addressIndex = addressIndexGreyed), darkTheme = true, atTheEnd = true)
+
+/**
+ * A key pinned, but an engine without the Swarm reader: greyed out for that alone, as the desktop showed from #359 to
+ * Myotis 0.1.23.
+ */
+@Preview
+@Composable
+private fun SettingsAddressIndexNoReaderPreview() = SettingsPreview(
+    synced.copy(
+        addressIndex = AddressIndexItem(
+            on = false,
+            text = "Off: importer $sampleImporter, pinned in this release · This build's engine has no Swarm reader" +
+                " · On by default once it can be read: Turn off keeps it off",
+            turnOff = true,
+            unavailableReason = "This build's engine has no Swarm reader, so the index cannot be read here. The " +
+                "history stays the light client's log index.",
+        ),
+    ),
+    atTheEnd = true,
+)
+
+/**
+ * A key pinned, and an engine that has not said yet whether it reads Swarm (Ethereum's light client not running):
+ * greyed out for that, never left out (owner ruling, #55).
+ */
+@Preview
+@Composable
+private fun SettingsAddressIndexReaderNotKnownPreview() = SettingsPreview(
+    synced.copy(
+        addressIndex = AddressIndexItem(
+            on = false,
+            text = "Off: importer $sampleImporter, pinned in this release · Waiting for the engine to say " +
+                "whether it reads Swarm · On by default once it can be read: Turn off keeps it off",
+            turnOff = true,
+            unavailableReason = "The engine says whether this build reads Swarm once Ethereum's light client runs: " +
+                "while Ethereum is on in Networks and one of your accounts is on it.",
+        ),
+    ),
+    atTheEnd = true,
+)
+
+/** On by default for the key pinned in the release, with an engine that reads Swarm: what a later release may offer. */
+@Preview
+@Composable
+private fun SettingsAddressIndexOnPreview() = SettingsPreview(
+    synced.copy(
+        addressIndex = AddressIndexItem(
+            on = true,
+            text = "On: importer $sampleImporter, pinned in this release · On by default: you can turn it off",
+        ),
+    ),
+    atTheEnd = true,
+)
+
+/**
+ * A choice to turn it on, stored, not in force yet (no reader, no key pinned): greyed out, and Turn off below the row
+ * stores an explicit off ahead.
+ */
+private val addressIndexStored = addressIndexGreyed.copy(
+    text = ADDRESS_INDEX_GREYED_TEXT,
+    turnOff = true,
+)
+
+@Preview
+@Composable
+private fun SettingsAddressIndexTurnOffPreview() =
+    SettingsPreview(synced.copy(addressIndex = addressIndexStored), atTheEnd = true)
+
+@Preview
+@Composable
+private fun SettingsAddressIndexTurnOffDarkPreview() =
+    SettingsPreview(synced.copy(addressIndex = addressIndexStored), darkTheme = true, atTheEnd = true)
+
+/**
+ * A choice found damaged and set aside, with a key pinned and an engine that reads Swarm: it reads off, never the
+ * default, and Turn off below the row stores the same off as the user's own choice.
+ */
+@Preview
+@Composable
+private fun SettingsAddressIndexSetAsidePreview() = SettingsPreview(
+    synced.copy(
+        addressIndex = AddressIndexItem(
+            on = false,
+            text = "Off: importer $sampleImporter, pinned in this release" +
+                " (your saved choice was damaged and set aside)",
+            turnOff = true,
+        ),
+    ),
+    atTheEnd = true,
+)
+
 /** Every preview above, which SettingsScreenPreviewsTest renders: a new preview goes in here too. */
 internal val settingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("synced") { SettingsSyncedPreview() },
@@ -363,6 +491,14 @@ internal val settingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("metered-unreadable") { SettingsMeteredUnreadablePreview() },
     ScreenPreview("metered-not-saved") { SettingsMeteredNotSavedPreview() },
     ScreenPreview("metered-set-aside") { SettingsMeteredSetAsidePreview() },
+    ScreenPreview("address-index-no-key") { SettingsAddressIndexNoKeyPreview() },
+    ScreenPreview("address-index-no-key-dark") { SettingsAddressIndexNoKeyDarkPreview() },
+    ScreenPreview("address-index-no-reader") { SettingsAddressIndexNoReaderPreview() },
+    ScreenPreview("address-index-reader-not-known") { SettingsAddressIndexReaderNotKnownPreview() },
+    ScreenPreview("address-index-on") { SettingsAddressIndexOnPreview() },
+    ScreenPreview("address-index-turn-off") { SettingsAddressIndexTurnOffPreview() },
+    ScreenPreview("address-index-turn-off-dark") { SettingsAddressIndexTurnOffDarkPreview() },
+    ScreenPreview("address-index-set-aside") { SettingsAddressIndexSetAsidePreview() },
 )
 
 /** Not allowed, on a metered connection now, for this file's previews and simple mode's. */

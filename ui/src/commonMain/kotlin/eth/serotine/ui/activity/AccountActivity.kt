@@ -2,6 +2,7 @@ package eth.serotine.ui.activity
 
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexEntry
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeEvent
@@ -38,11 +39,17 @@ import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.outbox.redatedAtTheirHour
 import eth.serotine.ui.platform.formatDateTime
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.stateIn
 
 /**
  * What an account's Activity shows, its detail's Activity tab (docs/wallet-ux.md, screen 25;
@@ -59,8 +66,12 @@ import kotlinx.coroutines.flow.onStart
  * ([merged]). Above them, each swap whose next step waits for the user ([ObserveWaitingSwaps]),
  * said from its approval's outcome in the account's history; and before everything, what the
  * account has queued in lenient mode ([ObserveOutbox]; docs/lenient-mode.md, *Where it shows*).
- * [formatTime] dates each in the user's own time zone. A row opens its detail, which is
- * navigation; a queued one, its status.
+ * [formatTime] dates each in the user's own time zone, and the rows are grouped by the day they go by there
+ * ([dates]), each timed to the minute. A row opens its detail, which is
+ * navigation; a queued one, its status. On the desktop and Android with its experimental setting on, the
+ * verified rows of the addr1 index join them ([addressIndex]; owner ruling, 2026-11-21, #334),
+ * page by page as the list nears its end, each once: a transaction the list holds already, sent
+ * from here or in the log index, is that row alone.
  */
 class AccountActivity(
     private val observeAccountHistory: ObserveAccountHistory,
@@ -72,20 +83,38 @@ class AccountActivity(
     private val observeCowOrders: ObserveAccountCowOrders,
     private val observeWaitingSwaps: ObserveWaitingSwaps,
     private val observeOutbox: ObserveOutbox,
+    /** The addr1 index's verified rows, where the host offers its setting; null: none, the log index's alone. */
+    private val addressIndex: AddressIndexActivity? = null,
     /** Now, in unix seconds: whether a queued transaction is past its hour, and waits for the user's answer. */
     private val now: () -> Long = ::epochSecondsNow,
+    /** How the rows are grouped by day and timed: in the user's own time zone. */
+    private val dates: ActivityDates = ActivityDates(),
     private val formatTime: (Long) -> String = ::formatDateTime,
 ) {
 
     /**
      * The Activity of the [account], as it changes, with every amount masked while [hideAmounts] says
-     * so (docs/wallet-ux.md, *Hiding amounts*); nothing is read until it is collected.
+     * so (docs/wallet-ux.md, *Hiding amounts*); nothing is read until it is collected. Each value of
+     * [more] above the one it started with asks the addr1 index for its next page, when it is on. The
+     * pages read are kept in [scope] (the screen's ViewModel's), from the first collection on, so that
+     * leaving the Activity and coming back shows them again and reads nothing new: each page costs a
+     * Swarm lookup and up to 20 checks against archive peers. Without a scope they last while collected.
      */
-    fun of(account: AccountId, hideAmounts: Flow<Boolean>): Flow<ActivityUiState> =
-        Listing(account, hideAmounts).state
+    fun of(
+        account: AccountId,
+        hideAmounts: Flow<Boolean>,
+        more: StateFlow<Int> = MutableStateFlow(0),
+        scope: CoroutineScope? = null,
+    ): Flow<ActivityUiState> =
+        Listing(account, hideAmounts, more, scope).state
 
     /** One account's Activity: the [account] its rows and sources are of, and whether its amounts are hidden. */
-    private inner class Listing(private val account: AccountId, private val hideAmounts: Flow<Boolean>) {
+    private inner class Listing(
+        private val account: AccountId,
+        private val hideAmounts: Flow<Boolean>,
+        more: StateFlow<Int>,
+        scope: CoroutineScope?,
+    ) {
 
         private val address: Address = account.address
 
@@ -107,6 +136,11 @@ class AccountActivity(
             // Drawn again when one passes its hour: "Waiting to send" becomes "Waiting for your answer".
             .redatedAtTheirHour(now)
 
+        /** The addr1 index's pages read so far, while its setting is on; null while it adds nothing. */
+        private val index: Flow<IndexPaging?> = addressIndex?.of(account, more)
+            ?.let { pages -> scope?.let { pages.stateIn(it, SharingStarted.Lazily, null) } ?: pages }
+            ?: flowOf(null)
+
         val state: Flow<ActivityUiState> = combine(
             combine(
                 observeAccountHistory(account),
@@ -118,9 +152,10 @@ class AccountActivity(
             sources.parties,
             sources.safeHistory,
             sources.transfers,
-            sources.tokens,
-            ::render,
-        )
+            combine(sources.tokens, index, ::Pair),
+        ) { sentHere, parties, safe, transfers, (tokens, index) ->
+            render(sentHere, parties, safe, transfers, tokens, index)
+        }
 
         private fun render(
             sentHere: SentHere,
@@ -128,6 +163,7 @@ class AccountActivity(
             safe: IndexedHistory<SafeChainEvent>?,
             transfers: IndexedHistory<TokenTransferEvent>?,
             tokens: Map<Address, KnownToken>?,
+            index: IndexPaging?,
         ): ActivityUiState {
             val names = parties.names
             val (history, orders) = sentHere
@@ -161,18 +197,32 @@ class AccountActivity(
             // came later).
             val sent = entries.map {
                 val block = it.outcome.blockNumberOrNull
+                val blockTime = block?.let(blockTimes::get)
                 Listed(
                     rows.row(it, names),
                     block,
                     pending = it.outcome == SentOutcome.NotSeen,
-                    moment = block?.let(blockTimes::get) ?: it.transfer.sentAt,
+                    moment = blockTime ?: it.transfer.sentAt,
+                    anchored = blockTime != null,
                 )
             } + orders.map {
                 val block = it.end?.placedAt
-                Listed(rows.orderRow(it), block, pending = it.live, moment = block?.let(blockTimes::get) ?: it.signedAt)
+                val blockTime = block?.let(blockTimes::get)
+                val moment = blockTime ?: it.signedAt
+                Listed(rows.orderRow(it), block, pending = it.live, moment = moment, anchored = blockTime != null)
             }
+            // A transaction listed already, sent from here or as a CoW order's fill, is that row alone.
+            val listedHere = entries.mapTo(HashSet()) { it.transfer.hash.lowercase() } +
+                orders.mapNotNull { (it.end as? CowOrderEnd.Filled)?.transactionHash?.lowercase() }
             if (transfers == null) {
-                return ActivityUiState.Shown(merged(sent, emptyList()), COVERAGE, waiting = waiting, queued = queued)
+                val fromIndexHere = indexed(index, listedHere, parties, tokens, rows)
+                return ActivityUiState.Shown(
+                    merged(sent, fromIndexHere).byDay(dates, now()),
+                    COVERAGE,
+                    waiting = waiting,
+                    queued = queued,
+                    index = index?.let { indexSection(it, account.network, shownFromLast(it, fromIndexHere, tokens)) },
+                )
             }
             // Only a row that names its block says what its logs say: one no block was seen for (a
             // transaction mined while the app was closed) gets the verified log beside it.
@@ -209,10 +259,23 @@ class AccountActivity(
                 )
             // An event the engine dated goes by its time like a sent row; one it did not by its block.
             val dated = events.mapNotNull { (row, event) ->
-                event.blockTimestamp?.let { Listed(row, event.blockNumber, pending = false, moment = it, event = true) }
+                event.blockTimestamp?.let {
+                    Listed(row, event.blockNumber, pending = false, moment = it, event = true, anchored = true)
+                }
             }
-            val undated = events.filter { it.second.blockTimestamp == null }
-                .map { (row, event) -> row to event.blockNumber }
+            // The addr1 index's rows go by their block, as an event the engine did not date: none of a transaction
+            // the log index read, listed or deliberately left out (a transfer of nothing), is listed again.
+            val fromIndex = indexed(
+                index,
+                listedHere + allEvents.map { it.transactionHash.lowercase() },
+                parties,
+                tokens,
+                rows,
+            )
+            val undated = (
+                events.filter { it.second.blockTimestamp == null }.map { (row, event) -> row to event.blockNumber } +
+                    fromIndex
+                ).sortedByDescending { it.second }
             val deployedHere = entries.any { (it.transfer.action as? SentAction.SafeDeployment)?.safe == address }
             val since = if (deployedHere) "when it was deployed from this device" else "when it was added here"
             val parts = listOfNotNull(safe?.let { "its events" to it }, "its token transfers" to transfers)
@@ -237,14 +300,84 @@ class AccountActivity(
                 if (safe == null) notListedYet(account.network) else null,
             ).joinToString(" ")
             return ActivityUiState.Shown(
-                rows = merged(sent + dated, undated),
+                rows = merged(sent + dated, undated).byDay(dates, now()),
                 coverage = covered.joinToString(" "),
                 empty = "Nothing listed yet.",
                 simpleCoverage = simple,
                 waiting = waiting,
                 queued = queued,
+                index = index?.let { indexSection(it, account.network, shownFromLast(it, fromIndex, tokens)) },
             )
         }
+
+        /**
+         * How many rows of [index]'s last page the list shows among [shown] (its rows from the index); null while
+         * the [tokens] are not read, and no row of it can be said yet.
+         */
+        private fun shownFromLast(
+            index: IndexPaging,
+            shown: List<Pair<ActivityRow, Long>>,
+            tokens: Map<Address, KnownToken>?,
+        ): Int? {
+            if (tokens == null) return null
+            val last = index.lastRows.mapTo(HashSet()) { "index:${it.entry.block}:${it.entry.slot}" }
+            return shown.count { it.first.key in last }
+        }
+
+        /**
+         * The verified rows of the addr1 index read so far ([index]), each with its block, newest first: none of a
+         * transaction in [listed] (lower-case hashes), which another row says already, and none [rows] leaves out.
+         * Until the tokens are known ([tokens] null) no transfer's amount can be said, so none is listed yet. Beside
+         * them, a ghost row for each entry still being checked ([IndexPaging.pending]), by its block, under the key
+         * its row takes once verified (owner's request, 2026-11-24): the row then replaces it in place. A ghost says
+         * nothing of its entry; one whose check fails, or whose transaction another row says already, goes.
+         */
+        private fun indexed(
+            index: IndexPaging?,
+            listed: Set<String>,
+            parties: Parties,
+            tokens: Map<Address, KnownToken>?,
+            rows: ActivityRows,
+        ): List<Pair<ActivityRow, Long>> {
+            if (index == null) return emptyList()
+            val ghosts = index.pending.map { pendingRow(it) to it.block }
+            // Until the tokens are read no row can be said: a verified entry keeps its ghost meanwhile, so that its
+            // place holds until its row takes it.
+            if (tokens == null) {
+                val verified = index.rows.filterNot { it.transaction?.hash?.lowercase() in listed }
+                    .map { pendingRow(it.entry) to it.entry.block }
+                return (verified + ghosts).sortedWith(
+                    compareByDescending<Pair<ActivityRow, Long>> { it.second }
+                        .thenByDescending { it.first.opens.index?.slot ?: 0 },
+                )
+            }
+            val verified = index.rows
+                .filterNot { it.transaction?.hash?.lowercase() in listed }
+                .mapNotNull { indexed -> rows.indexRow(indexed, parties, tokens)?.let { it to indexed.entry.block } }
+            // Newest first, by block and slot, the ghosts among the rows.
+            return (verified + ghosts).sortedWith(
+                compareByDescending<Pair<ActivityRow, Long>> { it.second }
+                    .thenByDescending { it.first.opens.index?.slot ?: 0 },
+            )
+        }
+
+        /**
+         * The ghost row of [entry], an entry of the addr1 index being checked: its key, and the time its row will say
+         * (its block in Detailed view, none in simple mode), which the ghost draws as a line of that height only, so
+         * that it is as tall as its row; nothing else of it.
+         */
+        private fun pendingRow(entry: AddressIndexEntry): ActivityRow = ActivityRow(
+            key = "index:${entry.block}:${entry.slot}",
+            title = "",
+            detail = "",
+            about = "",
+            time = "Block ${grouped(entry.block)}",
+            simpleTime = null,
+            status = "",
+            state = ActivityState.WAITING,
+            opens = ActivityKey("", index = IndexEntryKey(entry.block, entry.slot, entry.roles)),
+            pending = true,
+        )
 
         /**
          * [swap] as its card: what it swaps, once the tokens are known, and where it stands, from its
@@ -402,8 +535,8 @@ class AccountActivity(
     }
 
     /**
-     * Every row in one list, newest first: the [dated] rows by when each happened (a sent
-     * transaction by when its block was produced, where an event in that block says it, else by
+     * Every row in one list, newest first, each with when it goes by ([Placed]): the [dated] rows by when each
+     * happened (a sent transaction by when its block was produced, where an event in that block says it, else by
      * when a peer took it; a CoW order alike, by its fill's or cancellation's block, else by when
      * it was signed; an event by when its block was produced), the sent ones before the events of
      * the same moment; and the [undated] events (newest block first), from an engine that does not
@@ -416,7 +549,7 @@ class AccountActivity(
      * row's block; when none has, it counts as the block of the nearest dated row above it that
      * has one, and as newer than every block when none has.
      */
-    private fun merged(dated: List<Listed>, undated: List<Pair<ActivityRow, Long>>): List<ActivityRow> {
+    private fun merged(dated: List<Listed>, undated: List<Pair<ActivityRow, Long>>): List<Placed> {
         val sorted = dated.sortedWith(
             compareByDescending<Listed> { it.moment }
                 .thenBy { it.event }
@@ -431,14 +564,14 @@ class AccountActivity(
                 ?: blocks.lastOrNull { it != Long.MAX_VALUE }
                 ?: Long.MAX_VALUE
         }
-        val rows = ArrayList<ActivityRow>(sorted.size + undated.size)
+        val rows = ArrayList<Placed>(sorted.size + undated.size)
         var next = 0
         for ((at, listed) in sorted.withIndex()) {
             // The undated events of newer blocks than this row's go above it; of its own block, below.
-            while (next < undated.size && undated[next].second > blocks[at]) rows += undated[next++].first
-            rows += listed.row
+            while (next < undated.size && undated[next].second > blocks[at]) rows += Placed(undated[next++].first)
+            rows += Placed(listed.row, listed.moment, listed.anchored)
         }
-        while (next < undated.size) rows += undated[next++].first
+        while (next < undated.size) rows += Placed(undated[next++].first)
         return rows
     }
 
@@ -477,7 +610,7 @@ class AccountActivity(
      * A row that is dated: a sent transaction's, the [block] it was seen in (null: none seen),
      * whether it is [pending] (no block seen yet, nor its nonce used) and its [moment] (unix
      * seconds), when its block was produced where that is known, else when a peer took it; or an
-     * [event]'s, in its block, dated by the engine.
+     * [event]'s, in its block, dated by the engine. [anchored] when [moment] is its block's time.
      */
     private class Listed(
         val row: ActivityRow,
@@ -485,6 +618,7 @@ class AccountActivity(
         val pending: Boolean,
         val moment: Long,
         val event: Boolean = false,
+        val anchored: Boolean = false,
     )
 
     /**

@@ -63,7 +63,8 @@ class LightClientItemTest {
     }
 
     /** [status] as Detailed view's strip draws it: simple mode's line is tested on its own, below. */
-    private fun item(status: LightClientStatus) = LightClientItem.from(status, NOW).copy(simpleText = null)
+    private fun item(status: LightClientStatus) =
+        LightClientItem.from(status, NOW).copy(simpleText = null, simpleHeader = "")
 
     /** Simple mode's sync line for [status] on Ethereum. */
     private fun simple(status: LightClientStatus, decidedHere: Boolean = false) =
@@ -158,5 +159,45 @@ class LightClientItemTest {
             LightClientStatus.Off,
             LightClientStatus.Idle,
         ).forEach { status -> assertEquals(null, simple(status), "$status") }
+    }
+
+    @Test
+    fun eachStateHasAFewWordsForTheHeaderOfItsNetworksAccounts() {
+        fun header(status: LightClientStatus) = LightClientItem.from(status, NOW).simpleHeader
+
+        assertEquals(
+            listOf(
+                "Syncing · starting",
+                "Syncing · starting",
+                "Syncing · 3 of 12 periods",
+                "Syncing",
+                "Syncing",
+                "Syncing",
+                "Waiting for a new block",
+                "Looking for peers",
+                "Up to date",
+                "Paused in the background",
+                "Checkpoint too old",
+                "Not running on this device",
+                "Off",
+                "Starts when needed",
+            ),
+            listOf(
+                LightClientStatus.Starting,
+                LightClientStatus.Bootstrapping(lookingForServers = true),
+                LightClientStatus.CatchingUp(3, 12),
+                LightClientStatus.CatchingUp(0, 0),
+                LightClientStatus.CatchingUp(12, 12),
+                LightClientStatus.WaitingForHead(headAgeSeconds = null),
+                LightClientStatus.WaitingForHead(headAgeSeconds = 90),
+                LightClientStatus.WaitingForProofPeers(100, NOW - 8),
+                LightClientStatus.Synced(100, NOW - 8, finalized = null),
+                LightClientStatus.Sleeping,
+                LightClientStatus.StaleAnchor(6, 3),
+                LightClientStatus.Unavailable,
+                LightClientStatus.Off,
+                LightClientStatus.Idle,
+            ).map(::header),
+        )
     }
 }

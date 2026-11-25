@@ -43,7 +43,7 @@ private fun RemoveAccountRemovingPreview() = RemoveAccountPreview(daily.copy(rem
 private fun RemoveAccountKeyKeptPreview() = RemoveAccountPreview(
     RemoveAccountUiState.Notice(
         "Daily is removed, but its key could not be deleted from this device, so the wallet password stays " +
-            "the one you set. Importing its recovery phrase again brings the account back.",
+            "the one you set. Importing its recovery phrase or its private key again brings the account back.",
     ),
 )
 

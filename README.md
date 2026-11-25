@@ -19,7 +19,7 @@ Sepolia off, a debug build with Sepolia alone, and each network can be turned
 on or off in Settings.
 
 The website, for people who are not developers, with the downloads and a
-guide to adding accounts and Safes: <https://biafra23.github.io/punicus/>
+guide to adding accounts and Safes: <https://punicus.eth.limo/>
 (its source: [website/](website/)).
 
 ## Status
@@ -32,8 +32,8 @@ What the app does today:
   *Detailed view* shows the screens that say how the wallet checks the chain
   (docs/simple-ui.md).
 - **Accounts.** Create an account from a new recovery phrase, import one from
-  a phrase, add further accounts from a phrase already held, or watch any
-  address, which is told apart from verified code and
+  a phrase or from its private key, add further accounts from a phrase already
+  held, or watch any address, which is told apart from verified code and
   storage as an EOA (delegated or not), a Safe or another contract. Accounts
   are kept across restarts and can be renamed and removed.
 - **Keys.** An imported or created seed is held in an envelope that opens only

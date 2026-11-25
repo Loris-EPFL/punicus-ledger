@@ -947,6 +947,19 @@ class DappViewModelsTest {
     }
 
     @Test
+    fun aKeyImportedOnItsOwnIsNoPhraseAndTheReasonSaysSo() = runTest {
+        main()
+        val held = account(Network.ETHEREUM, '2', AccountCustody.InKeyStore)
+        keys.bare = setOf(held.address)
+        val wallet = FakeAccounts(held)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(perAppProposal()), emptyList())
+        val vm = perAppViewModel(wallet)
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        assertEquals(DappProposalViewModel.NO_PHRASE_BARE_KEYS, vm.uiState.value.newAddress!!.unavailable)
+    }
+
+    @Test
     fun withoutAPhraseTheNewAddressIsGreyedOutAndSaysWhy() = runTest {
         main()
         val wallet = FakeAccounts(account(Network.ETHEREUM, '2', AccountCustody.Watched))

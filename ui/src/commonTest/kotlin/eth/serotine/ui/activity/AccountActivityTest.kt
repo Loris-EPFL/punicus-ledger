@@ -153,6 +153,8 @@ class AccountActivityTest {
             ObserveWaitingSwaps(waitingSwaps),
             ObserveOutbox(outbox),
             now = { 600 },
+            // A day is 100 seconds here: 600 is day 6, today.
+            dates = ActivityDates(dayOf = { it / 100 }, dayName = { "day ${it / 100}" }, clock = { "clock $it" }),
         ) { "at $it" }
             .of(AccountId(Network.SEPOLIA, address), hidden)
             // Unconfined, so that what a test changes is listed before it reads the value.
@@ -232,6 +234,8 @@ class AccountActivityTest {
                     "No block seen to include it yet",
                     ActivityState.WAITING,
                     ActivityKey(execution.hash),
+                    day = "Yesterday · day 5",
+                    clock = "clock 500",
                 ),
                 ActivityRow(
                     native.hash,
@@ -243,6 +247,11 @@ class AccountActivityTest {
                     ActivityState.DONE,
                     ActivityKey(native.hash),
                     simpleStatus = "Final",
+                    direction = ActivityDirection.OUT,
+                    amount = "\u22120.25 ETH",
+                    headline = "Sent ETH",
+                    day = "day 4",
+                    clock = "clock 400",
                 ),
                 ActivityRow(
                     token.hash,
@@ -254,6 +263,9 @@ class AccountActivityTest {
                     ActivityState.FAILED,
                     ActivityKey(token.hash),
                     simpleStatus = "Failed: its fee was paid, nothing else done",
+                    // A reverted transfer moved nothing: no arrow, no amount.
+                    day = "day 3",
+                    clock = "clock 300",
                 ),
             ),
             shown.rows,
@@ -1069,6 +1081,24 @@ class AccountActivityTest {
     }
 
     @Test
+    fun ethMovedToItselfIsNeitherInNorOut() = runTest {
+        starts.starts.value = mapOf(alice.address to HistoryStart.Fixed(9_400_000))
+        index.coverage.value = LogCoverageReading.Read(
+            mapOf(LogWatchKey.Mention(alice.address) to LogCoverage(9_400_000, 9_400_000L..9_420_000L)),
+        )
+        val toItself = sent(14, SentAction.Transfer(alice.address, TransferAsset.Native, UInt256.ONE), 360)
+        history.entries.value = listOf(HistoryEntry(toItself))
+        index.logs = listOf(
+            tokenLog(TokenTransfers.ETH, 9_409_000, alice.address, alice.address, word("1"), "0x" + "e9".repeat(32)),
+        )
+
+        val rows = assertIs<ActivityUiState.Shown>(activity().value).rows
+
+        assertEquals(listOf(ActivityDirection.NONE, ActivityDirection.NONE), rows.map { it.direction })
+        assertEquals(listOf(null, null), rows.map { it.amount }, "no sign for what stayed")
+    }
+
+    @Test
     fun ethASafeReceivedIsItsOwnEventAloneNotAlsoTheNetworksLogOfIt() = runTest {
         treasuryIndexed(9_400_000L..9_420_000L)
         val tx = "0x" + "dd".repeat(32)
@@ -1081,6 +1111,9 @@ class AccountActivityTest {
 
         assertEquals(listOf("Received 1 ETH"), rows.map { it.title })
         assertEquals(ActivityKey(tx, 0), rows.single().opens, "the Safe's own event, not the network's log")
+        assertEquals(ActivityDirection.IN, rows.single().direction)
+        assertEquals("+1 ETH", rows.single().amount)
+        assertEquals("Received ETH", rows.single().headline)
     }
 
     @Test
@@ -1347,6 +1380,26 @@ class AccountActivityTest {
             rows.map { it.title },
         )
         assertEquals(listOf("at 500", "Block 9,412,000", "at 400", "Block 9,405,000"), rows.map { it.time })
+        // Grouped by day, today and yesterday said; one dated by its block alone under a heading that says so.
+        assertEquals(
+            listOf("Yesterday · day 5", UNDATED_DAY, "day 4", UNDATED_DAY),
+            rows.map { it.day },
+        )
+        assertEquals(listOf("clock 500", null, "clock 400", null), rows.map { it.clock })
+        assertEquals(
+            listOf("+1 USDC", "+2 USDC", "\u22120.25 ETH", "+3 USDC"),
+            rows.map { it.amount },
+            "each signed, the way it went",
+        )
+        assertEquals(
+            listOf(ActivityDirection.IN, ActivityDirection.IN, ActivityDirection.OUT, ActivityDirection.IN),
+            rows.map { it.direction },
+        )
+        assertEquals(
+            UNDATED_SIMPLE_DAY,
+            (assertIs<ActivityUiState.Shown>(activity().value).simple() as ActivityUiState.Shown).rows[1].day,
+            "simple mode names no block",
+        )
     }
 
     @Test
@@ -1402,6 +1455,9 @@ class AccountActivityTest {
                     status = "Waiting to send",
                     state = ActivityState.WAITING,
                     opens = ActivityKey(waiting.id, queued = true),
+                    direction = ActivityDirection.OUT,
+                    amount = "\u221240.5 USDC",
+                    headline = "Send USDC",
                 ),
             ),
             shown.queued,

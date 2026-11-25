@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
+import eth.serotine.domain.repository.AddressIndexArchive
 import eth.serotine.domain.repository.DappSiteMemory
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyStore
@@ -34,6 +35,10 @@ import kotlinx.coroutines.withContext
  * every dApp site that remembered it too ([DappSiteMemory]): what is stored for an account goes with it. A memory
  * that cannot be saved takes nothing from the removal either: the entry stays until the site is approved again, and
  * D3 preselects nothing it can no longer offer. A removal that did not go through forgets nothing.
+ *
+ * The account's addr1 history kept between runs ([addressIndex]; owner's request, 2026-11-25) goes with it, as the
+ * privacy policy says of everything stored for an account. A list that cannot be removed takes nothing from the
+ * removal either: it is public chain data, and adding the address again shows it again.
  */
 class RemoveAccount(
     private val accounts: AccountRepository,
@@ -44,6 +49,8 @@ class RemoveAccount(
     private val aliases: PerAppAliases,
     /** The accounts each dApp site last approved, which forget the account removed. */
     private val sites: DappSiteMemory,
+    /** Each account's addr1 history kept between runs, on a host that keeps one; null: none is kept. */
+    private val addressIndex: AddressIndexArchive? = null,
 ) {
     suspend operator fun invoke(id: AccountId): AccountRemoval =
         withContext(NonCancellable) { changes.serialized { remove(id) } }
@@ -68,6 +75,7 @@ class RemoveAccount(
         if (account.perApp != null && lastOfItsAddress) {
             aliases.observe().first().filterValues { it == id.address }.keys.forEach { aliases.unlink(it) }
         }
+        addressIndex?.forget(id)
         return when (account.custody) {
             AccountCustody.Watched -> AccountRemoval.Removed
             AccountCustody.InKeyStore -> if (keyStillNeeded) {

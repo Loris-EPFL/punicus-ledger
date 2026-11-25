@@ -13,6 +13,8 @@ import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.repository.AddressIndexChoice
+import eth.serotine.domain.repository.AddressIndexHistory
 import eth.serotine.domain.repository.ConnectionCost
 import eth.serotine.domain.repository.CurrencyChoice
 import eth.serotine.domain.repository.DraftBasis
@@ -29,6 +31,7 @@ import eth.serotine.domain.repository.StaleAnchorConsent
 import eth.serotine.domain.usecase.AllowHeavyDownloadsOnMetered
 import eth.serotine.domain.usecase.FetchFreshCheckpoint
 import eth.serotine.domain.usecase.NetworkOverview
+import eth.serotine.domain.usecase.ObserveAddressIndexStatus
 import eth.serotine.domain.usecase.ObserveDebugScreen
 import eth.serotine.domain.usecase.ObserveDisplayCurrencies
 import eth.serotine.domain.usecase.ObserveHeavyDownloads
@@ -43,13 +46,17 @@ import eth.serotine.domain.usecase.SetInterfaceMode
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.SetSyncPolicy
 import eth.serotine.domain.usecase.SyncPastStaleAnchor
+import eth.serotine.domain.usecase.TurnAddressIndex
 import eth.serotine.ui.APP_VERSION
+import eth.serotine.ui.FIXTURE_IMPORTER
 import eth.serotine.ui.FakeAccounts
+import eth.serotine.ui.FakeAddressIndexHistory
 import eth.serotine.ui.FakeConnectionMeter
 import eth.serotine.ui.FakeFeeds
 import eth.serotine.ui.FakeFreshness
 import eth.serotine.ui.FakeMetadata
 import eth.serotine.ui.ListCatalog
+import eth.serotine.ui.MemoryAddressIndexSetting
 import eth.serotine.ui.MemoryCurrencySetting
 import eth.serotine.ui.MemoryDebugScreen
 import eth.serotine.ui.MemoryInterfaceMode
@@ -59,6 +66,7 @@ import eth.serotine.ui.MemoryOutbox
 import eth.serotine.ui.MemorySyncPolicy
 import eth.serotine.ui.MemoryTransactionHistory
 import eth.serotine.ui.MemoryUserTokens
+import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.LightClientHealth
 import eth.serotine.ui.platform.ScreenCaptureDebugSwitch
 import kotlin.test.AfterTest
@@ -117,6 +125,7 @@ class SettingsViewModelTest {
     private val outbox = MemoryOutbox()
     private val meter = FakeConnectionMeter()
     private val metered = MemoryMeteredDownloads()
+    private val addressIndexSetting = MemoryAddressIndexSetting()
 
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
@@ -129,7 +138,11 @@ class SettingsViewModelTest {
         AccountCustody.InKeyStore,
     )
 
-    private fun TestScope.viewModel(screenCapture: ScreenCaptureDebugSwitch? = null): SettingsViewModel {
+    private fun TestScope.viewModel(
+        screenCapture: ScreenCaptureDebugSwitch? = null,
+        addressIndex: AddressIndexHistory? = null,
+        pinned: Address? = null,
+    ): SettingsViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = SettingsViewModel(
             ObserveNetworkOverview(networks, accounts, lightClient, MemoryTransactionHistory(), clock = { 1_000 }),
@@ -150,6 +163,8 @@ class SettingsViewModelTest {
             ObserveHeavyDownloads(meter, metered),
             AllowHeavyDownloadsOnMetered(metered),
             clock = { 1_000 },
+            observeAddressIndex = addressIndex?.let { ObserveAddressIndexStatus(it, addressIndexSetting, pinned) },
+            turnAddressIndex = addressIndex?.let { TurnAddressIndex(it, addressIndexSetting, pinned) },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -649,5 +664,119 @@ class SettingsViewModelTest {
         assertFalse(item.on)
         assertTrue(item.text.startsWith("This device does not say whether its connection is metered"), item.text)
         assertNotNull(item.unavailableReason)
+    }
+
+    @Test
+    fun aHostWithoutTheAddressIndexShowsNoRowForIt() = runTest {
+        assertNull(viewModel().uiState.value.addressIndex, "iOS has no such setting")
+    }
+
+    @Test
+    fun withNoKeyPinnedAndNoSwarmReaderTheRowIsGreyedOutSayingBoth() = runTest {
+        val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(reader = false), pinned = null)
+
+        val item = checkNotNull(viewModel.uiState.value.addressIndex)
+
+        assertFalse(item.on)
+        assertEquals(
+            "Off: no importer key is pinned in this release yet · This build's engine has no Swarm reader · On by " +
+                "default once it can be read: Turn off keeps it off",
+            item.text,
+        )
+        val reason = checkNotNull(item.unavailableReason)
+        assertTrue(reason.startsWith("No importer key is pinned in this release yet."), reason)
+        assertTrue(reason.contains("This build's engine has no Swarm reader"), reason)
+        assertTrue(item.turnOff, "the default can be turned off ahead")
+
+        viewModel.useAddressIndex(true)
+        runCurrent()
+        assertEquals(AddressIndexChoice.NotChosen, addressIndexSetting.choice.value, "nothing turned on")
+        viewModel.useAddressIndex(false)
+        runCurrent()
+        assertEquals(AddressIndexChoice.Chosen(null), addressIndexSetting.choice.value, "an explicit off, kept")
+        assertFalse(checkNotNull(viewModel.uiState.value.addressIndex).turnOff)
+    }
+
+    @Test
+    fun withAKeyPinnedAndAReaderItIsOnByDefaultNamingTheKeyAndAnOffStays() = runTest {
+        val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(), pinned = FIXTURE_IMPORTER)
+        val key = Eip55.format(FIXTURE_IMPORTER)
+        assertEquals(
+            "On: importer $key, pinned in this release · On by default: you can turn it off",
+            viewModel.uiState.value.addressIndex?.text,
+        )
+        assertEquals(true, viewModel.uiState.value.addressIndex?.on)
+        assertNull(viewModel.uiState.value.addressIndex?.unavailableReason)
+
+        viewModel.useAddressIndex(false)
+        runCurrent()
+        assertEquals("Off: importer $key, pinned in this release", viewModel.uiState.value.addressIndex?.text)
+        assertEquals(AddressIndexChoice.Chosen(null), addressIndexSetting.choice.value)
+
+        viewModel.useAddressIndex(true)
+        runCurrent()
+        assertEquals(true, viewModel.uiState.value.addressIndex?.on)
+        assertEquals(AddressIndexChoice.Chosen(FIXTURE_IMPORTER), addressIndexSetting.choice.value)
+    }
+
+    @Test
+    fun aChoiceToTurnItOnMadeInAnotherBuildCanBeTakenBackWhileGreyedOut() = runTest {
+        addressIndexSetting.choice.value = AddressIndexChoice.Chosen(FIXTURE_IMPORTER)
+        val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(reader = false), pinned = FIXTURE_IMPORTER)
+
+        val item = checkNotNull(viewModel.uiState.value.addressIndex)
+        assertFalse(item.on, "no reader: off here")
+        assertTrue(item.turnOff, "the stored choice can be taken back")
+        assertNotNull(item.unavailableReason)
+
+        viewModel.useAddressIndex(false)
+        runCurrent()
+
+        assertEquals(AddressIndexChoice.Chosen(null), addressIndexSetting.choice.value)
+        assertFalse(checkNotNull(viewModel.uiState.value.addressIndex).turnOff)
+    }
+
+    @Test
+    fun untilTheEngineSaysWhetherItReadsSwarmTheRowIsGreyedOutNotLeftOut() = runTest {
+        val index = FakeAddressIndexHistory().apply { readerAnswered.value = false }
+        val viewModel = viewModel(addressIndex = index, pinned = FIXTURE_IMPORTER)
+
+        val waiting = checkNotNull(viewModel.uiState.value.addressIndex) { "the row is there, greyed out (#55)" }
+        assertFalse(waiting.on)
+        assertTrue(waiting.text.contains(" · Waiting for the engine to say whether it reads Swarm"), waiting.text)
+        assertTrue(checkNotNull(waiting.unavailableReason).contains("Ethereum's light client runs"))
+        assertTrue(waiting.turnOff, "the default can be turned off ahead")
+
+        index.readerAnswered.value = true
+        runCurrent()
+
+        val answered = checkNotNull(viewModel.uiState.value.addressIndex)
+        assertTrue(answered.on, "on by default once the engine reads Swarm")
+        assertNull(answered.unavailableReason)
+    }
+
+    @Test
+    fun aSwitchOfTheAddressIndexThatCannotBeSavedSaysSo() = runTest {
+        val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(), pinned = FIXTURE_IMPORTER)
+        addressIndexSetting.failSaves = true
+
+        viewModel.useAddressIndex(false)
+        runCurrent()
+
+        val item = checkNotNull(viewModel.uiState.value.addressIndex)
+        assertTrue(item.on, "still on by default")
+        assertTrue(item.text.endsWith(" · Your choice could not be saved"), item.text)
+    }
+
+    @Test
+    fun aChoiceFoundDamagedIsOffSaysSoAndOffersTurnOff() = runTest {
+        addressIndexSetting.choice.value = AddressIndexChoice.Chosen(importer = null, setAside = true)
+        val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(), pinned = FIXTURE_IMPORTER)
+
+        val item = checkNotNull(viewModel.uiState.value.addressIndex)
+
+        assertFalse(item.on, "it may have been an off")
+        assertTrue(item.text.contains("(your saved choice was damaged and set aside)"), item.text)
+        assertTrue(item.turnOff)
     }
 }

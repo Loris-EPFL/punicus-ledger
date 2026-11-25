@@ -14,6 +14,8 @@ import eth.serotine.data.cow.HttpCowApi
 import eth.serotine.data.engine.MyotisHost
 import eth.serotine.data.handoff.NoWalletHandoff
 import eth.serotine.data.history.FileHistoryStarts
+import eth.serotine.data.history.FileAddressIndexArchive
+import eth.serotine.data.history.PinnedAddressIndexImporter
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.data.keys.desktopBiometricKey
@@ -28,6 +30,7 @@ import eth.serotine.data.outbox.desktopOutbox
 import eth.serotine.data.safe.FileSafeTxQueue
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
+import eth.serotine.data.settings.FileAddressIndexSetting
 import eth.serotine.data.settings.FileAmountsHidden
 import eth.serotine.data.settings.FileDebugScreen
 import eth.serotine.data.settings.FileDisplayCurrency
@@ -50,6 +53,7 @@ import eth.serotine.domain.usecase.AnswerDappRequestsAtOnce
 import eth.serotine.domain.usecase.CheckHeldSignature
 import eth.serotine.domain.usecase.CheckQueued
 import eth.serotine.domain.usecase.FollowAccountLogs
+import eth.serotine.domain.usecase.FollowAddressIndexSetting
 import eth.serotine.domain.usecase.FollowDappAccounts
 import eth.serotine.domain.usecase.FollowDebugScreen
 import eth.serotine.domain.usecase.FollowInterfaceMode
@@ -184,6 +188,9 @@ private fun openWallet(dataDir: File) {
     // the graph and the accounts' log followers.
     val connectionMeter = UnreportedConnectionMeter()
     val meteredDownloads = FileMeteredDownloads(dataDir.resolve("metered-downloads.json").path)
+    // The experimental addr1 history's setting (owner ruling, 2026-11-21, #334): one instance, read by the graph and by
+    // the work that keeps the engine's reader to it, below.
+    val addressIndexSetting = FileAddressIndexSetting(dataDir.resolve("address-index.json").path)
     // One engine, one light client per network that is on and needed (FollowNetworks, below).
     val node = MyotisHost.start(
         dataDir.resolve("myotis"),
@@ -302,6 +309,21 @@ private fun openWallet(dataDir: File) {
                 } catch (e: Exception) {
                     System.err.println("Punicus: upgrade notices of ${network.displayName} stopped: $e")
                 }
+            }
+        }
+        LaunchedEffect(Unit) {
+            // The engine's addr1 reader follows the setting: the pinned key while it is on, none otherwise, so that
+            // nothing is read from Swarm or checked for it while it is off. Applied from the start, without waiting
+            // for the engine to say whether it reads Swarm. Handing the engine the key does not make it dial out:
+            // its Swarm node starts on the first read (Myotis's addrhist.rs: "the node starts on the first read"),
+            // which an account's Activity tab asks, as docs/privacy-policy.md says. A failure ends it, never the
+            // wallet.
+            try {
+                FollowAddressIndexSetting(addressIndexSetting, PinnedAddressIndexImporter.KEY, node)()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Punicus: following the addr1 history's setting stopped: ${e::class.simpleName}")
             }
         }
         LaunchedEffect(Unit) {
@@ -558,9 +580,20 @@ private fun openWallet(dataDir: File) {
                 dappRequests = dapps.requests,
                 // Per-app addresses (issue #252): the key store's, and each site's accounts last approved.
                 perAppKeys = keyStore,
+                privateKeys = keyStore,
                 dappSites = FileDappSites(dataDir.resolve("walletconnect/sites.json").path),
                 perAppAliases = FileDappAliases(dataDir.resolve("walletconnect/aliases.json").path),
                 dappConnectionsOff = dappProjectId.isEmpty(),
+                // An account's history from the addr1 index on Swarm, the desktop's and Android's, behind its
+                // experimental setting (owner ruling, 2026-11-21, #334), read and checked by the engine. An engine
+                // without the Swarm reader refuses it as not in this build, and the setting is greyed out saying so.
+                // The key the index rests on is pinned in the release (`0xb11B…7241`, owner's choice, 2026-11-24,
+                // #359).
+                addressIndex = node.addressIndex,
+                addressIndexSetting = addressIndexSetting,
+                addressIndexImporter = PinnedAddressIndexImporter.KEY,
+                // What was read of each account's addr1 history, kept between runs (owner's request, 2026-11-25).
+                addressIndexArchive = FileAddressIndexArchive(dataDir.resolve("address-index").path),
             )
         }
         Window(

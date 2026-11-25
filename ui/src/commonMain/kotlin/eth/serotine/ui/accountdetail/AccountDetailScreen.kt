@@ -200,6 +200,8 @@ fun AccountDetailRoute(
     onContinueSwap: (sell: String) -> Unit = {},
     onSendElsewhere: (contract: String?) -> Unit = {},
     perAppActions: PerAppActions = PerAppActions(),
+    /** The Activity row whose detail is shown beside the account, drawn selected; null: none. */
+    selectedActivity: ActivityKey? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val gone by rememberUpdatedState(onGone)
@@ -232,6 +234,7 @@ fun AccountDetailRoute(
             onOpenSafeTx = onOpenSafeTx,
             onImportRequest = onImportRequest,
             onOpenActivity = onOpenActivity,
+            selectedActivity = selectedActivity,
             onRefresh = viewModel::refresh,
             modifier = modifier,
             onTurnOnNetwork = viewModel::turnOnNetwork,
@@ -245,6 +248,7 @@ fun AccountDetailRoute(
             onDerive = onDerive,
             onToggleAmounts = viewModel::toggleAmounts,
             onOrderActivity = viewModel::orderActivity,
+            onMoreActivity = viewModel::loadMoreActivity,
             onToggleUnlistedNfts = viewModel::toggleUnlistedNfts,
             nftActions = NftActions(
                 onOpenAdd = viewModel::openAddNft,
@@ -272,6 +276,7 @@ fun AccountDetailRoute(
             onOpenSafeTx = onOpenSafeTx,
             onImportRequest = onImportRequest,
             onOpenActivity = onOpenActivity,
+            selectedActivity = selectedActivity,
             modifier = modifier,
             onTurnOnNetwork = viewModel::turnOnNetwork,
             onAddOnNetwork = onAddOnNetwork,
@@ -284,6 +289,7 @@ fun AccountDetailRoute(
             onDerive = onDerive,
             onToggleAmounts = viewModel::toggleAmounts,
             onOrderActivity = viewModel::orderActivity,
+            onMoreActivity = viewModel::loadMoreActivity,
             onToggleUnlistedNfts = viewModel::toggleUnlistedNfts,
             nftActions = NftActions(
                 onOpenAdd = viewModel::openAddNft,
@@ -317,7 +323,8 @@ fun AccountDetailRoute(
  * or simple mode's ([SimpleAccountDetailScreen]) pull-to-refresh. Once the account is read, the eye
  * beside Back hides or shows every amount ([onToggleAmounts]; docs/wallet-ux.md, *Hiding amounts*).
  * Below the assets are the account's NFTs, the unlisted collections' opened or collapsed by
- * [onToggleUnlistedNfts] (docs/wallet-ux.md, *NFTs*).
+ * [onToggleUnlistedNfts] (docs/wallet-ux.md, *NFTs*). Where the addr1 index adds rows to the Activity, the list
+ * nearing its end asks for the next page through [onMoreActivity], as does Try again.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -351,8 +358,11 @@ fun AccountDetailScreen(
     onOrderActivity: (ActivityOrder) -> Unit = {},
     onToggleUnlistedNfts: () -> Unit = {},
     nftActions: NftActions = NftActions(),
+    onMoreActivity: () -> Unit = {},
     onSendElsewhere: (contract: String?) -> Unit = {},
     perAppActions: PerAppActions = PerAppActions(),
+    /** The Activity row whose detail is shown beside the account, drawn selected; null: none. */
+    selectedActivity: ActivityKey? = null,
 ) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -514,7 +524,7 @@ fun AccountDetailScreen(
                                     }
                                 }.takeIf { state.kind == AccountKind.EOA },
                                 // The next account of its phrase; greyed out while its key is not here.
-                                deriveBlockedReason(state.control).let { reason ->
+                                deriveBlockedReason(state.control, state.bareKey).let { reason ->
                                     MenuAction("$DERIVE_ACTION…", SerotineIcons.Key, unavailable = reason != null) {
                                         if (reason == null) {
                                             onDerive()
@@ -561,6 +571,7 @@ fun AccountDetailScreen(
                     onOpenSafeTx = onOpenSafeTx,
                     onImportRequest = onImportRequest,
                     onOpenActivity = onOpenActivity,
+                    selectedActivity = selectedActivity,
                     onContinueSwap = continueSwap,
                     onDismissWaiting = onDismissWaiting,
                     onSafeSettings = safeSettings,
@@ -571,6 +582,7 @@ fun AccountDetailScreen(
                     nftActions = nftsShown,
                     onSendElsewhere = sendElsewhere,
                     perAppActions = perAppActions,
+                    onMoreActivity = onMoreActivity,
                 )
             }
         }
@@ -603,6 +615,7 @@ private fun Details(
     onOpenSafeTx: (String) -> Unit,
     onImportRequest: () -> Unit,
     onOpenActivity: (ActivityKey) -> Unit,
+    selectedActivity: ActivityKey?,
     onContinueSwap: (String) -> Unit,
     onDismissWaiting: (String) -> Unit,
     onSafeSettings: () -> Unit,
@@ -614,6 +627,7 @@ private fun Details(
     nftActions: NftActions,
     onSendElsewhere: (String?) -> Unit,
     perAppActions: PerAppActions,
+    onMoreActivity: () -> Unit,
 ) {
     // Each item ends with the space before the next, but an Activity's rows, which follow one another.
     val spaced = Modifier.padding(bottom = 16.dp)
@@ -760,6 +774,8 @@ private fun Details(
                 onContinue = onContinueSwap,
                 onDismiss = onDismissWaiting,
                 continueAvailable = state.canSwap,
+                onMore = onMoreActivity,
+                selected = selectedActivity,
             )
             state.segment == DetailSegment.OWNERS -> item {
                 SafeOwners(

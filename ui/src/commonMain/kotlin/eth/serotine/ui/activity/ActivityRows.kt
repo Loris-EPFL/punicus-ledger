@@ -1,6 +1,9 @@
 package eth.serotine.ui.activity
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexRole
+import eth.serotine.domain.model.AddressIndexRow
+import eth.serotine.domain.model.AddressIndexTransaction
 import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.DelayCall
 import eth.serotine.domain.model.DelayMemberChange
@@ -29,6 +32,7 @@ import eth.serotine.domain.usecase.TokenTransferEvent
 import eth.serotine.ui.components.AMOUNT_MASK
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.compactAmount
 import eth.serotine.ui.components.FALLBACK_HANDLER_REMOVED
 import eth.serotine.ui.components.GUARD_REMOVED_WARNING
 import eth.serotine.ui.components.GUARD_SET_WARNING
@@ -121,6 +125,7 @@ internal class ActivityRows(
             is TokenTransfer.Fungible -> figure(transfer.amount, known.token.decimals, symbol)
             is TokenTransfer.Nft -> "$symbol NFT #${tokenId(transfer.tokenId)}"
         }
+        val moved = moved(direction, transfer, known.token.decimals, symbol)
         val (title, other, detail) = when (direction) {
             Direction.ITSELF -> Triple("Moved $what to itself", transfer.token, "Token $contract")
             Direction.IN -> Triple("Received $what", transfer.from, "From ${named(transfer.from, names)}")
@@ -147,7 +152,63 @@ internal class ActivityRows(
                 state = ActivityState.CAUTION,
             )
             else -> row.copy(title = title, detail = detail, about = Eip55.format(other))
+        }.let(moved::on)
+    }
+
+    /**
+     * How the list says a known token's [transfer] at a glance, going the [direction] it went: its arrow, and for a
+     * fungible one its amount, signed and short, and what it did without it ("Received USDC"). An NFT keeps its title,
+     * which names it; a move to itself has neither arrow nor sign.
+     */
+    private fun moved(direction: Direction, transfer: TokenTransfer, decimals: Int, symbol: String): Moved {
+        val way = when (direction) {
+            Direction.IN -> ActivityDirection.IN
+            Direction.OUT -> ActivityDirection.OUT
+            Direction.ITSELF -> return Moved()
         }
+        if (transfer !is TokenTransfer.Fungible) return Moved(way)
+        return Moved(way, signedFigure(way, transfer.amount, decimals, symbol), headlineOf(way, symbol))
+    }
+
+    /** "Received USDC" or "Sent USDC": what moving [symbol] the [way] it went did, its amount said apart. */
+    private fun headlineOf(way: ActivityDirection, symbol: String): String? = when (way) {
+        ActivityDirection.IN -> "Received $symbol"
+        ActivityDirection.OUT -> "Sent $symbol"
+        ActivityDirection.NONE -> null
+    }
+
+    /**
+     * [units] at [decimals] in [symbol] as the list says an amount at a glance: short ([compactAmount]), with "+" for
+     * value in and "−" for value out ([way]); "+•••• ETH" while amounts are hidden.
+     */
+    fun signedFigure(way: ActivityDirection, units: UInt256, decimals: Int, symbol: String): String {
+        val sign = when (way) {
+            ActivityDirection.IN -> "+"
+            ActivityDirection.OUT -> "\u2212"
+            ActivityDirection.NONE -> ""
+        }
+        val figure = if (hideAmounts) AMOUNT_MASK else compactAmount(units, decimals)
+        return "$sign$figure $symbol"
+    }
+
+    /** [signedFigure] of [units] of [asset]. */
+    private fun signedAmount(way: ActivityDirection, units: UInt256, asset: TransferAsset): String {
+        val (symbol, decimals) = shown(asset)
+        return signedFigure(way, units, decimals, symbol)
+    }
+
+    /**
+     * What the list says of a row at a glance: its arrow, its signed amount and its headline without it, and whether
+     * that amount is [unchecked] (not proven to have moved).
+     */
+    private data class Moved(
+        val direction: ActivityDirection = ActivityDirection.NONE,
+        val amount: String? = null,
+        val headline: String? = null,
+        val unchecked: Boolean = false,
+    ) {
+        fun on(row: ActivityRow): ActivityRow =
+            row.copy(direction = direction, amount = amount, headline = headline, unchecked = unchecked)
     }
 
     /**
@@ -161,6 +222,14 @@ internal class ActivityRows(
         val other = if (incoming) transfer.from else transfer.to
         val cautioned = incoming && !parties.familiar(transfer.from) &&
             !parties.boughtHere(event.transactionHash, transfer)
+        // To itself: neither in nor out, so no arrow and no sign.
+        val moved = when {
+            transfer.from == address && incoming -> Moved()
+            else -> (if (incoming) ActivityDirection.IN else ActivityDirection.OUT).let { way ->
+                val amount = signedAmount(way, transfer.amount, TransferAsset.Native)
+                Moved(way, amount, headlineOf(way, network.nativeSymbol))
+            }
+        }
         return ActivityRow(
             key = "${event.transactionHash}:${event.logIndex}",
             title = if (incoming) "Received $what" else "Sent $what",
@@ -171,8 +240,195 @@ internal class ActivityRows(
             status = if (cautioned) UNFAMILIAR_SENDER else ethOnChain(network),
             state = if (cautioned) ActivityState.CAUTION else ActivityState.DONE,
             opens = ActivityKey(event.transactionHash, event.logIndex),
+        ).let(moved::on)
+    }
+
+    /**
+     * A verified row of the addr1 index ([indexed]) as a row of the Activity (owner ruling, 2026-11-21, #334), in the
+     * words the log index's rows use, so that a transfer reads alike from either source; null for one that is not
+     * listed: a transfer of nothing the account did not send, as the log index leaves one out ([movesNothing]). A
+     * token's transfer is said as one only for a token the wallet shows; an unlisted contract's is its claim, naming
+     * the contract alone. What it moved, or that the account is named in it ([rolesText]), and from whom: one the
+     * account did not send, from someone the user does not deal with ([Parties.familiar]), is cautioned. A
+     * transaction's value is said as moved only when its verified receipt says it succeeded
+     * ([AddressIndexTransaction.succeeded]); reverted, it failed on chain, as a sent row says; not known (the engine
+     * does not report it yet), its title says how the account is named in it, and the list shows the value apart,
+     * muted and marked as not checked ([valueMoved]). Its
+     * status
+     * says it was checked against the chain, and in which block; dated by that block alone, like an event the engine
+     * did not date: the index carries no time.
+     */
+    fun indexRow(indexed: AddressIndexRow, parties: Parties, tokens: Map<Address, KnownToken>): ActivityRow? {
+        val entry = indexed.entry
+        val block = grouped(entry.block)
+        val (status, simpleStatus) = if (indexed.final) {
+            "Finalized in block $block · checked against the chain" to "Final"
+        } else {
+            "In block $block · checked against the chain, not final yet" to "Confirmed"
+        }
+        val base = ActivityRow(
+            key = "index:${entry.block}:${entry.slot}",
+            title = "",
+            detail = "",
+            about = Eip55.format(address),
+            time = "Block $block",
+            simpleTime = null,
+            status = status,
+            simpleStatus = simpleStatus,
+            state = ActivityState.DONE,
+            opens = ActivityKey(
+                indexed.transaction?.hash.orEmpty(),
+                index = IndexEntryKey(entry.block, entry.slot, entry.roles),
+            ),
+        )
+        val tx = indexed.transaction ?: return base.copy(
+            // No block number in the title: simple mode shows none, and the row's time names it.
+            title = "Named by the block itself",
+            detail = rolesText(entry.roles).replaceFirstChar { it.uppercase() },
+        )
+        val sentByIt = tx.from == address
+        val transfer = tx.transfer
+        if (transfer != null && transfer.movesNothing() && !sentByIt) return null
+        if (transfer != null && !transfer.movesNothing()) {
+            val listed = tokens[transfer.token]
+            val known = listed?.takeIf { it.shown }
+            val itself = transfer.from == address && transfer.to == address
+            val incoming = transfer.to == address && !itself
+            if (known == null) {
+                return base.copy(
+                    title = when {
+                        itself -> "An unlisted token logged a transfer to itself"
+                        incoming -> "An unlisted token logged a transfer to it"
+                        else -> "An unlisted token logged a transfer from it"
+                    },
+                    detail = "Contract ${shortAddress(Eip55.format(transfer.token))}",
+                    about = Eip55.format(transfer.token),
+                    status = when {
+                        listed == null -> UNLISTED
+                        listed.check is BuiltInCheck.Disagrees -> CONTRADICTED
+                        else -> HIDDEN
+                    },
+                    simpleStatus = null,
+                    state = ActivityState.UNKNOWN,
+                )
+            }
+            val symbol = displaySymbol(known.token.symbol)
+            val what = when (transfer) {
+                is TokenTransfer.Fungible -> figure(transfer.amount, known.token.decimals, symbol)
+                is TokenTransfer.Nft -> "$symbol NFT #${tokenId(transfer.tokenId)}"
+            }
+            val other = if (incoming) transfer.from else transfer.to
+            val moved = moved(
+                when {
+                    itself -> Direction.ITSELF
+                    incoming -> Direction.IN
+                    else -> Direction.OUT
+                },
+                transfer,
+                known.token.decimals,
+                symbol,
+            )
+            val row = when {
+                // As the log index says it (transferRow, Direction.ITSELF).
+                itself -> base.copy(
+                    title = "Moved $what to itself",
+                    detail = "Token ${shortAddress(Eip55.format(transfer.token))}",
+                    about = Eip55.format(transfer.token),
+                )
+                else -> base.copy(
+                    title = if (incoming) "Received $what" else "Sent $what",
+                    detail = (if (incoming) "From " else "To ") + named(other, parties.names),
+                    about = Eip55.format(other),
+                )
+            }.let(moved::on)
+            return when {
+                known.sharesBuiltInSymbol -> row.copy(
+                    status = "Not the built-in $symbol: another contract",
+                    simpleStatus = null,
+                    state = ActivityState.WARNING,
+                )
+                incoming && !parties.familiar(transfer.from) -> row.cautioned()
+                else -> row
+            }
+        }
+        val value = tx.value.toUInt256OrNull()
+        val other = if (sentByIt) tx.to else tx.from
+        val counterpart = if (sentByIt) {
+            tx.to?.let { "To ${named(it, parties.names)}" } ?: "It creates a contract"
+        } else {
+            "By ${named(tx.from, parties.names)}"
+        }
+        val row = when (tx.succeeded) {
+            // The engine does not report the receipt's status yet: a reverted transaction keeps its value field and
+            // moves nothing, so the title says only how the account is named in it. The list shows the value apart,
+            // muted and marked as not checked (valueMoved); the detail gives it beside that.
+            null -> base.copy(title = "Named in a transaction · ${rolesText(entry.roles)}", detail = counterpart)
+            // As a sent row says a revert: its fee paid, nothing else done.
+            false -> base.copy(
+                title = "Failed on chain",
+                detail = counterpart,
+                status = "Reverted in block $block · checked against the chain",
+                simpleStatus = "Failed",
+                state = ActivityState.FAILED,
+            )
+            true -> succeededRow(base, tx, value, sentByIt, parties, entry.roles)
+        }.let { r -> other?.let { r.copy(about = Eip55.format(it)) } ?: r }
+            .let { r -> valueMoved(tx, value, sentByIt)?.on(r) ?: r }
+        // Anyone can name the account in a transaction of their own, from a look-alike address planted for the user
+        // to copy: one it did not send, from someone the user does not deal with, is cautioned.
+        return if (!sentByIt && !parties.familiar(tx.from)) row.cautioned() else row
+    }
+
+    /**
+     * The value of [tx] as the list says it at a glance (owner's request, 2026-11-23): sent by the account, or sent to
+     * it by another; null for none, for a transaction the account sent to itself, and for one that reverted, which
+     * moved nothing. Where the engine does not report its outcome ([AddressIndexTransaction.succeeded] null), its
+     * headline says that the outcome is not checked, since a reverted transaction keeps its value field.
+     */
+    private fun valueMoved(tx: AddressIndexTransaction, value: UInt256?, sentByIt: Boolean): Moved? {
+        if (value == null || value.isZero || tx.succeeded == false) return null
+        val way = when {
+            sentByIt && tx.to != null && tx.to != address -> ActivityDirection.OUT
+            !sentByIt && tx.to == address -> ActivityDirection.IN
+            else -> return null
+        }
+        val said = checkNotNull(headlineOf(way, network.nativeSymbol))
+        val unchecked = tx.succeeded == null
+        val headline = if (unchecked) "$said$OUTCOME_NOT_CHECKED" else said
+        return Moved(way, signedAmount(way, value, TransferAsset.Native), headline, unchecked)
+    }
+
+    /** A transaction whose verified receipt says it succeeded ([tx]), as its row says what it did. */
+    private fun succeededRow(
+        base: ActivityRow,
+        tx: AddressIndexTransaction,
+        value: UInt256?,
+        sentByIt: Boolean,
+        parties: Parties,
+        roles: Set<AddressIndexRole>,
+    ): ActivityRow = when {
+        sentByIt && tx.to == null -> base.copy(title = "Created a contract", detail = rolesText(roles))
+        sentByIt -> base.copy(
+            title = if (value == null || value.isZero) {
+                "Sent a transaction"
+            } else {
+                "Sent ${amount(value, TransferAsset.Native)}"
+            },
+            detail = "To ${named(checkNotNull(tx.to), parties.names)}",
+        )
+        tx.to == address && value != null && !value.isZero -> base.copy(
+            title = "Received ${amount(value, TransferAsset.Native)}",
+            detail = "From ${named(tx.from, parties.names)}",
+        )
+        else -> base.copy(
+            title = "Named in a transaction",
+            detail = "By ${named(tx.from, parties.names)} · ${rolesText(roles)}",
         )
     }
+
+    /** This row cautioned about its sender, the address poisoning protection's words (screen 25). */
+    private fun ActivityRow.cautioned(): ActivityRow =
+        copy(status = UNFAMILIAR_SENDER, simpleStatus = null, state = ActivityState.CAUTION)
 
     /** Which way a token moved, as the account sees it. */
     private enum class Direction { IN, OUT, ITSELF }
@@ -238,6 +494,13 @@ internal class ActivityRows(
             is SafeEvent.MessageSigned -> Triple("Signed a message", address, "Message ${shortHash(what.messageHash)}")
         }
         val received = event.event as? SafeEvent.Received
+        val moved = received?.let {
+            Moved(
+                ActivityDirection.IN,
+                signedAmount(ActivityDirection.IN, it.amount, TransferAsset.Native),
+                headlineOf(ActivityDirection.IN, network.nativeSymbol),
+            )
+        } ?: Moved()
         val (status, state) = if (received != null && !parties.familiar(received.from)) {
             UNFAMILIAR_SENDER to ActivityState.CAUTION
         } else {
@@ -253,7 +516,7 @@ internal class ActivityRows(
             status = status,
             state = state,
             opens = ActivityKey(event.transactionHash, event.logIndex),
-        )
+        ).let(moved::on)
     }
 
     /**
@@ -389,6 +652,17 @@ internal class ActivityRows(
             )
         }
         val (status, state) = statusOf(entry)
+        // A transfer that reverted moved nothing, and one to the account itself neither in nor out: no arrow, no
+        // amount.
+        val sent = (transfer.action as? SentAction.Transfer)
+            ?.takeIf { state != ActivityState.FAILED && it.to != transfer.account }
+        val moved = sent?.let {
+            Moved(
+                ActivityDirection.OUT,
+                signedAmount(ActivityDirection.OUT, it.amount, it.asset),
+                headlineOf(ActivityDirection.OUT, shown(it.asset).first),
+            )
+        } ?: Moved()
         return ActivityRow(
             key = transfer.hash,
             opens = ActivityKey(transfer.hash),
@@ -399,7 +673,7 @@ internal class ActivityRows(
             status = status,
             state = state,
             simpleStatus = simpleStatusOf(entry),
-        )
+        ).let(moved::on)
     }
 
     /**
@@ -423,6 +697,13 @@ internal class ActivityRows(
             !queued.sending && queued.pastItsHour(now) -> "Waiting for your answer" to ActivityState.WAITING
             else -> "Waiting to send" to ActivityState.WAITING
         }
+        val moved = (queued.action as? SentAction.Transfer)?.let {
+            Moved(
+                ActivityDirection.OUT,
+                signedAmount(ActivityDirection.OUT, it.amount, it.asset),
+                "Send ${shown(it.asset).first}",
+            )
+        } ?: Moved()
         return ActivityRow(
             key = "queued:${queued.id}",
             opens = ActivityKey(queued.id, queued = true),
@@ -432,7 +713,7 @@ internal class ActivityRows(
             time = "Signed ${formatTime(queued.signedAt)}",
             status = status,
             state = state,
-        )
+        ).let(moved::on)
     }
 
     /** [units] of [asset] as screens say it: "0.25 ETH". */
@@ -585,6 +866,9 @@ internal class ActivityRows(
         }.associateBy { it.hash }
 
         private const val NATIVE_DECIMALS = 18
+
+        /** What a value's headline adds while the engine does not report its transaction's outcome. */
+        private const val OUTCOME_NOT_CHECKED = " · outcome not checked"
         private const val ON_CHAIN = "On chain, from the Safe's verified logs"
         private const val TOKEN_ON_CHAIN = "On chain, from the token's verified logs"
 

@@ -2,6 +2,7 @@ package eth.serotine.ui.accounts
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -9,11 +10,13 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
@@ -21,6 +24,7 @@ import eth.serotine.ui.components.AMOUNT_MASK
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.HIDE_AMOUNTS
 import eth.serotine.ui.components.HIDE_AMOUNTS_TAG
+import eth.serotine.ui.components.LightClientHealth.NOT_VERIFIED
 import eth.serotine.ui.components.LightClientHealth.VERIFIED
 import eth.serotine.ui.components.LightClientItem
 import eth.serotine.ui.components.NetworkLabel
@@ -77,6 +81,94 @@ class SimpleAccountsScreenTest {
         total = "€12,025.55",
         freshness = "Updated 2 min ago · pull down to refresh",
     )
+
+    @Test
+    fun eachNetworksAccountsHaveAHeaderSayingItsSyncStateWhoseTapFoldsThemAway() {
+        val gnosis = NetworkLabel.of(Network.GNOSIS)
+        val onGnosis =
+            main.copy(label = "Card", chainId = gnosis.chainId, network = gnosis, networkLine = "Gnosis Chain")
+        val syncing = LightClientItem(
+            "Verifying sync committees",
+            0.25f,
+            true,
+            NOT_VERIFIED,
+            simpleHeader = "Syncing · 3 of 12 periods",
+        )
+        show(
+            AccountsUiState.Ready(
+                listOf(
+                    NetworkSection(
+                        ethereum.chainId,
+                        "Ethereum",
+                        false,
+                        true,
+                        strip.copy(simpleHeader = "Up to date"),
+                        listOf(main),
+                    ),
+                    NetworkSection(gnosis.chainId, "Gnosis Chain", false, true, syncing, listOf(onGnosis)),
+                ),
+                total = "€12,025.55",
+                freshness = "Updated 2 min ago · pull down to refresh",
+            ),
+        )
+
+        // The header's words are one heading to a screen reader: its node holds them.
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + ethereum.chainId).assert(hasText("Up to date"))
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + gnosis.chainId).assert(hasText("Syncing · 3 of 12 periods"))
+        // A tap on a header folds its network's accounts away, and opens nothing; another brings them back.
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + gnosis.chainId).performClick()
+        assertEquals(emptyList(), actions)
+        rule.onNodeWithText("Card").assertDoesNotExist()
+        rule.onNodeWithText("Main").assertExists()
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + gnosis.chainId)
+            .assert(hasText("Gnosis Chain · 1 account"))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + gnosis.chainId).performClick()
+        rule.onNodeWithText("Card").assertExists()
+    }
+
+    @Test
+    fun aTapOnAPinnedHeaderFoldsItsNetworkAndNeverOpensTheRowUnderIt() {
+        val many = (0 until 30).map { n ->
+            main.copy(label = "Account $n", address = "0x" + n.toString(16).padStart(40, '0'))
+        }
+        show(ready(*many.toTypedArray()))
+
+        // Scrolled until rows have passed under the header pinned on top.
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).performScrollToNode(hasText("Account 20"))
+        rule.onNodeWithText("Account 0").assertDoesNotExist()
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + ethereum.chainId).performClick()
+
+        assertEquals(emptyList(), actions, "the tap is the header's: it folds, and opens no account")
+        rule.onNodeWithText("Account 20").assertDoesNotExist()
+        // A row's own tap still opens its account.
+        rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + ethereum.chainId).performClick()
+        rule.onNodeWithTag(ACCOUNTS_LIST_TAG).performScrollToNode(hasText("Account 20"))
+        rule.onNodeWithText("Account 20").performClick()
+        assertEquals(1, actions.size)
+    }
+
+    @Test
+    fun aFoldedNetworkKeepsTheAccountOpenBesideTheListAndAQuickSecondTapUnfoldsIt() {
+        val spare = main.copy(label = "Spare", address = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")
+        show(ready(main, spare), SelectedAccount(ethereum.chainId, "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed"))
+        val header = rule.onNodeWithTag(ACCOUNTS_NETWORK_HEADER_TAG + ethereum.chainId)
+
+        header.performClick()
+        rule.onNodeWithText("Main").assertExists()
+        rule.onNodeWithText("Spare").assertDoesNotExist()
+        header.assert(hasText("Ethereum · 1 account"))
+
+        // Two taps before the screen draws again: unfolded, then folded again, never stored twice.
+        rule.mainClock.autoAdvance = false
+        header.performClick()
+        header.performClick()
+        rule.mainClock.autoAdvance = true
+        rule.onNodeWithText("Spare").assertDoesNotExist()
+        // So one more tap unfolds it.
+        header.performClick()
+        rule.onNodeWithText("Spare").assertExists()
+    }
 
     @Test
     fun theAccountShownBesideTheListIsTheOneRowSelected() {
@@ -166,9 +258,9 @@ class SimpleAccountsScreenTest {
         rule.onNodeWithTag(ACCOUNTS_TOTAL_TAG).assertTextEquals("€12,025.55")
         rule.onNodeWithTag(ACCOUNTS_FRESHNESS_TAG).assertTextEquals("Updated 2 min ago · pull down to refresh")
         rule.onNodeWithText("Verified at block", substring = true).assertDoesNotExist()
-        // The network named in text and on the blockie's icon.
-        rule.onNodeWithText("Ethereum").assertIsDisplayed()
-        rule.onNodeWithContentDescription("Ethereum").assertIsDisplayed()
+        // The network named in text and by its icon: in its header and on the account's row.
+        rule.onAllNodesWithText("Ethereum").assertCountEquals(2)
+        rule.onAllNodesWithContentDescription("Ethereum").assertCountEquals(2)
     }
 
     @Test

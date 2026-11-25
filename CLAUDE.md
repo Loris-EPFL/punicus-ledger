@@ -148,9 +148,10 @@ neutral wording until the advisory is published (owner's request,
 2026-11-15, on Myotis #870).
 
 **MERGING IS THE OWNER'S ACTION. NEVER MERGE A PR YOURSELF** (owner ruling,
-2026-08-31). Green CI plus every comment answered means: report "ready to
-merge" and keep watching. The one exception is a part PR into a feature
-branch when the owner said yes for that plan (the `feature-branch` skill).
+2026-08-31). Adding a PR to `main`'s merge queue merges it. Green CI plus
+every comment answered means: report "ready to merge" and keep watching.
+The one exception is a part PR into a feature branch when the owner said
+yes for that plan (the `feature-branch` skill).
 In the Claude Code desktop app the session renames itself (owner's request,
 2026-10-09): `IS#<n>: <title>` once the issue is known, `PR#<n>: <title>`
 once the PR exists (the `pr` skill).
@@ -223,6 +224,8 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
 - **Peer-trusted is never an option.** Everything shown about the chain is
   verified by the embedded Myotis engine or shown as not available. No
   JSON-RPC provider, indexer or "temporary" fallback, in any build type.
+  The addr1 index's rows are shown only verified; its importer key vouches
+  for the list's completeness alone (owner ruling, 2026-11-21, #334).
 - One older answer is shown, labelled as one (owner's request, 2026-10-19):
   a balance proved earlier stays on screen, dated, out of totals, never acted
   on. Past the weak-subjectivity window only on the user's word (owner's
@@ -247,7 +250,8 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
   expire (owner ruling and decision, 2026-11-18).
 - A Swarm node is added as a watched address (no `swarm.key` import); its
   batches and chequebook are managed through pinned contracts only (owner's
-  decisions, 2026-11-23; docs/swarm.md).
+  decisions, 2026-11-23; docs/swarm.md). Its key may be imported in hex like
+  any key (owner ruling, 2026-11-25).
 - Network-upgrade warnings are peer reports and say so (owner's request,
   2026-10-17).
 - A parameter that can change the answer is APPLIED or REFUSED, never
@@ -255,9 +259,10 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
 - What a dApp sends is untrusted input, held to a closed method list;
   `eth_sign` is refused in every case (owner rulings, 2026-11-03, #22).
 - **Key material** lives in the key-store adapter and nowhere else. The
-  exceptions are a closed list of owner rulings; today only the mnemonic
-  screens (owner ruling, 2026-10-15): the words travel as the dedicated
-  mnemonic type along one path and are cleared when the screen is left.
+  exceptions are a closed list of owner rulings: the mnemonic screens (owner
+  ruling, 2026-10-15), the words travelling as the dedicated mnemonic type
+  along one path and cleared when the screen is left; and a private key
+  typed in hex, the same way, one way only (owner ruling, 2026-11-25).
 - How keys are held: docs/keys-and-signing.md is the contract. On the
   password path BOTH the Argon2id-stretched password AND a secret of the
   device's hardware key store must be cryptographically necessary to unwrap a
@@ -286,6 +291,13 @@ rulings to the screens.
   rulings, 2026-10-20, #85). Its walk back is a heavy download: it waits
   off a metered connection unless the user allows it in Settings (owner
   ruling, 2026-10-20).
+- *Activity* may also take the addr1 address index, which the engine reads
+  from Swarm: verified rows only, on the desktop and Android (owner's
+  decisions, 2026-11-24 and 2026-11-25), behind an experimental setting that
+  names the importer key pinned in the release, on by default and the user's
+  to turn off; an off survives a new key (owner's decisions, 2026-11-22,
+  #334). Its completeness rests on that importer, and the list says so; a contradicted entry warns against the key (owner ruling,
+  2026-11-21, #334, and decisions on #335).
 - Swaps: Uniswap first, then CoW Protocol; the user chooses the venue (owner's
   directions, 2026-10-18 and 2026-10-22). CoW's order API is used only for a
   swap the user sends to CoW (owner ruling, 2026-10-22), and, with CoW

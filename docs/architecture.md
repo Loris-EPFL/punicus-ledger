@@ -65,7 +65,12 @@ rule in code.
   account's history `TransactionHistory`, `HistoryStarts`
   (`eth.serotine.data.history`) and `LogIndex`, over the engine; for when the
   heavy downloads may run `ConnectionMeter` (`eth.serotine.data.network`) and
-  `MeteredDownloadsSetting` (`eth.serotine.data.settings`)) and owns
+  `MeteredDownloadsSetting` (`eth.serotine.data.settings`); and on the desktop
+  and Android, for an account's history from the addr1 index, `AddressIndexHistory`
+  (`EngineAddressIndexHistory`, over the engine's address history; an engine without the
+  Swarm reader refuses every read on its own, which the adapter says),
+  `AddressIndexReaderSettings` (the engine's own setting of the reader, which `MyotisHost`
+  applies) and `AddressIndexSetting` (`FileAddressIndexSetting` in `eth.serotine.data.settings`)) and owns
   every data source.
 - **Native code of our own lives in this repository** (owner ruling,
   2026-11-11, docs/privacy-pools.md D9): the Privacy Pools library in Rust
@@ -98,7 +103,7 @@ review finding, whatever it saves.
 | `eth.serotine.domain.model` | entities and value objects (`Account`, `Address`, `AccountKind`, `SafeTx` and its `SigningRequest`, `SafeRelease`) and the encodings computed here (`SafeCreation`: `setup`, `createProxyWithNonce` and the CREATE2 address) — immutable, validated in `init`/factory |
 | `eth.serotine.domain.repository` | the ports, as interfaces named after what they manage |
 | `eth.serotine.domain.usecase` | one class per user-visible capability, `operator fun invoke`; what several share is internal there (`CallQuoter` and `signAndSend`, the quote and the send of any transaction from an account the wallet holds: a transfer, a Safe transaction's approval or execution, a Safe's deployment) |
-| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe` — the pinned deployments and the release a Safe is created from, the queue of Safe transactions and the signing requests' text —, `settings`, `transfers`, `history` — where each account's history starts —, `network` — the connection's cost, metered or not —, `rates` — the exchange rate last verified, for a home-screen widget —, `logs` — the Debug tab's log, in memory, and the `LogSink` adapters write it through —, `files`, `walletconnect` — WalletConnect v2's wallet role over its relay, docs/walletconnect.md —, `swarm` — Bee's pinned contracts and the candidates for a Swarm node's chequebook and batches, docs/swarm.md —, `outbox` — lenient mode's outbox, what is signed and waits for its check, sealed with a hardware key of its own or in memory only, docs/lenient-mode.md and docs/keys-and-signing.md, *The outbox's seal key* —) |
+| `eth.serotine.data.<area>` | adapters, one package per area (`account`, `keys`, `engine`, `upgrade`, `tokens`, `prices`, `safe` — the pinned deployments and the release a Safe is created from, the queue of Safe transactions and the signing requests' text —, `settings`, `transfers`, `history` — where each account's history starts, the addr1 history's importer key pinned in the release (`0xb11B…7241` since 2026-11-24, #359), and what was read and verified of each account's addr1 history, kept between runs (owner's request, 2026-11-25) —, `network` — the connection's cost, metered or not —, `rates` — the exchange rate last verified, for a home-screen widget —, `logs` — the Debug tab's log, in memory, and the `LogSink` adapters write it through —, `files`, `walletconnect` — WalletConnect v2's wallet role over its relay, docs/walletconnect.md —, `swarm` — Bee's pinned contracts and the candidates for a Swarm node's chequebook and batches, docs/swarm.md —, `outbox` — lenient mode's outbox, what is signed and waits for its check, sealed with a hardware key of its own or in memory only, docs/lenient-mode.md and docs/keys-and-signing.md, *The outbox's seal key* —) |
 | `eth.serotine.ui.<feature>` | one package per screen: `<Feature>Screen`, `<Feature>ViewModel`, `<Feature>UiState` (`send` holds one screen with two steps, compose and review; `safepropose` is Send from a Safe, on the same transfer form; `transferstatus` follows a transaction once sent; `safetx` is one Safe transaction with its signing, approval and execution steps; `safeimport` imports a signing request; `createsafe` holds one screen with three steps, owners, threshold and review) |
 | `eth.serotine.ui.activity` | an account's Activity, a tab of its detail rather than a screen, so with no ViewModel of its own: `AccountActivity`, which `AccountDetailViewModel` reads while the tab is shown, `ActivityUiState` and the list's items (`activityItems`), which `AccountDetailScreen` draws in the tab |
 | `eth.serotine.ui.ratewidget` | what a host's home-screen widget shows of the exchange rate last verified, display-ready (`rateWidgetContent`), which the host draws in its own widget toolkit; and the widget's configuration (`WidgetPairScreen`: network, price, currency), whose steps the host computes: no ViewModel |
@@ -184,8 +189,13 @@ review finding, whatever it saves.
   Accounts list in a pane of its own beside the `NavHost`, with the
   ViewModel of the Accounts destination's back-stack entry, and that
   destination draws the empty detail pane instead of the list. The back
-  stack is the same at every width. The screens themselves are
-  docs/wallet-ux.md.
+  stack is the same at every width below 1200 dp. From 1200 dp on, an
+  Activity row's detail opens beside its account inside the account's
+  destination, with no destination of its own (owner's request,
+  2026-11-25): the account's back-stack entry keeps which row is open and the
+  store of that detail's ViewModel, which outlives a configuration change
+  and is cleared as the row closes, another opens, or the account is popped.
+  The screens themselves are docs/wallet-ux.md.
 - **A ViewModel exposes `StateFlow<UiState>` and intent methods.** It derives
   state from use cases with `stateIn(viewModelScope, WhileSubscribed(5s), …)`,
   handles user intents by calling use cases, and holds no platform reference

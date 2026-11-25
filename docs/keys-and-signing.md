@@ -41,6 +41,7 @@ it is not a basis for a cross-platform wallet. Two consequences follow:
 |---|---|---|---|---|
 | **Hardware-bound Safe owner** | P-256 in the Secure Enclave / StrongBox | none: it is a device credential | the OS's own gate, bound to the key and chosen at creation: current biometrics only, or biometrics or device credential. This tier has no password factor | decided (2026-10-15); the key's policy is under *A Safe owned by a hardware P-256 key*, and it needs a recovery owner, see *Backup and recovery* |
 | **Mnemonic key** | secp256k1 from a BIP-39 seed, in the envelope | the mnemonic, written down once at creation | password; biometrics if the user enables them | decided (2026-10-15); every EOA, and a Safe owner the user wants to be able to restore |
+| **Imported private key** | secp256k1, typed in hex, in the envelope as a bare key | the key itself, kept by the user: no phrase | password; biometrics if the user enables them | decided (owner ruling, 2026-11-25); an EOA whose key comes from elsewhere. No further account and no per-app address comes from it: see *Importing a private key* |
 | **Synced-passkey Safe owner** | P-256 passkey through the platform WebAuthn API | synced end-to-end encrypted by iCloud Keychain / Google Password Manager | biometrics | recommended as an option; owner's decision open |
 | **Owner key in an external wallet** | secp256k1 in another wallet (MetaMask, say), reached over WalletConnect; Punicus keeps only its address and the session | the other wallet's | the other wallet's | decided (2026-11-03, #22); Safe owners only, an EOA later or never. It is asked for `eth_signTypedData_v4` of the `SafeTx` alone, and its signature is checked here (docs/walletconnect.md, *Direction 2*) |
 
@@ -999,7 +1000,7 @@ envelope. The mnemonic is shown once at creation, written down by the user,
 and re-entered only to restore on a new device.
 
 Those two screens are an exception to the Trust rule that key material never
-leaves the key-store adapter: the one entry, today, in the closed list of
+leaves the key-store adapter: the first entry in the closed list of
 exceptions in CLAUDE.md's *Trust* section (owner ruling, 2026-10-15). Its
 conditions, which a reviewer holds those two flows to:
 
@@ -1025,6 +1026,55 @@ the code is built as if it does. A configuration change does not leave a seed
 screen, and the app going to the background does (owner ruling, 2026-10-18,
 #39): the words stay in the ViewModel's memory across a rotation, never in a
 saved state or a Bundle.
+
+### Importing a private key
+
+The import screen (docs/wallet-ux.md, screen 11) also takes an EOA's private
+key in hex, instead of a seed phrase: the second entry in the closed list of
+exceptions (owner ruling, 2026-11-25). Its conditions, which a reviewer
+holds that flow to:
+
+- **One type, one way.** The key travels only as `PrivateKey`, whose
+  `toString()` is redacted and whose equality is identity: typed into the
+  import screen's UiState, through its ViewModel and `ImportPrivateKeyAccount`
+  into the key adapter (`PrivateKeys.importPrivateKey`). Nothing hands one
+  back. The key is never shown again and never exported.
+- **Transient.** As for the words: nothing on the path stores, logs, caches,
+  snapshots or serializes it; the UiState drops it when the screen is left
+  (the app to the background, the screen off, the screen popped), and keeps
+  it in the ViewModel's memory across a configuration change. The field is
+  masked like the password's, and the screen is under rule 8's protections.
+  Switching the screen between seed phrase and key drops what was typed for
+  the other.
+- **Checked in the adapter.** 64 hex digits of either case after an optional
+  `0x`, spaces around ignored; a value of zero or not below secp256k1's order
+  is refused (libsecp256k1's `secKeyVerify`). Each refusal is a result
+  (`PrivateKeyProblem`): too many or too few digits, a character that is not
+  a hex digit, no key of that value.
+- **Sealed as every key is.** In an envelope of its own under its address,
+  under the wallet password and this device's hardware secret, at the
+  device's cost, joining the biometric path while it is on: the rules above,
+  unchanged. The envelope says it holds a bare key (`key: true`); its 32
+  bytes are sealed where a seed's are, under the additional data
+  `serotine-key-v1|<address>` instead of `serotine-seed-v1|<address>`, so
+  an envelope whose flag is edited opens to nothing. It names no index, no
+  per-app path and no phrase. An older build of the app, whose envelope
+  reader refuses a field it does not know, passes such an envelope over as
+  unreadable: it never opens the key as a seed. Downgraded, a wallet whose
+  envelopes are all bare keys looks to that build like one with no password
+  set, and an import there would set a second one. A downgrade is the
+  desktop's case only, and is not guarded against.
+- **No seed, so nothing derives from it.** New account from the same phrase
+  is greyed out for such an account, a tap saying why; it is no phrase a
+  per-app address comes from (`PerAppKeys.bareKeys`); the adapter refuses
+  both derivations on its envelope all the same. Signing uses the key as it
+  is, after checking that it is the account's.
+- **A phrase holds more.** Importing the phrase of a bare key's account
+  replaces the bare key's envelope with the phrase's; importing a key whose
+  account's phrase is stored keeps the phrase's envelope.
+- **Its backup is the key.** Nothing on this device brings the account back
+  once it is removed but the key itself, kept by the user. Removing it says
+  so, as for a phrase's account.
 
 Every other screen and flow is held to the rule itself. A new exception is
 the owner's ruling, added to that list first.

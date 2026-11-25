@@ -37,6 +37,7 @@ internal class MemoryDappSites : DappSiteMemory {
 internal class FakePerAppKeys(
     var phrases: Map<Address, Address> = emptyMap(),
     var address: Address = Address.of("0x" + "a1".repeat(20)),
+    var bare: Set<Address> = emptySet(),
     private val password: String = "correct horse",
     var steppedDown: Boolean = false,
 ) : PerAppKeys {
@@ -50,6 +51,8 @@ internal class FakePerAppKeys(
     }
 
     override suspend fun phrases(): Map<Address, Address> = phrases
+
+    override suspend fun bareKeys(): Set<Address> = bare
 }
 
 /** [PerAppAliases] in memory, which can be made to [failSaves]. */

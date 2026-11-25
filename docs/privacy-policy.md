@@ -4,7 +4,7 @@ Punicus is a wallet app for Ethereum accounts and Safe accounts. It runs on
 your device. This page says what it keeps there and what reaches anyone else.
 Its developer runs no server for Punicus and receives nothing from the app.
 
-Last updated: 2026-11-24.
+Last updated: 2026-11-25.
 
 ## What Punicus does not do
 
@@ -17,7 +17,10 @@ Last updated: 2026-11-24.
   of its users anywhere.
 - **No RPC provider, no indexer, no price API.** Balances, prices, names and
   history come from the light client built into the app (Myotis), which
-  verifies what it reads (docs/embedding-myotis.md).
+  verifies what it reads (docs/embedding-myotis.md). On the desktop and on
+  Android, an experimental setting, on by default, lets it also read an address index
+  from Swarm, each entry checked against the chain before it is shown
+  (below); you can turn it off.
 - **No ads, and nothing sold or shared.** The app shows no ads and has no
   data to sell.
 
@@ -33,6 +36,9 @@ Last updated: 2026-11-24.
   so that they are preselected when it connects again; and the sites you
   linked to another site's per-app address. Neither is restored with your
   recovery phrase.
+- On the desktop and Android, with the experimental addr1 history on, what
+  was read and checked of each account's history from it. Removing the
+  account deletes it.
 
 These files are private to the app. Keys and session secrets are kept out of
 cloud backups and device-to-device transfers. Removing the app deletes them.
@@ -99,6 +105,37 @@ estimate the swap screen shows while you type, whether you then send the swap
 or not, and for the swap you send. With Uniswap chosen, CoW is never contacted
 (docs/swaps.md).
 
+### Swarm peers and archive peers (on the desktop and Android, with the experimental addr1 history on)
+
+On the desktop and on Android, Settings → Experimental has *Account history
+from the addr1 index*, on by default. Only while it is on, the light client also reads an
+account's history from the addr1 address index, published on Swarm, a
+peer-to-peer storage network, by an importer whose key the release pins.
+Nothing is read while the release pins no importer key, or while the app's
+engine has no Swarm reader. To keep the peers below from learning anything,
+turn the setting off in Settings → Experimental before you open an account's
+Activity: turned off, it stays off.
+
+- Opening an account's Activity makes the light client's own Swarm node
+  fetch that account's part of the index from Swarm peers. They see your
+  device's IP address and which part of the index is asked for, which can
+  tell them the account. That node does not go through Tor.
+- Each entry is then checked against the chain: the light client fetches
+  old blocks and their receipts from archive peers of the peer-to-peer
+  network. They learn which past blocks matter to you, older ones than the
+  history above reaches included.
+- On Android this runs on whatever connection the phone has, mobile data
+  included, when you open or scroll an account's Activity: each page of the
+  index checks up to 20 old blocks. Opening an Activity again reads every
+  page newer than what was read before, however many that is. What has
+  started goes on even if you leave the screen. Once the app is in the
+  background for a minute, nothing more is read.
+- What was read and checked is kept on the device, so opening the Activity
+  again asks Swarm peers only for the newest part of the account's index,
+  and archive peers only for the blocks of entries not checked before.
+- The Swarm peers and archive peers are not run by Punicus. With the setting
+  turned off, none of this happens.
+
 ### Another wallet app (only if you hand a transfer to one)
 
 On Android you can hand a transfer to another wallet app on the device as a
@@ -113,6 +150,8 @@ IP address. Their privacy policies apply.
 - Catch up from an old checkpoint instead of fetching a fresh one, and the
   checkpoint servers are never contacted.
 - Keep Uniswap as the swap venue, and CoW is never contacted.
+- Turn the experimental addr1 history off (Settings →
+  Experimental), and no Swarm peer is asked for your history.
 - Remove an account or the app to delete what is stored for it: removing an
   account also takes it out of what each site remembers, and the last
   account of a per-app address takes its links to other sites with it. If

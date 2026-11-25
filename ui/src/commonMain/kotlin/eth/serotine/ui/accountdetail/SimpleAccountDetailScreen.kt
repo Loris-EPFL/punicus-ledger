@@ -47,6 +47,8 @@ fun SimpleAccountDetailScreen(
     nftActions: NftActions = NftActions(),
     onSendElsewhere: (contract: String?) -> Unit = {},
     perAppActions: PerAppActions = PerAppActions(),
+    onMoreActivity: () -> Unit = {},
+    selectedActivity: ActivityKey? = null,
 ) {
     val ready = state as? AccountDetailUiState.Ready
     AccountDetailScreen(
@@ -66,6 +68,7 @@ fun SimpleAccountDetailScreen(
         onOpenSafeTx = onOpenSafeTx,
         onImportRequest = onImportRequest,
         onOpenActivity = onOpenActivity,
+        selectedActivity = selectedActivity,
         modifier = modifier,
         onTurnOnNetwork = onTurnOnNetwork,
         onAddOnNetwork = onAddOnNetwork,
@@ -81,6 +84,7 @@ fun SimpleAccountDetailScreen(
         nftActions = nftActions,
         onSendElsewhere = onSendElsewhere,
         perAppActions = perAppActions,
+        onMoreActivity = onMoreActivity,
     )
 }
 

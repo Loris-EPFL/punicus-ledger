@@ -38,12 +38,22 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.AddressIndexRole
+import eth.serotine.ui.activity.ACTIVITY_INDEX_FOOTER_TAG
+import eth.serotine.ui.activity.ACTIVITY_PENDING_TAG
+import eth.serotine.ui.activity.ACTIVITY_AMOUNT_TAG
+import eth.serotine.ui.activity.ACTIVITY_DAY_TAG
 import eth.serotine.ui.activity.ACTIVITY_ROW_TAG
+import eth.serotine.ui.activity.ActivityDirection
 import eth.serotine.ui.activity.ActivityKey
 import eth.serotine.ui.activity.ActivityOrder
 import eth.serotine.ui.activity.ActivityRow
 import eth.serotine.ui.activity.ActivityState
 import eth.serotine.ui.activity.ActivityUiState
+import eth.serotine.ui.activity.IndexEntryKey
+import eth.serotine.ui.activity.IndexFooter
+import eth.serotine.ui.activity.IndexSection
+import eth.serotine.ui.activity.ordered
 import eth.serotine.ui.components.Control
 import eth.serotine.ui.components.GHOST_ROWS_UNKNOWN
 import eth.serotine.ui.components.GHOST_ROW_TAG
@@ -59,6 +69,7 @@ import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 
 /** Renders the stateless [AccountDetailScreen] headless for its states. */
@@ -109,6 +120,7 @@ class AccountDetailScreenTest {
                 onGnosisPay = { events += "gnosis pay" },
                 onSwarm = { events += "swarm" },
                 onToggleUnlistedNfts = { events += "toggle unlisted nfts" },
+                onMoreActivity = { events += "more activity" },
                 perAppActions = PerAppActions(
                     onOpen = { chain, address -> events += "open per-app $chain $address" },
                     onRestore = { phrase -> events += "restore per-app $phrase" },
@@ -611,6 +623,71 @@ class AccountDetailScreenTest {
     }
 
     @Test
+    fun aDaysHeadingStaysOnTopWhileItsRowsScrollUnderIt() {
+        val today = "Today · Monday, October 19, 2026"
+        val rows = (0 until 40).map { n ->
+            sent.copy(key = "0x" + n.toString(16).padStart(64, '0'), title = "Row $n", day = today, clock = "2:02 PM")
+        }
+        show(
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(rows, "Covered."),
+            ),
+        )
+
+        rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Row 39"))
+
+        rule.onNodeWithText("Row 39").assertIsDisplayed()
+        rule.onNodeWithText(today).assertIsDisplayed()
+        // A tap on the pinned heading opens nothing, though a row lies under it.
+        rule.onNodeWithText(today).performClick()
+        assertEquals(emptyList<String>(), events)
+    }
+
+    @Test
+    fun theRowsAreGroupedByDayEachTimedWithAnArrowAndASignedAmount() {
+        val received = sent.copy(
+            key = "0x" + "3".repeat(64),
+            title = "Received 250 USDC",
+            state = ActivityState.DONE,
+            status = "On chain, from the token's verified logs",
+            direction = ActivityDirection.IN,
+            amount = "+250 USDC",
+            headline = "Received USDC",
+            day = "Today · Monday, October 19, 2026",
+            clock = "3:06 PM",
+        )
+        val alsoToday = sent.copy(
+            day = "Today · Monday, October 19, 2026",
+            clock = "2:02 PM",
+            direction = ActivityDirection.OUT,
+            amount = "\u22120.25 ETH",
+            headline = "Sent ETH",
+        )
+        val older = sent.copy(key = "0x" + "4".repeat(64), day = "Saturday, October 17, 2026", clock = "9:40 PM")
+        show(
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(listOf(received, alsoToday, older), "Covered."),
+            ),
+        )
+
+        // One heading per day, not per row.
+        rule.onAllNodesWithTag(ACTIVITY_DAY_TAG).assertCountEquals(2)
+        rule.onNodeWithText("Today · Monday, October 19, 2026").assertIsDisplayed()
+        rule.onNodeWithText("Saturday, October 17, 2026").assertExists()
+        // The time of day in place of the date, the headline without the amount, the amount signed on the right.
+        rule.onNodeWithText("3:06 PM").assertIsDisplayed()
+        rule.onAllNodesWithText(sent.time).assertCountEquals(0)
+        rule.onNodeWithText("Received USDC").assertIsDisplayed()
+        rule.onNodeWithText("+250 USDC").assertIsDisplayed()
+        rule.onNodeWithText("\u22120.25 ETH").assertIsDisplayed()
+        rule.onAllNodesWithTag(ACTIVITY_AMOUNT_TAG, useUnmergedTree = true).assertCountEquals(2)
+        rule.onNodeWithContentDescription("Incoming", useUnmergedTree = true).assertExists()
+        rule.onNodeWithContentDescription("Outgoing", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
     fun aSafesEventInItsActivityOpensTheDetailOfItsLog() {
         val opens = ActivityKey("0x" + "2".repeat(64), 0)
         val event = sent.copy(key = "0x" + "2".repeat(64) + ":0", title = "Received 1 ETH", opens = opens)
@@ -879,6 +956,42 @@ class AccountDetailScreenTest {
     }
 
     @Test
+    fun anEntryBeingCheckedIsAGhostOfItsRowsHeightInBothViews() {
+        // Its row, as the addr1 index lists it, in short words so that each line holds one line.
+        val row = indexRow.copy(
+            title = "Received 0.5 ETH",
+            headline = "Received ETH",
+            detail = "From Treasury",
+            status = "Final",
+            amount = "+0.5 ETH",
+            direction = ActivityDirection.IN,
+        )
+        val pending = row.copy(title = "", detail = "", about = "", status = "", amount = null, pending = true)
+        // Detailed view dates the row by its block; simple mode says no time for it (ActivityUiState.simple()).
+        var shown by mutableStateOf(pending.copy(time = "Block 9,412,300"))
+        rule.setContent {
+            Screen(
+                ready.copy(
+                    segment = DetailSegment.ACTIVITY,
+                    activity = ActivityUiState.Shown(listOf(shown), "Transactions sent from this device."),
+                ),
+                verifiedStripSample,
+            )
+        }
+        val heights = listOf("Block 9,412,300", "").map { time ->
+            shown = pending.copy(time = time)
+            rule.waitForIdle()
+            val ghost = rule.onNodeWithTag(ACTIVITY_PENDING_TAG, useUnmergedTree = true).getBoundsInRoot().height
+            shown = row.copy(time = time)
+            rule.waitForIdle()
+            ghost to rule.onNodeWithTag(ACTIVITY_ROW_TAG).getBoundsInRoot().height
+        }
+
+        heights.forEach { (ghost, row) -> assertEquals(ghost, row) }
+        assertTrue(heights[0].first > heights[1].first, "the line of its time only where its row has one")
+    }
+
+    @Test
     fun aSafesQueueBeingReadShowsGhostRowsOfItsRowsHeight() {
         val safe = ready.copy(kind = AccountKind.SAFE, safe = SafeDetails.Checking, segment = DetailSegment.QUEUE)
         var queue by mutableStateOf<SafeQueue>(SafeQueue.Checking)
@@ -902,5 +1015,127 @@ class AccountDetailScreenTest {
 
         rule.onAllNodesWithTag(GHOST_ROW_TAG, useUnmergedTree = true).assertCountEquals(GHOST_ROWS_UNKNOWN)
         rule.onNodeWithContentDescription("Reading the Safe's storage").assertExists()
+    }
+
+    private val indexRow = ActivityRow(
+        key = "index:9412300:4",
+        title = "Received 0.5 ETH",
+        detail = "From Treasury · 0xfB69…d359",
+        about = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+        time = "Block 9,412,300",
+        status = "Finalized in block 9,412,300 · checked against the chain",
+        state = ActivityState.DONE,
+        opens = ActivityKey("0x" + "4c".repeat(32), index = IndexEntryKey(9_412_300, 4, setOf(AddressIndexRole.TO))),
+    )
+
+    private fun indexed(footer: IndexFooter, contradicted: String? = null) = ready.copy(
+        segment = DetailSegment.ACTIVITY,
+        activity = ActivityUiState.Shown(
+            listOf(indexRow),
+            "Transactions sent from this device.",
+            index = IndexSection(
+                listOf("Also from the addr1 index on Swarm: entries may be missing."),
+                footer,
+                leftOut = "2 entries of the index are left out: they could not be verified.",
+                contradicted = contradicted,
+            ),
+        ),
+    )
+
+    @Test
+    fun theAddr1IndexsRowsAreListedWithItsLinesAndTheListNearingItsEndAsksForMore() {
+        show(indexed(IndexFooter.More, contradicted = "Warning: the importer's index contradicts the chain."))
+
+        rule.onNodeWithText("Also from the addr1 index on Swarm: entries may be missing.").assertExists()
+        rule.onNodeWithText("2 entries of the index are left out: they could not be verified.").assertExists()
+        rule.onNodeWithText("Warning: the importer's index contradicts the chain.").assertExists()
+        rule.onNodeWithText("Received 0.5 ETH").performClick()
+        rule.waitForIdle()
+
+        assertEquals(1, events.count { it == "more activity" }, "the footer composed asks once")
+        assertEquals("open activity ${indexRow.opens}", events.last())
+    }
+
+    @Test
+    fun anEntryBeingCheckedIsAGhostInItsPlaceThatSaysNothingOpensNothingAndAsksForNothingMore() {
+        val pending = indexRow.copy(
+            key = "index:9412310:2",
+            title = "",
+            detail = "",
+            about = "",
+            time = "",
+            status = "",
+            state = ActivityState.WAITING,
+            opens = ActivityKey("", index = IndexEntryKey(9_412_310, 2, setOf(AddressIndexRole.FROM))),
+            pending = true,
+        )
+        show(
+            ready.copy(
+                segment = DetailSegment.ACTIVITY,
+                activity = ActivityUiState.Shown(
+                    listOf(pending, indexRow),
+                    "Transactions sent from this device.",
+                    index = IndexSection(
+                        listOf("Also from the addr1 index on Swarm: entries may be missing."),
+                        IndexFooter.Checking("Checking 1 entry of the addr1 index against the chain…"),
+                    ),
+                ),
+            ),
+        )
+
+        rule.onAllNodesWithTag(ACTIVITY_PENDING_TAG, useUnmergedTree = true).assertCountEquals(1)
+        rule.onNodeWithContentDescription("Checking an entry against the chain").assertExists()
+        // The verified row beside it is a row like any other; the ghost is no row to open.
+        rule.onAllNodesWithTag(ACTIVITY_ROW_TAG).assertCountEquals(1)
+        rule.onNodeWithTag(ACTIVITY_PENDING_TAG, useUnmergedTree = true).performClick()
+        rule.onNodeWithTag(ACTIVITY_INDEX_FOOTER_TAG).performScrollTo()
+        rule.onNodeWithText("Checking 1 entry of the addr1 index against the chain…").assertIsDisplayed()
+        rule.waitForIdle()
+
+        assertTrue(events.none { it.startsWith("open activity") }, "a ghost opens nothing")
+        assertEquals(0, events.count { it == "more activity" }, "nothing more is asked while entries are checked")
+    }
+
+    @Test
+    fun aRefusalOfTheAddr1IndexIsSaidAndAPassingOneOffersTryAgain() {
+        show(indexed(IndexFooter.Refused("The light client is still catching up.", retry = true)))
+
+        rule.onNodeWithTag(ACTIVITY_INDEX_FOOTER_TAG).performScrollTo()
+        rule.onNodeWithText("The light client is still catching up.").assertExists()
+        rule.onNodeWithText("Try again").performClick()
+
+        assertEquals(listOf("more activity"), events)
+    }
+
+    @Test
+    fun oldestFirstTheAddr1IndexLoadsOlderEntriesOnlyOnATap() {
+        show(indexed(IndexFooter.More).let { it.copy(activity = it.activity.ordered(ActivityOrder.OLDEST_FIRST)) })
+        rule.waitForIdle()
+
+        assertEquals(emptyList(), events, "above the rows, in sight from the start: nothing read by itself")
+        rule.onNodeWithText("Load older entries").performClick()
+        assertEquals(listOf("more activity"), events)
+    }
+
+    @Test
+    fun afterAPageThatAddedNoRowTheAddr1IndexReadsOnOnlyOnATap() {
+        show(indexed(IndexFooter.Paused("The last page of the addr1 index added no row.")))
+        rule.waitForIdle()
+
+        assertEquals(emptyList(), events, "nothing read by itself")
+        rule.onNodeWithTag(ACTIVITY_INDEX_FOOTER_TAG).performScrollTo()
+        rule.onNodeWithText("The last page of the addr1 index added no row.").assertExists()
+        rule.onNodeWithText("Load older entries").performClick()
+        assertEquals(listOf("more activity"), events, "a tap reads exactly one page")
+    }
+
+    @Test
+    fun theEndOfTheAddr1IndexsCoverageIsMarkedAndAsksForNothing() {
+        show(indexed(IndexFooter.End("The addr1 index starts at block 9,000,000: nothing older comes from it.")))
+
+        rule.onNodeWithTag(ACTIVITY_INDEX_FOOTER_TAG).performScrollTo()
+        rule.onNodeWithText("The addr1 index starts at block 9,000,000: nothing older comes from it.").assertExists()
+        rule.onNodeWithText("Try again").assertDoesNotExist()
+        assertEquals(emptyList(), events)
     }
 }

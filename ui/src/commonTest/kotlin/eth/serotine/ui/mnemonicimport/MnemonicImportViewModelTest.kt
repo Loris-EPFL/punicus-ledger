@@ -14,6 +14,8 @@ import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.MnemonicProblem
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PerAppAccount
+import eth.serotine.domain.model.PrivateKey
+import eth.serotine.domain.model.PrivateKeyProblem
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountChange
@@ -29,8 +31,10 @@ import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.MemoryStep
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.PasswordCost
+import eth.serotine.domain.repository.PrivateKeys
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ImportMnemonicAccount
+import eth.serotine.domain.usecase.ImportPrivateKeyAccount
 import eth.serotine.domain.usecase.ObserveEnabledNetworks
 import eth.serotine.domain.usecase.SetNetworkEnabled
 import eth.serotine.domain.usecase.WalletChanges
@@ -85,6 +89,7 @@ class MnemonicImportViewModelTest {
                         DescribeKeyStore(keys),
                         ObserveEnabledNetworks(networks),
                         SetNetworkEnabled(networks),
+                        ImportPrivateKeyAccount(keys, repository, WalletChanges()),
                     )
                 }
             },
@@ -106,24 +111,94 @@ class MnemonicImportViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
+    // A made-up key, the hex digits counted out four times.
+    private val typedKey = "0x" + "0123456789abcdef".repeat(4)
+
+    @Test
+    fun aKeyIsAskedInsteadOfTheWordsAndCountedAsItIsTyped() {
+        viewModel.onPhraseChange(twelveWords)
+        viewModel.onPasswordChange(password)
+        viewModel.onSourceChange(ImportSource.KEY)
+
+        assertEquals(ImportSource.KEY, entering().source)
+        assertEquals("", entering().phrase.text, "the words go when a key is asked instead")
+        assertEquals(password, entering().password.text, "the password stays")
+        assertFalse(entering().inputReady)
+
+        viewModel.onKeyChange(typedKey.dropLast(1))
+        assertEquals(63, entering().keyDigits)
+        assertFalse(entering().inputReady)
+        viewModel.onKeyChange(" $typedKey ")
+        assertEquals(64, entering().keyDigits, "0x and spaces around are not digits")
+        assertTrue(entering().inputReady)
+
+        viewModel.onSourceChange(ImportSource.PHRASE)
+        assertEquals("", entering().key.text, "and the key goes when the words are asked again")
+    }
+
+    @Test
+    fun aKeyIsImportedThroughTheKeyStoresImportOfAKey() = runTest {
+        keys.next = CompletableDeferred(KeyImport.Stored(address, KeyProtection.HARDWARE))
+        viewModel.onSourceChange(ImportSource.KEY)
+        viewModel.onKeyChange(typedKey)
+        viewModel.onPasswordChange(password)
+        viewModel.onNetworkToggle(Network.SEPOLIA.chainId)
+
+        viewModel.onImport()
+
+        assertEquals(Imported("Account 1"), viewModel.uiState.value)
+        assertEquals(listOf(typedKey), keys.receivedKeys.map { it.text })
+        assertEquals(emptyList(), keys.received, "no words asked for")
+    }
+
+    @Test
+    fun aKeyThatIsNoKeyIsSaidUnderTheField() = runTest {
+        viewModel.onSourceChange(ImportSource.KEY)
+        viewModel.onKeyChange(typedKey)
+        viewModel.onPasswordChange(password)
+        viewModel.onNetworkToggle(Network.SEPOLIA.chainId)
+        for ((problem, said) in listOf(
+            PrivateKeyProblem.OutOfRange to "These 64 digits are not a valid private key: no key has that value.",
+            PrivateKeyProblem.NotHex(5) to "Character 5 is not a hex digit: a private key has only 0 to 9 and a to f.",
+        )) {
+            keys.next = CompletableDeferred(KeyImport.Invalid(problem))
+            viewModel.onImport()
+            assertEquals(said, entering().error)
+            viewModel.onKeyChange(typedKey)
+        }
+    }
+
+    @Test
+    fun aHiddenScreenDropsTheKeyAndKeepsTheChoice() {
+        viewModel.onSourceChange(ImportSource.KEY)
+        viewModel.onKeyChange(typedKey)
+        viewModel.onPasswordChange(password)
+
+        viewModel.onHidden()
+
+        assertEquals("", entering().key.text)
+        assertEquals("", entering().password.text)
+        assertEquals(ImportSource.KEY, entering().source)
+    }
+
     @Test
     fun startsEmptyAndCountsTheWordsAsTheyAreTyped() {
         val start = assertIs<Entering>(viewModel.uiState.value)
         assertEquals("", start.phrase.text)
         assertEquals(0, start.wordCount)
-        assertFalse(start.wordsAndPasswordReady)
+        assertFalse(start.inputReady)
 
         viewModel.onPhraseChange("one two three four five six seven eight nine ten eleven")
         assertEquals(11, entering().wordCount)
-        assertFalse(entering().wordsAndPasswordReady)
+        assertFalse(entering().inputReady)
 
         viewModel.onPhraseChange("$twelveWords ")
         assertEquals("$twelveWords ", entering().phrase.text, "the field shows back exactly what was typed")
         assertEquals(12, entering().wordCount)
-        assertFalse(entering().wordsAndPasswordReady, "not without the wallet password")
+        assertFalse(entering().inputReady, "not without the wallet password")
 
         viewModel.onPasswordChange(password)
-        assertTrue(entering().wordsAndPasswordReady)
+        assertTrue(entering().inputReady)
     }
 
     @Test
@@ -418,11 +493,11 @@ class MnemonicImportViewModelTest {
         viewModel.onPasswordChange(password)
         viewModel.onRepeatChange("correct hors")
         assertEquals("The two passwords differ", entering().passwordHint)
-        assertFalse(entering().wordsAndPasswordReady)
+        assertFalse(entering().inputReady)
 
         viewModel.onRepeatChange(password)
         assertEquals(null, entering().passwordHint)
-        assertTrue(entering().wordsAndPasswordReady)
+        assertTrue(entering().inputReady)
     }
 
     @Test
@@ -477,7 +552,14 @@ class MnemonicImportViewModelTest {
 
     private fun entering(): Entering = assertIs<Entering>(viewModel.uiState.value)
 
-    private class FakeKeyStore : KeyStore {
+    private class FakeKeyStore : KeyStore, PrivateKeys {
+        val receivedKeys = mutableListOf<PrivateKey>()
+
+        override suspend fun importPrivateKey(key: PrivateKey, password: WalletPassword): KeyImport {
+            receivedKeys += key
+            return next.await().also { if (it is KeyImport.Stored) passwordSet = true }
+        }
+
         override suspend fun newMnemonic(): NewMnemonic = NewMnemonic.Unavailable
 
         override suspend fun enableBiometrics(password: WalletPassword, confirmation: String): BiometricChange =

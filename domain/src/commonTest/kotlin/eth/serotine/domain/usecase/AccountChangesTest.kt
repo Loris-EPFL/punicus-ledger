@@ -1,5 +1,8 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.repository.KeptAddressIndex
+import eth.serotine.domain.model.AddressIndexCoverage
+import eth.serotine.domain.model.AddressIndexEntry
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
@@ -141,6 +144,35 @@ class AccountChangesTest {
 
         assertEquals(AccountRemoval.NotSaved, removeFrom(repository)(keyed.id))
         assertEquals(emptyList(), keys.deleted, "the key never goes before the entry")
+    }
+
+    @Test
+    fun removingAnAccountForgetsItsKeptAddr1HistoryAndNoOtherAccounts() = runTest {
+        val archive = MemoryAddressIndexArchive()
+        val coverage = AddressIndexCoverage(Address.of("0x" + "1e".repeat(20)), 1, 1L..9L, null, null, emptyList())
+        val none = emptyList<AddressIndexEntry>()
+        val kept = KeptAddressIndex(coverage, 9, emptyList(), none, none, none, none, emptyList(), null)
+        archive.kept[keyed.id] = kept
+        archive.kept[watched.id] = kept
+
+        val remove = RemoveAccount(repository, keys, WalletChanges(), MemoryAliases(), archive)
+        assertEquals(AccountRemoval.Removed, remove(keyed.id))
+
+        assertEquals(setOf(watched.id), archive.kept.keys)
+    }
+
+    @Test
+    fun anEntryThatCannotBeRemovedKeepsItsAddr1HistoryToo() = runTest {
+        val archive = MemoryAddressIndexArchive()
+        val coverage = AddressIndexCoverage(Address.of("0x" + "1e".repeat(20)), 1, 1L..9L, null, null, emptyList())
+        val none = emptyList<AddressIndexEntry>()
+        archive.kept[keyed.id] = KeptAddressIndex(coverage, 9, emptyList(), none, none, none, none, emptyList(), null)
+        repository.failSaves = true
+
+        val remove = RemoveAccount(repository, keys, WalletChanges(), MemoryAliases(), archive)
+        assertEquals(AccountRemoval.NotSaved, remove(keyed.id))
+
+        assertEquals(setOf(keyed.id), archive.kept.keys)
     }
 
     @Test

@@ -14,6 +14,7 @@ import eth.serotine.data.cow.HttpCowApi
 import eth.serotine.data.engine.MyotisHost
 import eth.serotine.data.handoff.NoWalletHandoff
 import eth.serotine.data.history.FileHistoryStarts
+import eth.serotine.data.history.FileAddressIndexArchive
 import eth.serotine.data.history.PinnedAddressIndexImporter
 import eth.serotine.data.keys.EnvelopeKeyStore
 import eth.serotine.data.keys.Secp256k1Recovery
@@ -590,6 +591,8 @@ private fun openWallet(dataDir: File) {
                 addressIndex = node.addressIndex,
                 addressIndexSetting = addressIndexSetting,
                 addressIndexImporter = PinnedAddressIndexImporter.KEY,
+                // What was read of each account's addr1 history, kept between runs (owner's request, 2026-11-25).
+                addressIndexArchive = FileAddressIndexArchive(dataDir.resolve("address-index").path),
             )
         }
         Window(

@@ -117,7 +117,16 @@ index from Swarm*.)
   that key, said in plain words.
 - When the engine raises its checkpoint table's alarm (the table and the
   beacon chain disagree, Myotis's `StatusSnapshot.checkpointAlarm`), every
-  read resting on the table is refused. The app shows the alarm.
+  read resting on the table is refused. The app shows the alarm, and what
+  is kept of the lists (below) is deleted: for now when a read meets the
+  alarm, as for the rows shown; #363 brings the alarm itself into the app.
+- **A row verified earlier may be shown again without a new check** (owner's
+  request, 2026-11-25: "The results will never change. So it's ok to store
+  them locally"). How it is applied, not part of the request: only a row of
+  a block the beacon chain had finalized when it was verified, since a
+  finalized block cannot change, and neither can the engine's verdict on
+  it. The index is read again at a block whose verdict was not final yet.
+  A row's detail still checks its entry anew.
 
 ## Past the weak-subjectivity window only on the user's word
 

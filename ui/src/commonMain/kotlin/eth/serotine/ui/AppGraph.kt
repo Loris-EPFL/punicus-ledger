@@ -8,6 +8,7 @@ import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddedNfts
+import eth.serotine.domain.repository.AddressIndexArchive
 import eth.serotine.domain.repository.AddressIndexHistory
 import eth.serotine.domain.repository.AddressIndexSetting
 import eth.serotine.domain.repository.AddressKinds
@@ -114,6 +115,7 @@ import eth.serotine.domain.usecase.ImportSigningRequest
 import eth.serotine.domain.usecase.KeepWaitingSwap
 import eth.serotine.domain.usecase.LinkMadePerAppAlias
 import eth.serotine.domain.usecase.LinkPerAppAlias
+import eth.serotine.domain.usecase.KeepAddressIndex
 import eth.serotine.domain.usecase.LoadAddressIndexPage
 import eth.serotine.domain.usecase.MakePerAppAddress
 import eth.serotine.domain.usecase.NetworkDemand
@@ -501,6 +503,12 @@ class AppGraph(
      * release pins none, which greys the setting out (owner's decision, 2026-11-21).
      */
     private val addressIndexImporter: Address? = null,
+    /**
+     * Where each account's addr1 history is kept between runs (owner's request, 2026-11-25), so that its Activity
+     * shows what was verified before at once and reads only what is newer; null: nothing is kept, and each opening
+     * reads the index from its newest page.
+     */
+    private val addressIndexArchive: AddressIndexArchive? = null,
 ) {
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
@@ -1051,6 +1059,7 @@ class AppGraph(
         return AddressIndexActivity(
             ObserveAddressIndexStatus(history, setting, importer),
             LoadAddressIndexPage(history, importer),
+            keep = addressIndexArchive?.let { KeepAddressIndex(it, accounts, walletChanges, importer) },
         )
     }
 
@@ -1076,7 +1085,7 @@ class AppGraph(
         // the check itself (NotInThisBuild), which the detail says.
         checkIndexEntry = addressIndex?.let { history ->
             addressIndexSetting?.let { setting ->
-                addressIndexImporter?.let { CheckAddressIndexEntry(history, setting, it) }
+                addressIndexImporter?.let { CheckAddressIndexEntry(history, setting, it, addressIndexArchive) }
             }
         },
     )
@@ -1120,7 +1129,7 @@ class AppGraph(
             account,
             ObserveAccount(accounts),
             ObserveAccounts(accounts),
-            RemoveAccount(accounts, keys, walletChanges, perAppAliases),
+            RemoveAccount(accounts, keys, walletChanges, perAppAliases, addressIndexArchive),
         )
 
     fun watchViewModel(): WatchViewModel = WatchViewModel(

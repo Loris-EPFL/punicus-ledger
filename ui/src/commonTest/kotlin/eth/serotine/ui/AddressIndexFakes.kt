@@ -1,5 +1,6 @@
 package eth.serotine.ui
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexCoverage
 import eth.serotine.domain.model.AddressIndexCursor
@@ -12,6 +13,7 @@ import eth.serotine.domain.model.AddressIndexVerdict
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.TokenTransfer
 import eth.serotine.domain.model.Wei
+import eth.serotine.domain.repository.AddressIndexArchive
 import eth.serotine.domain.repository.AddressIndexCheck
 import eth.serotine.domain.repository.AddressIndexChoice
 import eth.serotine.domain.repository.AddressIndexHistory
@@ -20,6 +22,7 @@ import eth.serotine.domain.repository.AddressIndexQuery
 import eth.serotine.domain.repository.AddressIndexReading
 import eth.serotine.domain.repository.AddressIndexRefusal
 import eth.serotine.domain.repository.AddressIndexSetting
+import eth.serotine.domain.repository.KeptAddressIndex
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -35,6 +38,9 @@ internal val FIXTURE_IMPORTER: Address = Address.of("0x" + "1e".repeat(20))
  */
 internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressIndexHistory {
     val pages = mutableMapOf<AddressIndexCursor?, AddressIndexPage>()
+
+    /** The pages of a range asked (its `fromBlock` to `toBlock`), whatever the cursor. */
+    val ranges = mutableMapOf<LongRange, AddressIndexPage>()
     var pageRefusal: AddressIndexRefusal? = null
     var checkRefusal: AddressIndexRefusal? = null
     val verifiedRows = mutableMapOf<AddressIndexEntry, AddressIndexRow>()
@@ -60,6 +66,12 @@ internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressInde
     override suspend fun page(network: Network, address: Address, query: AddressIndexQuery): AddressIndexReading {
         asked += query.cursor
         pageRefusal?.let { return AddressIndexReading.Refused(it) }
+        val from = query.fromBlock
+        val to = query.toBlock
+        if (from != null && to != null) {
+            return ranges[from..to]?.let { AddressIndexReading.Page(it) }
+                ?: AddressIndexReading.Refused(AddressIndexRefusal.Rejected("no such range"))
+        }
         val page = pages[query.cursor]
             ?: return AddressIndexReading.Refused(AddressIndexRefusal.Rejected("no such cursor"))
         return AddressIndexReading.Page(page)
@@ -78,8 +90,8 @@ internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressInde
     }
 
     /**
-     * A page signed by [importer], covering [covered] with the head gap above it, of [rows] (each verified) and
-     * [others] (left to [verdictOf]), going on at [next].
+     * A page signed by [importer], covering [covered] with the head gap above it and [gaps] inside, of [rows] (each
+     * verified) and [others] (left to [verdictOf]), going on at [next]; the page of [range] when one is given.
      */
     fun page(
         cursor: String?,
@@ -88,22 +100,25 @@ internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressInde
         others: List<AddressIndexEntry> = emptyList(),
         covered: LongRange = 9_000_000L..9_400_000L,
         importer: Address = FIXTURE_IMPORTER,
+        gaps: List<LongRange> = emptyList(),
+        range: LongRange? = null,
     ) {
         rows.forEach { verifiedRows[it.entry] = it }
         val entries = (rows.map { it.entry } + others)
             .sortedWith(compareByDescending<AddressIndexEntry> { it.block }.thenByDescending { it.slot })
-        pages[cursor?.let(::AddressIndexCursor)] = AddressIndexPage(
+        val page = AddressIndexPage(
             AddressIndexCoverage(
                 importer = importer,
                 headUpdate = 3,
                 covered = covered,
-                headGap = AddressIndexHeadGap(covered.last + 1, covered.last + 120),
-                tailGap = if (covered.first > 0) 0L until covered.first else null,
-                gaps = emptyList(),
+                headGap = if (range == null) AddressIndexHeadGap(covered.last + 1, covered.last + 120) else null,
+                tailGap = if (range == null && covered.first > 0) 0L until covered.first else null,
+                gaps = gaps,
             ),
             entries,
             next?.let(::AddressIndexCursor),
         )
+        if (range != null) ranges[range] = page else pages[cursor?.let(::AddressIndexCursor)] = page
     }
 }
 
@@ -144,6 +159,23 @@ internal class MemoryAddressIndexSetting(on: Address? = null) : AddressIndexSett
     override suspend fun trust(importer: Address?): Boolean {
         if (failSaves || choice.value is AddressIndexChoice.Unreadable) return false
         choice.value = AddressIndexChoice.Chosen(importer)
+        return true
+    }
+}
+
+/** An [AddressIndexArchive] in memory, as the port's contract says one behaves: what is kept, by account, in [kept]. */
+internal class MemoryAddressIndexArchive : AddressIndexArchive {
+    val kept = mutableMapOf<AccountId, KeptAddressIndex>()
+
+    override suspend fun read(account: AccountId): KeptAddressIndex? = kept[account]
+
+    override suspend fun write(account: AccountId, kept: KeptAddressIndex): Boolean {
+        this.kept[account] = kept
+        return true
+    }
+
+    override suspend fun forget(account: AccountId): Boolean {
+        kept -= account
         return true
     }
 }

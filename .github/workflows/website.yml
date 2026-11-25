@@ -11,9 +11,11 @@
 #     browser. Pre-releases count: every release so far is one. When the API cannot be read, a
 #     pull request's build links the releases page instead, with a warning; a build that would be
 #     published fails, so that what is published keeps its links.
-#   - The site's public address, for the social preview image's absolute URL, is asked of the
-#     repository's Pages settings. Where Pages is not turned on (a fork, or this repository before
-#     the owner has turned it on), the site is built without it, and the job says so.
+#   - The site's public address, for the social preview image's absolute URL, is SITE_URL:
+#     https://punicus.eth.limo/ (the owner's, 2026-11-25), not the Pages address, which moved with the
+#     repository (biafra23.github.io/punicus became a 404). Whether Pages is turned on is still asked of
+#     the repository's Pages settings: where it is not (a fork, or this repository before the owner has
+#     turned it on), the site is built without the address, and the job says so.
 # `deploy` publishes that artifact, on main only and only where Pages is turned on: elsewhere it
 # is skipped, not failed. It runs none of the repository's code, and it alone holds the two
 # permissions a Pages deployment takes.
@@ -70,6 +72,8 @@ jobs:
         id: build
         env:
           GH_TOKEN: ${{ github.token }}
+          # The site's public address (owner's, 2026-11-25): what its links and its preview image name.
+          SITE_URL: https://punicus.eth.limo/
         run: |
           releases="$RUNNER_TEMP/releases.json"
           if ! gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" > "$releases"; then
@@ -94,8 +98,9 @@ jobs:
               fi
               ;;
           esac
+          # Pages on: the site is published, under its public address, not the Pages one.
           python3 scripts/build_website.py --out build/website \
-            ${releases:+--releases "$releases"} --base-url "$base_url"
+            ${releases:+--releases "$releases"} --base-url "${base_url:+$SITE_URL}"
 
       - name: Upload the site
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

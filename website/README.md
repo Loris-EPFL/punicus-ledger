@@ -2,9 +2,10 @@
 
 The public site of Punicus: what the wallet is, in plain words, for people who
 are not developers; where to download it; and a guide to adding accounts and
-Safes. Published to GitHub Pages by `.github/workflows/website.yml`. It is
-built so that it can also be published to Swarm and reached through
-`punicus.eth` (below).
+Safes. Its public address is <https://punicus.eth.limo/> (the owner's,
+2026-11-25: `punicus.eth` through the eth.limo gateway), which every link to
+the site uses. Published to GitHub Pages by `.github/workflows/website.yml`,
+and built so that it can also be published to Swarm (below).
 
 | File | What it is |
 |---|---|

@@ -240,12 +240,37 @@ replaces the bar (Material's expanded window size class):
 - The list leaves with the tab: Settings and Debug take the whole width
   beside the rail, and a flow that covers the bar (send, import, create
   account, a Safe transaction) covers the list too.
-- The back stack is the same at every width, so a window that crosses
-  840 dp keeps the screen it shows: narrowed, the account alone, back from it
-  to the list; widened, the list joins it.
+- The back stack is the same at every width below 1200 dp, so a window that
+  crosses 840 dp keeps the screen it shows: narrowed, the account alone, back
+  from it to the list; widened, the list joins it. From 1200 dp on, a row's
+  detail beside its account is no screen of its own (below).
 - Its screenshots are drawn on a tablet held sideways, 1280 × 800 dp
   (owner's request, 2026-11-18): `docs/screenshots/accounts-tablet/` and
   `simple-accounts-tablet/`.
+
+**From 1200 dp on, an Activity row's detail opens beside its account: three
+columns** (owner's request, 2026-11-25). Material's large window size class:
+
+- A tap on a row of the account's Activity opens its detail (26) in a column
+  beside the account, which stays as it was, scrolled where it was. The list,
+  the account and the detail share the width beside the rail, the account and
+  the detail half each of what the list leaves.
+- The row whose detail is open is drawn selected, in the secondary container
+  colour, and says so to a screen reader. A tap on another row shows its
+  detail in its place.
+- The detail's own Back, or the back key, closes the column, and the account
+  takes the width again. With no row open, there is no third column.
+- Only a row's detail goes there. A CoW order and a queued transfer open
+  their status as before, and every action of the account (Send, Receive, a
+  Safe's proposal, ...) opens as it does at 840 dp.
+- Another account opened from the list opens with no row open: the detail
+  belongs to the account it was opened from.
+- A window narrowed below 1200 dp closes the column, and the account is
+  shown as it was; there a row's tap opens its detail on a screen of its
+  own. A detail opened that way stays a screen of its own when the window is
+  widened past 1200 dp again: beside the list, over the account. The row
+  open beside the account outlives a configuration change, not the end of
+  the app's process.
 
 ## Screens
 

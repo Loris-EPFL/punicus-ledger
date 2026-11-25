@@ -6,12 +6,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import eth.serotine.domain.model.Network
-import eth.serotine.ui.accountdetail.AccountDetailDailySample
 import eth.serotine.ui.PreviewDevice
 import eth.serotine.ui.ScreenPreview
 import eth.serotine.ui.TABLET_HEIGHT_DP
 import eth.serotine.ui.TABLET_WIDTH_DP
+import eth.serotine.ui.accountdetail.AccountDetailActivitySelectedSample
+import eth.serotine.ui.accountdetail.AccountDetailDailySample
+import eth.serotine.ui.activitydetail.ActivityDetailSentSample
 import eth.serotine.ui.components.AppTabs
+import eth.serotine.ui.components.DetailBesideAccount
 import eth.serotine.ui.components.ListBesideDetail
 import eth.serotine.ui.components.TabRail
 import eth.serotine.ui.theme.SerotineTheme
@@ -59,6 +62,24 @@ private fun AccountsTabletAccountOpenPreview() =
 private fun AccountsTabletAccountOpenDarkPreview() =
     AccountsTabletPreview(darkTheme = true, shown) { AccountDetailDailySample() }
 
+/**
+ * An Activity row's detail open beside its account, a third column (owner's request, 2026-11-25): the tablet is wider
+ * than 1200 dp. Drawn with the split App draws ([DetailBesideAccount]).
+ */
+@Preview(widthDp = TABLET_WIDTH_DP, heightDp = TABLET_HEIGHT_DP)
+@Composable
+private fun AccountsTabletActivityDetailOpenPreview() =
+    AccountsTabletPreview(darkTheme = false, shown) {
+        DetailBesideAccount(true, account = { AccountDetailActivitySelectedSample() }) { ActivityDetailSentSample() }
+    }
+
+@Preview(widthDp = TABLET_WIDTH_DP, heightDp = TABLET_HEIGHT_DP)
+@Composable
+private fun AccountsTabletActivityDetailOpenDarkPreview() =
+    AccountsTabletPreview(darkTheme = true, shown) {
+        DetailBesideAccount(true, account = { AccountDetailActivitySelectedSample() }) { ActivityDetailSentSample() }
+    }
+
 /** No account open yet: the pane beside the list says how to open one. */
 @Preview(widthDp = TABLET_WIDTH_DP, heightDp = TABLET_HEIGHT_DP)
 @Composable
@@ -70,4 +91,6 @@ internal val accountsTabletScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("account-open", PreviewDevice.TABLET) { AccountsTabletAccountOpenPreview() },
     ScreenPreview("account-open-dark", PreviewDevice.TABLET) { AccountsTabletAccountOpenDarkPreview() },
     ScreenPreview("no-account-open", PreviewDevice.TABLET) { AccountsTabletNoAccountOpenPreview() },
+    ScreenPreview("activity-detail-open", PreviewDevice.TABLET) { AccountsTabletActivityDetailOpenPreview() },
+    ScreenPreview("activity-detail-open-dark", PreviewDevice.TABLET) { AccountsTabletActivityDetailOpenDarkPreview() },
 )

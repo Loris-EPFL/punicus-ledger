@@ -3,22 +3,22 @@ package eth.serotine.ui.activity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -37,14 +37,16 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import eth.serotine.ui.accounts.selectedRow
+import eth.serotine.ui.accounts.selectedRowColors
 import eth.serotine.ui.components.AccountAvatar
 import eth.serotine.ui.components.GHOST_ROWS_UNKNOWN
 import eth.serotine.ui.components.GhostCircle
 import eth.serotine.ui.components.GhostLine
-import eth.serotine.ui.components.Unavailable
-import eth.serotine.ui.components.unavailable
 import eth.serotine.ui.components.GhostRows
 import eth.serotine.ui.components.SerotineIcons
+import eth.serotine.ui.components.Unavailable
+import eth.serotine.ui.components.unavailable
 
 /** Test tag of each transaction row, for UI tests. */
 const val ACTIVITY_ROW_TAG = "activity-row"
@@ -60,6 +62,9 @@ const val ACTIVITY_PENDING_TAG = "activity-pending"
 
 /** What a screen reader says of a ghost row: an entry of the addr1 index being checked. */
 private const val CHECKING_ENTRY = "Checking an entry against the chain"
+
+/** Test tag of the row whose detail is shown beside the Activity on the widest window, for UI tests. */
+const val ACTIVITY_SELECTED_TAG = "activity-selected"
 
 /** Test tag of each day's heading between the rows, for UI tests. */
 const val ACTIVITY_DAY_TAG = "activity-day"
@@ -94,6 +99,7 @@ fun LazyListScope.activityItems(
     onDismiss: (sell: String) -> Unit = {},
     continueAvailable: Boolean = true,
     onMore: () -> Unit = {},
+    selected: ActivityKey? = null,
 ) {
     when (state) {
         // What the list covers and a few rows, in their shapes, until it is read: no spinner the rows push down.
@@ -149,7 +155,7 @@ fun LazyListScope.activityItems(
                     if (row.pending) {
                         PendingItem(withTime = row.time.isNotEmpty())
                     } else {
-                        ActivityItem(row, onClick = { onOpen(row.opens) })
+                        ActivityItem(row, onClick = { onOpen(row.opens) }, shown = row.opens == selected)
                     }
                 }
             }
@@ -321,14 +327,21 @@ private fun DayHeading(day: String) {
 }
 
 /**
- * One row; a tap opens its detail ([onClick]). Which way it moved value is an arrow on the blockie's corner, green in
- * and red out, and what it moved is on the right, signed; its time of day where the list is grouped by day.
+ * One row; a tap opens its detail ([onClick]). The row whose detail is shown beside the Activity ([shown]) is drawn
+ * selected, as the account shown beside the list is. Which way it moved value is an arrow on the blockie's corner,
+ * green in and red out, and what it moved is on the right, signed; its time of day where the list is grouped by day.
  */
 @Composable
-private fun ActivityItem(row: ActivityRow, onClick: () -> Unit) {
+private fun ActivityItem(row: ActivityRow, onClick: () -> Unit, shown: Boolean = false) {
     ListItem(
-        modifier = Modifier.testTag(ACTIVITY_ROW_TAG).clickable(onClick = onClick),
-        leadingContent = { DirectedAvatar(row.about, row.direction, muted = !row.settled) },
+        modifier = Modifier
+            .then(if (shown) Modifier.selectedRow(true, ACTIVITY_SELECTED_TAG) else Modifier.testTag(ACTIVITY_ROW_TAG))
+            .clickable(onClick = onClick),
+        colors = selectedRowColors(shown),
+        leadingContent = {
+            val disc = selectedRowColors(shown).containerColor
+            DirectedAvatar(row.about, row.direction, muted = !row.settled, disc = disc)
+        },
         // When, above what it did: beside it, the date would squeeze each row into narrow lines.
         overlineContent = (row.clock ?: row.time).takeIf { it.isNotEmpty() }?.let { time -> { Text(time) } },
         headlineContent = { Text(row.headline ?: row.title) },
@@ -354,17 +367,23 @@ private fun ActivityItem(row: ActivityRow, onClick: () -> Unit) {
 
 /**
  * The blockie of a row's other side, with an arrow on its corner for the way value went ([direction]): green in and
- * red out, or [muted] while what moved is not settled.
+ * red out, or [muted] while what moved is not settled; the arrow on a disc of the row's own colour ([disc]), so that it
+ * stands out as part of the row, selected or not.
  */
 @Composable
-private fun DirectedAvatar(about: String, direction: ActivityDirection, muted: Boolean) {
+private fun DirectedAvatar(
+    about: String,
+    direction: ActivityDirection,
+    muted: Boolean,
+    disc: Color = MaterialTheme.colorScheme.surface,
+) {
     Box {
         AccountAvatar(about)
         if (direction != ActivityDirection.NONE) {
             val incoming = direction == ActivityDirection.IN
             Box(
                 Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp).size(20.dp)
-                    .background(MaterialTheme.colorScheme.surface, CircleShape),
+                    .background(disc, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

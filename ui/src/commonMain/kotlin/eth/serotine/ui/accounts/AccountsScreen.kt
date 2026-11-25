@@ -599,11 +599,12 @@ internal fun accountMenu(
 }
 
 /**
- * The row of the account whose detail is shown beside the list, [shown]: said selected to a screen
- * reader and tagged, the colour being the row's own ([selectedRowColors]). Nothing for any other row.
+ * The row whose detail is shown beside its list, [shown] (an account beside the Accounts list, an Activity row beside
+ * its account): said selected to a screen reader and tagged [tag], the colour being the row's own
+ * ([selectedRowColors]). Nothing for any other row.
  */
-internal fun Modifier.selectedRow(shown: Boolean): Modifier =
-    if (shown) semantics { selected = true }.testTag(ACCOUNTS_SELECTED_TAG) else this
+internal fun Modifier.selectedRow(shown: Boolean, tag: String = ACCOUNTS_SELECTED_TAG): Modifier =
+    if (shown) semantics { selected = true }.testTag(tag) else this
 
 /** A row's colours: the secondary container behind the account shown beside the list ([shown]). */
 @Composable

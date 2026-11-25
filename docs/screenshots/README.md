@@ -12,7 +12,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 |---|---|---|
 | [Account detail](#account-detail) | `account-detail/` | 74 |
 | [Accounts](#accounts) | `accounts/` | 41 |
-| [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 3 |
+| [Accounts on a tablet](#accounts-tablet) | `accounts-tablet/` | 5 |
 | [Activity detail](#activity-detail) | `activity-detail/` | 15 |
 | [Add on networks (dialog)](#add-on-networks-dialog) | `add-on-networks-dialog/` | 5 |
 | [Add token](#add-token) | `add-token/` | 11 |
@@ -47,7 +47,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Settings](#settings) | `settings/` | 37 |
 | [Account detail (simple mode)](#simple-account-detail) | `simple-account-detail/` | 13 |
 | [Home (simple mode)](#simple-accounts) | `simple-accounts/` | 18 |
-| [Home on a tablet (simple mode)](#simple-accounts-tablet) | `simple-accounts-tablet/` | 3 |
+| [Home on a tablet (simple mode)](#simple-accounts-tablet) | `simple-accounts-tablet/` | 5 |
 | [Activity detail (simple mode)](#simple-activity-detail) | `simple-activity-detail/` | 4 |
 | [Add token (simple mode)](#simple-add-token) | `simple-add-token/` | 2 |
 | [CoW order (simple mode)](#simple-cow-order) | `simple-cow-order/` | 3 |
@@ -202,11 +202,13 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="accounts-tablet"></a>
 ## Accounts on a tablet
 
-`accounts-tablet/`, 3 states: `account-open`, `account-open-dark`, `no-account-open`
+`accounts-tablet/`, 5 states: `account-open`, `account-open-dark`, `no-account-open`, `activity-detail-open`, `activity-detail-open-dark`
 
 <a href="accounts-tablet/account-open.png"><img src="accounts-tablet/account-open.png" width="640" alt="account-open"></a>
 <a href="accounts-tablet/account-open-dark.png"><img src="accounts-tablet/account-open-dark.png" width="640" alt="account-open-dark"></a>
 <a href="accounts-tablet/no-account-open.png"><img src="accounts-tablet/no-account-open.png" width="640" alt="no-account-open"></a>
+<a href="accounts-tablet/activity-detail-open.png"><img src="accounts-tablet/activity-detail-open.png" width="640" alt="activity-detail-open"></a>
+<a href="accounts-tablet/activity-detail-open-dark.png"><img src="accounts-tablet/activity-detail-open-dark.png" width="640" alt="activity-detail-open-dark"></a>
 
 <a name="activity-detail"></a>
 ## Activity detail
@@ -943,11 +945,13 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="simple-accounts-tablet"></a>
 ## Home on a tablet (simple mode)
 
-`simple-accounts-tablet/`, 3 states: `account-open`, `account-open-dark`, `no-account-open`
+`simple-accounts-tablet/`, 5 states: `account-open`, `account-open-dark`, `no-account-open`, `activity-detail-open`, `activity-detail-open-dark`
 
 <a href="simple-accounts-tablet/account-open.png"><img src="simple-accounts-tablet/account-open.png" width="640" alt="account-open"></a>
 <a href="simple-accounts-tablet/account-open-dark.png"><img src="simple-accounts-tablet/account-open-dark.png" width="640" alt="account-open-dark"></a>
 <a href="simple-accounts-tablet/no-account-open.png"><img src="simple-accounts-tablet/no-account-open.png" width="640" alt="no-account-open"></a>
+<a href="simple-accounts-tablet/activity-detail-open.png"><img src="simple-accounts-tablet/activity-detail-open.png" width="640" alt="activity-detail-open"></a>
+<a href="simple-accounts-tablet/activity-detail-open-dark.png"><img src="simple-accounts-tablet/activity-detail-open-dark.png" width="640" alt="activity-detail-open-dark"></a>
 
 <a name="simple-activity-detail"></a>
 ## Activity detail (simple mode)

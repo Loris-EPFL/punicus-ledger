@@ -247,6 +247,17 @@ class SerotineWallet {
     private val outboxLock = OutboxLock()
 
     /**
+     * The background work's scope. A failure in it is reported and ends that one piece of work,
+     * never the wallet: the next return to the foreground runs it again. Declared before [graph],
+     * which hands it to the traces: properties are initialized in the order written.
+     */
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e ->
+            println("Punicus: the app's background work stopped: $e")
+        },
+    )
+
+    /**
      * The Safe transactions waiting for their owners, with the signatures collected (public), and who
      * made a co-signer's signature: one instance each, which the graph and the outbox's follower share.
      */
@@ -354,16 +365,6 @@ class SerotineWallet {
             dappConnectionsOff = dappProjectId.isEmpty(),
         )
     }
-
-    /**
-     * The background work's scope. A failure in it is reported and ends that one piece of work,
-     * never the wallet: the next return to the foreground runs it again.
-     */
-    private val scope = CoroutineScope(
-        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e ->
-            println("Punicus: the app's background work stopped: $e")
-        },
-    )
 
     /** The work running while the app is in the foreground; main thread only. */
     private var foregroundWork: List<Job> = emptyList()

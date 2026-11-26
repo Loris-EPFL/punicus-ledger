@@ -560,7 +560,7 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   - what the call does now: its verified trace at the head (the engine's
     `debug_traceCall`; a Safe's transaction traced as the Safe's own call),
     the account's currency and tokens sent and received, the rights it
-    grants, the contracts it reaches, a delegate call into code the wallet
+    grants, the addresses it calls, a delegate call into code the wallet
     cannot name marked, its revert, each labelled as proven at that block and
     not at inclusion; where a description says otherwise, a loud warning,
     the call still signable (owner's decisions, 2026-11-26, #240;

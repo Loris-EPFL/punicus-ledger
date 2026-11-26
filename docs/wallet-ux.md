@@ -905,7 +905,7 @@ columns** (owner's request, 2026-11-25). Material's large window size class:
       every refusal below holds whatever the description says.
     - What a call (operation CALL) does now: traced at the verified head as
       the Safe's own call, the Safe's currency and tokens sent and received,
-      the rights granted, the contracts reached (a delegate call into code
+      the rights granted, the addresses it calls (a delegate call into code
       the wallet cannot name marked), its revert, labelled as proven at that
       block and not at execution, and without what `execTransaction` adds
       (the refund of the *Gas and refund terms*, the Safe's checks); where

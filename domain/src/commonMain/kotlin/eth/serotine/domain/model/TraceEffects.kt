@@ -53,7 +53,10 @@ sealed interface TracedRight {
     ) : TracedRight
 }
 
-/** A contract the traced call reached, and whether by a delegate call: its code run in its caller's context. */
+/**
+ * An address the traced call called, and whether by a delegate call (its code run in its caller's context). The
+ * trace reads no code: a payee with none is one too, so it is no proof of a contract.
+ */
 data class ReachedContract(val address: Address, val delegatedInto: Boolean)
 
 /**

@@ -1,5 +1,8 @@
 package eth.serotine.desktop
 
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CoroutineScope
 import eth.serotine.data.swaps.WrappedCurrency
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -499,7 +502,9 @@ private fun openWallet(dataDir: File) {
             }
         }
         // The window's for as long as the app runs: a trace a screen stopped waiting for goes on in it.
-        val appScope = rememberCoroutineScope()
+        val window = rememberCoroutineScope()
+        // A SupervisorJob under the window's, as TraceCall asks: one run's end never cancels another's.
+        val appScope = remember { CoroutineScope(window.coroutineContext + SupervisorJob(window.coroutineContext[Job])) }
         val graph = remember {
             // A Mac's Secure Enclave where the wallet uses it or can start to, the password
             // alone otherwise, and on Windows and Linux saying that their TPM is not used yet

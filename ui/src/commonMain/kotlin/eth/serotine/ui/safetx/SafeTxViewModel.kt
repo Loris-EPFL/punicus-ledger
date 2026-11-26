@@ -633,16 +633,17 @@ class SafeTxViewModel(
 
     val uiState: StateFlow<SafeTxUiState> =
         combine(context.onEach(::follow), view, step, swapCheck, heldInputs, ::Inputs)
-            // The ages of what lenient mode drafts on, and a held signature's, are dated anew every second.
-            .redatedWhile { inputs ->
-                inputs.held.held != null || inputs.step is Step.DraftReviewing || traced.value?.tracedAt != null ||
+            // The trace is an input of the redating: its age in simple mode is dated anew with the rest.
+            .combine(traced) { inputs, trace -> inputs to trace }
+            // The ages of what lenient mode drafts on, a held signature's and a trace's are dated anew every second.
+            .redatedWhile { (inputs, trace) ->
+                inputs.held.held != null || inputs.step is Step.DraftReviewing || trace?.tracedAt != null ||
                     (inputs.source as? Context)?.owners is SafeTxOwnersReading.LastVerified
             }
-            .map { render(it.source, it.view, it.step, it.swapCheck, it.held) }
-            .combine(combine(description, describing) { result, busy -> result to busy }) { state, (result, busy) ->
-                withDescription(state, result, busy)
+            .map { (it, trace) -> render(it.source, it.view, it.step, it.swapCheck, it.held) to trace }
+            .combine(combine(description, describing) { result, busy -> result to busy }) { (state, trace), (result, busy) ->
+                withTrace(withDescription(state, result, busy), trace)
             }
-            .combine(traced, ::withTrace)
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
@@ -722,8 +723,9 @@ class SafeTxViewModel(
                 describeJob?.join()
                 val claims = if (action is SafeTxAction.ContractCall) description.value?.let(TraceClaims::of)
                 else TraceClaims.ofSafeAction(action, safe)
-                val outcome = traceCall.trace(network, safe, call.to, call.value, call.data, claims)
+                // Its age runs from when it was asked: the state traced is the head's then, not when it answered.
                 val tracedAt = clock()
+                val outcome = traceCall.trace(network, safe, call.to, call.value, call.data, claims)
                 withContext(formatOn) { TraceText.section(outcome, safe, network, tracedAt).copy(note = TraceText.SAFE_CALL_NOTE) }
             } catch (e: CancellationException) {
                 throw e

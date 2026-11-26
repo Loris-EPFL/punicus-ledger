@@ -473,9 +473,10 @@ counting a frame only when neither it nor any frame above it failed:
   `Approval` and `Permit` count only as emitted by the pinned Permit2.
 - **Tokens are named as the description names them** (A3): by the built-in
   list, any other by its address with its amount raw.
-- **The contracts reached**, each named where the wallet names it (a built-in
-  token, a pinned deployment), and **a delegate call into code the wallet
-  cannot name** marked as such. Most proxies delegate to their
+- **The addresses it calls** (no code is read for them, so a payee is among
+  them: not every one is a contract), each named where the wallet names it (a
+  built-in token, a pinned deployment), and **a delegate call into code the
+  wallet cannot name** marked as such. Most proxies delegate to their
   implementation, so this is a marker beside the contract, not a warning.
 - **A revert**, with its reason where the contract gives one. A revert in
   the trace alone stops nothing: the simulation's revert stops the send, as
@@ -575,8 +576,8 @@ rare and meant (docs/balance-reconciliation.md, D3).
 - **At a fresh verified head only**, as the simulation: while the light
   client catches up, nothing is traced.
 - **A trace too large to read** (over 16 Mi characters of the engine's
-  answer, a contract that calls with much data again and again) is not
-  traced, and said so.
+  answer, a contract that calls with much data again and again), or one not
+  read exactly, is no verified answer: the screen says none could be had.
 
 ## Later phases (open)
 

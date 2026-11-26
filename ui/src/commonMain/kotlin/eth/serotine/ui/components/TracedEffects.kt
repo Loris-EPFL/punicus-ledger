@@ -48,7 +48,7 @@ data class TraceSection(
     val moves: List<String> = emptyList(),
     /** The rights over the account's tokens it grants. */
     val rights: List<String> = emptyList(),
-    /** Every contract it reaches, by the wallet's name where it has one. */
+    /** Every address it calls (no code was read for them: not all are contracts), by the wallet's name where it has one. */
     val contracts: List<String> = emptyList(),
     /** It reverts, and why where the contract says. */
     val revert: String? = null,
@@ -60,7 +60,7 @@ data class TraceSection(
     val canRetry: Boolean = false,
 ) {
     /** Whether it moves or grants nothing it logs. */
-    val nothingLogged: Boolean get() = provenAt != null && moves.isEmpty() && rights.isEmpty() && revert == null && unread == null && unread == null
+    val nothingLogged: Boolean get() = provenAt != null && moves.isEmpty() && rights.isEmpty() && revert == null && unread == null
 }
 
 /** What the screens say of a verified trace, and how a [TraceOutcome] becomes a [TraceSection]. */
@@ -261,7 +261,7 @@ fun TracedEffects(section: TraceSection, onRetry: () -> Unit, modifier: Modifier
                     section.unread?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (section.contracts.isNotEmpty()) {
                         Text(
-                            "Contracts it reaches",
+                            "Addresses it calls",
                             Modifier.padding(top = 4.dp),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

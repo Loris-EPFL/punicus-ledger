@@ -27,8 +27,8 @@ and issues of this repository.
   parameters". An approval is flagged whatever its description says (#240).
 - What a dApp's transaction, or a Safe transaction, does when it runs now:
   the light client runs it at its verified head and Punicus shows what it
-  sends and receives, the rights over your tokens it grants, the contracts it
-  reaches and whether it reverts, labelled as proven now and not when it is
+  sends and receives, the rights over your tokens it grants, the addresses it
+  calls and whether it reverts, labelled as proven now and not when it is
   mined. Where that disagrees with what the call says it does (a token it
   does not name, tokens ending with an address it does not show, a right it
   does not say it grants), a loud warning says so; the call can still be

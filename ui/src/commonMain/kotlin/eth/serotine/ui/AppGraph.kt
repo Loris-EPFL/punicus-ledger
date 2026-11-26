@@ -1201,7 +1201,7 @@ class AppGraph(
     /** The first start's notice (owner's request, 2026-11-26): never shown on a host that keeps no answer for it. */
     fun firstRunViewModel(): FirstRunViewModel {
         val notice = firstRunNotice ?: NoFirstRunNotice
-        return FirstRunViewModel(ObserveFirstRunNotice(notice), DismissFirstRunNotice(notice))
+        return FirstRunViewModel(ObserveFirstRunNotice(notice, accounts), DismissFirstRunNotice(notice))
     }
 
     /** No notice to show: one dismissed already. */

@@ -51,7 +51,8 @@ class FileFirstRunNoticeTest {
     fun aDamagedFileCountsAsDismissed() = runTest {
         write("{")
 
-        assertTrue(notice().observe().first(), "never shown again on a guess")
+        assertTrue(notice().observe().first(), "never shown on a guess")
+        assertTrue(notice().observe().first(), "nor at the next start, which finds dismissed in its place")
     }
 
     @Test

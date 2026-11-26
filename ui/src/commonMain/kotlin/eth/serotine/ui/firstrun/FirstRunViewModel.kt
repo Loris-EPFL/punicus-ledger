@@ -12,9 +12,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * Whether the first start's notice is shown ([shown]; owner's request, 2026-11-26): until the user taps OK, once
- * for good. OK hides it at once, for this run even when the dismissal cannot be saved; it is then shown again at the
- * next start, which is better than never having it. False until the stored answer is read, so it never flashes up.
+ * The first start's notice (owner's request, 2026-11-26): [FirstRunUiState.Shown] when this run is a first start,
+ * until the user taps OK. OK hides it at once, for this run even when the dismissal cannot be saved; it is then shown
+ * again at the next start, which is better than never having it. Hidden until the start is decided, so it never
+ * flashes up.
  */
 class FirstRunViewModel(
     observe: ObserveFirstRunNotice,
@@ -23,17 +24,14 @@ class FirstRunViewModel(
 
     private val dismissedNow = MutableStateFlow(false)
 
-    /** Whether the notice is shown now. */
-    val shown: StateFlow<Boolean> = combine(observe(), dismissedNow) { toShow, dismissed -> toShow && !dismissed }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), false)
+    /** The notice now. */
+    val uiState: StateFlow<FirstRunUiState> = combine(observe(), dismissedNow) { firstStart, dismissed ->
+        if (firstStart && !dismissed) FirstRunUiState.Shown() else FirstRunUiState.Hidden
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, FirstRunUiState.Hidden)
 
     /** The user tapped OK. */
     fun ok() {
         dismissedNow.value = true
         viewModelScope.launch { dismiss() }
-    }
-
-    private companion object {
-        const val STOP_TIMEOUT_MS = 5_000L
     }
 }

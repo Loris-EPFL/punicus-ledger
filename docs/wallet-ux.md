@@ -283,11 +283,17 @@ network to talk to, and remembers them for the next start); while a bar or a
 banner is red, wait (that network is not checked yet: balances are not
 confirmed and sending waits); and Try again often helps (Punicus keeps
 working in the background). OK closes it for good; so does a tap outside it
-or Back. It is shown once: a file of its own, `first-run.json`, keeps that it
-was dismissed. One that cannot be read counts as dismissed, so a start never
-repeats it on a guess; a dismissal that cannot be saved hides it for that run
-and asks again at the next start. The website's guide says the same, under
-*When you run Punicus for the first time*.
+or Back. It is shown once, at a start when it was never dismissed and the
+wallet holds no account; an install that already holds accounts (an update
+from a release before it) records it as dismissed without showing it. It is
+decided at the start, so it never comes up in the middle of a session, and
+never over the update screen. A file of its own, `first-run.json`, keeps that
+it was dismissed. A damaged one counts as dismissed and is replaced by one
+that says so; one that cannot be read counts as dismissed too, so a start
+never shows it on a guess. A dismissal that cannot be saved hides it for that
+run and asks again at the next start. The website's guide gives the same
+three points, under the same headings, in *When you run Punicus for the first
+time*.
 
 ## Screens
 

@@ -23,7 +23,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Display currency](#currency) | `currency/` | 4 |
 | [dApp connection request](#dapp-proposal) | `dapp-proposal/` | 27 |
 | [dApp signing request](#dapp-request) | `dapp-request/` | 23 |
-| [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 29 |
+| [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 30 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
 | [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 36 |
@@ -416,7 +416,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="dapp-transaction"></a>
 ## dApp transaction
 
-`dapp-transaction/`, 29 states: `payment`, `payment-dark`, `token-transfer`, `approval`, `not-decoded`, `described`, `described-dark`, `described-nested`, `described-approval`, `described-unlisted`, `describing`, `contract-changed`, `code-not-checked`, `not-as-described`, `quoting`, `not-quoted`, `refused`, `safe`, `safe-dark`, `safe-no-owner`, `safe-signing`, `safe-queued`, `sending`, `not-sent`, `explaining`, `ended`, `loading`, `real-funds`, `real-funds-dark`
+`dapp-transaction/`, 30 states: `payment`, `payment-dark`, `token-transfer`, `approval`, `not-decoded`, `described`, `described-dark`, `described-nested`, `described-partly`, `described-approval`, `described-unlisted`, `describing`, `contract-changed`, `code-not-checked`, `not-as-described`, `quoting`, `not-quoted`, `refused`, `safe`, `safe-dark`, `safe-no-owner`, `safe-signing`, `safe-queued`, `sending`, `not-sent`, `explaining`, `ended`, `loading`, `real-funds`, `real-funds-dark`
 
 <a href="dapp-transaction/payment.png"><img src="dapp-transaction/payment.png" width="206" alt="payment"></a>
 <a href="dapp-transaction/payment-dark.png"><img src="dapp-transaction/payment-dark.png" width="206" alt="payment-dark"></a>
@@ -426,6 +426,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="dapp-transaction/described.png"><img src="dapp-transaction/described.png" width="206" alt="described"></a>
 <a href="dapp-transaction/described-dark.png"><img src="dapp-transaction/described-dark.png" width="206" alt="described-dark"></a>
 <a href="dapp-transaction/described-nested.png"><img src="dapp-transaction/described-nested.png" width="206" alt="described-nested"></a>
+<a href="dapp-transaction/described-partly.png"><img src="dapp-transaction/described-partly.png" width="206" alt="described-partly"></a>
 <a href="dapp-transaction/described-approval.png"><img src="dapp-transaction/described-approval.png" width="206" alt="described-approval"></a>
 <a href="dapp-transaction/described-unlisted.png"><img src="dapp-transaction/described-unlisted.png" width="206" alt="described-unlisted"></a>
 <a href="dapp-transaction/describing.png"><img src="dapp-transaction/describing.png" width="206" alt="describing"></a>

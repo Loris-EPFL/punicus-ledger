@@ -44,6 +44,11 @@ data class SafeTxActionItem(
     val describing: Boolean = false,
     /** Why a built-in descriptor that covers the contract does not describe the call, where that says more. */
     val notDescribed: String? = null,
+    /**
+     * What the call does when it runs at the verified head as the Safe's own call (docs/clear-signing.md,
+     * *Phase B*); null for a delegate call, which is not traced, and before it is traced.
+     */
+    val trace: TraceSection? = null,
 ) {
     /**
      * This item with what the built-in descriptors say of its call ([result], null while not known, [busy]

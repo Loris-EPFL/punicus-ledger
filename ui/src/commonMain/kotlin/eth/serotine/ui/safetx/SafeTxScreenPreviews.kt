@@ -1,5 +1,7 @@
 package eth.serotine.ui.safetx
 
+import eth.serotine.ui.components.TraceText
+import eth.serotine.ui.components.TraceSection
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.FeeLevel
@@ -47,6 +49,24 @@ private val usdcTransfer = SafeTxActionItem(
     addresses = listOf(ActionAddress("To", FRIEND), ActionAddress("Token contract", USDC)),
     icon = "usdc",
     symbol = "USDC",
+)
+
+private val tracedTransfer = usdcTransfer.copy(
+    trace = TraceSection(
+        provenAt = "Proven at block 7,412,903, at the verified head: what it does now, not when it is mined.",
+        simpleProvenAt = "Proven at the verified head, traced 12 s ago: what it does now, not when it is mined.",
+        note = TraceText.SAFE_CALL_NOTE,
+        moves = listOf("Sends 40 USDC to $FRIEND"),
+        contracts = listOf("USDC ($USDC)"),
+        canRetry = true,
+    ),
+)
+
+private val tracedTransferDisagrees = usdcTransfer.copy(
+    trace = tracedTransfer.trace!!.copy(
+        moves = listOf("Sends 40 USDC to 0x9f1e8D3c2B4a5F6e7D8c9B0a1F2e3D4c5B6a7F8e"),
+        warnings = listOf("USDC ends up with 0x9f1e8D3c2B4a5F6e7D8c9B0a1F2e3D4c5B6a7F8e, an address this call does not show."),
+    ),
 )
 
 private val owners = OwnersItem.Shown(
@@ -747,6 +767,15 @@ internal val safeTxScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("described") { SafeTxDescribedPreview() },
     ScreenPreview("described-dark") { SafeTxDescribedDarkPreview() },
     ScreenPreview("contract-changed") { SafeTxContractChangedPreview() },
+    ScreenPreview("traced") { SafeTxTracedPreview() },
+    ScreenPreview("traced-dark") { SafeTxTracedDarkPreview() },
+    ScreenPreview("trace-disagrees") { SafeTxTraceDisagreesPreview() },
+    ScreenPreview("trace-disagrees-dark") { SafeTxTraceDisagreesDarkPreview() },
+    ScreenPreview("tracing") { SafeTxTracingPreview() },
+    ScreenPreview("not-traced-here") { SafeTxNotTracedHerePreview() },
+    ScreenPreview("review-trace-disagrees") { SafeTxReviewTraceDisagreesPreview() },
+    ScreenPreview("traced-again") { SafeTxTracedAgainPreview() },
+    ScreenPreview("not-traced-try-again") { SafeTxNotTracedTryAgainPreview() },
     ScreenPreview("share") { SafeTxSharePreview() },
     ScreenPreview("share-as-text") { SafeTxShareAsTextPreview() },
     ScreenPreview("signed") { SafeTxSignedPreview() },
@@ -790,4 +819,46 @@ internal val safeTxScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("draft-approval") { SafeTxDraftApprovalPreview() },
     ScreenPreview("draft-execution") { SafeTxDraftExecutionPreview() },
     ScreenPreview("draft-dark") { SafeTxDraftDarkPreview() },
+)
+
+@Preview
+@Composable
+private fun SafeTxTracedPreview() = SafeTxPreview(overview.copy(action = tracedTransfer))
+
+@Preview
+@Composable
+private fun SafeTxTracedDarkPreview() = SafeTxPreview(overview.copy(action = tracedTransfer), darkTheme = true)
+
+@Preview
+@Composable
+private fun SafeTxTraceDisagreesPreview() = SafeTxPreview(overview.copy(action = tracedTransferDisagrees))
+
+@Preview
+@Composable
+private fun SafeTxTraceDisagreesDarkPreview() = SafeTxPreview(overview.copy(action = tracedTransferDisagrees), darkTheme = true)
+
+@Preview
+@Composable
+private fun SafeTxTracingPreview() = SafeTxPreview(overview.copy(action = usdcTransfer.copy(trace = TraceSection(tracing = true))))
+
+@Preview
+@Composable
+private fun SafeTxNotTracedHerePreview() =
+    SafeTxPreview(overview.copy(action = usdcTransfer.copy(trace = TraceSection(notTraced = TraceText.NOT_TRACED_HERE))))
+
+@Preview
+@Composable
+private fun SafeTxReviewTraceDisagreesPreview() = SafeTxPreview(review.copy(action = tracedTransferDisagrees))
+
+@Preview
+@Composable
+private fun SafeTxTracedAgainPreview() =
+    SafeTxPreview(overview.copy(action = tracedTransferDisagrees.copy(trace = tracedTransferDisagrees.trace!!.copy(tracing = true))))
+
+@Preview
+@Composable
+private fun SafeTxNotTracedTryAgainPreview() = SafeTxPreview(
+    overview.copy(
+        action = usdcTransfer.copy(trace = TraceSection(notTraced = "Not traced: the light client is still syncing.", canRetry = true)),
+    ),
 )

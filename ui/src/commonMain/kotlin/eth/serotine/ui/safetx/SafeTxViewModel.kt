@@ -1,5 +1,12 @@
 package eth.serotine.ui.safetx
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import eth.serotine.ui.components.TraceText
+import eth.serotine.ui.components.TraceSection
+import eth.serotine.domain.usecase.TraceOutcome
+import eth.serotine.domain.usecase.TraceCall
+import eth.serotine.domain.model.TraceClaims
 import eth.serotine.domain.model.ClearSignResult
 import eth.serotine.domain.model.ClearSignedField
 import eth.serotine.domain.model.NotCoveredReason
@@ -219,6 +226,10 @@ class SafeTxViewModel(
     private val clock: () -> Long = ::epochSecondsNow,
     /** The built-in descriptors, for a contract call not decoded here (docs/clear-signing.md, A5). */
     private val describeClearSigning: DescribeClearSigning,
+    /** The verified trace of the transaction's call at the head, as the Safe's own (docs/clear-signing.md, *Phase B*). */
+    private val traceCall: TraceCall,
+    /** Where a trace is put in words: its size is the call's to choose, so never on the main thread. */
+    private val formatOn: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
     private val safe: Address = account.address
@@ -230,6 +241,13 @@ class SafeTxViewModel(
     private val description = MutableStateFlow<ClearSignResult?>(null)
     private val describing = MutableStateFlow(false)
     private var describeJob: Job? = null
+
+    /** The call's verified trace, as the Safe's own call, once traced; null before. */
+    private val traced = MutableStateFlow<TraceSection?>(null)
+    private var traceJob: Job? = null
+
+    /** The transaction last traced, by its hash: a new one shown is traced anew. */
+    private var tracedTx: String? = null
 
 
     init {
@@ -617,13 +635,14 @@ class SafeTxViewModel(
         combine(context.onEach(::follow), view, step, swapCheck, heldInputs, ::Inputs)
             // The ages of what lenient mode drafts on, and a held signature's, are dated anew every second.
             .redatedWhile { inputs ->
-                inputs.held.held != null || inputs.step is Step.DraftReviewing ||
+                inputs.held.held != null || inputs.step is Step.DraftReviewing || traced.value?.tracedAt != null ||
                     (inputs.source as? Context)?.owners is SafeTxOwnersReading.LastVerified
             }
             .map { render(it.source, it.view, it.step, it.swapCheck, it.held) }
             .combine(combine(description, describing) { result, busy -> result to busy }) { state, (result, busy) ->
                 withDescription(state, result, busy)
             }
+            .combine(traced, ::withTrace)
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
@@ -648,7 +667,75 @@ class SafeTxViewModel(
     fun checkAgain() {
         readAgain.update { it + 1 }
         // After a longer hide the reading is gone until it is made again: the transaction last shown is the same.
-        (now ?: lastContext)?.let { describe(it.found.tx, again = true) }
+        (now ?: lastContext)?.let {
+            describe(it.found.tx, again = true)
+            trace(it.found.tx, again = true)
+        }
+    }
+
+    /** [state] with its call's verified trace, on whichever screen of it is shown. */
+    private fun withTrace(state: SafeTxUiState, section: TraceSection?): SafeTxUiState {
+        // Its age in simple mode, dated anew as the screen is (redatedWhile).
+        val trace = section?.let { s -> s.tracedAt?.let { s.copy(simpleProvenAt = TraceText.simpleProvenAt(it, clock())) } ?: s }
+        return when (state) {
+            is SafeTxUiState.Overview -> state.copy(action = state.action.copy(trace = trace))
+            is SafeTxUiState.Signing -> state.copy(action = state.action.copy(trace = trace))
+            is SafeTxUiState.Review -> state.copy(action = state.action.copy(trace = trace?.let { withRun(it, state) }))
+            is SafeTxUiState.DraftReview -> state.copy(action = state.action.copy(trace = trace))
+            is SafeTxUiState.Held -> state.copy(action = state.action.copy(trace = trace))
+            else -> state
+        }
+    }
+
+    /**
+     * [trace] beside the execution reviewed, which runs the call itself: a revert the trace shows while the run did
+     * not is warned about, as the chain having moved where their blocks differ, and as not known where they are the
+     * same. An approval's run is `approveHash`, not the call, and says nothing of it: no warning there.
+     */
+    private fun withRun(trace: TraceSection, review: SafeTxUiState.Review): TraceSection {
+        if (trace.revert == null || review.kind != ReviewKind.EXECUTION) return trace
+        val warning = if (review.runBlock != null && review.runBlock == trace.block) TraceText.REVERTS_AT_THE_RUNS_BLOCK
+        else TraceText.REVERTS_UNLIKE_RUN
+        return trace.copy(warnings = trace.warnings + warning)
+    }
+
+    /**
+     * Traces [tx]'s call at the verified head as the Safe's own call (its sender the Safe, its value and data, no
+     * fee), once the description is looked up, and holds it against what the call claims: its description, or
+     * what it is decoded as here. A delegate call is refused and not traced. Traced when the transaction is first
+     * shown, and again with *Check again* ([again]); a trace still running is not asked again.
+     */
+    private fun trace(tx: DecodedSafeTx, again: Boolean = false) {
+        val action = tx.action
+        if (tx.delegateCall || action is SafeTxAction.DelegateCall) return
+        val call = tx.request.tx
+        val key = tx.request.hash.toString()
+        if (!again && (tracedTx == key || traceJob?.isActive == true)) return
+        // Asked again, a trace still running is asked anew with the claims as they are now: the use case waits
+        // for the engine's run already going rather than starting a second one.
+        traceJob?.cancel()
+        tracedTx = key
+        traceJob = viewModelScope.launch {
+            // The last trace stays shown, its warnings with it, while the next is read.
+            traced.update { it?.copy(tracing = true) ?: TraceSection(tracing = true) }
+            traced.value = try {
+                describeJob?.join()
+                val claims = if (action is SafeTxAction.ContractCall) description.value?.let(TraceClaims::of)
+                else TraceClaims.ofSafeAction(action, safe)
+                val outcome = traceCall.trace(network, safe, call.to, call.value, call.data, claims)
+                val tracedAt = clock()
+                withContext(formatOn) { TraceText.section(outcome, safe, network, tracedAt).copy(note = TraceText.SAFE_CALL_NOTE) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                TraceText.section(TraceOutcome.Unavailable(ReadUnavailable.UNPROVEN), safe, network)
+            }
+        }
+    }
+
+    /** Traces the transaction shown again: its *Try again*. */
+    fun retrace() {
+        (now ?: lastContext)?.let { trace(it.found.tx, again = true) }
     }
 
     /** [state] with what the built-in descriptors say of its call, on whichever screen of it is shown. */
@@ -1135,6 +1222,8 @@ class SafeTxViewModel(
         view.update { it.copy(message = null, sharing = false, imported = false) }
         val quoting = Step.Quoting(kind, account, level)
         step.value = quoting
+        // An execution runs the call itself: its trace is made anew with its quote, as D6's is.
+        if (kind == ReviewKind.EXECUTION) now?.found?.tx?.let { trace(it, again = true) }
         hiddenWhileQuoting = false
         job = viewModelScope.launch {
             // Its age runs from its first read, not from its answer: the figures are as old as that.
@@ -1168,6 +1257,7 @@ class SafeTxViewModel(
         // transaction as last shown is what is quoted again, and the quote checks the chain anew.
         val request = (now ?: lastContext)?.request ?: return
         step.value = review.copy(refreshing = true, hidden = false, unlock = review.unlock.copy(error = null))
+        if (review.kind == ReviewKind.EXECUTION) (now ?: lastContext)?.let { trace(it.found.tx, again = true) }
         job = viewModelScope.launch {
             var readFrom = timeSource.markNow()
             val next = quoted(review.kind, request, account, level) { readFrom = timeSource.markNow() }
@@ -1497,6 +1587,11 @@ class SafeTxViewModel(
             is Context -> {
                 lastContext = source
                 describe(source.found.tx)
+                trace(source.found.tx)
+                // A trace not had for now (the light client catching up) is asked again as the screen is read again.
+                if (traced.value?.let { it.notTraced != null && it.canRetry && !it.tracing } == true && traceJob?.isActive != true) {
+                    trace(source.found.tx, again = true)
+                }
             }
             Queued.Unreadable, is Queued.Missing -> step.update { current ->
                 // Bytes a peer may have taken stay to be sent again (as back() keeps them) until the
@@ -1538,7 +1633,7 @@ class SafeTxViewModel(
         val call = tx.request.tx
         describeJob = viewModelScope.launch {
             describing.value = true
-            description.value = try {
+            val answer = try {
                 describeClearSigning.call(network, safe, call.to, call.value, call.data)
             } catch (e: CancellationException) {
                 throw e
@@ -1547,6 +1642,12 @@ class SafeTxViewModel(
             } finally {
                 describing.value = false
             }
+            val changed = answer != description.value
+            description.value = answer
+            // A description that comes, or changes, after the call was traced is what the trace is held to now.
+            // Held against the description as it is now: a trace still running is asked again (the use case waits
+            // for the engine's run already going), one waiting for this lookup reads it.
+            if (changed && tracedTx != null) trace(tx, again = true)
         }
     }
 
@@ -1957,6 +2058,7 @@ class SafeTxViewModel(
             action = action,
             nonce = nonce,
             kind = step.kind,
+            runBlock = call.simulationBlock,
             accounts = accounts.map { choice(context, it) },
             account = Eip55.format(step.account),
             fee = call.level,

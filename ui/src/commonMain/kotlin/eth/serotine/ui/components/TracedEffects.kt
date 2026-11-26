@@ -38,6 +38,12 @@ data class TraceSection(
     val provenAt: String? = null,
     /** The block it was proven at, which a screen holds against its own run's. */
     val block: Long? = null,
+    /** [provenAt] in simple mode's block-free words: how long ago it was traced in place of the block. */
+    val simpleProvenAt: String? = null,
+    /** When it was traced, in unix seconds: what [simpleProvenAt] is dated from. */
+    val tracedAt: Long? = null,
+    /** What the run leaves out, where the screen says so (a Safe's call: [TraceText.SAFE_CALL_NOTE]). */
+    val note: String? = null,
     /** The account's currency and tokens sent and received, each with its counterparty. */
     val moves: List<String> = emptyList(),
     /** The rights over the account's tokens it grants. */
@@ -72,12 +78,18 @@ object TraceText {
     /** Beside the button that signs, while the trace disagrees: the call stays signable. */
     const val DISAGREES_NEAR_SIGN = "Its trace does not match what it says it does: see \"What it does now\" above " +
         "before you sign."
+    const val SAFE_CALL_NOTE = "Run as the Safe's own call: without what executing it adds, the Safe's checks " +
+        "(its signatures, a guard) and the refund of its gas terms."
     const val REVERTS_UNLIKE_RUN = "The trace reverts, while the verified run below did not: the chain moved " +
         "between the two. Quote it again before you send."
 
     /** The trace reverts at the very block its run did not: not the head moving, and Punicus cannot tell why. */
     const val REVERTS_AT_THE_RUNS_BLOCK = "The trace reverts at the block the verified run below did not: Punicus " +
         "cannot tell why. Do not send it unless you know why."
+
+    /** Simple mode's [TraceSection.provenAt]: the trace's age at [now], both in unix seconds, in place of its block. */
+    fun simpleProvenAt(tracedAt: Long, now: Long): String =
+        "Proven at the verified head, traced ${agoText(tracedAt, now)}: what it does now, not when it is mined."
 
     /** At most this many lines of each kind are shown; how many more there are is said. */
     const val MAX_LINES = 40
@@ -86,8 +98,8 @@ object TraceText {
     const val MAX_REASON = 200
 
     /** [outcome] of [account]'s call on [network] as the screen shows it. */
-    fun section(outcome: TraceOutcome, account: Address, network: Network): TraceSection = when (outcome) {
-        is TraceOutcome.Traced -> traced(outcome, account, network)
+    fun section(outcome: TraceOutcome, account: Address, network: Network, tracedAt: Long? = null): TraceSection = when (outcome) {
+        is TraceOutcome.Traced -> traced(outcome, account, network, tracedAt)
         is TraceOutcome.Infeasible -> TraceSection(notTraced = "Not traced: it cannot run (${outcome.detail}).", canRetry = true)
         TraceOutcome.NotTraced -> TraceSection(notTraced = NOT_TRACED_HERE)
         TraceOutcome.NotInTime -> TraceSection(notTraced = NOT_IN_TIME, canRetry = true)
@@ -98,7 +110,7 @@ object TraceText {
         )
     }
 
-    private fun traced(outcome: TraceOutcome.Traced, account: Address, network: Network): TraceSection {
+    private fun traced(outcome: TraceOutcome.Traced, account: Address, network: Network, tracedAt: Long?): TraceSection {
         val effects = outcome.effects
         fun named(address: Address): String {
             val checksum = Eip55.format(address)
@@ -129,6 +141,8 @@ object TraceText {
                 // The reason is the called contract's own text: escaped, cut, and said to be its words.
                 revert.reason?.let { "It reverts. The contract's reason: \"${shown(it)}\"" } ?: "It reverts (${shown(revert.error)})."
             },
+            tracedAt = tracedAt,
+            simpleProvenAt = tracedAt?.let { simpleProvenAt(it, it) },
             unread = effects.unreadLogs.takeIf { it > 0 }?.let {
                 "$it of its logs look like token events but are not their exact encoding, so they are not read."
             },
@@ -203,8 +217,8 @@ object TraceText {
 
 /** A [TraceSection] under its heading: the effects, the warnings first and loud, or why it is not traced. */
 @Composable
-fun TracedEffects(section: TraceSection, onRetry: () -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+fun TracedEffects(section: TraceSection, onRetry: () -> Unit, modifier: Modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+    Column(modifier) {
         Text(
             TraceText.HEADING,
             Modifier.padding(top = 12.dp, bottom = 4.dp),
@@ -215,8 +229,9 @@ fun TracedEffects(section: TraceSection, onRetry: () -> Unit) {
             Text(TraceText.DISAGREES, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
             section.warnings.forEach { Text("• $it", Modifier.padding(top = 2.dp), color = MaterialTheme.colorScheme.error) }
         }
-        when {
-            section.tracing -> Row(
+        // Traced again, the last trace stays shown, its warnings with it, under the spinner.
+        if (section.tracing) {
+            Row(
                 Modifier.padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -224,6 +239,9 @@ fun TracedEffects(section: TraceSection, onRetry: () -> Unit) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 Text(TraceText.TRACING)
             }
+        }
+        when {
+            section.provenAt == null && section.notTraced == null -> Unit
             section.notTraced != null -> {
                 Text(section.notTraced, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (section.canRetry) TextButton(onClick = onRetry) { Text("Try again") }
@@ -231,6 +249,9 @@ fun TracedEffects(section: TraceSection, onRetry: () -> Unit) {
             else -> SelectionContainer {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     section.provenAt?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    section.note?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     section.revert?.let { Text(it, color = MaterialTheme.colorScheme.error) }

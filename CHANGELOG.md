@@ -25,6 +25,16 @@ and issues of this repository.
   every value is decoded from what you sign and shown with its raw form, and
   every parameter a description does not show is listed under "Other
   parameters". An approval is flagged whatever its description says (#240).
+- What a dApp's transaction, or a Safe transaction, does when it runs now:
+  the light client runs it at its verified head and Punicus shows what it
+  sends and receives, the rights over your tokens it grants, the contracts it
+  reaches and whether it reverts, labelled as proven now and not when it is
+  mined. Where that disagrees with what the call says it does (a token it
+  does not name, tokens ending with an address it does not show, a right it
+  does not say it grants), a loud warning says so; the call can still be
+  signed. A Safe transaction is run as the Safe's own call, a delegate call
+  not at all. On Android and the desktop; iOS says it cannot trace yet
+  (#240).
 
 ## [0.6.0] - 2026-11-25
 

@@ -380,7 +380,9 @@ class DappTransactionViewModel(
             }
         val base = withDescription(plain, described.description, described.describing)
         val network = review.request.network
-        val trace = described.traced?.let { section -> withRun(section, local) }
+        // A dApp's Safe transaction is traced as the Safe's own call, which leaves out what executing it adds.
+        val safe = base.fromSafe || local.fromSafe
+        val trace = described.traced?.let { section -> withRun(if (safe) section.copy(note = TraceText.SAFE_CALL_NOTE) else section, local) }
             ?.let { if (described.tracing) it.copy(tracing = true) else it }
             ?: TraceSection(tracing = true).takeIf { described.tracing }
         base.copy(

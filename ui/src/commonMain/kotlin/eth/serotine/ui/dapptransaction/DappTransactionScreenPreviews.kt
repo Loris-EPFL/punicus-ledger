@@ -494,6 +494,8 @@ internal val dappTransactionScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("not-traced-in-time") { DappTransactionNotTracedInTimePreview() },
     ScreenPreview("traced-nothing-logged") { DappTransactionTracedNothingLoggedPreview() },
     ScreenPreview("not-traced-unavailable") { DappTransactionNotTracedUnavailablePreview() },
+    ScreenPreview("safe-traced") { DappTransactionSafeTracedPreview() },
+    ScreenPreview("traced-again") { DappTransactionTracedAgainPreview() },
 )
 
 @Preview
@@ -535,3 +537,13 @@ private fun DappTransactionTracedNothingLoggedPreview() = DappTransactionPreview
 @Preview
 @Composable
 private fun DappTransactionNotTracedUnavailablePreview() = DappTransactionPreview(notTracedUnavailable)
+
+@Preview
+@Composable
+private fun DappTransactionSafeTracedPreview() = DappTransactionPreview(
+    fromSafe.copy(trace = traced.trace!!.copy(note = TraceText.SAFE_CALL_NOTE)),
+)
+
+@Preview
+@Composable
+private fun DappTransactionTracedAgainPreview() = DappTransactionPreview(tracedDisagrees.copy(trace = tracedDisagrees.trace!!.copy(tracing = true)))

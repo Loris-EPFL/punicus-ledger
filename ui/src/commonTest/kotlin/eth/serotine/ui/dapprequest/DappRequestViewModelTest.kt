@@ -1,5 +1,6 @@
 package eth.serotine.ui.dapprequest
 
+import eth.serotine.ui.components.ClearSignedText
 import eth.serotine.domain.model.ClearSigningDeployment
 import eth.serotine.domain.model.ClearSigningDescriptor
 import eth.serotine.domain.model.ClearSigningField
@@ -141,6 +142,9 @@ class DappRequestViewModelTest {
 
     private val verifier = Address.of("0x" + "99".repeat(20))
     private var deployments: Array<ClearSigningDeployment> = emptyArray()
+    private var unproven = false
+    private var throwing = false
+    private var onRead: () -> Unit = {}
     private val mailing = ClearSigningDeployment(
         Network.SEPOLIA, "Mailer", verifier, "0x" + "11".repeat(32), CodePin.Fixed,
         listOf(
@@ -200,12 +204,103 @@ class DappRequestViewModelTest {
     }
 
     @Test
-    fun aDecodedPermitIsNotLookedUp() = runTest {
-        deployments = arrayOf(mailing)
+    fun aDecodedPermitKeepsItsHandWrittenMeaningEvenWhereADescriptorCoversIt() = runTest {
+        val permitFormat = ClearSigningFormat(
+            key = PERMIT, function = null, selector = null, encodeType = PERMIT,
+            typeHash = "0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9", primaryType = "Permit",
+            intent = "Something else", interpolatedIntent = null,
+            fields = listOf(ClearSigningField(ClearSigningPath.parse("spender"), "Spender", FieldFormat.Raw, Visibility.Shown)),
+        )
+        deployments = arrayOf(
+            mailing.copy(
+                address = usdc.address,
+                descriptors = listOf(mailing.descriptors.single().copy(domainName = null, formats = listOf(permitFormat))),
+            ),
+        )
         requests.waiting.value = listOf(permit(1))
         val state = viewModel().uiState.value
+        assertNotNull(state.meaning, "the hand-written meaning stands")
         assertNull(state.described)
-        assertFalse(state.describing)
+        assertNull(state.notDescribed)
+    }
+
+    @Test
+    fun anUndescribedBatchPermitIsFlaggedAsAnApproval() = runTest {
+        requests.waiting.value = listOf(batch(1))
+        val state = viewModel().uiState.value
+        assertNull(state.described)
+        assertTrue(DappRequestViewModel.TYPED_APPROVAL in state.warnings)
+        assertTrue(DappRequestViewModel.warningLine(DappSignWarning.NOT_DECODED, null) in state.warnings)
+    }
+
+    @Test
+    fun aCheckThatCouldNotBeMadeIsMadeAgainOnTheNextTick() = runTest {
+        deployments = arrayOf(mailing)
+        unproven = true
+        requests.waiting.value = listOf(mail(1))
+        val vm = viewModel()
+        assertEquals(ClearSignedText.CODE_NOT_CHECKED, vm.uiState.value.notDescribed)
+        unproven = false
+        ticks.value += 1
+        runCurrent()
+        assertEquals("Send mail", vm.uiState.value.described?.intent)
+    }
+
+    @Test
+    fun beingShownAgainAsksAgain() = runTest {
+        var asked = 0
+        deployments = arrayOf(mailing)
+        onRead = { asked++ }
+        requests.waiting.value = listOf(mail(1))
+        val vm = viewModel()
+        assertEquals(1, asked)
+        vm.onShown()
+        runCurrent()
+        assertEquals(2, asked)
+    }
+
+    @Test
+    fun aUseCaseThatThrowsLeavesTheDataNotDecoded() = runTest {
+        throwing = true
+        requests.waiting.value = listOf(mail(1))
+        val state = viewModel().uiState.value
+        assertNull(state.described)
+        assertNull(state.notDescribed)
+        assertTrue(DappRequestViewModel.warningLine(DappSignWarning.NOT_DECODED, null) in state.warnings)
+    }
+
+    private fun batch(id: Long): DappRequest {
+        val data = TypedData(
+            types = mapOf(
+                "EIP712Domain" to listOf(TypedField("name", "string"), TypedField("chainId", "uint256"), TypedField("verifyingContract", "address")),
+                "PermitDetails" to listOf(
+                    TypedField("token", "address"), TypedField("amount", "uint160"),
+                    TypedField("expiration", "uint48"), TypedField("nonce", "uint48"),
+                ),
+                "PermitBatch" to listOf(TypedField("details", "PermitDetails[]"), TypedField("spender", "address"), TypedField("sigDeadline", "uint256")),
+            ),
+            primaryType = "PermitBatch",
+            domain = mapOf(
+                "name" to TypedValue.Text("Permit2"),
+                "chainId" to TypedValue.Number("11155111"),
+                "verifyingContract" to TypedValue.Text("0x000000000022d473030f116ddee9f6b43ac78ba3"),
+            ),
+            message = mapOf(
+                "details" to TypedValue.Items(
+                    listOf(
+                        TypedValue.Struct(
+                            mapOf(
+                                "token" to TypedValue.Text(usdc.address.hex), "amount" to TypedValue.Number("1"),
+                                "expiration" to TypedValue.Number("1"), "nonce" to TypedValue.Number("0"),
+                            ),
+                        ),
+                    ),
+                ),
+                "spender" to TypedValue.Text("0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad"),
+                "sigDeadline" to TypedValue.Number("1"),
+            ),
+        )
+        return request(id).copy(ask = DappAsk.SignTypedData(held.address, Eip712.encode(data)!!))
     }
 
     private fun permit(id: Long): DappRequest {
@@ -267,7 +362,10 @@ class DappRequestViewModelTest {
         val vm = DappRequestViewModel(
             "t/$id",
             observe,
-            eth.serotine.ui.dapptransaction.describing(tokens, *deployments),
+            when {
+                throwing -> eth.serotine.ui.dapptransaction.describingThat(IllegalStateException("engine"))
+                else -> eth.serotine.ui.dapptransaction.describing(tokens, *deployments, onRead = onRead, unproven = { unproven })
+            },
             SignDappMessage(requests, accounts, networks, signer, clock = { now }),
             RefuseDappRequest(requests, accounts, networks, clock = { now }),
             DescribeKeyStore(keys),
@@ -501,3 +599,5 @@ class DappRequestViewModelTest {
         )
     }
 }
+
+private const val PERMIT = "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"

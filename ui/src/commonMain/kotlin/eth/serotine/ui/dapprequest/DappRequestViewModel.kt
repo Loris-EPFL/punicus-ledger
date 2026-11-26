@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.ClearSignFormatter
 import eth.serotine.domain.model.ClearSignResult
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.NotCoveredReason
 import eth.serotine.domain.model.SignInMessage
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.DappAnswer
@@ -197,6 +198,13 @@ class DappRequestViewModel(
 
     init {
         describe()
+        // A check that could not be made a moment ago (the light client catching up) is made again, every tick,
+        // for as long as that is the answer: a refused read costs nothing.
+        viewModelScope.launch {
+            ticks.collect {
+                if ((description.value as? ClearSignResult.NotCovered)?.reason == NotCoveredReason.CodeNotProven) describe()
+            }
+        }
     }
 
     init {
@@ -318,8 +326,10 @@ class DappRequestViewModel(
             is ClearSignResult.ClearSigned -> state.copy(
                 described = ClearSignedText.describedSection(result),
                 describing = busy,
-                warnings = state.warnings.filterNot { it == notDecoded } +
-                    listOfNotNull(TYPED_APPROVAL.takeIf { result.grantsApproval && TYPED_APPROVAL !in state.warnings }),
+                warnings = state.warnings.filterNot { it == notDecoded } + listOfNotNull(
+                    ClearSignedText.PARTLY_NOT_DECODED.takeIf { ClearSignedText.partlyNotDecoded(result) },
+                    TYPED_APPROVAL.takeIf { result.grantsApproval && TYPED_APPROVAL !in state.warnings },
+                ),
             )
             is ClearSignResult.NotCovered -> state.copy(describing = busy, notDescribed = ClearSignedText.notDescribedLine(result.reason))
             null -> state.copy(describing = busy)
@@ -465,14 +475,14 @@ class DappRequestViewModel(
             }
         }
 
-        /**
-         * What [warning] says; [perApp], the review's per-app signer, names the two sites of [DappSignWarning
-         * .PER_APP_OTHER_SITE]. Required, so that no caller drops them.
-         */
         /** Typed data that grants an approval, flagged whatever its description says. */
         const val TYPED_APPROVAL = "Signing this grants an approval: the spender may then take the tokens without " +
             "asking you again. It moves nothing itself."
 
+        /**
+         * What [warning] says; [perApp], the review's per-app signer, names the two sites of [DappSignWarning
+         * .PER_APP_OTHER_SITE]. Required, so that no caller drops them.
+         */
         fun warningLine(warning: DappSignWarning, perApp: PerAppSigner?): String = when (warning) {
             DappSignWarning.PER_APP_OTHER_SITE -> {
                 val made = perApp?.site?.name ?: "another site"

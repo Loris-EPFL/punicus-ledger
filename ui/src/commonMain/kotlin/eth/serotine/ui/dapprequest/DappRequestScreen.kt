@@ -92,7 +92,8 @@ fun DappRequestRoute(
  * by field when it is a sign-in, as text, or as hex marked "not text"; or typed data, what it lets
  * someone do when decoded, its domain and every field; the warnings;
  * and the unlock, with Refuse beside it. One that cannot be signed shows why, its Sign greyed out and
- * still tappable. Nothing on it is read from the chain.
+ * still tappable. Nothing on it is read from the chain, except, for typed data no hand-written decoder knows,
+ * the verifying contract's code, which a built-in description is bound to (docs/clear-signing.md, A4).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -215,7 +216,9 @@ fun DappRequestScreen(
                 }
             }
             Text(
-                "Signing reads nothing from the chain and sends no transaction.",
+                if (state.typed) "Signing sends no transaction. To describe this data, Punicus read only the code of " +
+                    "the contract that checks it, from the chain."
+                else "Signing reads nothing from the chain and sends no transaction.",
                 Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -300,7 +303,13 @@ private fun TypedDataSections(state: DappRequestUiState) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     state.domainFields.forEach { Field(it) }
-    Heading(if (state.meaning == null && state.described == null) "Every field, not decoded" else "Every field")
+    Heading(
+        when {
+            state.described?.partly == true -> "Every field, partly described above"
+            state.meaning == null && state.described == null -> "Every field, not decoded"
+            else -> "Every field"
+        },
+    )
     Surface(
         Modifier.padding(horizontal = 16.dp).fillMaxWidth().testTag(DAPP_REQUEST_FIELDS_TAG),
         color = MaterialTheme.colorScheme.surfaceVariant,

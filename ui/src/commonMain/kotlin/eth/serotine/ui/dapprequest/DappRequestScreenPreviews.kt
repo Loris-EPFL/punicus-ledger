@@ -120,8 +120,8 @@ private val typedDescribed = permitBatch.copy(
         rows = listOf(
             ClearSignedRow(0, "Spender", SPENDER, raw = null, note = null),
             ClearSignedRow(0, "Amount allowance", "2500 USDC", raw = "2500000000", note = null),
-            ClearSignedRow(0, "Approval expires", "2026-07-01 00:00:00Z", raw = "1782864000", note = null),
             ClearSignedRow(0, "Amount allowance", "0.75 WETH", raw = "750000000000000000", note = null),
+            ClearSignedRow(0, "Approval expires", "2026-07-01 00:00:00Z", raw = "1782864000", note = null),
             ClearSignedRow(0, "Approval expires", "2026-07-01 00:00:00Z", raw = "1782864000", note = null),
         ),
         otherParameters = listOf(

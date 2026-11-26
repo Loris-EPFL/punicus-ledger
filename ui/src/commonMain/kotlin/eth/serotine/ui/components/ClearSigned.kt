@@ -38,8 +38,8 @@ data class ClearSignedParameter(val location: String, val raw: String)
 
 /** What the screens say of a clear-signed call or message, and how a [ClearSignResult] becomes a [ClearSignedSection]. */
 object ClearSignedText {
-    const val PARTLY_NOT_DECODED = "Part of this call is not decoded: a call inside it is shown raw below, and " +
-        "Punicus cannot tell what that part does. Send it only if you trust this dApp."
+    const val PARTLY_NOT_DECODED = "Part of this is not decoded: a call inside it is shown raw, and Punicus " +
+        "cannot tell what that part does. Go ahead only if you trust this dApp."
     const val NESTED_NOT_DECODED = "Not decoded: Punicus cannot tell what this part does."
     const val CONTRACT_CHANGED = "This contract changed after this release was built; its description no " +
         "longer applies, so this is not decoded."

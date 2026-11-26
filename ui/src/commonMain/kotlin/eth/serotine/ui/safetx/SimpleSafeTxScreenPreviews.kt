@@ -1,5 +1,9 @@
 package eth.serotine.ui.safetx
 
+import eth.serotine.ui.components.ClearSignedParameter
+import eth.serotine.ui.components.ClearSignedRow
+import eth.serotine.ui.components.ClearSignedSection
+import eth.serotine.ui.components.ClearSignedText
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.ui.components.ActionAddress
@@ -31,6 +35,26 @@ private val usdcTransfer = SafeTxActionItem(
     icon = "usdc",
     symbol = "USDC",
 )
+
+/** A contract call not decoded here, described by the Aave v3 Pool's built-in descriptor. */
+private val describedAction = SafeTxActionItem(
+    title = "Supply",
+    addresses = listOf(ActionAddress("Contract", "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2")),
+    notes = listOf("Call data: 0x617ba037, 132 bytes"),
+    described = ClearSignedSection(
+        intent = "Supply",
+        describedBy = "Described by Aave DAO, ${ClearSignedText.DESCRIBED_BY}",
+        rows = listOf(
+            ClearSignedRow(0, "Amount to supply", "1.5 WETH", raw = "1500000000000000000", note = null),
+            ClearSignedRow(0, "Collateral recipient", "0x7a3B9c1E5d2F4a6B8c0D1e2F3a4B5c6D7e8F9a0B", raw = null, note = null),
+        ),
+        otherParameters = listOf(
+            ClearSignedParameter("asset", "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"),
+            ClearSignedParameter("referralCode", "0"),
+        ),
+    ),
+)
+
 
 private val overview = SafeTxUiState.Overview(
     network = "Sepolia",
@@ -99,6 +123,10 @@ private fun SimpleSafeTxOverviewPreview() = SimpleSafeTxPreview(overview)
 @Preview
 @Composable
 private fun SimpleSafeTxOverviewDarkPreview() = SimpleSafeTxPreview(overview, darkTheme = true)
+
+@Preview
+@Composable
+private fun SimpleSafeTxDescribedPreview() = SimpleSafeTxPreview(overview.copy(action = describedAction))
 
 /** The execution's review: its run checked on chain, the fee's make-up and the blocks behind Details. */
 @Preview
@@ -211,6 +239,7 @@ private fun SimpleSafeTxDraftExecutionPreview() = SimpleSafeTxPreview(draftExecu
 internal val simpleSafeTxScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("overview") { SimpleSafeTxOverviewPreview() },
     ScreenPreview("overview-dark") { SimpleSafeTxOverviewDarkPreview() },
+    ScreenPreview("described") { SimpleSafeTxDescribedPreview() },
     ScreenPreview("review") { SimpleSafeTxReviewPreview() },
     ScreenPreview("swap") { SimpleSafeTxSwapPreview() },
     ScreenPreview("refused") { SimpleSafeTxRefusedPreview() },

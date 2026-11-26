@@ -784,6 +784,7 @@ class AppGraph(
         ),
         QueueSafeCall(signer, outbox, outboxLock),
         imported = imported,
+        describeClearSigning = describeClearSigning(),
     )
 
     /**

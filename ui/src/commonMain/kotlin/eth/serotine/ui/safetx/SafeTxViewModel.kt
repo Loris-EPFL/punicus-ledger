@@ -1,5 +1,8 @@
 package eth.serotine.ui.safetx
 
+import eth.serotine.domain.model.ClearSignResult
+import eth.serotine.domain.model.NotCoveredReason
+import eth.serotine.domain.usecase.DescribeClearSigning
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Account
@@ -213,12 +216,19 @@ class SafeTxViewModel(
     private val formatTime: (Long) -> String = ::formatDateTime,
     /** What every age is dated against, in unix seconds. */
     private val clock: () -> Long = ::epochSecondsNow,
+    /** The built-in descriptors, for a contract call not decoded here (docs/clear-signing.md, A5). */
+    private val describeClearSigning: DescribeClearSigning,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
     private val safe: Address = account.address
 
     /** The account's network: everything here is read and sent there. */
     private val network: Network = account.network
+
+    /** What the built-in descriptors say of the transaction's call, once asked; null before, or when asking failed. */
+    private val description = MutableStateFlow<ClearSignResult?>(null)
+    private val describing = MutableStateFlow(false)
+    private var describeJob: Job? = null
 
 
     init {
@@ -610,6 +620,9 @@ class SafeTxViewModel(
                     (inputs.source as? Context)?.owners is SafeTxOwnersReading.LastVerified
             }
             .map { render(it.source, it.view, it.step, it.swapCheck, it.held) }
+            .combine(combine(description, describing) { result, busy -> result to busy }) { state, (result, busy) ->
+                withDescription(state, result, busy)
+            }
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
@@ -631,7 +644,20 @@ class SafeTxViewModel(
     fun onShareClosed() = view.update { it.copy(sharing = false) }
 
     /** Reads where the owners stand again: an approval mined since, a signature imported elsewhere. */
-    fun checkAgain() = readAgain.update { it + 1 }
+    fun checkAgain() {
+        readAgain.update { it + 1 }
+        now?.let { describe(it.found.tx, again = true) }
+    }
+
+    /** [state] with what the built-in descriptors say of its call, on whichever screen of it is shown. */
+    private fun withDescription(state: SafeTxUiState, result: ClearSignResult?, busy: Boolean): SafeTxUiState = when (state) {
+        is SafeTxUiState.Overview -> state.copy(action = state.action.withDescription(result, busy))
+        is SafeTxUiState.Signing -> state.copy(action = state.action.withDescription(result, busy))
+        is SafeTxUiState.Review -> state.copy(action = state.action.withDescription(result, busy))
+        is SafeTxUiState.DraftReview -> state.copy(action = state.action.withDescription(result, busy))
+        is SafeTxUiState.Held -> state.copy(action = state.action.withDescription(result, busy))
+        else -> state
+    }
 
     /** Starts signing the hash with the first owner held here that has not confirmed it. */
     fun startSigning() {
@@ -1458,9 +1484,37 @@ class SafeTxViewModel(
      * password with it. One signing goes on, and lands on the transaction as last shown; so does a
      * review whose broadcast no peer took, until the Safe's nonce has passed the transaction.
      */
+    /**
+     * Asks the built-in descriptors what [tx]'s call does, when it is a contract call not decoded here: when the
+     * transaction is first shown, again while the last answer is that the code could not be checked, and again
+     * with each *Check again* (a contract can be upgraded while the transaction waits for its signatures). The
+     * last answer stays meanwhile; one that fails leaves the call not decoded, with no reason claimed.
+     */
+    private fun describe(tx: DecodedSafeTx, again: Boolean = false) {
+        if (tx.action !is SafeTxAction.ContractCall || describeJob?.isActive == true) return
+        val last = description.value
+        if (!again && last != null && (last as? ClearSignResult.NotCovered)?.reason != NotCoveredReason.CodeNotProven) return
+        val call = tx.request.tx
+        describeJob = viewModelScope.launch {
+            describing.value = true
+            description.value = try {
+                describeClearSigning.call(network, safe, call.to, call.value, call.data)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } finally {
+                describing.value = false
+            }
+        }
+    }
+
     private fun follow(source: Source?) {
         when (source) {
-            is Context -> lastContext = source
+            is Context -> {
+                lastContext = source
+                describe(source.found.tx)
+            }
             Queued.Unreadable, is Queued.Missing -> step.update { current ->
                 // Bytes a peer may have taken stay to be sent again (as back() keeps them) until the
                 // Safe's nonce has passed the transaction: a queue that cannot be read for a moment

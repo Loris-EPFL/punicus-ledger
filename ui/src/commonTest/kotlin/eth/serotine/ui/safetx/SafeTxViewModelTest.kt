@@ -203,6 +203,12 @@ class SafeTxViewModelTest {
             imported,
             formatTime = { "at $it" },
             clock = now,
+            describeClearSigning = eth.serotine.ui.dapptransaction.describing(
+                object : eth.serotine.domain.repository.TokenCatalog {
+                    override fun observeTokens(network: Network) = kotlinx.coroutines.flow.flowOf(emptyList<eth.serotine.domain.model.Token>())
+                },
+                *deployments,
+            ),
         )
         if (collect) backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -580,6 +586,64 @@ class SafeTxViewModelTest {
 
     private fun String.hexBytes(): ByteArray =
         ByteArray(length / 2) { substring(2 * it, 2 * it + 2).toInt(16).toByte() }
+
+    private var deployments: Array<eth.serotine.domain.model.ClearSigningDeployment> = emptyArray()
+    private val weth = Address.of("0x" + "77".repeat(20))
+
+    private fun deposit(to: Address) = SafeTx(
+        to = to,
+        value = UInt256.of(5),
+        data = "d0e30db0".hexBytes(),
+        operation = SafeOperation.CALL,
+        safeTxGas = UInt256.ZERO,
+        baseGas = UInt256.ZERO,
+        gasPrice = UInt256.ZERO,
+        gasToken = Address.ZERO,
+        refundReceiver = Address.ZERO,
+        nonce = 4,
+    )
+
+    @Test
+    fun aContractCallNotDecodedHereIsDescribedByItsBuiltInDescriptor() = runTest {
+        deployments = arrayOf(
+            eth.serotine.domain.model.ClearSigningDeployment(
+                Network.SEPOLIA, "WETH", weth, "0x" + "11".repeat(32), eth.serotine.domain.model.CodePin.Fixed,
+                listOf(
+                    eth.serotine.domain.model.ClearSigningDescriptor(
+                        source = "test", sha256 = "00", owner = "WETH",
+                        kind = eth.serotine.domain.model.ClearSigningDescriptor.Kind.CALLDATA,
+                        domainName = null, domainVersion = null, enums = emptyMap(),
+                        formats = listOf(
+                            eth.serotine.domain.model.ClearSigningFormat(
+                                key = "deposit()", function = eth.serotine.domain.model.AbiFunction.parse("deposit()"),
+                                selector = "0xd0e30db0", encodeType = null, typeHash = null, primaryType = null,
+                                intent = "Wrap", interpolatedIntent = null,
+                                fields = listOf(
+                                    eth.serotine.domain.model.ClearSigningField(
+                                        eth.serotine.domain.model.ClearSigningPath.parse("@.value"), "Amount",
+                                        eth.serotine.domain.model.FieldFormat.Amount, eth.serotine.domain.model.Visibility.Shown,
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val viewModel = viewModel(queued(world.request(deposit(weth))))
+        val action = viewModel.overview.action
+        assertEquals("Wrap", action.title)
+        assertEquals("Amount", action.described?.rows?.single()?.label)
+        assertFalse(eth.serotine.ui.components.SafeTxActionItem.NOT_DECODED_HERE in action.notes)
+    }
+
+    @Test
+    fun aContractCallNoDescriptorCoversStaysNotDecoded() = runTest {
+        val viewModel = viewModel(queued(world.request(deposit(weth))))
+        val action = viewModel.overview.action
+        assertEquals("Call a contract", action.title)
+        assertTrue(eth.serotine.ui.components.SafeTxActionItem.NOT_DECODED_HERE in action.notes)
+    }
 
     @Test
     fun aDelegateCallIsShownForWhatItIsAndOffersNothingToSign() = runTest {

@@ -35,7 +35,45 @@ data class SafeTxActionItem(
     val warning: String? = null,
     val icon: String? = null,
     val symbol: String? = null,
-)
+    /**
+     * A contract call not decoded here, described by a built-in ERC-7730 descriptor bound to the contract's
+     * verified code (docs/clear-signing.md, A5); null when none describes it.
+     */
+    val described: ClearSignedSection? = null,
+    /** Being looked up in the built-in descriptors, the contract's code being checked. */
+    val describing: Boolean = false,
+    /** Why a built-in descriptor that covers the contract does not describe the call, where that says more. */
+    val notDescribed: String? = null,
+) {
+    /**
+     * This item with what the built-in descriptors say of its call ([result], null while not known, [busy]
+     * while being read): a description replaces "Call a contract" and its "not decoded" note, keeps a
+     * warning where part of it is not decoded, and flags an approval; a reason worth saying is said.
+     */
+    fun withDescription(result: eth.serotine.domain.model.ClearSignResult?, busy: Boolean): SafeTxActionItem = when (result) {
+        is eth.serotine.domain.model.ClearSignResult.ClearSigned -> copy(
+            title = result.interpolatedIntent ?: result.intent,
+            notes = notes.filterNot { it == NOT_DECODED_HERE } +
+                listOfNotNull(APPROVAL.takeIf { result.grantsApproval }),
+            warning = listOfNotNull(warning, ClearSignedText.PARTLY_NOT_DECODED.takeIf { ClearSignedText.partlyNotDecoded(result) })
+                .takeIf { it.isNotEmpty() }?.joinToString(" "),
+            described = ClearSignedText.describedSection(result),
+            describing = busy,
+        )
+        is eth.serotine.domain.model.ClearSignResult.NotCovered ->
+            copy(describing = busy, notDescribed = ClearSignedText.notDescribedLine(result.reason))
+        null -> copy(describing = busy)
+    }
+
+    companion object {
+        /** What a contract call not decoded here says of itself. */
+        const val NOT_DECODED_HERE = "Not decoded here: what it does is up to the contract's code."
+
+        /** A described call, or one inside it, that grants an approval. */
+        const val APPROVAL = "It grants an approval: it moves nothing on its own, but the spender may then take " +
+            "the Safe's tokens without asking again."
+    }
+}
 
 /**
  * Where a Safe's approval or swap stands as the chain is now (docs/swaps.md, *A Safe's swap*),
@@ -168,7 +206,7 @@ internal fun safeTxActionItem(
             action.value.takeUnless { it.isZero }
                 ?.let { "With ${it.formatUnits(NATIVE_DECIMALS)} ${network.nativeSymbol}" },
             callData(action.selector, action.dataSize),
-            "Not decoded here: what it does is up to the contract's code.",
+            SafeTxActionItem.NOT_DECODED_HERE,
         ),
     )
     is SafeTxAction.DelegateCall -> SafeTxActionItem(

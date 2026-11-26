@@ -704,7 +704,9 @@ entry its network, address, name and why it is there):
 - `generate.py` writes the catalog (`VerifiedAbiCatalog.kt`): per network,
   code hash → the contract's name and its functions (selector, name,
   parameters with their names and types). A CI job recompiles again on every
-  PR that touches it.
+  PR, offline but for the pinned compilers: a source the metadata names that
+  is missing or changed fails, never fetched; each code is held to the hash
+  `check_code_hashes.py` pinned from the chain.
 - **An EIP-1167 minimal proxy** has the same runtime code for every proxy to
   one implementation address. Its entry is held to the network it was pinned
   on, and is used only once the implementation's code, read verified, hashes

@@ -98,6 +98,13 @@ jobs:
             exit 1
           }
 
+      # Phase C's catalog against what generate.py writes from verified.json and contracts.json (offline, so in
+      # this required job; the recompile behind verified.json runs in its own job, docs/clear-signing.md, Phase C).
+      - name: Verify the verified-ABI catalog
+        run: |
+          python3 -I scripts/verified-abis/test_generate.py
+          python3 -I scripts/verified-abis/generate.py --check
+
       # The Android launcher icon is GENERATED from assets/serotine_logo.svg and committed
       # (android-app/src/main/res: ic_launcher_foreground, ic_launcher_background,
       # mipmap-anydpi-v26/ic_launcher; android-app/src/debug/res: the debug app's recoloured
@@ -203,3 +210,31 @@ jobs:
                         | grep -v -e /testsv2/ -e /sigs/ | sort)
           /tmp/erc7730/bin/check-jsonschema --schemafile specs/erc7730-v2.schema.json $descriptors
           /tmp/erc7730/bin/erc7730 lint $(echo "$descriptors" | grep -v /common-)
+
+  # Phase C's verified ABIs (docs/clear-signing.md, *Phase C*): every vendored contract recompiled with
+  # lib-sourcify (pinned by version and hash in scripts/verified-abis/package-lock.json) and matched exactly
+  # against its vendored on-chain code, no RPC asked; verified.json checked to be what the recompile gives.
+  # The catalog the app ships is checked against verified.json in Build and Test, which is required. The compilers are fetched from binaries.soliditylang.org and
+  # checked against their pinned sha256 before they run. The app never runs Node; this is CI only. Its own
+  # job, so that an outage there does not hold up Build and Test, which is the required check.
+  verified-abis:
+    name: Verified ABIs (recompile)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      # lib-sourcify asks for Node 26; the runner's own moves.
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          # Exactly the version lib-sourcify's `engines` names, so that --check is reproducible.
+          node-version: '26.10.0'
+      - name: Recompile and check
+        working-directory: scripts/verified-abis
+        run: |
+          npm ci --ignore-scripts
+          node verify.mjs --check

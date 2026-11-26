@@ -78,6 +78,29 @@ docs/clear-signing.md, *A1*.) In the release PR:
 The release PR's description lists what moved, or says "the clear-signing
 descriptors are unchanged".
 
+## 3c. Refresh the verified ABIs
+
+(How phase C is applied, the owner's to approve on #240: docs/clear-signing.md,
+*Phase C*, "A refresh is a step of every release PR".) In the release PR:
+
+1. `python3 -I scripts/verified-abis/fetch.py`. It stops at anything but an
+   exact Sourcify match: move such a contract to `notPinned` in
+   `contracts.json`, saying why, and run it again. Move a contract of
+   `notPinned` whose match has become exact onto the list.
+2. Steps 3 before this one where the list moved. Then `cd
+   scripts/verified-abis && npm ci --ignore-scripts && node verify.mjs`:
+   every contract recompiled, an exact match each. Read the diff of
+   `verified.json`: a moved code hash or function is a contract changed.
+3. With a `myotis-rpcd` per network, `python3 -I
+   scripts/verified-abis/check_code_hashes.py --write ETHEREUM=… GNOSIS=…
+   SEPOLIA=…` pins each contract's code hash from the chain in
+   `contracts.json`, which `node verify.mjs` then holds the vendored code to.
+4. `python3 -I scripts/verified-abis/generate.py`, then commit what it
+   writes.
+
+The release PR's description lists what moved, or says "the verified ABIs
+are unchanged".
+
 ## 4. The Android release key
 
 `sign-release` (android-apk.yml) signs the release APK on the tag with the

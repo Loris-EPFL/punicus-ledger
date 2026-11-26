@@ -1,0 +1,10 @@
+{
+  "name": "verified-abis",
+  "private": true,
+  "description": "Recompiles phase C's vendored contracts (docs/clear-signing.md, Phase C). Build time only.",
+  "type": "module",
+  "dependencies": {
+    "@ethereum-sourcify/lib-sourcify": "3.8.1",
+    "ethers": "6.17.0"
+  }
+}

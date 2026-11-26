@@ -1,0 +1,23 @@
+{
+  "address": "0x3b6a7f0bdb6663007f95dbd7fddef815f7596715",
+  "chainId": 100,
+  "compilerVersion": "0.7.6+commit.7338295f",
+  "metadata": "978a10d14cd852500dc8519b0d4b6708f5421b367a70da69fc5aee6498aeb564",
+  "runtime": "fc4c514587960b352a3580bd09f072b4c1df1ae96de9833b7e4252fb2e10fa52",
+  "sources": {
+    "@openzeppelin/contracts/access/AccessControl.sol": "dcebb99daefb7b6c2b5ddb1052f670cf9986240e5549da4ad47b5072857c620e",
+    "@openzeppelin/contracts/cryptography/ECDSA.sol": "0c3c8f0e880bfb11298ab86b2863e7a6ce8c85e443fbf4998b8ed3b32739c853",
+    "@openzeppelin/contracts/math/Math.sol": "5f2dc35987fa6e9645cf7d54e54bafd29c6b1d64ed53e9efbd50bc3448378b31",
+    "@openzeppelin/contracts/math/SafeMath.sol": "4a04d0a20a19e3ef1dcabae9cad9ba006430a4e7eec4d9b519db87999722c98a",
+    "@openzeppelin/contracts/presets/ERC20PresetMinterPauser.sol": "d88367ec1c80ce8cc047abd6e0b91903f371aff8bd906a32a72e3b9d8983ddfc",
+    "@openzeppelin/contracts/token/ERC20/ERC20.sol": "eff65ebfa1cad6260b4916ce5293ed6c7231a34d2899c04227578c172990a1f8",
+    "@openzeppelin/contracts/token/ERC20/ERC20Burnable.sol": "4eb365f96d91303d60ed4af72310093106ce8f650498f0dc39c5e33df2f00eac",
+    "@openzeppelin/contracts/token/ERC20/ERC20Pausable.sol": "68c8d9e8690360e1cf5bdb7bd064b947f963d02c963de5f1f6e20bd2e6c02c70",
+    "@openzeppelin/contracts/token/ERC20/IERC20.sol": "0573c2961569aa4906845d0cd428b5b7394956170054ceeaa8f8af96cd44875c",
+    "@openzeppelin/contracts/utils/Address.sol": "11ad5e3e21434e00c4ceba1f5a977b7a68bdd7d16b849276ce4ff4495129eec7",
+    "@openzeppelin/contracts/utils/Context.sol": "9a3d1e5be0f0ace13e2d9aa1d0a1c3a6574983983ad5de94fc412f878bf7fe89",
+    "@openzeppelin/contracts/utils/EnumerableSet.sol": "c8b73a000476872a00f6153d66be31a4a99b7565068f05336129748bfad704ea",
+    "@openzeppelin/contracts/utils/Pausable.sol": "20fdf7a18aabd402e481e65a1b18cb4b43bda99b4849b4e2c5b3dcdd01121dd0",
+    "contracts/ERC20SimpleSwap.sol": "3589c1dba4f5f453ac880221fa80a5bb8c490d0efbea9cc5255dbc8f194b5ec7"
+  }
+}

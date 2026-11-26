@@ -12,8 +12,19 @@ data class VerifiedContract(
     val codeHash: String,
     val functions: List<AbiFunction>,
 ) {
+    init {
+        // Shown as they are: identifiers only, and one function per selector.
+        require(IDENTIFIER.matches(name)) { "not an identifier: $name" }
+        require(functions.all { f -> IDENTIFIER.matches(f.name) && f.params.all { it.name == null || IDENTIFIER.matches(it.name) } })
+        require(functions.map { it.selector }.toSet().size == functions.size) { "two functions share a selector" }
+    }
+
     /** The function [selector] (`0x` and 8 lower-case hex digits) calls, or null when it is none of these. */
     fun function(selector: String): AbiFunction? = functions.firstOrNull { it.selector == selector }
+
+    private companion object {
+        val IDENTIFIER = Regex("^[A-Za-z_$][A-Za-z0-9_$]*$")
+    }
 }
 
 /**
@@ -32,9 +43,12 @@ sealed interface VerifiedCode {
 /** A call named from its contract's verified source (docs/clear-signing.md, *Phase C*, *At runtime*), or why not. */
 sealed interface VerifiedAbiResult {
     /**
-     * Named: [function] of [contract], each parameter with its value as decoded from the exact bytes. [approval]
-     * is set where the call grants an approval by its selector, or a `bytes` parameter starts with one's
-     * ([approvalInBytes]): A3's flag, as far as an ABI lets it reach.
+     * Named: [function] of [contract], each parameter with its value as decoded from the exact bytes; [proxyOf]
+     * the implementation where the call reached it through an EIP-1167 proxy. [approval] is set where the call
+     * grants an approval by its selector, or a `bytes` value starts with one's, or holds a MultiSend batch with
+     * one ([approvalInBytes]): A3's flag, as far as an ABI lets it reach. [delegateCall] is set where a call
+     * inside it is a delegate call (a MultiSend entry's operation 1, or a parameter the verified source names
+     * `operation` set to 1): the code it names runs as the account.
      */
     data class Named(
         val contract: String,
@@ -42,6 +56,8 @@ sealed interface VerifiedAbiResult {
         val parameters: List<NamedParameter>,
         val approval: Boolean,
         val approvalInBytes: Boolean,
+        val delegateCall: Boolean = false,
+        val proxyOf: Address? = null,
     ) : VerifiedAbiResult
 
     /** Not named, and why: shown as before, raw and marked as not decoded. */

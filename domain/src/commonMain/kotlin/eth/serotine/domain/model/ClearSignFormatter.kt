@@ -185,7 +185,8 @@ object ClearSignFormatter {
         val selector = "0x" + data.copyOf(SELECTOR).toHex()
         val format = descriptor.formatForSelector(selector)
             ?: return ClearSignResult.NotCovered(NotCoveredReason.NoFormat(selector))
-        val function = format.function ?: return ClearSignResult.NotCovered(NotCoveredReason.NoFormat(selector))
+        // A format with no function to decode by is the descriptor's to answer: not decoded, never a format missing.
+        val function = format.function ?: return ClearSignResult.NotCovered(NotCoveredReason.NotDecodable)
         val arguments = AbiDecoder.decode(function.params, data.copyOfRange(SELECTOR, data.size))
             ?: return ClearSignResult.NotCovered(NotCoveredReason.NotDecodable)
         val values = ClearSigningValues(

@@ -16,6 +16,7 @@ import eth.serotine.domain.model.VerifiedAbiResult
 import eth.serotine.domain.model.VerifiedCode
 import eth.serotine.domain.model.VerifiedContract
 import eth.serotine.domain.model.hexToBytes
+import eth.serotine.domain.model.toHex
 import eth.serotine.domain.repository.CodeReading
 import eth.serotine.domain.repository.ContractCodes
 import eth.serotine.domain.repository.ReadUnavailable
@@ -107,6 +108,53 @@ class NameVerifiedCallTest {
         assertTrue(named.approval)
         codeAt[mastercopy] = "0x" + "44".repeat(32)
         assertEquals(VerifiedAbiResult.NotNamed(NotNamedReason.NOT_ON_LIST), name.call(Network.GNOSIS, delayAt, data, noDescriptor))
+    }
+
+    /** A MultiSend batch of one entry: [operation], to [token], no value, [inner] as its data. */
+    private fun batch(operation: Int, inner: String): String {
+        val entry = byteArrayOf(operation.toByte()).toHex() + token.hex.removePrefix("0x") + "00".repeat(32) +
+            UInt256.of(inner.length / 2L).toBytes32().toHex() + inner
+        return call(multiSend, AbiValue.BytesValue(entry, fixed = false)).toHex()
+    }
+
+    private val approve = "095ea7b3" + "00".repeat(12) + "bb".repeat(20) + "ff".repeat(32)
+
+    private fun execOf(inner: String, operation: Long = 0) = call(
+        exec, AbiValue.AddressValue(token), AbiValue.UintValue(UInt256.ZERO, 256),
+        AbiValue.BytesValue(inner, fixed = false), AbiValue.UintValue(UInt256.of(operation), 8),
+    )
+
+    @Test
+    fun anApprovalInsideAMultiSendBatchIsFlaggedAndADelegateCallToo() = runTest {
+        val queued = assertIs<VerifiedAbiResult.Named>(name.call(Network.GNOSIS, delayAt, execOf(batch(0, approve)), noDescriptor))
+        assertTrue(queued.approvalInBytes)
+        assertEquals(mastercopy, queued.proxyOf)
+        assertEquals(false, queued.delegateCall)
+        val delegated = assertIs<VerifiedAbiResult.Named>(name.call(Network.GNOSIS, delayAt, execOf(batch(1, "00")), noDescriptor))
+        assertTrue(delegated.delegateCall)
+        assertEquals(false, delegated.approval)
+        // The Delay's own operation set to a delegate call, by the name its verified source gives it.
+        val itself = assertIs<VerifiedAbiResult.Named>(name.call(Network.GNOSIS, delayAt, execOf("00", operation = 1), noDescriptor))
+        assertTrue(itself.delegateCall)
+    }
+
+    @Test
+    fun aFixedBytesValueThatEqualsASelectorIsNoCall() = runTest {
+        val selectorOnly = AbiFunction.parse("check(bytes4 selector)")!!
+        val withIt = multiSendContract.copy(functions = listOf(multiSend, selectorOnly))
+        val catalog = object : VerifiedAbiCatalog {
+            override fun byCodeHash(network: Network, codeHash: String) = VerifiedCode.Contract(withIt)
+        }
+        val named = assertIs<VerifiedAbiResult.Named>(
+            NameVerifiedCall(catalog, codes).call(Network.GNOSIS, multiSendAt, call(selectorOnly, AbiValue.BytesValue("095ea7b3", fixed = true)), noDescriptor),
+        )
+        assertEquals(false, named.approval)
+    }
+
+    @Test
+    fun aProxyWhoseImplementationCannotBeReadIsNotNamed() = runTest {
+        codeAt.remove(mastercopy)
+        assertEquals(VerifiedAbiResult.NotNamed(NotNamedReason.NOT_ON_LIST), name.call(Network.GNOSIS, delayAt, execOf("00"), noDescriptor))
     }
 
     @Test

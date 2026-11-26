@@ -229,15 +229,20 @@ class MyotisHost private constructor(
     /**
      * An address's history from the addr1 index on Swarm, which the engine reads and checks (issue #334): each
      * network's through its own light client, under the importer key [apply] set for that chain (Myotis #933, from
-     * 0.1.25 on). Every network's light client is handed over: which networks have an index is the keys' alone, so the
-     * use cases refuse a network without one before anything is read, and the engine refuses a chain it holds no key
-     * for. Any running light client answers whether the engine reads Swarm, a property of its build.
+     * 0.1.25 on). Every network's light client is handed over, and the adapter holds each page and check to the keys
+     * [apply] last set ([appliedImporters]): none refuses every read, and a network without a key is not served. Any
+     * running light client answers whether the engine reads Swarm, a property of its build.
      */
     val addressIndex: AddressIndexHistory = EngineAddressIndexHistory(
         nodes.mapValues { it.value.addressChain },
+        { appliedImporters },
         Dispatchers.IO,
         POLL_INTERVAL,
     )
+
+    /** The keys [apply] last set, none until then: what [addressIndex] reads under. */
+    @Volatile
+    private var appliedImporters: AddressIndexImporters = AddressIndexImporters.NONE
 
     /** The address history settings the engine is to hold: none until [apply], so its reader refuses every read. */
     @Volatile
@@ -253,6 +258,7 @@ class MyotisHost private constructor(
     override suspend fun apply(importers: AddressIndexImporters): Boolean {
         val config = addressHistoryConfigJson(importers, addressIndexSwarm)
         addressHistoryConfig = config
+        appliedImporters = importers
         val applied = CompletableDeferred<Boolean>()
         try {
             control.execute {

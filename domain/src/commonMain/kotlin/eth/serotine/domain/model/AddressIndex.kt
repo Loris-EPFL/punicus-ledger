@@ -237,9 +237,9 @@ sealed interface AddressIndexVerdict {
  * The importer keys of the addr1 index pinned in a release: one per network that has an index, the one key a list of
  * that network's history may rest on (owner's decision, 2026-11-21, on #335: pinned in the release, never typed by the
  * user). Myotis 0.1.25 reads each chain's index under its own key (Myotis #933). A network without a key has no addr1
- * history: nothing of it is read, and its *Activity* is the log index's alone. One experimental setting covers every
- * key, on by default for each (owner's request, 2026-11-26: "The default should apply for all chains that have an
- * addr1 index").
+ * history: nothing of it is read, and its *Activity* is the log index's alone. The default applies to each key
+ * (owner's request, 2026-11-26: "The default should apply for all chains that have an addr1 index"); that one
+ * experimental setting covers every key is how this is applied, the owner's to approve on #393.
  */
 data class AddressIndexImporters(val keys: Map<Network, Address>) {
 

@@ -1549,8 +1549,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     of 2026-11-21), the user may turn it off, and an explicit off stays off,
     whatever key a later release pins. It names the importer key pinned in
     the release for each network with an index (Ethereum's, and Gnosis
-    Chain's since 2026-11-26: one row and one choice for them all, the
-    default applying to each, owner's request of that day), says what it does and what Swarm and archive peers learn
+    Chain's since 2026-11-26, the default applying to each: owner's request
+    of that day; one row and one choice for them all is how it is applied,
+    the owner's to approve on #393), says what it does and what Swarm and archive peers learn
     while it is on (docs/privacy-policy.md). A key is never typed in. A
     choice to turn it on made for a key the release no longer pins does not
     carry over: the key pinned now has no choice, so it is on by default

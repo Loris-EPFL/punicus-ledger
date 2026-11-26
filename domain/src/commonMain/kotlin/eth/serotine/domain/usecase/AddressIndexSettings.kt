@@ -39,8 +39,9 @@ enum class AddressIndexMissing {
  * #335; on by default, the owner's decision of 2026-11-22): [pinned], the importer keys pinned in the release, one per
  * network that has an index (none: none pinned in this one), whether the engine has its Swarm [reader] (null: not
  * known yet), and the user's [choice]. It is [wanted] when a key is pinned and the user did not turn it off, and [on]
- * when it is wanted and the engine reads Swarm. One choice covers every network's key, and the default applies to each
- * of them (owner's request, 2026-11-26: "The default should apply for all chains that have an addr1 index"):
+ * when it is wanted and the engine reads Swarm. The default applies to each network's key (owner's request,
+ * 2026-11-26: "The default should apply for all chains that have an addr1 index"); one choice for every key is how
+ * it is applied, the owner's to approve on #393:
  * - **no choice made** ([AddressIndexChoice.NotChosen]: a fresh install): on, by default;
  * - **an explicit off** (a stored choice of no key): off, whatever key is pinned, until the user turns it on again;
  * - **on for one of the keys pinned now**: on, for every one of them, since a key newly pinned beside it had no choice

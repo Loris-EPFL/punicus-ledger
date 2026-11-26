@@ -70,8 +70,11 @@ class EngineAddressIndexHistoryTest {
     private fun TestScope.history(of: AddressHistoryChain? = chain) =
         history(of?.let { mapOf(Network.ETHEREUM to it) })
 
+    /** The keys the engine holds in a test: [fixtureImporter] for Ethereum, unless a test sets others. */
+    private var keys = AddressIndexImporters(mapOf(Network.ETHEREUM to fixtureImporter))
+
     private fun TestScope.history(chains: Map<Network, AddressHistoryChain>?) =
-        EngineAddressIndexHistory(chains, StandardTestDispatcher(testScheduler), 1.seconds)
+        EngineAddressIndexHistory(chains, { keys }, StandardTestDispatcher(testScheduler), 1.seconds)
 
 
     private val entry = AddressIndexEntry(26_300_000, 3, setOf(AddressIndexRole.FROM, AddressIndexRole.TRACE))
@@ -479,6 +482,7 @@ class EngineAddressIndexHistoryTest {
     @Test
     fun eachNetworkIsReadThroughItsOwnLightClient() = runTest {
         val gnosis = FakeChain()
+        keys = AddressIndexImporters(mapOf(Network.ETHEREUM to fixtureImporter, Network.GNOSIS to fixtureImporter))
         val history = history(mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis))
         gnosis.check = """[{"block":26300000,"slot":3,"roles":["from","trace"],"state":"unverified"}]"""
 
@@ -525,5 +529,37 @@ class EngineAddressIndexHistoryTest {
             wsBoundPeriods = 13,
             finalizedHeader = null,
         )
+    }
+
+    @Test
+    fun withEveryNetworkHandedOverOnlyTheNetworksWithAKeyAreAskedAndNoneWithTheSettingOff() = runTest {
+        // As MyotisHost wires it: every network's light client, the keys the engine was last told.
+        val gnosis = FakeChain()
+        val sepolia = FakeChain()
+        val history = history(mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis, Network.SEPOLIA to sepolia))
+        keys = AddressIndexImporters(mapOf(Network.ETHEREUM to fixtureImporter, Network.GNOSIS to fixtureImporter))
+
+        // The engine's check reads no settings (Myotis's verify_json): the adapter refuses it itself.
+        assertEquals(
+            AddressIndexCheck.Refused(AddressIndexRefusal.NetworkNotServed(Network.SEPOLIA)),
+            history.verify(Network.SEPOLIA, alice, listOf(entry)),
+        )
+        assertEquals(
+            AddressIndexReading.Refused(AddressIndexRefusal.NetworkNotServed(Network.SEPOLIA)),
+            history.page(Network.SEPOLIA, alice, AddressIndexQuery()),
+        )
+        assertTrue(sepolia.pagesAsked.isEmpty() && sepolia.checksAsked.isEmpty(), "nothing asked of Sepolia's")
+
+        // The setting off: the engine was told no key, and nothing is asked on any network.
+        keys = AddressIndexImporters.NONE
+        assertEquals(
+            AddressIndexCheck.Refused(AddressIndexRefusal.SettingOff),
+            history.verify(Network.ETHEREUM, alice, listOf(entry)),
+        )
+        assertEquals(
+            AddressIndexReading.Refused(AddressIndexRefusal.SettingOff),
+            history.page(Network.GNOSIS, alice, AddressIndexQuery()),
+        )
+        assertTrue(chain.checksAsked.isEmpty() && gnosis.pagesAsked.isEmpty(), "nothing asked while it is off")
     }
 }

@@ -5,6 +5,7 @@ import eth.serotine.domain.model.AddressIndexCoverage
 import eth.serotine.domain.model.AddressIndexCursor
 import eth.serotine.domain.model.AddressIndexEntry
 import eth.serotine.domain.model.AddressIndexHeadGap
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.AddressIndexRole
 import eth.serotine.domain.model.AddressIndexRow
 import eth.serotine.domain.model.AddressIndexTransaction
@@ -67,9 +68,12 @@ internal interface AddressHistoryChain {
  * history may also take the addr1 index from Swarm*): the engine reads the addr1 index through its own Swarm light
  * node, checks every chunk, and checks each entry against verified chain data. This adapter adds no Swarm client, no
  * gateway and no HTTP. It serves the networks of [chains], each through its own light client, under the importer key
- * the engine holds for that chain (Myotis #933, from 0.1.25 on); another network is refused
- * ([AddressIndexRefusal.NetworkNotServed]), and so is a network the engine holds no key for (its "no importer key is
- * set for the address history on chain N", from Myotis 0.1.25 on).
+ * the engine holds for that chain (Myotis #933, from 0.1.25 on). [importers] are the keys the engine was last told
+ * ([eth.serotine.domain.repository.AddressIndexReaderSettings.apply]), and this adapter holds every page and check to
+ * them before the engine is asked: none at all is [AddressIndexRefusal.SettingOff], and a network without a key, or
+ * not in [chains], is [AddressIndexRefusal.NetworkNotServed]. The engine refuses only a page on a chain it holds no
+ * key for (its "no importer key is set for the address history on chain N", mapped the same way); its check reads no
+ * settings (Myotis's `addrhist::verify_json`), so this refusal is the port's own, not left to each caller.
  *
  * The engine's answers are read strictly, every one of them mapped to the port's terms or refused, never thrown:
  * - **A refusal** is the engine's `{"error","code":-32602}` (lasting) or an `{"error"}` without that code
@@ -93,11 +97,12 @@ internal interface AddressHistoryChain {
  * [AddressIndexRefusal.StaleAnchor]. Calls block on the engine (a check up to about 90 s), so they run on
  * [dispatcher]. [hasReader] waits, every [readerPoll], for a running light client of any of [chains] to ask (whether
  * the engine has the reader is a property of its build, not of a chain), and answers false at once on a device with
- * no engine, or once any light client is down (final for the whole engine); the engine's answer is kept, so that every later ask is answered at
- * once, whatever the light clients do meanwhile.
+ * no engine, or once any light client is down (final for the whole engine); the engine's answer is kept, so that
+ * every later ask is answered at once, whatever the light clients do meanwhile.
  */
 class EngineAddressIndexHistory internal constructor(
     private val chains: Map<Network, AddressHistoryChain>?,
+    private val importers: () -> AddressIndexImporters,
     private val dispatcher: CoroutineDispatcher,
     private val readerPoll: Duration,
 ) : AddressIndexHistory {
@@ -133,6 +138,7 @@ class EngineAddressIndexHistory internal constructor(
 
     override suspend fun page(network: Network, address: Address, query: AddressIndexQuery): AddressIndexReading {
         val chains = chains ?: return AddressIndexReading.Refused(AddressIndexRefusal.NoEngine)
+        refusalOf(network)?.let { return AddressIndexReading.Refused(it) }
         val chain = chains[network]
             ?: return AddressIndexReading.Refused(AddressIndexRefusal.NetworkNotServed(network))
         stateRefusal(snapshotOf(chain))?.let { return AddressIndexReading.Refused(it) }
@@ -158,6 +164,7 @@ class EngineAddressIndexHistory internal constructor(
             "1 to ${AddressIndexHistory.MAX_CHECKED} entries"
         }
         val chains = chains ?: return AddressIndexCheck.Refused(AddressIndexRefusal.NoEngine)
+        refusalOf(network)?.let { return AddressIndexCheck.Refused(it) }
         val chain = chains[network] ?: return AddressIndexCheck.Refused(AddressIndexRefusal.NetworkNotServed(network))
         stateRefusal(snapshotOf(chain))?.let { return AddressIndexCheck.Refused(it) }
         val answer = withContext(dispatcher) {
@@ -191,6 +198,19 @@ class EngineAddressIndexHistory internal constructor(
     /** Whether [verdict] is this entry's: the same block, slot and roles. */
     private fun AddressIndexEntry.isOf(verdict: AddressIndexVerdict): Boolean =
         block == verdict.entry.block && slot == verdict.entry.slot && roles == verdict.entry.roles
+
+    /**
+     * Why nothing is asked about [network] under the keys the engine holds ([importers]): none at all, or none for
+     * [network]; null when one is held for it.
+     */
+    private fun refusalOf(network: Network): AddressIndexRefusal? {
+        val keys = importers()
+        return when {
+            keys.none -> AddressIndexRefusal.SettingOff
+            keys.of(network) == null -> AddressIndexRefusal.NetworkNotServed(network)
+            else -> null
+        }
+    }
 
     /** Why nothing is asked of the engine in [snapshot]'s state; null when it is asked. */
     private fun stateRefusal(snapshot: EngineSnapshot): AddressIndexRefusal? = when (snapshot) {

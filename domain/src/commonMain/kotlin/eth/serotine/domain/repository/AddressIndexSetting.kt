@@ -11,8 +11,9 @@ import kotlinx.coroutines.flow.Flow
  * decision, 2026-11-22): until the user chooses, it holds no choice ([AddressIndexChoice.NotChosen]), which
  * `eth.serotine.domain.usecase.AddressIndexStatus` reads as on. A choice is the importer key the user turned it on
  * for, or none, an explicit off, which stays off. The key itself is pinned in the release and never typed by the
- * user; this port only remembers which pinned key the user accepted. :data keeps it in a file, so it survives a
- * restart. Never throws.
+ * user; this port only remembers which pinned key the user accepted. With a key pinned for several networks, an
+ * "on" is saved as the first network's key and stands for every pinned key
+ * (`eth.serotine.domain.usecase.TurnAddressIndex`). :data keeps it in a file, so it survives a restart. Never throws.
  */
 interface AddressIndexSetting {
     /** The choice, re-emitted on each change, or that it cannot be read. Never throws. */

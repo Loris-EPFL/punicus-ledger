@@ -315,7 +315,13 @@ object ClearSignFormatter {
                     if (key(at.value) in visibility.values) false
                     else throw Refusal(NotCoveredReason.ValueOutsideDescriptor(field.label ?: path.toString()))
             }
-            if (!shown) return
+            if (!shown) {
+                // Hidden or not, an approval inside a call is flagged by what the bytes are.
+                if (field.format is FieldFormat.Calldata && grantsApproval((at.value as? AbiValue.BytesValue)?.bytes ?: ByteArray(0))) {
+                    approval = true
+                }
+                return
+            }
             val label = field.label ?: throw Refusal(NotCoveredReason.NotDecodable)
             val shownField = value(label, field.format ?: FieldFormat.Raw, at, path, group)
             fields += shownField
@@ -444,8 +450,12 @@ object ClearSignFormatter {
     fun grantsApproval(data: ByteArray): Boolean =
         data.size >= SELECTOR && "0x" + data.copyOf(SELECTOR).toHex() in APPROVAL_SELECTORS
 
-    /** Whether [data] is a message of a type that grants an approval ([APPROVAL_TYPES]), described or not. */
-    fun grantsApproval(data: TypedData): Boolean = data.primaryType in APPROVAL_TYPES
+    /**
+     * Whether [data] is a message that grants an approval, described or not: a type of [APPROVAL_TYPES], or any
+     * message Permit2 verifies, whose every signature lets someone move the signer's tokens.
+     */
+    fun grantsApproval(data: TypedData): Boolean = data.primaryType in APPROVAL_TYPES ||
+        (data.domain["verifyingContract"] as? TypedValue.Text)?.text?.let(Address::parse) == TypedDataMeaning.PERMIT2
 
     /** A value as decoded: an integer in decimal, an address checksummed, bytes in hex, a string escaped. */
     fun raw(value: AbiValue): String = when (value) {
@@ -534,7 +544,10 @@ object ClearSignFormatter {
     )
 
     /** EIP-712 types that grant an approval: ERC-2612's and Permit2's permits. */
-    val APPROVAL_TYPES = setOf("Permit", "PermitSingle", "PermitBatch", "PermitTransferFrom", "PermitBatchTransferFrom")
+    val APPROVAL_TYPES = setOf(
+        "Permit", "PermitSingle", "PermitBatch", "PermitTransferFrom", "PermitBatchTransferFrom",
+        "PermitWitnessTransferFrom", "PermitBatchWitnessTransferFrom",
+    )
 
     // Every brace escaped: Android's ICU refuses a bare `}` (its java.util.regex reference, API 10 on).
     private val PLACEHOLDER = Regex("\\{([^\\{\\}]*)\\}")

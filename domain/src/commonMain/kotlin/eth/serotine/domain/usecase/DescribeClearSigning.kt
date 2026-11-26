@@ -155,8 +155,8 @@ class DescribeClearSigning(
                 val left = KIND_TIMEOUT_MS - mark.elapsedNow().inWholeMilliseconds
                 val kind = if (left <= 0) null else withTimeoutOrNull(left) {
                     val reading = kinds.observeKind(network, address).filterNot { it is KindReading.Syncing }.firstOrNull()
-                    // A Safe is a contract. ERC-7730's `wallet` is one of the user's own accounts, which the
-                    // wallet's accounts give (part 5), not a kind of code.
+                    // A Safe is a contract. ERC-7730's `wallet` is one of the user's own accounts, which a later
+                    // part brings with the wallet's accounts; it is no kind of code.
                     when ((reading as? KindReading.Verified)?.kind) {
                         AddressKind.Eoa, is AddressKind.DelegatedEoa -> "eoa"
                         is AddressKind.Safe, AddressKind.Contract -> "contract"
@@ -167,7 +167,7 @@ class DescribeClearSigning(
                 return kind
             }
 
-            // No collection is built in for clear signing yet: each is shown by its address (A3, *NFTs*).
+            // No collection is built in for clear signing yet, so each is shown by its address (A3, *NFTs*).
             override fun builtInCollectionName(network: Network, collection: Address): String? = null
 
             override suspend fun nested(

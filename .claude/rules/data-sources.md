@@ -194,7 +194,8 @@ of a stale feed.)
   registry's own test vectors not met. So does a deployment whose way of
   changing its code cannot be pinned. Nothing is dropped silently.
 - **Every shipped descriptor is reviewed in our PR.** An auditor attestation
-  from the registry's `sigs/` is shown where one exists; none is required.
+  from the registry's `sigs/` is shown where one exists, once a later part
+  checks its signature and hash; until then none is shown. None is required.
 - **A refresh is a step of every release PR**, through a PR that moves the
   pins, its diff reviewed like code. Never at runtime.
 - **Descriptors of our own** for contracts Punicus pins and the registry

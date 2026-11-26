@@ -541,6 +541,32 @@ class ClearSignFormatterTest {
     }
 
     @Test
+    fun anyMessagePermit2VerifiesGrantsAnApproval() {
+        val witness = permitData("1").copy(primaryType = "PermitWitnessTransferFrom")
+        assertTrue(ClearSignFormatter.grantsApproval(witness))
+        val elsewhere = permitData("1", verifier = "0x" + "12".repeat(20)).copy(primaryType = "Mail")
+        assertEquals(false, ClearSignFormatter.grantsApproval(elsewhere))
+    }
+
+    @Test
+    fun anApprovalInsideAHiddenCallIsFlaggedToo() = runTest {
+        val hidden = multicall.copy(
+            formats = listOf(
+                multicall.formats.single().copy(
+                    fields = listOf(
+                        field("data", "Call", FieldFormat.Calldata(path("target")), Visibility.Hidden),
+                        field("mode", "Mode", FieldFormat.Enum("mode")),
+                    ),
+                ),
+            ),
+        )
+        val signed = assertIs<ClearSignResult.ClearSigned>(
+            ClearSignFormatter.formatCall(hidden, Network.ETHEREUM, sender, router, UInt256.ZERO, callData(2, Erc20.approveData(router, UInt256.ONE)), listed),
+        )
+        assertTrue(signed.grantsApproval)
+    }
+
+    @Test
     fun anAccountsKindMatchesTheTypesItCanBe() {
         val cases = listOf(
             Triple("eoa", setOf("eoa", "contract"), true),

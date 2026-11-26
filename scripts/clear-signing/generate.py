@@ -91,7 +91,9 @@ INFO_KEYS = {"url", "deploymentDate", "legalName"}
 CONTEXT_KEYS = {"$id", "contract", "eip712"}
 CONTRACT_KEYS = {"deployments"}
 EIP712_KEYS = {"deployments", "domain"}
-DOMAIN_KEYS = {"name", "version", "chainId", "verifyingContract"}
+# The domain's chain and contract are the curated deployment's (contracts.json), checked at runtime from the
+# message's own domain: a descriptor naming them is refused rather than read and ignored.
+DOMAIN_KEYS = {"name", "version"}
 TOP_KEYS = {"$schema", "context", "metadata", "display", "includes"}
 
 PATH_SEGMENT = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*|\[\]|\[-?\d+\]|\[-?\d*:-?\d*\])$")
@@ -252,7 +254,7 @@ def resolve_path(value: str, root, descriptor: dict, where: str) -> None:
         if segment.startswith("["):
             if node[0] == "array":
                 node = node[1] if ":" not in segment else node
-            elif node[0] == "elem" and ":" in segment and re.match(r"^(bytes|string)$", node[1]):
+            elif node[0] == "elem" and ":" in segment and node[1] == "bytes":
                 pass
             else:
                 refuse(where, f"path {value!r}: {segment} of something that is not an array")
@@ -504,6 +506,10 @@ def check_field(field: dict, descriptor: dict, where: str, root) -> None:
                 refuse(where, f"visibility item {item!r} is not a non-negative integer, a boolean or a plain string")
     if "iteration" in field and field["iteration"] not in ITERATIONS:
         refuse(where, f"iteration {field['iteration']!r} is not implemented")
+    if "iteration" in field and "fields" not in field:
+        refuse(where, "iteration applies to a group, not to one field")
+    if field.get("iteration") == "bundled" and any("fields" in sub or "path" not in sub for sub in field.get("fields", [])):
+        refuse(where, "a bundled group holds fields with a path each, no group")
     fmt = field.get("format")
     if fmt is not None:
         if fmt not in FORMAT_PARAMS:
@@ -572,6 +578,8 @@ def check_descriptor(path: str, descriptor: dict) -> str:
                     or re.sub(r"\{[^{}]*\}", "", text).count("}"):
                 refuse(where, "the interpolated intent is a string of {path} placeholders")
             for placeholder in re.findall(r"\{([^{}]*)\}", text):
+                if "[" in placeholder:
+                    refuse(where, f"placeholder {{{placeholder}}} reaches into an array: one value stands for many")
                 check_path(placeholder, where + ".interpolatedIntent")
                 resolve_path(placeholder, root, descriptor, where + ".interpolatedIntent")
         for i, field in enumerate(fmt.get("fields", [])):

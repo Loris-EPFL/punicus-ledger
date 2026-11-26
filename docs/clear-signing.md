@@ -224,8 +224,9 @@ part of the decisions:
   (chain id, `to`, `from`, value and calldata, or the typed data) and lookups
   through ports: a token's metadata from the built-in list alone, as the dApp
   review's hand-written decoders name tokens today; an address's name from
-  the built-in tokens and the pinned contracts (the wallet's own accounts
-  join with part 5's wiring); an address's verified kind; and the binding
+  the built-in tokens and the pinned contracts (the wallet's own accounts, and
+  ERC-7730's `wallet` type with them, are not wired yet: a later part); an
+  address's verified kind; and the binding
   check of A4, for a nested call's callee.
   It returns `ClearSigned` (the intent, the interpolated intent, the fields
   shown, the other parameters, the nested calls) or `NotCovered(reason)`.
@@ -272,7 +273,8 @@ part of the decisions:
   not among its `types` is flagged, and so is one whose kind could not be
   read in time ("not verified"), never taken for the kind expected.
 - **NFTs.** An `nftName` names a collection only when it is a built-in one
-  (`.claude/rules/data-sources.md`, *An account's NFTs*); any other is shown
+  (`.claude/rules/data-sources.md`, *An account's NFTs*; none is yet, so
+  every collection is shown by its address); any other is shown
   as "#id of <address>", marked as not built in, never by the name its own
   contract returns.
 - **The hand-written decoders take precedence, by type.** Where one claims a

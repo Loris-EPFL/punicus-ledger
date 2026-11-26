@@ -1480,18 +1480,18 @@ class SafeTxViewModel(
         return "${request.nonce} of ${context.labelOf(safe)}: ${action.title}$warning$named"
     }
 
-    /**
-     * Follows what [source] says of the transaction: the last one shown is kept, and once it is gone
-     * from the queue, or the queue cannot be read, a step that does not sign right now ends, its
-     * password with it. One signing goes on, and lands on the transaction as last shown; so does a
-     * review whose broadcast no peer took, until the Safe's nonce has passed the transaction.
-     */
     /** Whether [result], or a call inside it, is not described because its code could not be checked. */
     private fun unchecked(result: ClearSignResult): Boolean = when (result) {
         is ClearSignResult.NotCovered -> result.reason == NotCoveredReason.CodeNotProven
         is ClearSignResult.ClearSigned -> result.fields.any { (it as? ClearSignedField.Nested)?.result?.let(::unchecked) == true }
     }
 
+    /**
+     * Follows what [source] says of the transaction: the last one shown is kept, and once it is gone
+     * from the queue, or the queue cannot be read, a step that does not sign right now ends, its
+     * password with it. One signing goes on, and lands on the transaction as last shown; so does a
+     * review whose broadcast no peer took, until the Safe's nonce has passed the transaction.
+     */
     private fun follow(source: Source?) {
         when (source) {
             is Context -> {

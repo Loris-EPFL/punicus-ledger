@@ -67,7 +67,7 @@ docs/clear-signing.md, *A1*.) In the release PR:
    registry's current head, and run `python3 -I scripts/clear-signing/fetch.py`.
 2. `python3 -I scripts/clear-signing/generate.py --print-pins` gives the new
    `PINNED`. Read the diff of every vendored file that moved: a descriptor is
-   reviewed in our PR (decision 3), its words as much as its paths.
+   reviewed in our PR (decision 4), its words as much as its paths.
 3. Start a `myotis-rpcd` per network (Ethereum, Gnosis Chain, Sepolia) and run
    `python3 -I scripts/clear-signing/pin_code_hashes.py ETHEREUM=… GNOSIS=…
    SEPOLIA=…`. A moved code hash or implementation is a contract changed since

@@ -19,7 +19,7 @@ data class ClearSigningDescriptor(
     /** The descriptor's enums by name: value (as decimal) to the name shown for it. */
     val enums: Map<String, Map<String, String>>,
     val formats: List<ClearSigningFormat>,
-    /** The auditors whose attestation of this descriptor was verified (part 4), empty when there is none. */
+    /** The auditors whose attestation of this descriptor was verified, empty until a later part checks them. */
     val attestedBy: List<Address> = emptyList(),
 ) {
     /** Calldata of a contract, or an EIP-712 message. */

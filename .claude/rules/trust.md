@@ -406,7 +406,8 @@ docs/clear-signing.md, *What a clear-signed line proves*.)
   its labels, its owner's name (stated in the file, not proven), and how a
   value is formatted (the token an amount is in, a unit, an enum's names, a
   date's encoding). Shown as described, reviewed for this release, with an
-  auditor's attestation where one exists.
+  auditor's attestation where one exists once a later part checks it (none
+  is shown yet).
 - **A descriptor hides nothing.** Every parameter no field shows, and every
   field it marks as not visible, is listed raw under "Other parameters".
 - **The refusals come first.** Every Safe refusal (`SafeTxRefusal`;

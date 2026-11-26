@@ -150,6 +150,13 @@ class DescriptorTest(unittest.TestCase):
         with self.assertRaises(generate.Refused):
             generate.resolve_path("items.[].price", message, minimal_descriptor(), "t")
 
+    def test_refuses_what_the_runtime_would_ignore(self):
+        fmt = lambda d: d["display"]["formats"]["pay(address to,uint256 amount)"]  # noqa: E731
+        self.refused(lambda d: fmt(d).update(interpolatedIntent="Pay {to.[0]}"))
+        self.refused(lambda d: self.fields(d)[0].update(iteration="sequential"))
+        self.refused(lambda d: self.fields(d).append(
+            {"label": "G", "iteration": "bundled", "fields": [{"label": "inner", "fields": [{"path": "to", "label": "T"}]}]}))
+
     def test_refuses_what_a_group_or_a_field_path_cannot_apply(self):
         group = {"label": "G", "visible": {"mustMatch": [0]}, "fields": [{"path": "to", "label": "To"}]}
         self.refused(lambda d: self.fields(d).append(group))

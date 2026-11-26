@@ -216,9 +216,13 @@ fun DappRequestScreen(
                 }
             }
             Text(
-                if (state.typed) "Signing sends no transaction. To describe this data, Punicus read only the code of " +
-                    "the contract that checks it, from the chain."
-                else "Signing reads nothing from the chain and sends no transaction.",
+                // Only where a description was asked for did Punicus read anything: the verifying contract's code.
+                if (state.describing || state.described != null || state.notDescribed != null) {
+                    "Signing sends no transaction. To describe this data, Punicus read the code of the contract " +
+                        "that checks it, from the chain."
+                } else {
+                    "Signing reads nothing from the chain and sends no transaction."
+                },
                 Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

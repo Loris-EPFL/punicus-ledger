@@ -192,6 +192,76 @@ class TraceDisagreementsTest {
     private fun other() = address("0d")
 
     @Test
+    fun aSafesSwapThatBuysTheCurrencyAgrees() {
+        // Sold for WETH paid to the router, which unwraps it and sends the currency on: the wallet's own swap.
+        val claims = TraceClaims.ofSafeAction(
+            SafeTxAction.Swap(
+                RouterSwap(router, SwapRoute(listOf(sold, weth), listOf(FeeTier.MEDIUM)), sellsEther = false,
+                    amountIn = UInt256.of(10), buysEther = true, minimumOut = UInt256.ONE, deadline = 0),
+            ),
+            user,
+        )
+        val unwrap = TraceFrame(
+            TraceFrame.Type.CALL, router, weth, UInt256.ZERO,
+            logs = listOf(TraceLog(weth, listOf(TraceReaderTest.WITHDRAWAL, TraceReaderTest.word(router)), TraceReaderTest.uint(4))),
+            calls = listOf(TraceFrame(TraceFrame.Type.CALL, weth, router, UInt256.of(4))),
+        )
+        val poolFrame = TraceFrame(
+            TraceFrame.Type.CALL, router, pool, UInt256.ZERO,
+            logs = listOf(transfer(sold, user, pool, 10), transfer(weth, pool, router, 4)),
+        )
+        val root = TraceFrame(
+            TraceFrame.Type.CALL, user, router, UInt256.ZERO,
+            calls = listOf(poolFrame, unwrap, TraceFrame(TraceFrame.Type.CALL, router, user, UInt256.of(4))),
+        )
+        val reading = TraceReader.read(user, root, weth, TypedDataMeaning.PERMIT2)
+        assertEquals(emptyList(), TraceDisagreements.check(user, reading, claims, called = router))
+    }
+
+    @Test
+    fun aWithdrawalToAnAddressShownBurnsNothingSent() {
+        val aToken = address("0b")
+        val to = address("0f")
+        val described = swap(to, tokens = listOf(sold))
+        val frame = TraceFrame(
+            TraceFrame.Type.CALL, router, aToken, UInt256.ZERO,
+            logs = listOf(transfer(aToken, user, Address.ZERO, 10), transfer(sold, aToken, to, 10)),
+        )
+        val reading = TraceReader.read(user, TraceFrame(TraceFrame.Type.CALL, user, router, UInt256.ZERO, calls = listOf(frame)), weth, TypedDataMeaning.PERMIT2)
+        assertEquals(emptyList(), check(reading, described))
+    }
+
+    @Test
+    fun aContractPaidTheExactPriceKeepsIt() {
+        // ENS renew: the price paid to the controller called, nothing back.
+        val controller = address("10")
+        val described = ClearSignResult.ClearSigned(
+            owner = "ENS", attestedBy = emptyList(), intent = "Renew", interpolatedIntent = null,
+            fields = listOf(ClearSignedField.Value("Price", "0.01 ETH", "1", nativeCurrency = true)),
+            otherParameters = emptyList(), grantsApproval = false,
+        )
+        val root = TraceFrame(TraceFrame.Type.CALL, user, controller, UInt256.of(5))
+        val reading = TraceReader.read(user, root, weth, TypedDataMeaning.PERMIT2)
+        assertEquals(emptyList(), TraceDisagreements.check(user, reading, TraceClaims.of(described), called = controller))
+        assertEquals(
+            listOf(TraceDisagreement.OtherRecipient(TracedAsset.Currency, controller)),
+            TraceDisagreements.check(user, reading, TraceClaims.of(described)),
+        )
+    }
+
+    @Test
+    fun aSafesTokenTransferIsHeldToItsRecipient() {
+        val claims = TraceClaims.ofSafeAction(SafeTxAction.TokenTransfer(sold, fee, UInt256.of(10)), user)
+        val root = TraceFrame(TraceFrame.Type.CALL, user, sold, UInt256.ZERO, logs = listOf(transfer(sold, user, thief, 10)))
+        val reading = TraceReader.read(user, root, weth, TypedDataMeaning.PERMIT2)
+        assertEquals(
+            listOf(TraceDisagreement.OtherRecipient(TracedAsset.Fungible(sold), thief)),
+            TraceDisagreements.check(user, reading, claims, called = sold),
+        )
+        assertEquals(null, TraceClaims.ofSafeAction(SafeTxAction.ContractCall(sold, UInt256.ZERO, null, 0), user))
+    }
+
+    @Test
     fun aBurnIsNoRecipient() {
         assertEquals(emptyList(), check(trace(*honest, transfer(bought, pool, Address.ZERO, 1)), swap(user)))
     }

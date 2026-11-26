@@ -39,7 +39,7 @@ sealed interface ClearSignedField {
      * not of the kind the descriptor expects. [token] is the token or the NFT collection the value names (a
      * `tokenAmount` other than of the network's currency, a `tokenTicker`, an `nftName`), and [recipient] the
      * address an `addressName` shows (the sender's own where it stands for the sender); [nativeCurrency] is set
-     * for a `tokenAmount` of the network's currency: what a verified trace is held against (docs/clear-signing.md,
+     * for an `amount`, and a `tokenAmount` of the network's currency: what a verified trace is held against (docs/clear-signing.md,
      * *Phase B*).
      */
     data class Value(
@@ -355,7 +355,7 @@ object ClearSignFormatter {
             fun parameter(parameter: ClearSigningPath): AbiValue = single(aligned(parameter, path, at.location))
             return when (format) {
                 FieldFormat.Raw -> shown(raw)
-                FieldFormat.Amount -> shown("${uint(value).formatUnits(NATIVE_DECIMALS)} ${network.nativeSymbol}")
+                FieldFormat.Amount -> shown("${uint(value).formatUnits(NATIVE_DECIMALS)} ${network.nativeSymbol}", native = true)
                 is FieldFormat.TokenAmount -> {
                     val amount = uint(value)
                     // A token the descriptor names; one that names none is no amount this app can read.

@@ -15,7 +15,10 @@ sealed interface TraceDisagreement {
      */
     data class OtherRecipient(val asset: TracedAsset, val holder: Address) : TraceDisagreement
 
-    /** The trace grants [right] while the claims grant none (no approval flag, A3, and no `approve`). */
+    /**
+     * The trace grants [right] where the claims grant none (no approval flag, A3, and no `approve`), or none over
+     * its token, or none to its spender.
+     */
     data class RightNotFlagged(val right: TracedRight) : TraceDisagreement
 }
 
@@ -94,18 +97,28 @@ object TraceDisagreements {
      * [listed] are the built-in tokens: with the tokens the claims name, the currency and its wrapped token,
      * the assets whose moves are believed to pay something (a token anyone deploys can log any move).
      */
-    fun check(account: Address, reading: TraceReading, claims: TraceClaims?, listed: Set<Address> = emptySet()): List<TraceDisagreement> {
+    fun check(
+        account: Address,
+        reading: TraceReading,
+        claims: TraceClaims?,
+        listed: Set<Address> = emptySet(),
+        /** The contract the call is sent to, which the review names: what it is paid and keeps is no theft. */
+        called: Address? = null,
+    ): List<TraceDisagreement> {
         claims ?: return emptyList()
         val effects = reading.effects
         if (effects.revert != null) return emptyList()
         val named = claims.tokens
         // Claims that show no address say the account keeps what the call gives it.
-        val recipients = claims.addresses.ifEmpty { setOf(account) }
+        val recipients = claims.addresses.ifEmpty { setOf(account) } + listOfNotNull(called)
         val valued = named + listed + CURRENCY + listOfNotNull(reading.wrappedNative)
 
-        // A burn is sent to no one: it counts only where the account receives something of value in return.
-        val receives = effects.moves.any { it.to == account && key(it.asset) in valued }
-        val sent = effects.moves.filter { it.from == account && !(receives && it.to == Address.ZERO) }.mapNotNull { it.asset.contract }
+        // A burn is sent to no one: it counts only where nothing of value comes to the account or an address the
+        // claims show, and the account pays nothing the claims name (a loan repaid burns its debt token).
+        val returned = reading.allMoves.any { it.to in recipients + account && it.from != account && key(it.asset) in valued }
+        val paysNamed = effects.moves.any { it.from == account && it.to != Address.ZERO && key(it.asset) in named + namedCurrency(claims) }
+        val excused = returned || paysNamed
+        val sent = effects.moves.filter { it.from == account && !(excused && it.to == Address.ZERO) }.mapNotNull { it.asset.contract }
         val notNamed = sent.distinct().filter { it !in named }.map { TraceDisagreement.TokenNotNamed(it) }
 
         val others = otherRecipients(account, reading, named, recipients, claims.currency, valued)
@@ -139,11 +152,14 @@ object TraceDisagreements {
         val wrapped = reading.wrappedNative
         val paid = mine.filter { it.from == account }.map { key(it.asset) }.toSet()
         val sent = if (wrapped != null && (CURRENCY in paid || wrapped in paid)) paid + CURRENCY + wrapped else paid
-        val considered = mine.map { key(it.asset) }.toSet() + named + listOfNotNull(CURRENCY.takeIf { namesCurrency })
+        val held = mine.map { key(it.asset) }.toSet() + named + listOfNotNull(CURRENCY.takeIf { namesCurrency })
+        // The currency and its wrapped token are one: held to where one ends up, the other is too.
+        val considered = if (wrapped != null && (CURRENCY in held || wrapped in held)) held + CURRENCY + wrapped else held
         val ends = setOf(account, Address.ZERO) + recipients
         val paysOn = payers(reading.allMoves, recipients + account) { key(it.asset) in valued || it.from == Address.ZERO }
         return endHolders(reading.allMoves.filter { key(it.asset) in considered })
-            .filter { (asset, holder) -> holder !in ends && !(key(asset) in sent && holder in paysOn) }
+            // A token ending with its own contract is burnt there, as wrapped currency is when it is unwrapped.
+            .filter { (asset, holder) -> holder !in ends && holder != asset.contract && !(key(asset) in sent && holder in paysOn) }
             .map { (asset, holder) -> TraceDisagreement.OtherRecipient(asset, holder) }
     }
 
@@ -164,6 +180,9 @@ object TraceDisagreements {
         }
         return reached - targets
     }
+
+    /** [CURRENCY] when the claims show an amount of the network's currency. */
+    private fun namedCurrency(claims: TraceClaims): Set<Address> = if (claims.currency) setOf(CURRENCY) else emptySet()
 
     /** The token a right is over: Permit2's is the token it lets the spender take. */
     private fun TracedRight.over(): Address = if (this is TracedRight.Permit2) token else contract

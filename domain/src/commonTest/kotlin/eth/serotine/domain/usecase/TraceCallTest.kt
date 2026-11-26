@@ -79,6 +79,30 @@ class TraceCallTest {
     }
 
     @Test
+    fun aPermit2RightNamesItsToken() = runTest {
+        val permit2 = eth.serotine.domain.model.TypedDataMeaning.PERMIT2
+        val word = { a: Address -> "0".repeat(24) + a.hex.removePrefix("0x") }
+        val uint = { v: Long -> UInt256.of(v).toBytes32().joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') } }
+        val approve = eth.serotine.domain.model.TraceLog(
+            permit2,
+            listOf(eth.serotine.domain.model.TraceReaderTest.PERMIT2_APPROVAL, word(user), word(usdc), word(router)),
+            uint(50) + uint(1_800_000_000),
+        )
+        val traces = FakeTraces { CallTraceReading.Traced(TraceFrame(TraceFrame.Type.CALL, user, permit2, UInt256.ZERO, logs = listOf(approve)), 1) }
+        val outcome = assertIs<TraceOutcome.Traced>(TraceCall(traces, tokens, catalog, { null }, backgroundScope).trace(Network.ETHEREUM, user, permit2, UInt256.ZERO, byteArrayOf(), null))
+        assertEquals(mapOf(usdc to ClearSigningToken("USDC", 6)), outcome.tokens)
+    }
+
+    @Test
+    fun aPortThatThrowsIsNoAnswer() = runTest {
+        val traces = FakeTraces { throw IllegalStateException("engine") }
+        assertEquals(
+            TraceOutcome.Unavailable(ReadUnavailable.UNPROVEN),
+            TraceCall(traces, tokens, catalog, { null }, backgroundScope).trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(), null),
+        )
+    }
+
+    @Test
     fun whatTheEngineCannotTraceIsSaidSo() = runTest {
         val traces = FakeTraces { CallTraceReading.NotTraced }
         val use = TraceCall(traces, tokens, catalog, { null }, backgroundScope)

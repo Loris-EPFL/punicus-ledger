@@ -2,6 +2,7 @@ package eth.serotine.domain.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 /** [TraceReader]'s reading of a verified trace's effects (docs/clear-signing.md, *Phase B*, B2). */
@@ -182,6 +183,13 @@ class TraceReaderTest {
         assertEquals(3, reading.allMoves.size)
         assertEquals(2, reading.effects.moves.size)
         assertNull(reading.effects.revert)
+    }
+
+    @Test
+    fun aLogOfAnotherHexShapeCannotBeMade() {
+        assertFailsWith<IllegalArgumentException> { TraceLog(token, listOf("0x$TRANSFER"), "") }
+        assertFailsWith<IllegalArgumentException> { TraceLog(token, listOf(TRANSFER.uppercase()), "") }
+        assertFailsWith<IllegalArgumentException> { TraceLog(token, listOf(TRANSFER), "abc") }
     }
 
     @Test

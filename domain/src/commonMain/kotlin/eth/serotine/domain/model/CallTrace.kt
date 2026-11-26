@@ -43,4 +43,15 @@ data class TraceFrame(
  * A log a [TraceFrame] emitted: by the contract at [address] (the frame's own, or for a delegate call its
  * caller's), its [topics] as 32-byte lower-case hex without `0x`, its [data] the same.
  */
-data class TraceLog(val address: Address, val topics: List<String>, val data: String)
+data class TraceLog(val address: Address, val topics: List<String>, val data: String) {
+    init {
+        // Checked here, so that an event is never missed for the shape of its hex: one that cannot match is no log.
+        require(topics.all { it.length == WORD_HEX && it.all(::isLowerHex) }) { "a topic is 64 lower-case hex digits" }
+        require(data.length % 2 == 0 && data.all(::isLowerHex)) { "data is lower-case hex, whole bytes" }
+    }
+
+    private companion object {
+        const val WORD_HEX = 64
+        fun isLowerHex(c: Char) = c in '0'..'9' || c in 'a'..'f'
+    }
+}

@@ -166,7 +166,8 @@ object TraceReader {
         fun spends(spender: Address): Boolean = sender == spender && frameLogs.any {
             it.address == log.address && it.topics.size >= 3 && it.topics[0] == TRANSFER && topicAddress(it.topics[1]) == account
         }
-        val words = words(log.data)
+        // Only a known event's data is read into words: the dApp chooses how many logs there are, and how long.
+        val words by lazy { words(log.data) }
         fun address(topic: String): Address? = topicAddress(topic)
         val emitter = log.address
         return when (event) {

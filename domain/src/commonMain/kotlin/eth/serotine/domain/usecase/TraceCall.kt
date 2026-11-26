@@ -9,6 +9,7 @@ import eth.serotine.domain.model.TraceDisagreement
 import eth.serotine.domain.model.TraceDisagreements
 import eth.serotine.domain.model.TraceEffects
 import eth.serotine.domain.model.TraceReader
+import eth.serotine.domain.model.TracedRight
 import eth.serotine.domain.model.TypedDataMeaning
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.toHex
@@ -18,7 +19,9 @@ import eth.serotine.domain.repository.ClearSigningCatalog
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenCatalog
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
@@ -26,6 +29,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -47,6 +51,8 @@ class TraceCall(
     private val wrappedNative: (Network) -> Address?,
     private val scope: CoroutineScope,
     private val waitMs: Long = WAIT_MS,
+    /** Where a trace is read: its size is the dApp's to choose, so never on the caller's thread. */
+    private val readOn: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val running = mutableMapOf<Key, Deferred<CallTraceReading>>()
     private val lock = Mutex()
@@ -87,7 +93,7 @@ class TraceCall(
         }
         lock.withLock { if (running[key] === run) running.remove(key) }
         return when (reading) {
-            is CallTraceReading.Traced -> traced(network, from, reading, claims)
+            is CallTraceReading.Traced -> withContext(readOn) { traced(network, from, to, reading, claims) }
             is CallTraceReading.Infeasible -> TraceOutcome.Infeasible(reading.detail)
             CallTraceReading.NotTraced -> TraceOutcome.NotTraced
             is CallTraceReading.Unavailable -> TraceOutcome.Unavailable(reading.reason)
@@ -97,6 +103,7 @@ class TraceCall(
     private suspend fun traced(
         network: Network,
         from: Address,
+        to: Address,
         reading: CallTraceReading.Traced,
         claims: TraceClaims?,
     ): TraceOutcome.Traced {
@@ -105,7 +112,12 @@ class TraceCall(
         val effects = read.effects
         val mentioned = buildSet {
             effects.moves.forEach { add(it.from); add(it.to); it.asset.contract?.let(::add) }
-            effects.rights.forEach { add(it.contract); add(it.spender) }
+            effects.rights.forEach { right ->
+                add(right.contract)
+                add(right.spender)
+                // Permit2's right is over a token it does not call: named all the same.
+                (right as? TracedRight.Permit2)?.token?.let(::add)
+            }
             effects.contracts.forEach { add(it.address) }
         }
         val listed = builtIn.filter { it.address in mentioned }
@@ -114,7 +126,7 @@ class TraceCall(
         }.toMap()
         return TraceOutcome.Traced(
             effects = effects,
-            disagreements = TraceDisagreements.check(from, read, claims, builtIn.map { it.address }.toSet()),
+            disagreements = TraceDisagreements.check(from, read, claims, builtIn.map { it.address }.toSet(), called = to),
             blockNumber = reading.blockNumber,
             names = names,
             tokens = listed.associate { it.address to ClearSigningToken(it.symbol, it.decimals) },

@@ -35,6 +35,14 @@ internal interface TransactingChain : VerifiedChain {
     /** The same transaction as a verified call from [from] at the head; null: no verified answer. */
     fun callFrom(from: Address, to: Address, valueWei: String, data: ByteArray): CallOutcome?
 
+    /**
+     * The same transaction traced at block [block] (the engine's `debug_traceCall` with the `callTracer` and its
+     * logs, docs/clear-signing.md, *Phase B*), the block applied or refused, never ignored. An engine that does
+     * not trace calls answers [TraceAnswer.NoTracer], as this default does. Blocks, bounded by the engine.
+     */
+    fun traceCall(from: Address, to: Address, valueWei: String, data: ByteArray, block: Long): TraceAnswer =
+        TraceAnswer.NoTracer
+
     /** Gossips the signed [raw] transaction. */
     fun sendRaw(raw: ByteArray): SendAnswer
 
@@ -72,6 +80,25 @@ internal sealed interface EstimateAnswer {
 
     /** No answer now; [detail] the engine's words for why, when it gives any. */
     data class Unavailable(val detail: String? = null) : EstimateAnswer
+}
+
+/** An engine's trace of a call. */
+internal sealed interface TraceAnswer {
+    /** Traced: the `callTracer`'s answer as JSON. */
+    data class Traced(val json: String) : TraceAnswer {
+        override fun toString(): String = "Traced(${json.length} characters)"
+    }
+
+    data class Infeasible(val detail: String) : TraceAnswer
+
+    /** This request refused ([detail], the engine's words): another may be traced. */
+    data class Refused(val detail: String) : TraceAnswer
+
+    /** This engine traces no calls at all (`supportsCallTracing` false, or an engine without the call). */
+    data object NoTracer : TraceAnswer
+
+    /** No answer now; [detail] the engine's words for why, when it gives any. */
+    data class Unavailable(val detail: String? = null) : TraceAnswer
 }
 
 /** An engine's broadcast verdict. */

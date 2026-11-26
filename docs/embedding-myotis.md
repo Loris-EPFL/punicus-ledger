@@ -442,6 +442,31 @@ verified read.
     17433 when probed), so Punicus adds no floor of its own.
   - The simulation is `callDetailed` from the sender at the head, the transfer
     as it will run.
+- **`EngineCallTraces`** (`CallTraces`; docs/clear-signing.md, *Phase B*):
+  `traceCall` (`debug_traceCall`) with the `callTracer` and its logs
+  (`{"tracer":"callTracer","tracerConfig":{"withLog":true}}`), for D6 and
+  screen 17.
+  - The transaction carries its sender, recipient, value and data, and no
+    gas limit or fee.
+  - It is asked at the snapshot's readable head by its number. `TraceResult`
+    names no block, so this is how the effects know the block they are
+    proven at. That the engine applies the number or refuses it is its own
+    contract (`VerifiedReads.traceCall`'s KDoc, Myotis #716: the run
+    `callTx` makes "at `block`"), not something seen here: nothing in the
+    answer could show it. A refusal is read as no answer this time, as for
+    `callAt`, since the head moves on under a named block.
+  - The root frame echoes the call asked for (sender, recipient, value); a
+    trace whose root says otherwise is no answer.
+  - An answer longer than 16 Mi characters is no answer. A trace's size is
+    the called contract's to choose, each frame carrying its calldata. Whether
+    the engine caps what it builds before the wallet sees it is not known
+    here, and is Myotis's to say.
+  - An engine whose `supportsCallTracing()` is false traces nothing (said
+    so). So does iOS: `myotis-engine-ios` 0.1.24 has the call in its native
+    library but not on its chain handle. Asking Myotis to expose it is the
+    owner's.
+  - A trace this cannot read exactly (`CallTraceJson`) is no answer, never a
+    trace with a frame left out.
 - **`EngineBroadcaster`** (`Broadcaster`): `sendRawTransactionDetailed`. The
   engine judges a send on verified state before it gossips it, and its verdict
   (sent, rejected with geth's reason, refused, unavailable) is passed on.

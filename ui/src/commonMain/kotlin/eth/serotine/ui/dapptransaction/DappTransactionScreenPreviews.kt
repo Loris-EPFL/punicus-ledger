@@ -4,6 +4,8 @@ import eth.serotine.ui.components.ClearSignedParameter
 import eth.serotine.ui.components.ClearSignedRow
 import eth.serotine.ui.components.ClearSignedSection
 import eth.serotine.ui.components.ClearSignedText
+import eth.serotine.ui.components.TraceSection
+import eth.serotine.ui.components.TraceText
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.usecase.DappSignRefusal
 import eth.serotine.ui.components.NotSentItem
@@ -186,6 +188,53 @@ private val contractChanged = described.copy(
     meaningFields = listOf(SignInField("Function", "0x617ba037")),
     notDescribed = ClearSignedText.CONTRACT_CHANGED,
 )
+
+private const val THIEF = "0x9f1e8D3c2B4a5F6e7D8c9B0a1F2e3D4c5B6a7F8e"
+private const val A_WETH = "0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8"
+
+private val traceProven = "Proven at block 21,402,117, at the verified head: what it does now, not when it is mined."
+
+/** A payment, traced at the head (on a short state, so that the section fits the window). */
+private val traced = payment.copy(
+    trace = TraceSection(
+        provenAt = traceProven,
+        moves = listOf("Sends 0.5 ETH (testnet) to $RECIPIENT"),
+        contracts = listOf(RECIPIENT),
+        canRetry = true,
+    ),
+)
+
+/** The same call, its output sent elsewhere than it claims, and a right it does not say it grants. */
+private val tracedDisagrees = traced.copy(
+    trace = traced.trace!!.copy(
+        moves = listOf("Sends 0.5 ETH (testnet) to $THIEF"),
+        rights = listOf("Lets $THIEF take up to 1000000 USDC"),
+        warnings = listOf(
+            "The network's currency ends up with $THIEF, an address this call does not show.",
+            "Lets $THIEF take up to 1000000 USDC: a right this call does not say it grants.",
+        ),
+    ),
+)
+
+private val tracedReverts = traced.copy(
+    trace = TraceSection(
+        provenAt = traceProven,
+        revert = "It reverts. The contract's reason: \"51\"",
+        contracts = listOf(RECIPIENT),
+        warnings = listOf(TraceText.REVERTS_UNLIKE_RUN),
+        canRetry = true,
+    ),
+)
+
+private val tracedNothingLogged = payment.copy(
+    trace = TraceSection(provenAt = traceProven, contracts = listOf(RECIPIENT), canRetry = true),
+)
+private val notTracedUnavailable = payment.copy(
+    trace = TraceSection(notTraced = "Not traced: the light client is still syncing.", canRetry = true),
+)
+private val tracing = payment.copy(trace = TraceSection(tracing = true))
+private val notTracedHere = payment.copy(trace = TraceSection(notTraced = TraceText.NOT_TRACED_HERE))
+private val notTracedInTime = payment.copy(trace = TraceSection(notTraced = TraceText.NOT_IN_TIME, canRetry = true))
 
 private const val SAFE = "0x7a3B9c1E5d2F4a6B8c0D1e2F3a4B5c6D7e8F9a0B"
 private const val OWNER = "0x2B5AD5c4795c026514f8317c7a215E218DcCD6cF"
@@ -432,4 +481,66 @@ internal val dappTransactionScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("loading") { DappTransactionLoadingPreview() },
     ScreenPreview("real-funds") { DappTransactionRealFundsPreview() },
     ScreenPreview("real-funds-dark") { DappTransactionRealFundsDarkPreview() },
+    ScreenPreview("traced") { DappTransactionTracedPreview() },
+    ScreenPreview("traced-dark") { DappTransactionTracedDarkPreview() },
+    ScreenPreview("trace-disagrees") { DappTransactionTraceDisagreesPreview() },
+    ScreenPreview("trace-disagrees-dark") { DappTransactionTraceDisagreesDarkPreview() },
+    ScreenPreview("trace-reverts") { DappTransactionTraceRevertsPreview() },
+    ScreenPreview("tracing") { DappTransactionTracingPreview() },
+    ScreenPreview("not-traced-here") { DappTransactionNotTracedHerePreview() },
+    ScreenPreview("not-traced-in-time") { DappTransactionNotTracedInTimePreview() },
+    ScreenPreview("traced-nothing-logged") { DappTransactionTracedNothingLoggedPreview() },
+    ScreenPreview("not-traced-unavailable") { DappTransactionNotTracedUnavailablePreview() },
+    ScreenPreview("safe-traced") { DappTransactionSafeTracedPreview() },
+    ScreenPreview("traced-again") { DappTransactionTracedAgainPreview() },
 )
+
+@Preview
+@Composable
+private fun DappTransactionTracedPreview() = DappTransactionPreview(traced)
+
+@Preview
+@Composable
+private fun DappTransactionTracedDarkPreview() = DappTransactionPreview(traced, darkTheme = true)
+
+@Preview
+@Composable
+private fun DappTransactionTraceDisagreesPreview() = DappTransactionPreview(tracedDisagrees)
+
+@Preview
+@Composable
+private fun DappTransactionTraceDisagreesDarkPreview() = DappTransactionPreview(tracedDisagrees, darkTheme = true)
+
+@Preview
+@Composable
+private fun DappTransactionTraceRevertsPreview() = DappTransactionPreview(tracedReverts)
+
+@Preview
+@Composable
+private fun DappTransactionTracingPreview() = DappTransactionPreview(tracing)
+
+@Preview
+@Composable
+private fun DappTransactionNotTracedHerePreview() = DappTransactionPreview(notTracedHere)
+
+@Preview
+@Composable
+private fun DappTransactionNotTracedInTimePreview() = DappTransactionPreview(notTracedInTime)
+
+@Preview
+@Composable
+private fun DappTransactionTracedNothingLoggedPreview() = DappTransactionPreview(tracedNothingLogged)
+
+@Preview
+@Composable
+private fun DappTransactionNotTracedUnavailablePreview() = DappTransactionPreview(notTracedUnavailable)
+
+@Preview
+@Composable
+private fun DappTransactionSafeTracedPreview() = DappTransactionPreview(
+    fromSafe.copy(trace = traced.trace!!.copy(note = TraceText.SAFE_CALL_NOTE)),
+)
+
+@Preview
+@Composable
+private fun DappTransactionTracedAgainPreview() = DappTransactionPreview(tracedDisagrees.copy(trace = tracedDisagrees.trace!!.copy(tracing = true)))

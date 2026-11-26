@@ -98,6 +98,7 @@ class SafeTxScreenTest {
                     onShare = { events += "share" },
                     onShareClosed = { events += "share closed" },
                     onCheckAgain = { events += "check again" },
+                    onRetrace = { events += "retrace" },
                     onSign = { events += "sign" },
                     onApprove = { events += "approve" },
                     onExecute = { events += "execute" },
@@ -120,6 +121,24 @@ class SafeTxScreenTest {
         }
     }
 
+
+    @Test
+    fun aTraceThatDisagreesIsSaidInTheCardAndBesideWhatSignsWhichStaysAsItIs() {
+        val warning = "USDC ends up with $savings, an address this call does not show."
+        val traced = action.copy(trace = eth.serotine.ui.components.TraceSection(provenAt = "Proven at block 9.", warnings = listOf(warning)))
+        show(review.copy(action = traced))
+
+        rule.onNodeWithText("• $warning").performScrollTo().assertExists()
+        rule.onNodeWithText(eth.serotine.ui.components.TraceText.DISAGREES_NEAR_SIGN).performScrollTo().assertExists()
+    }
+
+    @Test
+    fun aTraceNotHadOffersTryAgainInTheCard() {
+        show(overview.copy(action = action.copy(trace = eth.serotine.ui.components.TraceSection(notTraced = "Not traced: no answer.", canRetry = true))))
+
+        rule.onNodeWithText("Try again").performScrollTo().performClick()
+        assertEquals(listOf("retrace"), events)
+    }
     @Test
     fun theOverviewShowsTheTransactionDecodedHereAndEveryOwnersStand() {
         show(overview)

@@ -1,5 +1,6 @@
 package eth.serotine.ui.dapptransaction
 
+import eth.serotine.domain.model.Address
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.DappTransactionRequest
@@ -80,6 +81,8 @@ class DappSafeTransactionViewModelTest {
         now + 300,
     )
 
+    private val traced = mutableListOf<Triple<Address, Address, UInt256>>()
+
     private fun TestScope.viewModel(id: Long = 1): DappTransactionViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val history = MemoryTransactionHistory()
@@ -87,6 +90,7 @@ class DappSafeTransactionViewModelTest {
             "t/$id",
             ObserveDappMessages(requests, world.accounts, networks, world.catalog, MemoryAliases(), clock = { now }),
             describing(world.catalog),
+            tracing(world.catalog, backgroundScope, traced),
             QuoteDappTransaction(
                 requests, world.accounts, networks, world.catalog, world.balances, world.inputs, world.sent, history,
                 outbox = Outbox.None,
@@ -107,6 +111,7 @@ class DappSafeTransactionViewModelTest {
             clock = { now },
             timeSource = clock,
             ticks = kotlinx.coroutines.flow.flowOf(Unit),
+            formatOn = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -134,6 +139,7 @@ class DappSafeTransactionViewModelTest {
             "t/1",
             ObserveDappMessages(requests, gnosis.accounts, on, gnosis.catalog, MemoryAliases(), clock = { now }),
             describing(gnosis.catalog),
+            tracing(gnosis.catalog, backgroundScope),
             QuoteDappTransaction(
                 requests, gnosis.accounts, on, gnosis.catalog, gnosis.balances, gnosis.inputs, gnosis.sent, history,
                 outbox = Outbox.None,
@@ -154,6 +160,7 @@ class DappSafeTransactionViewModelTest {
             clock = { now },
             timeSource = clock,
             ticks = kotlinx.coroutines.flow.flowOf(Unit),
+            formatOn = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -167,6 +174,13 @@ class DappSafeTransactionViewModelTest {
         // It opens as the Gnosis Chain Safe's transaction, never the same address's on Sepolia.
         assertEquals(eth.serotine.domain.model.AccountId(Network.GNOSIS, gnosis.safe), vm.uiState.value.safeAccount)
         assertEquals("0x" + queued.hash.hex, vm.uiState.value.queued)
+    }
+
+    @Test
+    fun aSafesTransactionIsTracedAsTheSafesOwnCall() = runTest {
+        requests.waiting.value = listOf(request(1))
+        viewModel()
+        assertEquals(world.safe, traced.single().first)
     }
 
     @Test

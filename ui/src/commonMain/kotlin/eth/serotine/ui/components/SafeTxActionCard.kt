@@ -31,7 +31,7 @@ const val SAFE_TX_ACTION_TAG = "safe-tx-action"
  * does, and its warning. What the user confirms before signing, so nothing is shortened.
  */
 @Composable
-fun SafeTxActionCard(action: SafeTxActionItem, modifier: Modifier = Modifier) {
+fun SafeTxActionCard(action: SafeTxActionItem, modifier: Modifier = Modifier, onRetrace: () -> Unit = {}) {
     Surface(
         modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
@@ -79,6 +79,7 @@ fun SafeTxActionCard(action: SafeTxActionItem, modifier: Modifier = Modifier) {
             action.warning?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             }
+            action.trace?.let { TracedEffects(it, onRetrace, Modifier) }
         }
     }
 }

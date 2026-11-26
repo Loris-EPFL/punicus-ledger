@@ -4,9 +4,10 @@ Before a dApp transaction, a typed-data message or a Safe transaction is
 signed, Punicus says in words what it does: "Swap 1,000 USDC for at least
 0.31 ETH on Uniswap, sent to you, until 14:05". This page is the contract for
 how those words come about. It records the owner's decisions of 2026-11-25
-(issue #240), which `.claude/rules/data-sources.md` (*The clear-signing
-descriptors are built in*) and `.claude/rules/trust.md` (*What a dApp sends
-is untrusted input*, *A clear-signed line*) carry as rules.
+(issue #240), and those of 2026-11-26 on phase B (*Phase B*), which
+`.claude/rules/data-sources.md` (*The clear-signing descriptors are built
+in*) and `.claude/rules/trust.md` (*What a dApp sends is untrusted input*,
+*A clear-signed line*, *A verified trace*) carry as rules.
 
 Today Punicus decodes only ERC-20 `transfer` and `approve`, Safe's own
 methods, the Uniswap calls it builds itself, and the typed data of
@@ -44,7 +45,8 @@ that, and nothing it adds narrows what is already shown.
    the part PRs into it, once each is done under the Workflow (the
    feature-branch skill: the answer lives in that conversation, and a later
    session asks again). The PR into `main` is the
-   owner's. Phases B and C stay open (*Open decisions*).
+   owner's. Phase B was decided on 2026-11-26 (*Phase B*); phase C stays
+   open (*Open decisions*).
 
 ## ERC-7730 in short
 
@@ -370,15 +372,215 @@ the five steps of docs/architecture.md:
 
 Then, later parts: the attestations' check, and the descriptors of decision 5.
 
+Phase B lands through `feature/verified-trace`:
+
+1. **Rules and docs**: phase B here, in `.claude/rules/trust.md` and
+   `.claude/rules/data-sources.md`, and D6 and screen 17 in
+   docs/walletconnect.md and docs/wallet-ux.md.
+2. **`:domain`**: the trace port, the interpreter of the effects, the check
+   against a description, the use case.
+3. **`:data`**: the adapter over `traceCall`, routed per network (Android
+   and the desktop; iOS answers "not available" until Myotis exposes the
+   call there), and its entry in docs/embedding-myotis.md.
+4. **D6**, with previews.
+5. **The Safe review** (screen 17), with previews and the `CHANGELOG.md`
+   entry.
+6. **The final PR**, `feature/verified-trace` → `main`.
+
+## Phase B: a verified trace
+
+(The owner's decisions, 2026-11-26, on #240: questions 6 and 7, and what a
+disagreement does.)
+
+The description of phase A is its author's claim of what a call does. A
+trace is what the call does when it runs at the verified head: Myotis's Rust
+engine runs it (`VerifiedReads.traceCall`, `debug_traceCall` with the
+`callTracer` and its logs; VesperBats/myotis#716) against state it proves slot
+by slot, as it runs the simulation D6 already shows. Phase B shows the trace's
+effects beside the description, and warns where the two disagree.
+
+### The owner's decisions (2026-11-26)
+
+1. **Where, and how labelled** (question 6): D6, a dApp's transaction, first;
+   then the Safe review (screen 17), a Safe transaction traced as the Safe's
+   own call. The effects are labelled as proven at the verified head, and
+   shown beside the description and the simulation.
+2. **A description and a trace that disagree are warned about loudly, and the
+   call stays signable.** The owner's examples: a "Swap" whose trace moves a
+   token the call does not name, or moves the user's tokens to an address
+   other than the shown recipient.
+3. **`diffMode` later** (question 7): token movements and approvals come from
+   the trace's logs (`callTracer` with `withLog`), the network's currency
+   from the call tree. Myotis 0.1.24 refuses the `prestateTracer`'s
+   `diffMode` (exact balance and storage changes); it is asked for once
+   phase B shows what is missing without it.
+4. **The plan lands through `feature/verified-trace`.** The owner allowed the
+   session that asked to merge the part PRs into it, once each is done under
+   the Workflow. The PR into `main` is the owner's.
+
+### What a trace proves, and what it does not
+
+- **Proven: the run at the verified head.** The transaction's sender,
+  recipient, value and data run against the state the light client verified
+  at that head, a block the trace is asked at by its number (the engine
+  applies it or refuses it; its answer names no block): every contract it
+  reaches, how (a call, a delegate call, a static call, a creation), every
+  log it emits, and whether and why it reverts.
+- **Not given: the gas limit and the fees.** The trace runs as the
+  simulation does, as a call without them: no fee is charged to the sender
+  (and none to a Safe, which never pays for its own execution). A contract
+  that branches on the gas left or the gas price can do otherwise when the
+  signed transaction runs.
+- **Not proven: the run at inclusion.** The transaction is mined later, on
+  other state. A contract that branches on the block, a price or another
+  transaction can do something else then.
+- **The effects are what the contracts log.** A token that moves or grants a
+  right without logging it is not seen, and a token that logs falsely is
+  believed: a trace with nothing alarming in it is no proof that nothing
+  else happens. Exact balance changes need `diffMode` (decision 3).
+- **An approval moves nothing at that moment**: it is shown as a right
+  granted, not a movement.
+- **A signed message never runs.** Typed data (D5) has no trace.
+
+### How it is applied, not part of the decisions (the owner's to approve on #240)
+
+**The effects** (B2). A pure interpreter reads the call tree and its logs,
+counting a frame only when neither it nor any frame above it failed:
+
+- **The network's currency**: the value of each CALL, CREATE, CREATE2 and
+  SELFDESTRUCT frame to or from the account, from the call tree alone
+  (decision 3). A DELEGATECALL or CALLCODE frame carries its caller's value
+  and moves nothing, so it is not counted. The network's own log of a
+  currency transfer (EIP-7708, a `Transfer` from `TokenTransfers.ETH`, as
+  Sepolia logs one) is that same move and no token: it is not read. Wrapped
+  currency is read from WETH's and WXDAI's `Deposit` and `Withdrawal`,
+  emitted by their pinned addresses, since they log no `Transfer` for it.
+- **Tokens** the account sends and receives: ERC-20 `Transfer` (three topics)
+  and ERC-721 `Transfer` (four topics), ERC-1155 `TransferSingle` and
+  `TransferBatch`, with the counterparty. A log of one of these events that
+  is not its exact encoding is not read, and the effects say how many were
+  not.
+- **Rights granted**: an ERC-20 or ERC-721 `Approval`, and an
+  `ApprovalForAll` set to true, with the account as owner. The `Approval`
+  a token logs while its spender spends an allowance (from inside the
+  spender's `transferFrom`) is no grant. It is told apart by who called the
+  token: the sender of the token's own frame, the `from` of the nearest frame
+  at or above the log that is not a DELEGATECALL (`msg.sender` where the log
+  was emitted; for a token behind a proxy, the frame into the proxy). An
+  `Approval` with that sender as its spender is a spend when the same frame
+  also logs a `Transfer` of that token from the account, and a grant when it
+  does not (a `permit` signed earlier and relayed by its spender). Permit2's
+  `Approval` and `Permit` count only as emitted by the pinned Permit2.
+- **Tokens are named as the description names them** (A3): by the built-in
+  list, any other by its address with its amount raw.
+- **The addresses it calls** (no code is read for them, so a payee is among
+  them: not every one is a contract), each named where the wallet names it (a
+  built-in token, a pinned deployment), and **a delegate call into code the
+  wallet cannot name** marked as such. Most proxies delegate to their
+  implementation, so this is a marker beside the contract, not a warning.
+- **A revert**, with its reason where the contract gives one. A revert in
+  the trace alone stops nothing: the simulation's revert stops the send, as
+  D6 says; one the trace shows while the simulation succeeds (the head moved
+  between the two) is warned about like a disagreement.
+
+**What the trace is held against.** The claims of what the call does: its
+description (A3) where one is shown; otherwise the meaning a hand-written
+decoder gives it (`DappCallMeaning`, `SafeTxAction`: a payment names its
+recipient and the currency; a token `transfer` its token and recipient; an
+`approve` its token, and grants a right). A call neither describes is shown
+with its effects alone, under "not decoded".
+
+- **The tokens it names**: each `tokenAmount`'s token (or the network's
+  currency), `tokenTicker` and `nftName` collection, the nested calls'
+  included; or the decoder's token.
+- **The addresses it shows**: every `addressName` (a recipient, a spender, a
+  debtor, a seller alike: an address the user is shown), the sender's own
+  where one stands for the sender; or the decoder's recipient or spender.
+  The contract the call is sent to is one too: the review names it, so what
+  it is paid and keeps (a name's price) is no disagreement.
+- **Whether it grants a right**: the approval flag (A3), or an `approve`.
+
+**The disagreements** (decision 2):
+
+- **A token the claims do not name**: the account sends a token, wrapped
+  currency or an NFT that the claims do not name. A token the account burns
+  (sends to the zero address, as a lending pool's `withdraw` burns its shares,
+  or a repaid loan its debt token) is not sent to anyone. It counts only where
+  nothing of value comes to the account or an address the claims show (an
+  asset the claims name, a built-in token, the currency or its wrapped token),
+  and the account pays nothing the claims name. The network's currency the
+  transaction itself carries (its value, shown on the screen already) is no
+  disagreement.
+- **The user's tokens ending elsewhere**: an asset (each the account sends or
+  receives, each the claims name, and the currency where the account moves it
+  or the claims show an amount of it, the currency and its wrapped token held
+  as one) ends up, more of it than it started with, with an address that is
+  none of: the account, an address the claims show (claims that show none are
+  held to the account alone, and the contract called), the zero address or the
+  token's own contract (a burn, as wrapped currency is burnt when it is
+  unwrapped), and, for an asset the account pays with (the currency and its
+  wrapped token counting as one), a counterparty that pays on. A counterparty
+  pays on when a chain of the trace's moves leads from it to the account or a
+  shown address, the last move of that chain an asset of value (one the claims
+  name, a built-in token, the currency or its wrapped token: any contract can
+  log a junk token's move) or a mint (its issuer paying in its own shares, as
+  a lending pool or a vault does for what it takes). Moves further up the
+  chain may be in any token, since a route's middle token is often in no list.
+  A contract that only takes is never a counterparty, however much code it
+  runs. What passes all the same, and the trace cannot tell: a counterparty
+  that pays back dust, a contract that takes the tokens and mints its own
+  shares for them, and a thief whose move of a junk token into a real
+  counterparty is logged. The trace proves where tokens go, not that the price
+  is fair.
+- **A right the claims do not grant**: the trace grants a right (as above)
+  that the claims do not: they grant none, or not over that token (for
+  Permit2, the token it lets be taken), or not to that spender (an address
+  they show).
+
+The unit tests hold the checks against the traces of ordinary calls (a swap
+in one hop and in several, a wrap, a deposit into a lending pool and its
+withdrawal, a fee) as well as the owner's examples, so that a warning is
+rare and meant (docs/balance-reconciliation.md, D3).
+
+**Where it shows** (B4, B5):
+
+- **D6**, a dApp's transaction, an account's or a Safe's (a dApp's Safe
+  transaction traced as the Safe's own call): "What it does now", the
+  effects, beside the verified run of the simulation, with the block they are
+  proven at.
+- **The Safe review** (screen 17): a Safe transaction's call (operation CALL)
+  traced as the Safe's own call: the Safe as its sender, its value and data,
+  no fee. The trace leaves out what `execTransaction` adds: the refund of the
+  *Gas and refund terms* and the Safe's own checks. A delegate call stays
+  refused and is not traced.
+- Simple mode, on the screens that have one (screen 17), shows the effects
+  with their label (now, not when it is mined) and when they were traced in
+  place of the block, as `.claude/rules/ui.md` has it for a value the user
+  acts on. D6 has no simple form; it names the block, as its quote does.
+- A disagreement is said loudly in the trace and again beside the button
+  that signs, which stays as it is.
+
+**Limits**:
+
+- **Android and the desktop trace; iOS does not yet.** Both run Myotis's Rust
+  engine, whose JVM API offers `traceCall` (`supportsCallTracing`). The iOS
+  engine (`myotis-engine-ios`) has the call in its native library but does
+  not expose it on its chain handle in 0.1.24: until Myotis does, iOS says
+  the trace is not available. Asking Myotis for it is the owner's.
+- **A deep call fetches many proofs.** The wallet waits 30 seconds for a
+  trace; past that the screen says it could not be traced in time. The
+  engine's own run goes on to its budget (90 seconds) and is not stopped, so
+  *Try again* waits for that run's end rather than starting a second one.
+  A trace the engine finds infeasible (the value is more than the sender
+  holds, for one) is said so.
+- **At a fresh verified head only**, as the simulation: while the light
+  client catches up, nothing is traced.
+- **A trace too large to read** (over 16 Mi characters of the engine's
+  answer, a contract that calls with much data again and again), or one not
+  read exactly, is no verified answer: the screen says none could be had.
+
 ## Later phases (open)
 
-- **B. A verified trace.** Myotis's Rust engine serves
-  `VerifiedReads.traceCall` (`callTracer`, `prestateTracer`;
-  VesperBats/myotis#716) against verified state. It would show, next to the
-  description, what the call does at the head (the call tree, the token
-  movements, the approvals), and warn where they disagree. Its limits: at
-  the head, not at inclusion; an approval moves nothing by itself; off-chain
-  signatures never run; a deep DeFi call fetches many proofs.
 - **C. Verified ABIs for the long tail.** A build job runs lib-sourcify over a
   curated list, writing code hash → ABI (and NatSpec for a `perfect` match),
   checked at runtime against a verified `getCode` hash as in A4. It names the
@@ -389,9 +591,16 @@ Then, later parts: the attestations' check, and the descriptors of decision 5.
 The owner's, recorded here and in `.claude/rules/data-sources.md` before
 their code lands (#240):
 
-- Phase B on D6: whether the trace's asset changes and approvals are shown
-  beside the description and the simulation (question 6).
-- `diffMode` of `prestateTracer` in Myotis: asked for now, or after phase B's
-  first version (question 7).
+- Whether the Safe refusals (#63, #54) reach what a trace proves: on
+  screen 17 a call can change the Safe itself through a module already
+  enabled (`execTransactionFromModule` back into the Safe, logging
+  `EnabledModule` or `ChangedFallbackHandler`), which the effects above do
+  not read. Raised by the review of part 1; the owner's.
+- Ordinary calls that still warn under the checks above, the logs alone
+  unable to tell them from a theft (raised by the review of part 2): Aave's
+  `repay`, whose asset stays with the reserve's aToken, which pays nothing
+  back; an allowance lowered (`decreaseAllowance`) or used up in the same
+  call (`supplyWithPermit`), read as a right granted. Whether to accept
+  these warnings or narrow the checks further is the owner's.
 - Phase C: where the build takes the sources from, and what a contract on no
   list shows (question 8).

@@ -1,5 +1,6 @@
 package eth.serotine.ios
 
+import eth.serotine.data.swaps.WrappedCurrency
 import eth.serotine.data.settings.FileFirstRunNotice
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.clearsigning.BuiltInClearSigningCatalog
@@ -247,6 +248,17 @@ class SerotineWallet {
     private val outboxLock = OutboxLock()
 
     /**
+     * The background work's scope. A failure in it is reported and ends that one piece of work,
+     * never the wallet: the next return to the foreground runs it again. Declared before [graph],
+     * which hands it to the traces: properties are initialized in the order written.
+     */
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e ->
+            println("Punicus: the app's background work stopped: $e")
+        },
+    )
+
+    /**
      * The Safe transactions waiting for their owners, with the signatures collected (public), and who
      * made a co-signer's signature: one instance each, which the graph and the outbox's follower share.
      */
@@ -316,6 +328,9 @@ class SerotineWallet {
             uniswap = node.uniswap,
             clearSigningCatalog = BuiltInClearSigningCatalog(),
             contractCodes = node.contractCodes,
+            callTraces = node.callTraces,
+            wrappedCurrency = WrappedCurrency::of,
+            traceScope = scope,
             // CoW Protocol: its pinned contracts proven by their code, and its order API, an off-chain
             // service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*). Until
             // Myotis's iOS module reads a block by number, no finalized block's own time is known here,
@@ -352,16 +367,6 @@ class SerotineWallet {
             dappConnectionsOff = dappProjectId.isEmpty(),
         )
     }
-
-    /**
-     * The background work's scope. A failure in it is reported and ends that one piece of work,
-     * never the wallet: the next return to the foreground runs it again.
-     */
-    private val scope = CoroutineScope(
-        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e ->
-            println("Punicus: the app's background work stopped: $e")
-        },
-    )
 
     /** The work running while the app is in the foreground; main thread only. */
     private var foregroundWork: List<Job> = emptyList()

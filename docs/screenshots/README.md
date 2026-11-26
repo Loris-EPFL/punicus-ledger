@@ -23,7 +23,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Display currency](#currency) | `currency/` | 4 |
 | [dApp connection request](#dapp-proposal) | `dapp-proposal/` | 28 |
 | [dApp signing request](#dapp-request) | `dapp-request/` | 27 |
-| [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 30 |
+| [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 42 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
 | [First start (dialog)](#first-run-dialog) | `first-run-dialog/` | 2 |
@@ -41,7 +41,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Propose Safe transaction](#safe-propose) | `safe-propose/` | 17 |
 | [Safe settings](#safe-settings) | `safe-settings/` | 19 |
 | [Safe swap](#safe-swap) | `safe-swap/` | 13 |
-| [Safe transaction](#safe-tx) | `safe-tx/` | 48 |
+| [Safe transaction](#safe-tx) | `safe-tx/` | 57 |
 | [Screen capture warning (dialog)](#screen-capture-warning-dialog) | `screen-capture-warning-dialog/` | 3 |
 | [Security](#security) | `security/` | 15 |
 | [Send](#send) | `send/` | 37 |
@@ -57,7 +57,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Propose Safe transaction (simple mode)](#simple-safe-propose) | `simple-safe-propose/` | 6 |
 | [Safe settings (simple mode)](#simple-safe-settings) | `simple-safe-settings/` | 6 |
 | [Safe swap (simple mode)](#simple-safe-swap) | `simple-safe-swap/` | 4 |
-| [Safe transaction (simple mode)](#simple-safe-tx) | `simple-safe-tx/` | 16 |
+| [Safe transaction (simple mode)](#simple-safe-tx) | `simple-safe-tx/` | 17 |
 | [Send (simple mode)](#simple-send) | `simple-send/` | 10 |
 | [Settings (simple mode)](#simple-settings) | `simple-settings/` | 10 |
 | [Swap (simple mode)](#simple-swap) | `simple-swap/` | 14 |
@@ -422,7 +422,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="dapp-transaction"></a>
 ## dApp transaction
 
-`dapp-transaction/`, 30 states: `payment`, `payment-dark`, `token-transfer`, `approval`, `not-decoded`, `described`, `described-dark`, `described-nested`, `described-partly`, `described-approval`, `described-unlisted`, `describing`, `contract-changed`, `code-not-checked`, `not-as-described`, `quoting`, `not-quoted`, `refused`, `safe`, `safe-dark`, `safe-no-owner`, `safe-signing`, `safe-queued`, `sending`, `not-sent`, `explaining`, `ended`, `loading`, `real-funds`, `real-funds-dark`
+`dapp-transaction/`, 42 states: `payment`, `payment-dark`, `token-transfer`, `approval`, `not-decoded`, `described`, `described-dark`, `described-nested`, `described-partly`, `described-approval`, `described-unlisted`, `describing`, `contract-changed`, `code-not-checked`, `not-as-described`, `quoting`, `not-quoted`, `refused`, `safe`, `safe-dark`, `safe-no-owner`, `safe-signing`, `safe-queued`, `sending`, `not-sent`, `explaining`, `ended`, `loading`, `real-funds`, `real-funds-dark`, `traced`, `traced-dark`, `trace-disagrees`, `trace-disagrees-dark`, `trace-reverts`, `tracing`, `not-traced-here`, `not-traced-in-time`, `traced-nothing-logged`, `not-traced-unavailable`, `safe-traced`, `traced-again`
 
 <a href="dapp-transaction/payment.png"><img src="dapp-transaction/payment.png" width="206" alt="payment"></a>
 <a href="dapp-transaction/payment-dark.png"><img src="dapp-transaction/payment-dark.png" width="206" alt="payment-dark"></a>
@@ -454,6 +454,18 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="dapp-transaction/loading.png"><img src="dapp-transaction/loading.png" width="206" alt="loading"></a>
 <a href="dapp-transaction/real-funds.png"><img src="dapp-transaction/real-funds.png" width="206" alt="real-funds"></a>
 <a href="dapp-transaction/real-funds-dark.png"><img src="dapp-transaction/real-funds-dark.png" width="206" alt="real-funds-dark"></a>
+<a href="dapp-transaction/traced.png"><img src="dapp-transaction/traced.png" width="206" alt="traced"></a>
+<a href="dapp-transaction/traced-dark.png"><img src="dapp-transaction/traced-dark.png" width="206" alt="traced-dark"></a>
+<a href="dapp-transaction/trace-disagrees.png"><img src="dapp-transaction/trace-disagrees.png" width="206" alt="trace-disagrees"></a>
+<a href="dapp-transaction/trace-disagrees-dark.png"><img src="dapp-transaction/trace-disagrees-dark.png" width="206" alt="trace-disagrees-dark"></a>
+<a href="dapp-transaction/trace-reverts.png"><img src="dapp-transaction/trace-reverts.png" width="206" alt="trace-reverts"></a>
+<a href="dapp-transaction/tracing.png"><img src="dapp-transaction/tracing.png" width="206" alt="tracing"></a>
+<a href="dapp-transaction/not-traced-here.png"><img src="dapp-transaction/not-traced-here.png" width="206" alt="not-traced-here"></a>
+<a href="dapp-transaction/not-traced-in-time.png"><img src="dapp-transaction/not-traced-in-time.png" width="206" alt="not-traced-in-time"></a>
+<a href="dapp-transaction/traced-nothing-logged.png"><img src="dapp-transaction/traced-nothing-logged.png" width="206" alt="traced-nothing-logged"></a>
+<a href="dapp-transaction/not-traced-unavailable.png"><img src="dapp-transaction/not-traced-unavailable.png" width="206" alt="not-traced-unavailable"></a>
+<a href="dapp-transaction/safe-traced.png"><img src="dapp-transaction/safe-traced.png" width="206" alt="safe-traced"></a>
+<a href="dapp-transaction/traced-again.png"><img src="dapp-transaction/traced-again.png" width="206" alt="traced-again"></a>
 
 <a name="debug"></a>
 ## Debug
@@ -763,13 +775,22 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="safe-tx"></a>
 ## Safe transaction
 
-`safe-tx/`, 48 states: `overview`, `overview-dark`, `described`, `described-dark`, `contract-changed`, `share`, `share-as-text`, `signed`, `not-next`, `delegate-call`, `unpinned-fallback-handler`, `module-enabled`, `execute-reason`, `gas-terms`, `owners-checking`, `owners-unavailable`, `quoting`, `signing`, `signing-dark`, `signing-wrong-password`, `signing-runs`, `signing-checking`, `review-execution`, `review-execution-dark`, `review-approval`, `review-refreshing`, `review-signing`, `review-not-sent`, `loading`, `not-queued`, `swap`, `swap-minimum-behind`, `swap-expired`, `swap-not-uniswap`, `swap-approval`, `swap-propose-again-greyed`, `fallback-handler-removed`, `lenient-overview`, `lenient-signing`, `held`, `held-dark`, `held-checking`, `held-conflict`, `held-discarded`, `held-co-signature`, `draft-approval`, `draft-execution`, `draft-dark`
+`safe-tx/`, 57 states: `overview`, `overview-dark`, `described`, `described-dark`, `contract-changed`, `traced`, `traced-dark`, `trace-disagrees`, `trace-disagrees-dark`, `tracing`, `not-traced-here`, `review-trace-disagrees`, `traced-again`, `not-traced-try-again`, `share`, `share-as-text`, `signed`, `not-next`, `delegate-call`, `unpinned-fallback-handler`, `module-enabled`, `execute-reason`, `gas-terms`, `owners-checking`, `owners-unavailable`, `quoting`, `signing`, `signing-dark`, `signing-wrong-password`, `signing-runs`, `signing-checking`, `review-execution`, `review-execution-dark`, `review-approval`, `review-refreshing`, `review-signing`, `review-not-sent`, `loading`, `not-queued`, `swap`, `swap-minimum-behind`, `swap-expired`, `swap-not-uniswap`, `swap-approval`, `swap-propose-again-greyed`, `fallback-handler-removed`, `lenient-overview`, `lenient-signing`, `held`, `held-dark`, `held-checking`, `held-conflict`, `held-discarded`, `held-co-signature`, `draft-approval`, `draft-execution`, `draft-dark`
 
 <a href="safe-tx/overview.png"><img src="safe-tx/overview.png" width="206" alt="overview"></a>
 <a href="safe-tx/overview-dark.png"><img src="safe-tx/overview-dark.png" width="206" alt="overview-dark"></a>
 <a href="safe-tx/described.png"><img src="safe-tx/described.png" width="206" alt="described"></a>
 <a href="safe-tx/described-dark.png"><img src="safe-tx/described-dark.png" width="206" alt="described-dark"></a>
 <a href="safe-tx/contract-changed.png"><img src="safe-tx/contract-changed.png" width="206" alt="contract-changed"></a>
+<a href="safe-tx/traced.png"><img src="safe-tx/traced.png" width="206" alt="traced"></a>
+<a href="safe-tx/traced-dark.png"><img src="safe-tx/traced-dark.png" width="206" alt="traced-dark"></a>
+<a href="safe-tx/trace-disagrees.png"><img src="safe-tx/trace-disagrees.png" width="206" alt="trace-disagrees"></a>
+<a href="safe-tx/trace-disagrees-dark.png"><img src="safe-tx/trace-disagrees-dark.png" width="206" alt="trace-disagrees-dark"></a>
+<a href="safe-tx/tracing.png"><img src="safe-tx/tracing.png" width="206" alt="tracing"></a>
+<a href="safe-tx/not-traced-here.png"><img src="safe-tx/not-traced-here.png" width="206" alt="not-traced-here"></a>
+<a href="safe-tx/review-trace-disagrees.png"><img src="safe-tx/review-trace-disagrees.png" width="206" alt="review-trace-disagrees"></a>
+<a href="safe-tx/traced-again.png"><img src="safe-tx/traced-again.png" width="206" alt="traced-again"></a>
+<a href="safe-tx/not-traced-try-again.png"><img src="safe-tx/not-traced-try-again.png" width="206" alt="not-traced-try-again"></a>
 <a href="safe-tx/share.png"><img src="safe-tx/share.png" width="206" alt="share"></a>
 <a href="safe-tx/share-as-text.png"><img src="safe-tx/share-as-text.png" width="206" alt="share-as-text"></a>
 <a href="safe-tx/signed.png"><img src="safe-tx/signed.png" width="206" alt="signed"></a>
@@ -1068,11 +1089,12 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="simple-safe-tx"></a>
 ## Safe transaction (simple mode)
 
-`simple-safe-tx/`, 16 states: `overview`, `overview-dark`, `described`, `review`, `swap`, `refused`, `signing`, `approval`, `lenient-overview`, `held`, `held-dark`, `held-co-signature`, `draft`, `held-conflict`, `held-discarded`, `draft-execution`
+`simple-safe-tx/`, 17 states: `overview`, `overview-dark`, `described`, `traced`, `review`, `swap`, `refused`, `signing`, `approval`, `lenient-overview`, `held`, `held-dark`, `held-co-signature`, `draft`, `held-conflict`, `held-discarded`, `draft-execution`
 
 <a href="simple-safe-tx/overview.png"><img src="simple-safe-tx/overview.png" width="206" alt="overview"></a>
 <a href="simple-safe-tx/overview-dark.png"><img src="simple-safe-tx/overview-dark.png" width="206" alt="overview-dark"></a>
 <a href="simple-safe-tx/described.png"><img src="simple-safe-tx/described.png" width="206" alt="described"></a>
+<a href="simple-safe-tx/traced.png"><img src="simple-safe-tx/traced.png" width="206" alt="traced"></a>
 <a href="simple-safe-tx/review.png"><img src="simple-safe-tx/review.png" width="206" alt="review"></a>
 <a href="simple-safe-tx/swap.png"><img src="simple-safe-tx/swap.png" width="206" alt="swap"></a>
 <a href="simple-safe-tx/refused.png"><img src="simple-safe-tx/refused.png" width="206" alt="refused"></a>

@@ -14,6 +14,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKinds
 import eth.serotine.domain.repository.BlockTransactions
 import eth.serotine.domain.repository.Broadcaster
+import eth.serotine.domain.repository.CallTraces
 import eth.serotine.domain.repository.ContractCodes
 import eth.serotine.domain.repository.CowChain
 import eth.serotine.domain.repository.LightClient
@@ -191,6 +192,9 @@ class MyotisHost private constructor(
 
     /** The code a clear-signing descriptor is bound to, proven per network (docs/clear-signing.md, A4). */
     val contractCodes: ContractCodes = routed.contractCodes
+
+    /** The verified traces of calls (docs/clear-signing.md, *Phase B*), each network's by its own engine. */
+    val callTraces: CallTraces = routed.callTraces
 
     /** Uniswap v3 on each network: the pinned deployment once its code is proven, and verified calls. */
     val uniswap: UniswapV3Chain = routed.uniswap
@@ -515,6 +519,7 @@ class MyotisHost private constructor(
             nfts = VerifiedNftContracts(chain, Dispatchers.IO, network),
             ensNfts = VerifiedEnsNfts(chain, Dispatchers.IO, network),
             contractCodes = VerifiedContractCodes(network, chain, Dispatchers.IO),
+            callTraces = EngineCallTraces(network, chain, Dispatchers.IO),
         )
 
         /** Starts the light client, unless it runs already. Control dispatcher; blocks while the engine starts it. */

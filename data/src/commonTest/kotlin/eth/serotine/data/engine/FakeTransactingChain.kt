@@ -47,6 +47,15 @@ internal class FakeTransactingChain(val base: FakeChain = FakeChain()) : Transac
 
     override fun receipt(hash: String): String? = answer { receipt }
 
+    /** What each trace answers, and the blocks traces were asked at. */
+    var trace: TraceAnswer = TraceAnswer.NoTracer
+    val tracedAt = mutableListOf<Long>()
+
+    override fun traceCall(from: Address, to: Address, valueWei: String, data: ByteArray, block: Long): TraceAnswer = answer {
+        tracedAt += block
+        trace
+    }
+
     /** What `getBlockByNumber` with full transactions answers, by block; unset, no answer. */
     val bodies = mutableMapOf<Long, String>()
     val bodiesAsked = mutableListOf<Long>()

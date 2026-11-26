@@ -370,8 +370,11 @@ fails the call.
   parameter still shown; anything else raw and marked as not decoded; a
   simulation through the verified `call` and gas estimate (owner's
   decisions, 2026-11-25, #240, widening "the ABIs it knows" of 2026-11-03);
-  and the verified trace at the head, beside them (owner's decisions,
-  2026-11-26, #240; *A verified trace*, below).
+  the verified trace at the head, beside them (owner's decisions,
+  2026-11-26, #240; *A verified trace*, below); and, for a contract on phase
+  C's list no descriptor covers, its function and parameters named from its
+  verified source, an exact match only (owner's decisions, 2026-11-26, #240;
+  *A verified ABI names*, below).
 - **A dApp's `eth_sendTransaction` is answered only with an Ethereum
   transaction hash.** For a Safe, the hash of the `execTransaction` sent,
   never the `safeTxHash`. A request that cannot be met before it expires gets
@@ -416,6 +419,15 @@ docs/clear-signing.md, *What a clear-signed line proves*.)
   docs/wallet-ux.md, screen 17), those above among them, holds whatever a
   descriptor says, and an approval is flagged loudly whatever its
   description, at any depth.
+- **A verified ABI names, it does not describe** (owner's decisions,
+  2026-11-26, #240: an exact match only; docs/clear-signing.md, *Phase C*).
+  How it is applied, the owner's to approve: bound to verified code by its
+  network and code hash alone, at whatever address holds that code (unlike
+  a descriptor, which is bound to a pinned deployment), so the name shown is
+  the source's own contract name; its names labelled as its author's
+  words, with no intent and no formatting; it speaks only where no
+  hand-written decoder claims the call and no descriptor has a format for
+  it, and a "not decoded" given with a reason stands.
 - How it is applied, not part of the decisions (the owner's to approve on
   #378):
   - A formatted value keeps its raw decoded value beside it, in the detailed

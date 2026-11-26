@@ -554,6 +554,11 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     signed; an approval flagged whatever its description (owner's decisions,
     2026-11-25, #240; docs/clear-signing.md). A contract whose code no longer
     matches its pin is not decoded, saying why;
+  - for a call no descriptor covers, to a contract on phase C's list, bound
+    to its verified code by its hash: the function and each parameter by
+    the names of its verified source, with their values raw, labelled as
+    its author's words, no description (owner's decisions, 2026-11-26, #240;
+    docs/clear-signing.md, *Phase C*);
   - anything else shown raw, marked as not decoded;
   - a simulation: the verified `call` and `estimateGasDetailed` at the
     verified head. A call that would revert is shown so and not sent;

@@ -294,7 +294,10 @@ rulings to the screens.
   (owner ruling, 2026-10-16).
 - Clear signing's ERC-7730 descriptors are built in, pinned with each
   contract's code hash; never fetched (owner's decisions, 2026-11-25, #240;
-  docs/clear-signing.md).
+  docs/clear-signing.md). So are verified ABIs for contracts no descriptor
+  covers: from Sourcify, recompiled at build time, exact matches only; a
+  contract on no list stays not decoded (owner's decisions, 2026-11-26,
+  #240).
 - An account's history comes from the engine's verified log index (owner
   rulings, 2026-10-20, #85). Its walk back is a heavy download: it waits
   off a metered connection unless the user allows it in Settings (owner

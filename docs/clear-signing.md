@@ -547,9 +547,12 @@ rare and meant (docs/balance-reconciliation.md, D3).
   no fee. The trace leaves out what `execTransaction` adds: the refund of the
   *Gas and refund terms* and the Safe's own checks. A delegate call stays
   refused and is not traced.
-- Simple mode shows the effects with their label (now, not when it is
-  mined) and their age in place of the block, as `.claude/rules/ui.md` has it
-  for a value the user acts on.
+- Simple mode, on the screens that have one (screen 17), shows the effects
+  with their label (now, not when it is mined) and when they were traced in
+  place of the block, as `.claude/rules/ui.md` has it for a value the user
+  acts on. D6 has no simple form; it names the block, as its quote does.
+- A disagreement is said loudly in the trace and again beside the button
+  that signs, which stays as it is.
 
 **Limits**:
 

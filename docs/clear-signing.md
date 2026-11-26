@@ -328,7 +328,15 @@ through the existing Myotis adapter; nothing new crosses `io.myotis.api`.
   first. How it is applied, not part of the decisions: each call inside a
   MultiSendCallOnly batch gets its own line once #57 is built; until then
   every delegate call stays refused, and a delegate call to MultiSend
-  itself stays refused after it too.
+  itself stays refused after it too. A Safe transaction's call that the
+  Safe review does not decode itself (a contract call, operation CALL) is
+  described with the Safe as its sender, on every screen of it (the
+  overview, signing, the reviews, a held signature), asked again with each
+  *Check again*. A dApp's Safe transaction is D6's, described there.
+- **Not yet:** a nested call whose selector a hand-written decoder claims
+  (ERC-20 `transfer`, `approve`) is shown raw inside its parent, flagged as
+  an approval where it is one, not put in words. No shipped deployment nests
+  one today; MultiSend batches would, once #57 is built.
 - **Previews** for every state: described; described with other parameters;
   nested; not covered, one per reason; contract changed; an unlisted token in
   a `tokenAmount`; and the dark theme. How it is applied, not part of the

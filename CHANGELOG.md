@@ -33,6 +33,18 @@ and issues of this repository.
   every parameter a description does not show is listed under "Other
   parameters". An approval is flagged whatever its description says (#240).
 
+### Changed
+
+- The embedded Myotis engine is 0.1.25 (was 0.1.24). It reads each chain's
+  addr1 index under its own importer key (Myotis #933). It brings a bundled
+  checkpoint table for Gnosis Chain (Myotis #934): a Gnosis Chain block or
+  its receipts deeper than the light client's 512-block window now verifies
+  against it, as on Ethereum, which every older row of Gnosis Chain's addr1
+  index rests on. The table adds about 1.55 MB per processor type to the
+  apps. It also extends Ethereum's checkpoint table to block 26,497,669 and
+  moves the embedded checkpoints of Ethereum, Gnosis Chain and Sepolia to
+  2026-11-26.
+
 ## [0.6.0] - 2026-11-25
 
 ### Added

@@ -440,14 +440,8 @@ class SettingsViewModel(
                     "read only on the word of an importer whose key a release pins; a key is never typed in here."
                 AddressIndexMissing.NO_READER -> "This build's engine has no Swarm reader, so the index cannot be " +
                     "read here. The history stays the light client's log index."
-                AddressIndexMissing.READER_NOT_KNOWN -> {
-                    val networks = pinned.networks.map { it.displayName }.ifEmpty { listOf("Ethereum") }
-                    val named = networks.dropLast(1).joinToString(", ").let {
-                        if (it.isEmpty()) networks.last() else "$it or ${networks.last()}"
-                    }
-                    "The engine says whether this build reads Swarm once the light client of $named runs: while " +
-                        "it is on in Networks and one of your accounts is on it."
-                }
+                AddressIndexMissing.READER_NOT_KNOWN -> "The engine says whether this build reads Swarm once one of " +
+                    "its light clients runs: while a network is on in Networks and one of your accounts is on it."
                 AddressIndexMissing.CHOICE_UNREADABLE -> "Your saved choice cannot be read, so it is taken as off. " +
                     "Punicus keeps trying to read it, and the switch works again once it can."
             }

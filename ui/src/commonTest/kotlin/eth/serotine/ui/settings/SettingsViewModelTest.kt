@@ -752,7 +752,7 @@ class SettingsViewModelTest {
         val waiting = checkNotNull(viewModel.uiState.value.addressIndex) { "the row is there, greyed out (#55)" }
         assertFalse(waiting.on)
         assertTrue(waiting.text.contains(" · Waiting for the engine to say whether it reads Swarm"), waiting.text)
-        assertTrue(checkNotNull(waiting.unavailableReason).contains("the light client of Ethereum runs"))
+        assertTrue(checkNotNull(waiting.unavailableReason).contains("once one of its light clients runs"))
         assertTrue(waiting.turnOff, "the default can be turned off ahead")
 
         index.readerAnswered.value = true

@@ -500,10 +500,14 @@ class EngineAddressIndexHistoryTest {
 
         assertTrue(history(mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis)).hasReader(), "Gnosis Chain's")
 
+        // No engine on this device: the network that ran reads Down, the other never ran and reads Stopped.
         gnosis.supports = null
         gnosis.snapshot = EngineSnapshot.Down
-        chain.snapshot = EngineSnapshot.Down
-        assertFalse(history(mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis)).hasReader(), "all down")
+        chain.snapshot = EngineSnapshot.Stopped(off = true)
+        assertFalse(
+            history(mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis)).hasReader(),
+            "one light client down: the engine is, and no other will answer",
+        )
     }
 
     private companion object {

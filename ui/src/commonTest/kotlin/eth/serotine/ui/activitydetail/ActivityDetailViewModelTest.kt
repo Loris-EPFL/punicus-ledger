@@ -1,5 +1,6 @@
 package eth.serotine.ui.activitydetail
 
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
@@ -467,6 +468,22 @@ class ActivityDetailViewModelTest {
         val note = checkNotNull(shown.note)
         assertTrue(note.contains(Eip55.format(FIXTURE_IMPORTER)), note)
         assertTrue(note.contains("finalized"), note)
+    }
+
+    @Test
+    fun theDetailNamesTheKeyOfTheAccountsOwnNetwork() = runTest {
+        val row = indexRow(9_300_000, 3, bob, alice.address, wei = "1000000000000000000")
+        addressIndex.verifiedRows[row.entry] = row
+        val otherKey = Address.of("0x" + "9e".repeat(20))
+        // The detail's account is on Sepolia here: its key is the fixture's, another network's is another key.
+        val keys = AddressIndexImporters(mapOf(Network.ETHEREUM to otherKey, Network.SEPOLIA to FIXTURE_IMPORTER))
+        val check = CheckAddressIndexEntry(addressIndex, addressIndexOn, keys)
+
+        val shown = assertIs<ActivityDetailUiState.Shown>(viewModel(indexKey(row), check = check).uiState.value)
+
+        val note = checkNotNull(shown.note)
+        assertTrue(note.contains(Eip55.format(FIXTURE_IMPORTER)), note)
+        assertFalse(note.contains(Eip55.format(otherKey)), "never another network's key")
     }
 
     @Test

@@ -1,6 +1,5 @@
 package eth.serotine.data.engine
 
-import eth.serotine.data.history.PinnedAddressIndexImporter
 import eth.serotine.data.keys.fromHex
 import eth.serotine.data.keys.toHex
 import eth.serotine.data.logs.LogSink
@@ -230,11 +229,12 @@ class MyotisHost private constructor(
     /**
      * An address's history from the addr1 index on Swarm, which the engine reads and checks (issue #334): each
      * network's through its own light client, under the importer key [apply] set for that chain (Myotis #933, from
-     * 0.1.25 on). Only the networks whose index the release pins a key for ([PinnedAddressIndexImporter]) are served,
-     * and only their light clients are asked whether the engine reads Swarm; another network is refused.
+     * 0.1.25 on). Every network's light client is handed over: which networks have an index is the keys' alone, so the
+     * use cases refuse a network without one before anything is read, and the engine refuses a chain it holds no key
+     * for. Any running light client answers whether the engine reads Swarm, a property of its build.
      */
     val addressIndex: AddressIndexHistory = EngineAddressIndexHistory(
-        PinnedAddressIndexImporter.KEYS.networks.associateWith { nodes.getValue(it).addressChain },
+        nodes.mapValues { it.value.addressChain },
         Dispatchers.IO,
         POLL_INTERVAL,
     )
@@ -492,7 +492,7 @@ class MyotisHost private constructor(
         }
 
         /**
-         * The handle's address history (asked on a network whose index the release pins a key for), each page and
+         * The handle's address history (asked on a network the engine holds an importer key for), each page and
          * check written to [apiLog] when there is one: they are the heaviest requests the app makes (Swarm, archive
          * peers, a check up to about 90 s). Its status reads are [chain]'s, shared and logged once, not a call and a
          * log line of their own each time the adapter waits for the engine's word on its reader.

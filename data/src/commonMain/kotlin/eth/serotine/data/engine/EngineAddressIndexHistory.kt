@@ -93,7 +93,7 @@ internal interface AddressHistoryChain {
  * [AddressIndexRefusal.StaleAnchor]. Calls block on the engine (a check up to about 90 s), so they run on
  * [dispatcher]. [hasReader] waits, every [readerPoll], for a running light client of any of [chains] to ask (whether
  * the engine has the reader is a property of its build, not of a chain), and answers false at once on a device with
- * no engine, or once every light client is down; the engine's answer is kept, so that every later ask is answered at
+ * no engine, or once any light client is down (final for the whole engine); the engine's answer is kept, so that every later ask is answered at
  * once, whatever the light clients do meanwhile.
  */
 class EngineAddressIndexHistory internal constructor(
@@ -124,7 +124,9 @@ class EngineAddressIndexHistory internal constructor(
                     return known
                 }
             }
-            if (chains.all { snapshotOf(it) == EngineSnapshot.Down }) return false
+            // Down is engine-wide and final: one light client that reads it proves none will ever answer. A network
+            // that never ran reads Stopped instead, so waiting for every one to be Down would wait for ever.
+            if (chains.any { snapshotOf(it) == EngineSnapshot.Down }) return false
             delay(readerPoll)
         }
     }

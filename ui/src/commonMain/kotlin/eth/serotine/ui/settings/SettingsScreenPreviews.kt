@@ -395,7 +395,7 @@ private fun SettingsAddressIndexNoReaderPreview() = SettingsPreview(
 )
 
 /**
- * Keys pinned, and an engine that has not said yet whether it reads Swarm (no light client of theirs running):
+ * Keys pinned, and an engine that has not said yet whether it reads Swarm (no light client running yet):
  * greyed out for that, never left out (owner ruling, #55).
  */
 @Preview
@@ -407,8 +407,8 @@ private fun SettingsAddressIndexReaderNotKnownPreview() = SettingsPreview(
             text = "Off: $sampleImporters, pinned in this release · Waiting for the engine to say " +
                 "whether it reads Swarm · On by default once it can be read: Turn off keeps it off",
             turnOff = true,
-            unavailableReason = "The engine says whether this build reads Swarm once the light client of Ethereum " +
-                "or Gnosis Chain runs: while it is on in Networks and one of your accounts is on it.",
+            unavailableReason = "The engine says whether this build reads Swarm once one of its light clients " +
+                "runs: while a network is on in Networks and one of your accounts is on it.",
         ),
     ),
     atTheEnd = true,

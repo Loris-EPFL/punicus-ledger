@@ -584,10 +584,11 @@ answered with an empty list.
     verified or not shown. Reading a block's header for it instead is no
     answer: `getBlockByNumber` serves one header window anchored at the
     head (512 blocks) on Gnosis Chain and Sepolia, and a history reaches
-    further back. On Ethereum, from Myotis 0.1.21, it also serves a deeper
-    block through the engine's bundled checkpoint table (its rule D1), with
-    a walk down from the finalized block: a heavy read per block, not one
-    for every event of a history.
+    further back. On Ethereum, from Myotis 0.1.21, and on Gnosis Chain, from
+    Myotis 0.1.25 (Myotis #934), it also serves a deeper block through the
+    engine's bundled checkpoint table (its rule D1), with a walk down from
+    the finalized block: a heavy read per block, not one for every event of
+    a history.
   - The engine takes an entry's `fromBlock` as saying nothing of it comes
     before that block, and answers a range reaching below it from there on.
     For an account not created here that is not so, so the adapter reads the
@@ -760,7 +761,7 @@ user to update — before it, and, after it, nothing else.
   applied checkpoint is said with its operators and the peers that confirmed
   it. The remembered choice (`setStaleAnchorPolicy`) is not used: Punicus
   asks each time. The engine has it from Myotis 0.1.21; pinned
-  at 0.1.24.
+  at 0.1.25.
 - **A parameter that can change the answer is applied or refused**, never
   accepted and ignored — the Myotis rule, and the reason a port's contract
   spells out what each argument does.

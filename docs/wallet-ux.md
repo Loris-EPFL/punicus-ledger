@@ -903,6 +903,14 @@ columns** (owner's request, 2026-11-25). Material's large window size class:
       every other parameter (owner's decisions, 2026-11-25, #240;
       docs/clear-signing.md). The `safeTxHash` stays shown in full, and
       every refusal below holds whatever the description says.
+    - What a call (operation CALL) does now: traced at the verified head as
+      the Safe's own call, the Safe's currency and tokens sent and received,
+      the rights granted, the contracts reached (a delegate call into code
+      the wallet cannot name marked), its revert, labelled as proven at that
+      block and not at execution, and without what `execTransaction` adds
+      (the refund of the *Gas and refund terms*, the Safe's checks); where
+      a description says otherwise, a loud warning, still signable (owner's
+      decisions, 2026-11-26, #240; docs/clear-signing.md, *Phase B*).
     - An approval or a swap says where it stands now (docs/swaps.md, *A
       Safe's swap*): whether its spender or router is Uniswap's pinned
       SwapRouter02, its code proven, with a warning when it is not; for a

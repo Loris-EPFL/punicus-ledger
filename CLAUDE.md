@@ -259,7 +259,10 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
 - What a dApp sends is untrusted input, held to a closed method list;
   `eth_sign` is refused in every case (owner rulings, 2026-11-03, #22). A
   call is clear-signed only when bound to verified code, the descriptor's
-  words labelled as its claim (owner's decisions, 2026-11-25, #240).
+  words labelled as its claim (owner's decisions, 2026-11-25, #240). A dApp's
+  or a Safe's transaction shows its verified trace at the head, a
+  disagreement with its description warned about, still signable (owner's
+  decisions, 2026-11-26, #240).
 - **Key material** lives in the key-store adapter and nowhere else. The
   exceptions are a closed list of owner rulings: the mnemonic screens (owner
   ruling, 2026-10-15), the words travelling as the dedicated mnemonic type

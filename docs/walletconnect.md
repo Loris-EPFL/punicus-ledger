@@ -87,11 +87,13 @@ They combine: a dApp asks Punicus's Safe for a transaction, Punicus gets an
 owner's signature from the external wallet, and executes the Safe
 transaction.
 
-The engine needs no change for either. `io.myotis.api` already has
+Neither needs a change in the engine. `io.myotis.api` already has
 everything on the chain side: the verified `call`, `estimateGasDetailed`,
 `getStorageAt`, `getCode`, `getTransactionCount` with its pending overlay,
 `sendRawTransactionDetailed`, the receipt checked against `receiptsRoot`,
-`getLogs`, `maxPriorityFeePerGas` and `feeHistory`.
+`getLogs`, `maxPriorityFeePerGas` and `feeHistory`. The verified trace of
+phase B (docs/clear-signing.md) needs one on iOS only, where the engine does
+not expose `traceCall` yet.
 
 ## What the relay learns, and what it can do
 
@@ -555,8 +557,16 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   - anything else shown raw, marked as not decoded;
   - a simulation: the verified `call` and `estimateGasDetailed` at the
     verified head. A call that would revert is shown so and not sent;
-  - a token's symbol and decimals as the built-in list pins them, or as the
-    contract states them in a verified call, marked as its claim;
+  - what the call does now: its verified trace at the head (the engine's
+    `debug_traceCall`; a Safe's transaction traced as the Safe's own call),
+    the account's currency and tokens sent and received, the rights it
+    grants, the contracts it reaches, a delegate call into code the wallet
+    cannot name marked, its revert, each labelled as proven at that block and
+    not at inclusion; where a description says otherwise, a loud warning,
+    the call still signable (owner's decisions, 2026-11-26, #240;
+    docs/clear-signing.md, *Phase B*);
+  - a token's symbol and decimals as the built-in list pins them; any other
+    token by its address, its amount raw;
   - the fee, as Send works it out: the verified nonce, `feeHistory`, the
     verified gas estimate, EIP-1559.
 - **An EOA's transaction** is signed by the signer port, sent through
@@ -838,7 +848,8 @@ their mockups come with the PR that builds each.
   (docs/clear-signing.md), or its fields; the domain; the unlock. Drawn by
   D4's screen, which shows typed data in place of the message.
 - **D6 Transaction request**: the decoded call or the clear-signed one
-  (docs/clear-signing.md), the simulation, the fee; for a Safe, its
+  (docs/clear-signing.md), the simulation, what the call does now (its
+  verified trace), the fee; for a Safe, its
   signatures so far and who executes. The EOA's half comes with
   part 1.4b: who asks, the account and the recipient in full, the value, the
   call decoded (a payment, an ERC-20 `transfer` or `approve`) or its data

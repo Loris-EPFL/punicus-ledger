@@ -87,11 +87,13 @@ They combine: a dApp asks Punicus's Safe for a transaction, Punicus gets an
 owner's signature from the external wallet, and executes the Safe
 transaction.
 
-The engine needs no change for either. `io.myotis.api` already has
+Neither needs a change in the engine. `io.myotis.api` already has
 everything on the chain side: the verified `call`, `estimateGasDetailed`,
 `getStorageAt`, `getCode`, `getTransactionCount` with its pending overlay,
 `sendRawTransactionDetailed`, the receipt checked against `receiptsRoot`,
-`getLogs`, `maxPriorityFeePerGas` and `feeHistory`.
+`getLogs`, `maxPriorityFeePerGas` and `feeHistory`. The verified trace of
+phase B (docs/clear-signing.md) needs one on iOS only, where the engine does
+not expose `traceCall` yet.
 
 ## What the relay learns, and what it can do
 
@@ -562,10 +564,9 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
     cannot name marked, its revert, each labelled as proven at that block and
     not at inclusion; where a description says otherwise, a loud warning,
     the call still signable (owner's decisions, 2026-11-26, #240;
-    docs/clear-signing.md, *Phase B*, which also says how tokens are named
-    there);
-  - a token's symbol and decimals as the built-in list pins them, or as the
-    contract states them in a verified call, marked as its claim;
+    docs/clear-signing.md, *Phase B*);
+  - a token's symbol and decimals as the built-in list pins them; any other
+    token by its address, its amount raw;
   - the fee, as Send works it out: the verified nonce, `feeHistory`, the
     verified gas estimate, EIP-1559.
 - **An EOA's transaction** is signed by the signer port, sent through

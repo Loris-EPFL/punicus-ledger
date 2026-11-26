@@ -367,9 +367,11 @@ fails the call.
 - **The review shows only what Punicus works out itself:** the calldata
   decoded for the ABIs it knows and the built-in ERC-7730 descriptors, bound
   to verified code; the descriptor's words labelled as its claim, every
-  parameter still shown; anything else raw and marked as not decoded; and a
+  parameter still shown; anything else raw and marked as not decoded; a
   simulation through the verified `call` and gas estimate (owner's
-  decisions, 2026-11-25, #240, widening "the ABIs it knows" of 2026-11-03).
+  decisions, 2026-11-25, #240, widening "the ABIs it knows" of 2026-11-03);
+  and the verified trace at the head, beside them (owner's decisions,
+  2026-11-26, #240; *A verified trace*, below).
 - **A dApp's `eth_sendTransaction` is answered only with an Ethereum
   transaction hash.** For a Safe, the hash of the `execTransaction` sent,
   never the `safeTxHash`. A request that cannot be met before it expires gets
@@ -457,8 +459,10 @@ docs/clear-signing.md, *Phase B*.)
     more than what was logged.
   - A token outside the built-in list is named by its address, its amount
     raw, as for a description.
-  - The disagreements checked, and how a right granted is told from an
-    allowance spent: docs/clear-signing.md, *Phase B*.
+  - The trace is held against the call's claims: its description, or a
+    hand-written decoder's meaning. The disagreements checked, and how a
+    right granted is told from an allowance spent (by `msg.sender` where the
+    log was emitted): docs/clear-signing.md, *Phase B*.
   - Not traced is said so, never guessed: no tracing engine (iOS for now), no
     fresh head, or past the wallet's 30-second wait.
 

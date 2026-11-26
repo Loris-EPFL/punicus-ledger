@@ -198,6 +198,9 @@ of a stale feed.)
   checks its signature and hash; until then none is shown. None is required.
 - **A refresh is a step of every release PR**, through a PR that moves the
   pins, its diff reviewed like code. Never at runtime.
+- **Phase B's verified trace is the engine's own `debug_traceCall`**, a
+  verified read like any other (owner's decisions, 2026-11-26, #240; *The
+  engine is the only source of chain data*, above).
 - **Descriptors of our own** for contracts Punicus pins and the registry
   lacks (Swarm's, the Gnosis Pay Delay module) come in a later part,
   contributed upstream.
@@ -581,7 +584,5 @@ WalletConnect service above; Swarm on Sepolia (docs/swarm.md); what follows a
 contradicted addr1 entry beyond the warning (no longer trusting the importer key,
 reporting it), the owner's to decide (2026-11-21, on #335); and clear
 signing's phase C, verified ABIs for contracts no descriptor covers, with its
-question 8, and when to ask Myotis for `diffMode` (#240; docs/clear-signing.md,
-*Open decisions*). Phase B's verified trace is the engine's own
-`debug_traceCall`, a verified read like any other (*The engine is the only
-source of chain data*, above).
+question 8, and whether the Safe refusals reach what a verified trace proves
+(#240; docs/clear-signing.md, *Open decisions*).

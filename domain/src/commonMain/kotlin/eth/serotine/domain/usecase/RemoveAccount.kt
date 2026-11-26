@@ -6,6 +6,7 @@ import eth.serotine.domain.repository.AccountChange
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressIndexArchive
+import eth.serotine.domain.repository.DappSiteMemory
 import eth.serotine.domain.repository.KeyDeletion
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.PerAppAliases
@@ -30,7 +31,10 @@ import kotlinx.coroutines.withContext
  *
  * The last account of a per-app address takes the address's aliases with it (issue #252; docs/walletconnect.md,
  * *Aliases*): a site linked to it is no longer linked, so that restoring the address later never links that site
- * again without asking. An alias that cannot be removed takes nothing from the removal.
+ * again without asking. An alias that cannot be removed takes nothing from the removal. The account is forgotten by
+ * every dApp site that remembered it too ([DappSiteMemory]): what is stored for an account goes with it. A memory
+ * that cannot be saved takes nothing from the removal either: the entry stays until the site is approved again, and
+ * D3 preselects nothing it can no longer offer. A removal that did not go through forgets nothing.
  *
  * The account's addr1 history kept between runs ([addressIndex]; owner's request, 2026-11-25) goes with it, as the
  * privacy policy says of everything stored for an account. A list that cannot be removed takes nothing from the
@@ -43,6 +47,8 @@ class RemoveAccount(
     private val changes: WalletChanges,
     /** The aliases the user linked, which the last account of a per-app address takes with it. */
     private val aliases: PerAppAliases,
+    /** The accounts each dApp site last approved, which forget the account removed. */
+    private val sites: DappSiteMemory,
     /** Each account's addr1 history kept between runs, on a host that keeps one; null: none is kept. */
     private val addressIndex: AddressIndexArchive? = null,
 ) {
@@ -63,6 +69,7 @@ class RemoveAccount(
             AccountChange.NotFound -> return AccountRemoval.NotFound
             AccountChange.NotSaved -> return AccountRemoval.NotSaved
         }
+        sites.forget(id)
         // The last per-app account of it: an unmarked entry of the address (watched elsewhere) holds no alias up.
         val lastOfItsAddress = listed.none { it.id != id && it.address == id.address && it.perApp != null }
         if (account.perApp != null && lastOfItsAddress) {

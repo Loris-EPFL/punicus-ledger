@@ -48,4 +48,34 @@ class ActivityDaysTest {
         assertEquals(UNDATED_SIMPLE_DAY, rows[3].simpleDay)
         assertEquals(null, rows[1].simpleDay, "a day told from its neighbours is said alike in simple mode")
     }
+
+    @Test
+    fun aGhostWhoseDateCannotBeToldGoesUnderTheDayOfTheRowAboveItElseOfTheFirstBelow() {
+        fun ghost(key: String) = row(key).copy(pending = true)
+        val rows = listOf(
+            Placed(ghost("newest ghost")),
+            Placed(ghost("second ghost")),
+            Placed(row("a"), 560, anchored = true),
+            Placed(ghost("between two days")),
+            Placed(row("b"), 450, anchored = true),
+            Placed(row("undated event")),
+            Placed(ghost("below an undated event")),
+        ).byDay(dates, now = 600)
+
+        assertEquals(
+            listOf(
+                "Yesterday · day 5",
+                "Yesterday · day 5",
+                "Yesterday · day 5",
+                "Yesterday · day 5",
+                "day 4",
+                UNDATED_DAY,
+                UNDATED_DAY,
+            ),
+            rows.map { it.day },
+            "no heading of its own: its row, dated once checked, takes its place",
+        )
+        assertEquals(null, rows[0].simpleDay)
+        assertEquals(UNDATED_SIMPLE_DAY, rows[6].simpleDay, "a ghost below an undated row stays among them")
+    }
 }

@@ -88,7 +88,15 @@ class FileAddressIndexArchive(
                 what = "addr1 history",
                 formatVersion = FORMAT_VERSION,
                 empty = Kept(null),
-                decode = { _, text -> Kept(JSON.decodeFromString(StoredFile.serializer(), text).kept?.toKept()) },
+                // A list kept before rows carried their block's time (format 1) is read again from the index, once, so
+                // that its rows get their time too.
+                decode = { version, text ->
+                    if (version < FORMAT_VERSION) {
+                        Kept(null)
+                    } else {
+                        Kept(JSON.decodeFromString(StoredFile.serializer(), text).kept?.toKept())
+                    }
+                },
                 encode = { file ->
                     val stored = StoredFile(FORMAT_VERSION, file.kept?.let(::StoredKept))
                     JSON.encodeToString(StoredFile.serializer(), stored)
@@ -192,6 +200,7 @@ class FileAddressIndexArchive(
         val confirmed: List<String>,
         val unchecked: List<String>,
         val transaction: StoredTransaction? = null,
+        val blockTimestamp: Long? = null,
     ) {
         constructor(row: AddressIndexRow) : this(
             StoredEntry(row.entry),
@@ -200,6 +209,7 @@ class FileAddressIndexArchive(
             row.confirmed.map { it.name },
             row.unchecked.map { it.name },
             row.transaction?.let(::StoredTransaction),
+            row.blockTimestamp,
         )
 
         fun toRow(): AddressIndexRow = AddressIndexRow(
@@ -209,6 +219,7 @@ class FileAddressIndexArchive(
             confirmed = confirmed.mapTo(HashSet(), ::roleOf),
             unchecked = unchecked.mapTo(HashSet(), ::roleOf),
             transaction = transaction?.toTransaction(),
+            blockTimestamp = blockTimestamp,
         )
     }
 
@@ -271,7 +282,8 @@ class FileAddressIndexArchive(
     }
 
     private companion object {
-        const val FORMAT_VERSION = 1
+        /** 2 since a row keeps its block's time (Myotis 0.1.24); a format-1 list is read again from the index. */
+        const val FORMAT_VERSION = 2
         const val FUNGIBLE = "fungible"
         const val NFT = "nft"
         val JSON = Json { encodeDefaults = true }

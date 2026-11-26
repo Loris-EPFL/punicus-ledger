@@ -1144,7 +1144,7 @@ class AppGraph(
             account,
             ObserveAccount(accounts),
             ObserveAccounts(accounts),
-            RemoveAccount(accounts, keys, walletChanges, perAppAliases, addressIndexArchive),
+            RemoveAccount(accounts, keys, walletChanges, perAppAliases, dappSites, addressIndexArchive),
         )
 
     fun watchViewModel(): WatchViewModel = WatchViewModel(

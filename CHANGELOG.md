@@ -25,12 +25,27 @@ and issues of this repository.
   every value is decoded from what you sign and shown with its raw form, and
   every parameter a description does not show is listed under "Other
   parameters". An approval is flagged whatever its description says (#240).
+
+## [0.6.0] - 2026-11-25
+
+### Added
+
+- Per-app addresses: each site a dApp connects from is offered an address
+  of its own, made from your recovery phrase, so that no site can see your
+  activity on another. The connection request preselects it, and the sites
+  are remembered. Per-app addresses lists them, with each one's site,
+  networks, phrase and path, and restores one by site. A dApp that moved
+  may use its old site's address, after a question saying the two sites can
+  then link your activity. The signing screen names the address's site and
+  warns when a sign-in is for another site (#252; #297, #311, #313, #326,
+  #328, #329, #330).
 - Add an account from its private key: Import phrase or key (formerly
   Import recovery phrase) now asks for a seed phrase or a private key, 64 hex
   digits with or without 0x. The key is checked, then sealed on this device
   under the wallet password like every key, and never shown again. Such an
   account has no recovery phrase, so New account from the same phrase and
-  per-app addresses are not offered for it; only the key brings it back.
+  per-app addresses are not offered for it; only the key brings it back
+  (#376).
 - Account history from the addr1 index (desktop and Android, experimental,
   on by default in Settings → Experimental): an account's Activity also lists its
   older transactions from the addr1 address index on Swarm, each entry
@@ -43,22 +58,25 @@ and issues of this repository.
   kept between runs: opening an account's Activity again shows its verified
   rows at once and reads only the newer entries, which come in at the top.
   Only rows of finalized blocks are kept; the newest blocks, and any range
-  Swarm did not deliver, are read again.
+  Swarm did not deliver, are read again (#369). On Android too (#367). With
+  Myotis 0.1.24, each row shows the date and time of its block, from the
+  block the engine verified it in, instead of "Date not available" (#377).
 - Activity at a glance: the rows are grouped by day under a heading
   ("Today", "Yesterday", then the date), each with its time in your time
   zone; a green arrow for value in and a red one for value out, and the
   amount on the right, signed and shortened for reading ("+250 USDC",
-  "−0.25 ETH", "1.23M"). The exact amount stays in the row's detail.
+  "−0.25 ETH", "1.23M"). The exact amount stays in the row's detail (#350).
 - Buy an exact amount: type the amount to buy, on Uniswap or CoW, and the
   swap buys exactly that for at most its estimate plus your tolerance. The
   first screen says what it would cost, and when your balance cannot cover
-  the most it may take.
+  the most it may take (#343).
 - With CoW chosen, the first screen shows CoW's estimate and the rate, marked
-  as not checked on chain. CoW then learns the amounts you compose.
+  as not checked on chain. CoW then learns the amounts you compose (#343).
 - Swaps on Gnosis Chain: Uniswap v3's Gnosis deployment, with WXDAI as the
   wrapped xDAI, and CoW Protocol. Uniswap holds little there, so most pairs
-  go to CoW. CoW Protocol is offered on Ethereum too.
-- Swarm's xBZZ (`BZZ`) is a built-in token on Gnosis Chain, with no price.
+  go to CoW. CoW Protocol is offered on Ethereum too (#341).
+- Swarm's xBZZ (`BZZ`) is a built-in token on Gnosis Chain, with no price
+  (#341).
 - Address poisoning protection on Send. A recipient that starts and ends
   like an address you sent to from this device (or one of your accounts) but
   differs in the middle blocks the send, with both addresses shown and the
@@ -76,41 +94,66 @@ and issues of this repository.
   account can add a member or remove one, never the last, queued through
   the Delay and executed after its wait like a transfer. Adding one says
   that the new member can move all the account's funds; removing the way
-  this device controls the account says it ends that control.
+  this device controls the account says it ends that control (#321, #323).
 - Gnosis Pay: "Skip expired entries" clears an expired entry that blocks the
   Delay module's queue, with the module's own `skipExpired()`, which moves
   nothing. It is offered on the Send form and on a transfer queued here that
-  waits behind such an entry.
+  waits behind such an entry (#319).
 - On a wide window (840 dp and wider: a desktop window, a tablet, an unfolded
   phone) the Accounts tab shows the list and the account chosen side by side.
+  From 1200 dp on, a transaction tapped in an account's Activity opens its
+  detail in a third column beside the account, which stays as it was, the
+  row drawn selected (#372).
+- Per-app addresses: each site a dApp connects from over WalletConnect gets
+  an address of its own, derived from the recovery phrase, so that no site
+  sees what you do on another (#252, #331).
+- Swarm nodes: an account on Gnosis Chain is recognised as a Swarm (Bee)
+  node once a chequebook or a postage batch is proven its own. Its postage
+  batches can be bought, topped up and diluted, and its chequebook withdrawn
+  from, through Bee's pinned contracts only; the node's account is watched,
+  with no `swarm.key` imported (#357).
+- In simple mode, each network's accounts come under a header that says its
+  sync state in a few words ("Up to date", "Syncing · 3 of 12 periods",
+  "Off"), and a tap on it folds them away and back (#371).
+- A day's heading in an account's Activity stays on top while that day's
+  rows scroll under it (#370).
 
 ### Changed
 
-- The embedded Myotis engine is 0.1.23 (was 0.1.21-rc1). It brings the
+- Simple mode: the switch for heavy downloads on metered connections says
+  what it holds back, catching up on activity since you added an account.
+  It said "older activity", which in simple mode names the rows from the
+  addr1 index, and those read on any connection, mobile data too (#375).
+- The repository moved to <https://github.com/VesperBats/punicus>: the update
+  screen's link and the website's downloads point there (#333).
+- The website's address is <https://punicus.eth.limo/>; the old GitHub Pages
+  address no longer answers since the move to VesperBats (#373).
+- The embedded Myotis engine is 0.1.24 (was 0.1.21-rc1). It brings the
   engine's address history with its Swarm reader on the desktop and Android,
-  the mainnet checkpoint table up to block 26,485,995, and the embedded
-  checkpoints of 2026-11-24 for Ethereum, Gnosis Chain and Sepolia. The
+  each checked entry with its block's verified time (Myotis 0.1.24), the
+  mainnet checkpoint table up to block 26,491,578, and the embedded
+  checkpoints of 2026-11-25 for Ethereum, Gnosis Chain and Sepolia. The
   reader runs only on a read, while an account's Activity is open with the
   addr1 setting on; it adds about 11 MB to the Android app, which carries
   the engine for two processor types. The reader runs inside the app: a
   crash of the reader on what a Swarm peer sends ends the app, a limit Myotis
-  accepts for now (freedom-hq/ant#271).
+  accepts for now (freedom-hq/ant#271; #352, #366, #377).
 - A CoW order no longer depends on Uniswap: its minimum is CoW's own
   estimate less your tolerance, and every pair CoW quotes is offered. The
   review says the minimum rests on CoW's estimate, which is not checked on
-  chain, and shows no Uniswap figure beside it.
+  chain, and shows no Uniswap figure beside it (#341).
 
 ### Fixed
 
 - Gnosis Pay: an account's Delay module is verified again on a phone: its
   getters are read at one block by holding every call to the block the first
   answered at. Read at the head alone, eight calls straddled two blocks
-  nearly every time, so the account stayed a plain watched Safe.
+  nearly every time, so the account stayed a plain watched Safe (#318).
 - Gnosis Pay: an account a key held here controls no longer falls back to
   Watch-only whenever one of the reads behind it finds no peer serving its
   proof at a head. The answer verified before stands, for an hour at most,
   until one that differs or a reason that stands (the network turned off);
-  no transfer is reviewed on it.
+  no transfer is reviewed on it (#318).
 
 ## [0.5.0] - 2026-11-16
 
@@ -294,7 +337,8 @@ accounts on Sepolia, on the embedded Myotis light client, for Android, desktop
 - Control badges: the icon beside the text, the icon alone where the text
   would wrap (#128).
 
-[Unreleased]: https://github.com/VesperBats/punicus/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/VesperBats/punicus/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/VesperBats/punicus/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/VesperBats/punicus/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/VesperBats/punicus/compare/v0.3.0-rc1...v0.4.0
 [0.3.0-rc1]: https://github.com/VesperBats/punicus/compare/v0.2.0...v0.3.0-rc1

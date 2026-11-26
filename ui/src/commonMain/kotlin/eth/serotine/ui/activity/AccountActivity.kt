@@ -216,8 +216,9 @@ class AccountActivity(
                 orders.mapNotNull { (it.end as? CowOrderEnd.Filled)?.transactionHash?.lowercase() }
             if (transfers == null) {
                 val fromIndexHere = indexed(index, listedHere, parties, tokens, rows)
+                val (datedHere, undatedHere) = byTime(index, fromIndexHere)
                 return ActivityUiState.Shown(
-                    merged(sent, fromIndexHere).byDay(dates, now()),
+                    merged(sent + datedHere, undatedHere).byDay(dates, now()),
                     COVERAGE,
                     waiting = waiting,
                     queued = queued,
@@ -263,8 +264,8 @@ class AccountActivity(
                     Listed(row, event.blockNumber, pending = false, moment = it, event = true, anchored = true)
                 }
             }
-            // The addr1 index's rows go by their block, as an event the engine did not date: none of a transaction
-            // the log index read, listed or deliberately left out (a transfer of nothing), is listed again.
+            // The addr1 index's rows: none of a transaction the log index read, listed or deliberately left out (a
+            // transfer of nothing), is listed again.
             val fromIndex = indexed(
                 index,
                 listedHere + allEvents.map { it.transactionHash.lowercase() },
@@ -272,9 +273,11 @@ class AccountActivity(
                 tokens,
                 rows,
             )
+            // A row whose block's verified time the engine reported (Myotis 0.1.24 on) goes by it, as a dated event.
+            val (datedFromIndex, undatedFromIndex) = byTime(index, fromIndex)
             val undated = (
                 events.filter { it.second.blockTimestamp == null }.map { (row, event) -> row to event.blockNumber } +
-                    fromIndex
+                    undatedFromIndex
                 ).sortedByDescending { it.second }
             val deployedHere = entries.any { (it.transfer.action as? SentAction.SafeDeployment)?.safe == address }
             val since = if (deployedHere) "when it was deployed from this device" else "when it was added here"
@@ -302,7 +305,7 @@ class AccountActivity(
                 if (safe == null) notListedYet(account.network) else null,
             ).joinToString(" ")
             return ActivityUiState.Shown(
-                rows = merged(sent + dated, undated).byDay(dates, now()),
+                rows = merged(sent + dated + datedFromIndex, undated).byDay(dates, now()),
                 coverage = covered.joinToString(" "),
                 empty = "Nothing listed yet.",
                 simpleCoverage = simple,
@@ -364,9 +367,30 @@ class AccountActivity(
         }
 
         /**
+         * [shown], rows of the addr1 index with their blocks, split by whether the engine reported their block's
+         * verified time (Myotis 0.1.24 on): those that have it, as rows dated by it, like a dated event (a verified
+         * entry's ghost too, while the tokens are read, so that it holds its row's place); and the others, the
+         * ghosts of entries still being checked among them, by their block alone.
+         */
+        private fun byTime(
+            index: IndexPaging?,
+            shown: List<Pair<ActivityRow, Long>>,
+        ): Pair<List<Listed>, List<Pair<ActivityRow, Long>>> {
+            val times = index?.rows.orEmpty()
+                .mapNotNull { row -> row.blockTimestamp?.let { "index:${row.entry.block}:${row.entry.slot}" to it } }
+                .toMap()
+            val (timed, untimed) = shown.partition { it.first.key in times }
+            val dated = timed.map { (row, block) ->
+                Listed(row, block, pending = false, moment = times.getValue(row.key), event = true, anchored = true)
+            }
+            return dated to untimed
+        }
+
+        /**
          * The ghost row of [entry], an entry of the addr1 index being checked: its key, and the time its row will say
-         * (its block in Detailed view, none in simple mode), which the ghost draws as a line of that height only, so
-         * that it is as tall as its row; nothing else of it.
+         * (its block's), which the ghost draws as a line of that height only, so that it is as tall as its row;
+         * nothing else of it. In simple mode too: the pinned engine (Myotis 0.1.24 on) dates every checked entry, so
+         * its row has a time line there as well.
          */
         private fun pendingRow(entry: AddressIndexEntry): ActivityRow = ActivityRow(
             key = "index:${entry.block}:${entry.slot}",
@@ -374,7 +398,6 @@ class AccountActivity(
             detail = "",
             about = "",
             time = "Block ${grouped(entry.block)}",
-            simpleTime = null,
             status = "",
             state = ActivityState.WAITING,
             opens = ActivityKey("", index = IndexEntryKey(entry.block, entry.slot, entry.roles)),

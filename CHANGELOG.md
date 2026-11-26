@@ -12,6 +12,12 @@ and issues of this repository.
 
 ### Added
 
+- The first start says what to expect: a note, shown once until OK, that
+  the first start takes a few minutes while Punicus finds computers of the
+  network to talk to, that a red bar or banner means wait, and that Try
+  again often helps since Punicus keeps working in the background. The
+  website's guide says the same under *When you run Punicus for the first
+  time*, and the downloads point to it.
 - Clear signing of dApp transactions, and of Permit2's batch permits among
   typed data: a call, or such a message, that Punicus did not decode before is
   now put in words when a built-in ERC-7730 description covers its contract

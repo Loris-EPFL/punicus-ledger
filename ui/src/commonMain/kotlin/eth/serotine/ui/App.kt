@@ -59,6 +59,8 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwapKind
 import eth.serotine.domain.model.SwapVenue
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.ui.firstrun.FirstRunNoticeText
+import eth.serotine.ui.firstrun.FirstRunDialog
 import eth.serotine.ui.accountdetail.AccountDetailRoute
 import eth.serotine.ui.accountdetail.PerAppActions
 import eth.serotine.ui.accounts.AccountAction
@@ -255,6 +257,11 @@ private fun AppContent(graph: AppGraph, navController: NavHostController) {
             }
         }
         ScreenCaptureWarnings()
+        // What to expect while Punicus finds its first peers, once, until OK (owner's request, 2026-11-26).
+        val firstRun = viewModel { graph.firstRunViewModel() }
+        if (firstRun.shown.collectAsStateWithLifecycle().value) {
+            FirstRunDialog(FirstRunNoticeText.DEFAULT, onOk = firstRun::ok)
+        }
     }
 }
 

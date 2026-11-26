@@ -9,9 +9,9 @@ sealed interface TraceDisagreement {
     data class TokenNotNamed(val token: Address) : TraceDisagreement
 
     /**
-     * Some of [asset], which the account sends or receives or the description names, ends up with [holder]:
-     * neither the account, nor a recipient the description shows, nor a contract the call goes through (one
-     * whose code ran: [TraceReading.ranCode]), nor the zero address (a burn).
+     * Some of [asset] ends up with [holder], which is neither the account, nor a recipient the description
+     * shows, nor the zero address (a burn), nor, for an asset the account sends, a counterparty that pays
+     * on toward the account or a recipient in the trace (docs/clear-signing.md, *The disagreements*).
      */
     data class OtherRecipient(val asset: TracedAsset, val holder: Address) : TraceDisagreement
 
@@ -33,34 +33,76 @@ object TraceDisagreements {
         if (effects.revert != null) return emptyList()
         val named = mutableSetOf<Address>()
         val recipients = mutableSetOf<Address>()
-        collect(described, named, recipients)
+        val namesCurrency = collect(described, named, recipients)
 
         val sent = effects.moves.filter { it.from == account }.mapNotNull { it.asset.contract }
         val notNamed = sent.distinct().filter { it !in named }.map { TraceDisagreement.TokenNotNamed(it) }
 
-        val others = if (recipients.isEmpty()) {
-            emptyList()
-        } else {
-            val considered = effects.moves.mapNotNull { it.asset.contract }.toSet() + named
-            val allowed = recipients + reading.ranCode + account + Address.ZERO
-            endHolders(reading.allMoves.filter { it.asset.contract in considered })
-                .filter { (_, holder) -> holder !in allowed }
-                .map { (asset, holder) -> TraceDisagreement.OtherRecipient(asset, holder) }
-        }
+        val others = if (recipients.isEmpty()) emptyList() else otherRecipients(account, reading, named, recipients, namesCurrency)
 
         val unflagged = if (described.grantsApproval) emptyList() else effects.rights.map { TraceDisagreement.RightNotFlagged(it) }
         return notNamed + others + unflagged
     }
 
-    /** The tokens and the recipients a description names, its nested calls' included. */
-    private fun collect(described: ClearSignResult.ClearSigned, named: MutableSet<Address>, recipients: MutableSet<Address>) {
+    /**
+     * Where the account's assets, and those the description names, end up, against where the description says.
+     * The assets held: each the account sends or receives, each the description names, and the network's
+     * currency where the account moves it or the description shows an amount of it. An end holder ([endHolders])
+     * is fine when it is the account, a recipient or the zero address; for an asset the account sends, also
+     * when it pays on: a move of anything leads from it, directly or through others, to the account or a
+     * recipient (a pool that is paid and pays back). The currency and its wrapped token count as one here. An asset the account does not send has no such exception:
+     * a pool keeps what it is paid, never what it pays out.
+     */
+    private fun otherRecipients(
+        account: Address,
+        reading: TraceReading,
+        named: Set<Address>,
+        recipients: Set<Address>,
+        namesCurrency: Boolean,
+    ): List<TraceDisagreement.OtherRecipient> {
+        val mine = reading.effects.moves
+        // The currency and its wrapped token are one to the account: it pays in either, wrapped or unwrapped on the way.
+        val wrapped = reading.wrappedNative
+        val paid = mine.filter { it.from == account }.map { key(it.asset) }.toSet()
+        val sent = if (wrapped != null && (CURRENCY in paid || wrapped in paid)) paid + CURRENCY + wrapped else paid
+        val considered = mine.map { key(it.asset) }.toSet() + named + listOfNotNull(CURRENCY.takeIf { namesCurrency })
+        val ends = setOf(account, Address.ZERO) + recipients
+        val paysOn = payers(reading.allMoves, recipients + account)
+        return endHolders(reading.allMoves.filter { key(it.asset) in considered })
+            .filter { (asset, holder) -> holder !in ends && !(key(asset) in sent && holder in paysOn) }
+            .map { (asset, holder) -> TraceDisagreement.OtherRecipient(asset, holder) }
+    }
+
+    /** Every address from which a chain of [moves] leads to one of [targets]. */
+    private fun payers(moves: List<TracedMove>, targets: Set<Address>): Set<Address> {
+        val into = moves.groupBy({ it.to }, { it.from })
+        val reached = targets.toMutableSet()
+        val queue = ArrayDeque(targets)
+        while (queue.isNotEmpty()) {
+            for (from in into[queue.removeFirst()].orEmpty()) if (reached.add(from)) queue.addLast(from)
+        }
+        return reached - targets
+    }
+
+    /** The contract an asset is told by: its issuer, or [CURRENCY] for the network's own. */
+    private fun key(asset: TracedAsset): Address = asset.contract ?: CURRENCY
+
+    /** Stands for the network's currency among contracts: no contract is at it ([Address.ZERO] is a burn). */
+    private val CURRENCY = Address.of("0x" + "e".repeat(40))
+
+    /** The tokens and the recipients a description names, its nested calls' included; true when it shows currency. */
+    private fun collect(described: ClearSignResult.ClearSigned, named: MutableSet<Address>, recipients: MutableSet<Address>): Boolean {
+        var currency = false
         for (field in described.fields) when (field) {
             is ClearSignedField.Value -> {
                 field.token?.let(named::add)
                 field.recipient?.let(recipients::add)
+                if (field.nativeCurrency) currency = true
             }
-            is ClearSignedField.Nested -> (field.result as? ClearSignResult.ClearSigned)?.let { collect(it, named, recipients) }
+            is ClearSignedField.Nested ->
+                if ((field.result as? ClearSignResult.ClearSigned)?.let { collect(it, named, recipients) } == true) currency = true
         }
+        return currency
     }
 
     /**

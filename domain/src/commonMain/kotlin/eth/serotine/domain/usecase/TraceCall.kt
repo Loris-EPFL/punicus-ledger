@@ -17,9 +17,12 @@ import eth.serotine.domain.repository.CallTraces
 import eth.serotine.domain.repository.ClearSigningCatalog
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenCatalog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -33,7 +36,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * The wallet waits [waitMs] for a trace, and past it says it was not traced in time ([TraceOutcome.NotInTime]).
  * The engine's run goes on to its own budget in [scope], and a trace of the same call asked for while it runs
- * waits for that run rather than starting a second one. Tokens and contracts are named by the built-in list
+ * waits for that run rather than starting a second one. [scope] lives as long as the app and has a
+ * `SupervisorJob`, so that no run's end cancels another's. Tokens and contracts are named by the built-in list
  * and the clear-signing catalog alone; [wrappedNative] is each network's pinned wrapped currency.
  */
 class TraceCall(
@@ -60,9 +64,24 @@ class TraceCall(
         val run = lock.withLock {
             running.values.removeAll { !it.isActive }
             running[key]
-                ?: scope.async { traces.trace(network, from, to, value, data) }.also { running[key] = it }
+                ?: scope.async {
+                    // The port never throws; should it, the run is no answer, and the scope lives on.
+                    try {
+                        traces.trace(network, from, to, value, data)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        CallTraceReading.Unavailable(ReadUnavailable.UNPROVEN)
+                    }
+                }.also { running[key] = it }
         }
-        val reading = withTimeoutOrNull(waitMs) { run.await() } ?: return TraceOutcome.NotInTime
+        val reading = try {
+            withTimeoutOrNull(waitMs) { run.await() } ?: return TraceOutcome.NotInTime
+        } catch (e: CancellationException) {
+            // The run was cancelled with its scope (the app closing): no answer, unless this caller was.
+            currentCoroutineContext().ensureActive()
+            return TraceOutcome.Unavailable(ReadUnavailable.UNPROVEN)
+        }
         lock.withLock { if (running[key] === run) running.remove(key) }
         return when (reading) {
             is CallTraceReading.Traced -> traced(network, from, reading, description)

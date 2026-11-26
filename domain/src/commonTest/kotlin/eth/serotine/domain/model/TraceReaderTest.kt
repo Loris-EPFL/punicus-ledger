@@ -165,8 +165,6 @@ class TraceReaderTest {
         assertEquals(3, reading.allMoves.size)
         assertEquals(2, reading.effects.moves.size)
         assertNull(reading.effects.revert)
-        // The router opened no frame and its address logged nothing: no code of its ran here.
-        assertEquals(setOf(token, other), reading.ranCode)
     }
 
     @Test

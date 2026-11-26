@@ -38,8 +38,9 @@ sealed interface ClearSignedField {
      * never by the name its own contract gives it. [addressType] is set when an `addressName`'s address is
      * not of the kind the descriptor expects. [token] is the token or the NFT collection the value names (a
      * `tokenAmount` other than of the network's currency, a `tokenTicker`, an `nftName`), and [recipient] the
-     * address an `addressName` shows (the sender's own where it stands for the sender): what a verified trace
-     * is held against (docs/clear-signing.md, *Phase B*).
+     * address an `addressName` shows (the sender's own where it stands for the sender); [nativeCurrency] is set
+     * for a `tokenAmount` of the network's currency: what a verified trace is held against (docs/clear-signing.md,
+     * *Phase B*).
      */
     data class Value(
         override val label: String,
@@ -50,6 +51,7 @@ sealed interface ClearSignedField {
         val addressType: AddressTypeMismatch? = null,
         val token: Address? = null,
         val recipient: Address? = null,
+        val nativeCurrency: Boolean = false,
     ) : ClearSignedField
 
     /**
@@ -346,7 +348,8 @@ object ClearSignFormatter {
                 mismatch: AddressTypeMismatch? = null,
                 token: Address? = null,
                 recipient: Address? = null,
-            ) = ClearSignedField.Value(label, text, raw, unlisted, group, mismatch, token, recipient)
+                native: Boolean = false,
+            ) = ClearSignedField.Value(label, text, raw, unlisted, group, mismatch, token, recipient, native)
             // A parameter's path that walks the same array as the field is read at the field's item (ERC-7730,
             // *Array references in parameters*).
             fun parameter(parameter: ClearSigningPath): AbiValue = single(aligned(parameter, path, at.location))
@@ -366,7 +369,7 @@ object ClearSignFormatter {
                     }
                     val threshold = format.threshold
                     val text = if (threshold != null && amount >= threshold) format.message ?: "Unlimited" else amount.formatUnits(known.decimals)
-                    shown("$text ${known.symbol}", token = named)
+                    shown("$text ${known.symbol}", token = named, native = native)
                 }
                 is FieldFormat.AddressName -> {
                     val address = address(value)

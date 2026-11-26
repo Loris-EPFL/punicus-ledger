@@ -78,12 +78,11 @@ data class TraceEffects(
 data class TracedRevert(val error: String, val reason: String?)
 
 /**
- * What a trace read gives: the [effects] on the account; [allMoves], every movement of the counted frames,
- * whoever made it, which the recipient check follows to where the tokens end up; and [ranCode], each address
- * whose code ran in the trace (it opened a frame or emitted a log): the contracts a call goes through. An
- * address merely called, as an account with no code is, did not run any.
+ * What a trace read gives: the [effects] on the account, and [allMoves], every movement of the counted frames,
+ * whoever made it, which the recipient check follows to where the tokens end up; and [wrappedNative], the
+ * network's pinned wrapped currency it was read with.
  */
-data class TraceReading(val effects: TraceEffects, val allMoves: List<TracedMove>, val ranCode: Set<Address>)
+data class TraceReading(val effects: TraceEffects, val allMoves: List<TracedMove>, val wrappedNative: Address? = null)
 
 /**
  * Reads a verified trace's effects on [account] (docs/clear-signing.md, *Phase B*, *How it is applied*): a pure
@@ -102,15 +101,12 @@ object TraceReader {
     /** Reads [root], the transaction's frame. */
     fun read(account: Address, root: TraceFrame, wrappedNative: Address?, permit2: Address): TraceReading {
         val contracts = linkedMapOf<Address, Boolean>()
-        val ranCode = mutableSetOf<Address>()
         val moves = mutableListOf<TracedMove>()
         val rights = mutableListOf<TracedRight>()
         var unread = 0
 
         fun visit(frame: TraceFrame, sender: Address, counted: Boolean) {
             val counts = counted && !frame.failed
-            frame.calls.forEach { ranCode += it.from }
-            frame.logs.forEach { ranCode += it.address }
             frame.to?.takeUnless { isPrecompile(it) || it == account }?.let { contracts[it] = (contracts[it] ?: false) || frame.type.runsInCallersContext }
             // A delegate call runs in its caller's context: its logs and calls have its caller's sender.
             val inner = if (frame.type.runsInCallersContext) sender else frame.from
@@ -141,7 +137,7 @@ object TraceReader {
             revert = revert,
             unreadLogs = unread,
         )
-        return TraceReading(effects, counted, ranCode)
+        return TraceReading(effects, counted, wrappedNative)
     }
 
     private sealed interface LogRead {

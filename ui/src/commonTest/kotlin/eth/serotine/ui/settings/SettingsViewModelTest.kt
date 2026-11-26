@@ -1,5 +1,6 @@
 package eth.serotine.ui.settings
 
+import eth.serotine.ui.components.shortAddress
 import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
@@ -741,6 +742,19 @@ class SettingsViewModelTest {
             item.text,
         )
         assertTrue(item.text.endsWith(" was pinned: on by default for it too"), item.text)
+
+        // Turned on for a key no release pins any more: both keys pinned now are new, said in the plural.
+        addressIndexSetting.choice.value = AddressIndexChoice.Chosen(setOf(Address.of("0x" + "7e".repeat(20))))
+        runCurrent()
+        val both = assertNotNull(viewModel.uiState.value.addressIndex).text
+        assertTrue(both.endsWith(" were pinned: on by default for them too"), both)
+        val note = both.substringAfter(" · It was turned on before ")
+        assertTrue(
+            note.startsWith(
+                "${shortAddress(Eip55.format(FIXTURE_IMPORTER))} and ${shortAddress(Eip55.format(gnosisKey))}",
+            ),
+            "in the row's order, Ethereum first: $note",
+        )
 
         viewModel.useAddressIndex(false)
         runCurrent()

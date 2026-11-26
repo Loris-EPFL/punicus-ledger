@@ -435,6 +435,36 @@ class EngineAddressIndexHistoryTest {
     }
 
     @Test
+    fun anyNetworksLightClientAnswersForTheEnginesReader() = runTest {
+        val gnosis = FakeChain()
+        chain.supports = null
+        gnosis.supports = true
+        val history = EngineAddressIndexHistory(
+            mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis),
+            StandardTestDispatcher(testScheduler),
+            1.seconds,
+        )
+
+        assertTrue(history.hasReader(), "Gnosis Chain's answer is the engine's")
+    }
+
+    @Test
+    fun oneHandleWithNoEngineAnswersNoReaderWhateverTheOtherNetworkDoes() = runTest {
+        val gnosis = FakeChain()
+        chain.supports = null
+        chain.snapshot = EngineSnapshot.Down
+        gnosis.supports = null
+        gnosis.snapshot = EngineSnapshot.Stopped(off = false)
+        val history = EngineAddressIndexHistory(
+            mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis),
+            StandardTestDispatcher(testScheduler),
+            1.seconds,
+        )
+
+        assertFalse(history.hasReader(), "no engine on this device: never waits for ever")
+    }
+
+    @Test
     fun eachNetworkIsReadThroughItsOwnLightClientAndOneNotServedIsRefused() = runTest {
         val gnosis = FakeChain()
         val history = EngineAddressIndexHistory(

@@ -419,13 +419,15 @@ class SettingsViewModel(
             if (AddressIndexMissing.READER_NOT_KNOWN in missing) {
                 append(" · Waiting for the engine to say whether it reads Swarm")
             }
-            val added = newKeys
+            // In the order the row names the keys: by chain id.
+            val added = pinned.keys.entries.sortedBy { it.key.chainId }.map { it.value }.filter { it in newKeys }
             when {
                 // That choice does not carry over: the keys pinned since had none, so it is on by default for them.
                 added.isNotEmpty() && on -> append(
                     " · It was turned on before " +
                         added.joinToString(" and ") { shortAddress(Eip55.format(it)) } +
-                        " was pinned: on by default for ${if (added.size == 1) "it" else "them"} too",
+                        " ${if (added.size == 1) "was" else "were"} pinned: on by default for " +
+                        "${if (added.size == 1) "it" else "them"} too",
                 )
                 // On by default (owner's decision, 2026-11-22), once nothing keeps it off.
                 choice == AddressIndexChoice.NotChosen && !on ->

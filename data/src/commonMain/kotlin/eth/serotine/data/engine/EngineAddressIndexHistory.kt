@@ -106,8 +106,8 @@ class EngineAddressIndexHistory internal constructor(
     private var reader: Boolean? = null
 
     /**
-     * The engine's reader is the engine's, not a network's: the first running light client of any network served
-     * answers for all of them.
+     * The engine's reader is the engine's, not a network's (Myotis's `address_history_supported`, which takes no
+     * chain): the first running light client of any network served answers for all of them.
      */
     override suspend fun hasReader(): Boolean {
         reader?.let { return it }
@@ -128,7 +128,9 @@ class EngineAddressIndexHistory internal constructor(
                     return known
                 }
             }
-            if (running.all { snapshotOf(it) == EngineSnapshot.Down }) return false
+            // No engine on this device is engine-wide (its library did not load): one handle that says so is enough,
+            // whether the other network was asked to run or not.
+            if (running.any { snapshotOf(it) == EngineSnapshot.Down }) return false
             delay(readerPoll)
         }
     }

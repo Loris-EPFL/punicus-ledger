@@ -51,7 +51,10 @@ internal class FakeAddressIndexHistory(
 
     private val answered = MutableStateFlow(true)
 
-    /** Whether [hasReader] answers yet: false holds it, as an engine whose Ethereum light client does not run. */
+    /**
+     * Whether [hasReader] answers yet: false holds it, as an engine none of whose light clients serving the index
+     * runs.
+     */
     var readerAnswered: Boolean
         get() = answered.value
         set(value) {

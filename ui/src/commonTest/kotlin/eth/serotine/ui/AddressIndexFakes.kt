@@ -56,7 +56,10 @@ internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressInde
     /** The entries of each check asked, in order. */
     val checked = mutableListOf<List<AddressIndexEntry>>()
 
-    /** Whether [hasReader] answers yet: false holds it, as an engine whose Ethereum light client does not run. */
+    /**
+     * Whether [hasReader] answers yet: false holds it, as an engine none of whose light clients serving the index
+     * runs.
+     */
     val readerAnswered = MutableStateFlow(true)
 
     override suspend fun hasReader(): Boolean {
@@ -64,7 +67,11 @@ internal class FakeAddressIndexHistory(var reader: Boolean = true) : AddressInde
         return reader
     }
 
+    /** The network of each page asked, in order. */
+    val networksAsked = mutableListOf<Network>()
+
     override suspend fun page(network: Network, address: Address, query: AddressIndexQuery): AddressIndexReading {
+        networksAsked += network
         asked += query.cursor
         pageRefusal?.let { return AddressIndexReading.Refused(it) }
         val from = query.fromBlock

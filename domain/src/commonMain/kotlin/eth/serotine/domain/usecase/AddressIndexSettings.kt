@@ -27,8 +27,8 @@ enum class AddressIndexMissing {
     NO_READER,
 
     /**
-     * The engine has not said yet whether it has a Swarm reader: it says so once Ethereum's light client runs
-     * ([AddressIndexHistory.hasReader] not answered yet).
+     * The engine has not said yet whether it has a Swarm reader: it says so once Ethereum's or Gnosis Chain's light
+     * client runs ([AddressIndexHistory.hasReader] not answered yet).
      */
     READER_NOT_KNOWN,
 

@@ -345,6 +345,8 @@ class AppNavigationTest {
         Long.MAX_VALUE / 2,
     )
 
+    private val traceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
+
     private val graph = AppGraph(
         accounts = accountRepository,
         outbox = Outbox.None,
@@ -451,6 +453,8 @@ class AppNavigationTest {
                 CallTraceReading.Unavailable(ReadUnavailable.NO_ENGINE)
         },
         wrappedCurrency = { null },
+        // A scope of its own: nothing here traces, the engine answering that there is none.
+        traceScope = traceScope,
         cowChain = object : CowChain {
             override suspend fun venue(network: Network): CowVenueReading = CowVenueReading.NotPinned
 

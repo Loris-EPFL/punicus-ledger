@@ -1,5 +1,7 @@
 package eth.serotine.ui.dapptransaction
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountId
@@ -210,6 +212,8 @@ class DappTransactionViewModel(
     private val timeSource: TimeSource = TimeSource.Monotonic,
     /** When how long the dApp waits is said again: every 15 seconds while the screen is open. */
     ticks: Flow<Unit> = DappRequestViewModel.every15Seconds(),
+    /** Where a trace is put in words: its size is the dApp's to choose, so never on the main thread. */
+    private val formatOn: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
     /** Whether lenient mode is chosen: a refusal while syncing then says the setting does not reach this. */
@@ -295,14 +299,16 @@ class DappTransactionViewModel(
     }
 
     /** The call's verified trace, once traced; null before. Traced anew with each quote, after the description. */
-    private val traced = MutableStateFlow<TraceOutcome?>(null)
+    private val traced = MutableStateFlow<TraceSection?>(null)
     private val tracing = MutableStateFlow(false)
     private var traceJob: Job? = null
 
     /**
      * Traces the call at the verified head, a Safe's as the Safe's own call, and holds it against what the call
      * claims: its hand-written decoder's meaning, or once looked up its description. A trace still running is
-     * not asked again (the use case waits for the engine's run, which goes on past the screen's wait).
+     * asked again with the claims as they are now (the use case waits for the engine's run already going), and
+     * the last one stays on screen, its warnings with it, until the next is read. A request that can only be
+     * refused is not traced.
      */
     fun retrace() {
         // A trace still running is asked again with the claims as they are now: the use case waits for the
@@ -312,28 +318,47 @@ class DappTransactionViewModel(
             val review = observeDappMessages().first().find { it.request.id == id } ?: return@launch
             val transaction = (review.content as? DappSignContent.Transaction)?.transaction ?: return@launch
             val network = review.request.network ?: return@launch
+            if (review.refusal != null) return@launch
             tracing.value = true
+            val self = coroutineContext[Job]
             try {
                 // The claims of a call the app does not decode are its description's: wait for the lookup.
                 describeJob?.join()
                 val meaning = transaction.meaning
                 val claims = if (meaning is DappCallMeaning.NotDecoded) description.value?.let(TraceClaims::of)
                 else TraceClaims.ofMeaning(meaning, transaction.to)
-                traced.value = traceCall.trace(network, review.address, transaction.to, transaction.value, transaction.data, claims)
+                val outcome = traceCall.trace(network, review.address, transaction.to, transaction.value, transaction.data, claims)
+                traced.value = withContext(formatOn) { TraceText.section(outcome, review.address, network) }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                traced.value = TraceOutcome.Unavailable(ReadUnavailable.UNPROVEN)
+                traced.value = TraceText.section(TraceOutcome.Unavailable(ReadUnavailable.UNPROVEN), review.address, network)
             } finally {
-                tracing.value = false
+                // A run asked again ends after the next one began: only the current one says it is done.
+                if (traceJob === self) tracing.value = false
             }
         }
+    }
+
+    /**
+     * [section] beside the run quoted: a revert the trace shows while the run did not is warned about, as the
+     * head having moved where the two blocks differ, and as not known where they are the same.
+     */
+    private fun withRun(section: TraceSection, local: Local): TraceSection {
+        if (section.revert == null) return section
+        // An account's quote always ran; a Safe's proposal only where the engine ran a call from the Safe.
+        val quoted = local.quote?.call
+        val proposed = local.proposal?.proposal?.simulation as? SafeCallSimulation.Ran
+        if (quoted == null && proposed == null) return section
+        val runBlock = quoted?.simulationBlock ?: proposed?.blockNumber
+        val warning = if (runBlock != null && runBlock == section.block) TraceText.REVERTS_AT_THE_RUNS_BLOCK else TraceText.REVERTS_UNLIKE_RUN
+        return section.copy(warnings = section.warnings + warning)
     }
 
     private data class Reviews(
         val description: ClearSignResult?,
         val describing: Boolean,
-        val traced: TraceOutcome?,
+        val traced: TraceSection?,
         val tracing: Boolean,
     )
 
@@ -355,17 +380,9 @@ class DappTransactionViewModel(
             }
         val base = withDescription(plain, described.description, described.describing)
         val network = review.request.network
-        val trace = when {
-            described.tracing -> TraceSection(tracing = true)
-            network == null -> null
-            else -> described.traced?.let { outcome ->
-                val section = TraceText.section(outcome, review.address, network)
-                // A revert the trace shows while the run quoted did not: the chain moved between the two.
-                val ran = local.quote != null || local.proposal != null
-                if (section.revert != null && ran) section.copy(warnings = section.warnings + TraceText.REVERTS_UNLIKE_RUN)
-                else section
-            }
-        }
+        val trace = described.traced?.let { section -> withRun(section, local) }
+            ?.let { if (described.tracing) it.copy(tracing = true) else it }
+            ?: TraceSection(tracing = true).takeIf { described.tracing }
         base.copy(
             trace = trace,
             quoting = local.quoting,

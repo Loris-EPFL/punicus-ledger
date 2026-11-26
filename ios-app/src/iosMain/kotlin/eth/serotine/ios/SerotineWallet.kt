@@ -318,6 +318,7 @@ class SerotineWallet {
             contractCodes = node.contractCodes,
             callTraces = node.callTraces,
             wrappedCurrency = WrappedCurrency::of,
+            traceScope = scope,
             // CoW Protocol: its pinned contracts proven by their code, and its order API, an off-chain
             // service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*). Until
             // Myotis's iOS module reads a block by number, no finalized block's own time is known here,

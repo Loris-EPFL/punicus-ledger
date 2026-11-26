@@ -1,7 +1,5 @@
 package eth.serotine.ui
 
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import eth.serotine.domain.usecase.TraceCall
 import eth.serotine.domain.repository.CallTraces
@@ -420,6 +418,11 @@ class AppGraph(
     private val callTraces: CallTraces,
     /** Each network's wrapped currency as this release pins it, which a trace reads the wrapping of. */
     private val wrappedCurrency: (Network) -> Address?,
+    /**
+     * The host's scope for work that outlives a screen: a trace the screen stopped waiting for runs on in it,
+     * so that asking again waits for it (docs/clear-signing.md, *Limits*).
+     */
+    private val traceScope: CoroutineScope,
     /** CoW Protocol's settlement contracts on each network, proven by their code, and verified calls of them. */
     private val cowChain: CowChain,
     /**
@@ -1222,12 +1225,8 @@ class AppGraph(
     /** What the built-in descriptors say a dApp's call or message does, bound to verified code. */
     private fun describeClearSigning() = DescribeClearSigning(clearSigningCatalog, contractCodes, tokenCatalog, addressKinds)
 
-    /**
-     * One for the app: a trace the screen stopped waiting for runs on in [traceScope], and asking again waits
-     * for it (docs/clear-signing.md, *Limits*).
-     */
+    /** One for the app: a trace the screen stopped waiting for runs on in [traceScope], and asking again waits for it. */
     private val traceCall by lazy { TraceCall(callTraces, tokenCatalog, clearSigningCatalog, wrappedCurrency, traceScope) }
-    private val traceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /** The review of the transaction [requestKey] names (`topic/id`, as its route carries it): screen D6. */
     fun dappTransactionViewModel(requestKey: String): DappTransactionViewModel = DappTransactionViewModel(

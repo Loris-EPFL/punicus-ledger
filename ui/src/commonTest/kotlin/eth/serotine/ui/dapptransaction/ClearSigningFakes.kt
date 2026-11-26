@@ -67,10 +67,15 @@ internal fun describingThat(throws: Exception): DescribeClearSigning = DescribeC
 internal fun tracing(
     tokens: TokenCatalog,
     scope: CoroutineScope,
+    /** Each trace's sender, recipient and value, in the order asked. */
+    asked: MutableList<Triple<Address, Address, UInt256>> = mutableListOf(),
     answer: suspend () -> CallTraceReading = { CallTraceReading.NotTraced },
 ): TraceCall = TraceCall(
     traces = object : CallTraces {
-        override suspend fun trace(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray) = answer()
+        override suspend fun trace(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): CallTraceReading {
+            asked += Triple(from, to, value)
+            return answer()
+        }
     },
     tokens = tokens,
     catalog = object : ClearSigningCatalog {

@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.ClearSignFormatter
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.ShownText
 import eth.serotine.domain.model.TraceDisagreement
 import eth.serotine.domain.model.TracedAsset
 import eth.serotine.domain.model.TracedRight
@@ -35,6 +36,8 @@ data class TraceSection(
     val tracing: Boolean = false,
     /** "Proven at block N, at the verified head: what it does now, not when it is mined." */
     val provenAt: String? = null,
+    /** The block it was proven at, which a screen holds against its own run's. */
+    val block: Long? = null,
     /** The account's currency and tokens sent and received, each with its counterparty. */
     val moves: List<String> = emptyList(),
     /** The rights over the account's tokens it grants. */
@@ -51,7 +54,7 @@ data class TraceSection(
     val canRetry: Boolean = false,
 ) {
     /** Whether it moves or grants nothing it logs. */
-    val nothingLogged: Boolean get() = provenAt != null && moves.isEmpty() && rights.isEmpty() && revert == null && unread == null
+    val nothingLogged: Boolean get() = provenAt != null && moves.isEmpty() && rights.isEmpty() && revert == null && unread == null && unread == null
 }
 
 /** What the screens say of a verified trace, and how a [TraceOutcome] becomes a [TraceSection]. */
@@ -60,8 +63,8 @@ object TraceText {
     const val TRACING = "Tracing it at the verified head…"
     const val DISAGREES = "The trace does not match what this call says it does. Check it carefully: it can " +
         "still be signed."
-    const val NOTHING_LOGGED = "It moves and grants nothing its contracts log. What a contract does not log is " +
-        "not seen."
+    const val NOTHING_LOGGED = "It moves nothing of this account's and grants no right over its tokens, as far " +
+        "as its contracts log. What a contract does not log is not seen."
     const val LOGS_ONLY = "Read from what the contracts log: a token that moves without logging it is not seen."
     const val NOT_TRACED_HERE = "Not traced: the light client on this device does not trace calls yet."
     const val NOT_IN_TIME = "Not traced within 30 seconds: the call reaches much state. Try again waits for " +
@@ -69,8 +72,18 @@ object TraceText {
     /** Beside the button that signs, while the trace disagrees: the call stays signable. */
     const val DISAGREES_NEAR_SIGN = "Its trace does not match what it says it does: see \"What it does now\" above " +
         "before you sign."
-    const val REVERTS_UNLIKE_RUN = "The trace reverts, while the verified run above did not: the chain moved " +
+    const val REVERTS_UNLIKE_RUN = "The trace reverts, while the verified run below did not: the chain moved " +
         "between the two. Quote it again before you send."
+
+    /** The trace reverts at the very block its run did not: not the head moving, and Punicus cannot tell why. */
+    const val REVERTS_AT_THE_RUNS_BLOCK = "The trace reverts at the block the verified run below did not: Punicus " +
+        "cannot tell why. Do not send it unless you know why."
+
+    /** At most this many lines of each kind are shown; how many more there are is said. */
+    const val MAX_LINES = 40
+
+    /** At most this many characters of a contract's revert reason are shown. */
+    const val MAX_REASON = 200
 
     /** [outcome] of [account]'s call on [network] as the screen shows it. */
     fun section(outcome: TraceOutcome, account: Address, network: Network): TraceSection = when (outcome) {
@@ -78,7 +91,11 @@ object TraceText {
         is TraceOutcome.Infeasible -> TraceSection(notTraced = "Not traced: it cannot run (${outcome.detail}).", canRetry = true)
         TraceOutcome.NotTraced -> TraceSection(notTraced = NOT_TRACED_HERE)
         TraceOutcome.NotInTime -> TraceSection(notTraced = NOT_IN_TIME, canRetry = true)
-        is TraceOutcome.Unavailable -> TraceSection(notTraced = "Not traced: ${why(outcome.reason)}", canRetry = true)
+        // Trying again changes nothing while the network has no light client running.
+        is TraceOutcome.Unavailable -> TraceSection(
+            notTraced = "Not traced: ${why(outcome.reason)}",
+            canRetry = outcome.reason != ReadUnavailable.NETWORK_OFF && outcome.reason != ReadUnavailable.NO_ENGINE,
+        )
     }
 
     private fun traced(outcome: TraceOutcome.Traced, account: Address, network: Network): TraceSection {
@@ -88,7 +105,8 @@ object TraceText {
             return outcome.names[address]?.let { "$it ($checksum)" } ?: checksum
         }
         fun amount(asset: TracedAsset, amount: UInt256): String = when (asset) {
-            TracedAsset.Currency -> "${amount.formatUnits(NATIVE_DECIMALS)} ${network.nativeSymbol}"
+            TracedAsset.Currency ->
+                "${amount.formatUnits(NATIVE_DECIMALS)} ${network.nativeSymbol}" + if (network.testnet) " (testnet)" else ""
             is TracedAsset.Fungible -> outcome.tokens[asset.token]?.let { "${amount.formatUnits(it.decimals)} ${it.symbol}" }
                 ?: "${amount.toDecimal()} raw units of the token at ${Eip55.format(asset.token)}, not in the built-in token list"
             is TracedAsset.Nft -> (if (asset.multi) "${amount.toDecimal()} × " else "") + "#${asset.id.toDecimal()} of ${named(asset.collection)}"
@@ -102,36 +120,60 @@ object TraceText {
             named(contract.address) + if (outcome.unnamedDelegate(contract)) ", its code run by a delegate call: code Punicus cannot name" else ""
         }
         return TraceSection(
+            block = outcome.blockNumber,
             provenAt = "Proven at block ${grouped(outcome.blockNumber)}, at the verified head: what it does now, not when it is mined.",
-            moves = moves,
-            rights = rights,
-            contracts = contracts,
-            revert = effects.revert?.let { revert -> "It reverts" + (revert.reason?.let { ": \"$it\"" } ?: " (${revert.error})") },
+            moves = capped(moves, "moves"),
+            rights = capped(rights, "rights"),
+            contracts = capped(contracts, "contracts"),
+            revert = effects.revert?.let { revert ->
+                // The reason is the called contract's own text: escaped, cut, and said to be its words.
+                revert.reason?.let { "It reverts. The contract's reason: \"${shown(it)}\"" } ?: "It reverts (${shown(revert.error)})."
+            },
             unread = effects.unreadLogs.takeIf { it > 0 }?.let {
                 "$it of its logs look like token events but are not their exact encoding, so they are not read."
             },
-            warnings = outcome.disagreements.map { disagreement(it, ::named, outcome) },
+            warnings = capped(outcome.disagreements.map { disagreement(it, ::named, outcome) }, "warnings"),
             canRetry = true,
         )
     }
 
     private fun right(right: TracedRight, named: (Address) -> String, outcome: TraceOutcome.Traced): String = when (right) {
-        is TracedRight.Allowance -> "Lets ${named(right.spender)} take up to " +
-            (outcome.tokens[right.contract]?.let { "${right.amount.formatUnits(it.decimals)} ${it.symbol}" }
-                ?: "${right.amount.toDecimal()} raw units of the token at ${Eip55.format(right.contract)}")
+        is TracedRight.Allowance -> "Lets ${named(right.spender)} take " + allowance(right.amount, right.contract, outcome, UInt256.MAX)
         is TracedRight.OneNft -> "Lets ${named(right.spender)} take #${right.id.toDecimal()} of ${named(right.contract)}"
         is TracedRight.AllNfts -> "Lets ${named(right.spender)} take every NFT of ${named(right.contract)}"
-        is TracedRight.Permit2 -> "Lets ${named(right.spender)} take up to " +
-            (outcome.tokens[right.token]?.let { "${right.amount.formatUnits(it.decimals)} ${it.symbol}" }
-                ?: "${right.amount.toDecimal()} raw units of the token at ${Eip55.format(right.token)}") +
+        is TracedRight.Permit2 -> "Lets ${named(right.spender)} take " + allowance(right.amount, right.token, outcome, MAX_UINT160) +
             " through Permit2, until ${ClearSignFormatter.utc(right.expiration)}"
     }
 
+    /** [asset] as a sentence starts with it: our own words capitalised, a symbol as it is spelled. */
     private fun amountless(asset: TracedAsset, named: (Address) -> String, outcome: TraceOutcome.Traced): String = when (asset) {
-        TracedAsset.Currency -> "the network's currency"
-        is TracedAsset.Fungible -> outcome.tokens[asset.token]?.symbol ?: "the token at ${Eip55.format(asset.token)}"
-        is TracedAsset.Nft -> "#${asset.id.toDecimal()} of ${named(asset.collection)}"
+        TracedAsset.Currency -> "The network's currency"
+        is TracedAsset.Fungible -> outcome.tokens[asset.token]?.symbol ?: "The token at ${Eip55.format(asset.token)}"
+        is TracedAsset.Nft -> "NFT #${asset.id.toDecimal()} of ${named(asset.collection)}"
     }
+
+    /** An allowance of [amount] of [token]: its most ([max]) said in words, as the descriptions and decoders do. */
+    private fun allowance(amount: UInt256, token: Address, outcome: TraceOutcome.Traced, max: UInt256): String {
+        val listed = outcome.tokens[token]
+        val what = listed?.symbol ?: "the token at ${Eip55.format(token)}"
+        return when {
+            amount == max -> "an unlimited amount of $what"
+            listed != null -> "up to ${amount.formatUnits(listed.decimals)} ${listed.symbol}"
+            else -> "up to ${amount.toDecimal()} raw units of $what"
+        }
+    }
+
+    /** [lines], at most [MAX_LINES] of them, and how many more there are where there are more. */
+    private fun capped(lines: List<String>, what: String): List<String> =
+        if (lines.size <= MAX_LINES) lines else lines.take(MAX_LINES) + "…and ${lines.size - MAX_LINES} more $what, not shown here."
+
+    /** Text a contract chose, on one line: what draws nothing spelled out, cut to [MAX_REASON] characters. */
+    private fun shown(text: String): String {
+        val escaped = ShownText.escaped(text)
+        return if (escaped.length <= MAX_REASON) escaped else escaped.take(MAX_REASON) + "…(cut)"
+    }
+
+    private val MAX_UINT160 = UInt256.fromBigEndian(ByteArray(20) { -1 })
 
     private fun disagreement(
         disagreement: TraceDisagreement,
@@ -141,7 +183,7 @@ object TraceText {
         is TraceDisagreement.TokenNotNamed ->
             "It sends ${outcome.tokens[disagreement.token]?.symbol ?: named(disagreement.token)}, which this call does not name."
         is TraceDisagreement.OtherRecipient ->
-            "${amountless(disagreement.asset, named, outcome).replaceFirstChar { it.uppercase() }} ends up with " +
+            "${amountless(disagreement.asset, named, outcome)} ends up with " +
                 "${named(disagreement.holder)}, an address this call does not show."
         is TraceDisagreement.RightNotFlagged ->
             "${right(disagreement.right, named, outcome)}: a right this call does not say it grants."

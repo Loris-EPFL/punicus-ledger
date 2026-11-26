@@ -51,7 +51,7 @@ data class TraceSection(
     val canRetry: Boolean = false,
 ) {
     /** Whether it moves or grants nothing it logs. */
-    val nothingLogged: Boolean get() = provenAt != null && moves.isEmpty() && rights.isEmpty() && revert == null
+    val nothingLogged: Boolean get() = provenAt != null && moves.isEmpty() && rights.isEmpty() && revert == null && unread == null
 }
 
 /** What the screens say of a verified trace, and how a [TraceOutcome] becomes a [TraceSection]. */
@@ -66,6 +66,9 @@ object TraceText {
     const val NOT_TRACED_HERE = "Not traced: the light client on this device does not trace calls yet."
     const val NOT_IN_TIME = "Not traced within 30 seconds: the call reaches much state. Try again waits for " +
         "the trace still running."
+    /** Beside the button that signs, while the trace disagrees: the call stays signable. */
+    const val DISAGREES_NEAR_SIGN = "Its trace does not match what it says it does: see \"What it does now\" above " +
+        "before you sign."
     const val REVERTS_UNLIKE_RUN = "The trace reverts, while the verified run above did not: the chain moved " +
         "between the two. Quote it again before you send."
 
@@ -99,7 +102,7 @@ object TraceText {
             named(contract.address) + if (outcome.unnamedDelegate(contract)) ", its code run by a delegate call: code Punicus cannot name" else ""
         }
         return TraceSection(
-            provenAt = "Proven at block ${outcome.blockNumber}, at the verified head: what it does now, not when it is mined.",
+            provenAt = "Proven at block ${grouped(outcome.blockNumber)}, at the verified head: what it does now, not when it is mined.",
             moves = moves,
             rights = rights,
             contracts = contracts,

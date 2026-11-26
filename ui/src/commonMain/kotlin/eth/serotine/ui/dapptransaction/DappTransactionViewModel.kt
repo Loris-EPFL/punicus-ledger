@@ -305,7 +305,9 @@ class DappTransactionViewModel(
      * not asked again (the use case waits for the engine's run, which goes on past the screen's wait).
      */
     fun retrace() {
-        if (traceJob?.isActive == true) return
+        // A trace still running is asked again with the claims as they are now: the use case waits for the
+        // engine's run already going rather than starting a second one.
+        traceJob?.cancel()
         traceJob = viewModelScope.launch {
             val review = observeDappMessages().first().find { it.request.id == id } ?: return@launch
             val transaction = (review.content as? DappSignContent.Transaction)?.transaction ?: return@launch

@@ -229,6 +229,12 @@ private val tracedReverts = traced.copy(
     ),
 )
 
+private val tracedNothingLogged = described.copy(
+    trace = TraceSection(provenAt = traceProven, contracts = listOf("Aave Pool v3 ($POOL)"), canRetry = true),
+)
+private val notTracedUnavailable = described.copy(
+    trace = TraceSection(notTraced = "Not traced: the light client is still syncing.", canRetry = true),
+)
 private val tracing = described.copy(trace = TraceSection(tracing = true))
 private val notTracedHere = described.copy(trace = TraceSection(notTraced = TraceText.NOT_TRACED_HERE))
 private val notTracedInTime = described.copy(trace = TraceSection(notTraced = TraceText.NOT_IN_TIME, canRetry = true))
@@ -486,6 +492,8 @@ internal val dappTransactionScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("tracing") { DappTransactionTracingPreview() },
     ScreenPreview("not-traced-here") { DappTransactionNotTracedHerePreview() },
     ScreenPreview("not-traced-in-time") { DappTransactionNotTracedInTimePreview() },
+    ScreenPreview("traced-nothing-logged") { DappTransactionTracedNothingLoggedPreview() },
+    ScreenPreview("not-traced-unavailable") { DappTransactionNotTracedUnavailablePreview() },
 )
 
 @Preview
@@ -519,3 +527,11 @@ private fun DappTransactionNotTracedHerePreview() = DappTransactionPreview(notTr
 @Preview
 @Composable
 private fun DappTransactionNotTracedInTimePreview() = DappTransactionPreview(notTracedInTime)
+
+@Preview
+@Composable
+private fun DappTransactionTracedNothingLoggedPreview() = DappTransactionPreview(tracedNothingLogged)
+
+@Preview
+@Composable
+private fun DappTransactionNotTracedUnavailablePreview() = DappTransactionPreview(notTracedUnavailable)

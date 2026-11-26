@@ -1,5 +1,14 @@
 package eth.serotine.ui.dapprequest
 
+import eth.serotine.domain.model.ClearSigningDeployment
+import eth.serotine.domain.model.ClearSigningDescriptor
+import eth.serotine.domain.model.ClearSigningField
+import eth.serotine.domain.model.ClearSigningFormat
+import eth.serotine.domain.model.ClearSigningPath
+import eth.serotine.domain.model.CodePin
+import eth.serotine.domain.model.FieldFormat
+import eth.serotine.domain.model.Visibility
+import kotlin.test.assertNotNull
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AppHost
 import eth.serotine.domain.model.AppHostResult
@@ -130,6 +139,75 @@ class DappRequestViewModelTest {
         override fun observeTokens(network: Network): Flow<List<Token>> = flowOf(listOf(usdc))
     }
 
+    private val verifier = Address.of("0x" + "99".repeat(20))
+    private var deployments: Array<ClearSigningDeployment> = emptyArray()
+    private val mailing = ClearSigningDeployment(
+        Network.SEPOLIA, "Mailer", verifier, "0x" + "11".repeat(32), CodePin.Fixed,
+        listOf(
+            ClearSigningDescriptor(
+                source = "test", sha256 = "00", owner = "Mailer", kind = ClearSigningDescriptor.Kind.EIP712,
+                domainName = "Mailer", domainVersion = null, enums = emptyMap(),
+                formats = listOf(
+                    ClearSigningFormat(
+                        key = "Mail(address to)", function = null, selector = null, encodeType = "Mail(address to)",
+                        typeHash = "0xabc0d49233c79caa7e457f29c2a529935c2d94a8f1e51c8feeb1fa60f08ba769", primaryType = "Mail",
+                        intent = "Send mail", interpolatedIntent = null,
+                        fields = listOf(ClearSigningField(ClearSigningPath.parse("to"), "To", FieldFormat.Raw, Visibility.Shown)),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    private fun mail(id: Long): DappRequest {
+        val data = TypedData(
+            types = mapOf(
+                "EIP712Domain" to listOf(
+                    TypedField("name", "string"),
+                    TypedField("chainId", "uint256"),
+                    TypedField("verifyingContract", "address"),
+                ),
+                "Mail" to listOf(TypedField("to", "address")),
+            ),
+            primaryType = "Mail",
+            domain = mapOf(
+                "name" to TypedValue.Text("Mailer"),
+                "chainId" to TypedValue.Number("11155111"),
+                "verifyingContract" to TypedValue.Text(verifier.hex),
+            ),
+            message = mapOf("to" to TypedValue.Text("0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad")),
+        )
+        return request(id).copy(ask = DappAsk.SignTypedData(held.address, Eip712.encode(data)!!))
+    }
+
+    @Test
+    fun typedDataNoDecoderKnowsIsDescribedByItsBuiltInDescriptor() = runTest {
+        deployments = arrayOf(mailing)
+        requests.waiting.value = listOf(mail(1))
+        val state = viewModel().uiState.value
+        val described = assertNotNull(state.described)
+        assertEquals("Send mail", described.intent)
+        assertEquals(listOf("To"), described.rows.map { it.label })
+        assertFalse(DappRequestViewModel.warningLine(DappSignWarning.NOT_DECODED, null) in state.warnings)
+    }
+
+    @Test
+    fun typedDataNoDescriptorCoversStaysNotDecoded() = runTest {
+        requests.waiting.value = listOf(mail(1))
+        val state = viewModel().uiState.value
+        assertNull(state.described)
+        assertTrue(DappRequestViewModel.warningLine(DappSignWarning.NOT_DECODED, null) in state.warnings)
+    }
+
+    @Test
+    fun aDecodedPermitIsNotLookedUp() = runTest {
+        deployments = arrayOf(mailing)
+        requests.waiting.value = listOf(permit(1))
+        val state = viewModel().uiState.value
+        assertNull(state.described)
+        assertFalse(state.describing)
+    }
+
     private fun permit(id: Long): DappRequest {
         val data = TypedData(
             types = mapOf(
@@ -189,6 +267,7 @@ class DappRequestViewModelTest {
         val vm = DappRequestViewModel(
             "t/$id",
             observe,
+            eth.serotine.ui.dapptransaction.describing(tokens, *deployments),
             SignDappMessage(requests, accounts, networks, signer, clock = { now }),
             RefuseDappRequest(requests, accounts, networks, clock = { now }),
             DescribeKeyStore(keys),

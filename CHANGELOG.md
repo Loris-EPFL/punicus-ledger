@@ -12,8 +12,9 @@ and issues of this repository.
 
 ### Added
 
-- Clear signing of dApp transactions: a call Punicus did not decode before is
-  now put in words when a built-in ERC-7730 description covers its contract
+- Clear signing of dApp transactions and typed data: a call, or a message to
+  sign, that Punicus did not decode before is now put in words when a built-in
+  ERC-7730 description covers its contract
   (WETH, Permit2, Uniswap's SwapRouter02, Seaport 1.6, Lido's wstETH, the
   Aave v3 Pool and the ENS registrar controller on Ethereum; Permit2 and the
   Aave v3 Pool on Gnosis Chain; WETH and Permit2 on Sepolia). The

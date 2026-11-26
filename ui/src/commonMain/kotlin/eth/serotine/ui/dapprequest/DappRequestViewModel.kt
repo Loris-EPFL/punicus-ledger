@@ -2,6 +2,8 @@ package eth.serotine.ui.dapprequest
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.ClearSignFormatter
+import eth.serotine.domain.model.ClearSignResult
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SignInMessage
 import eth.serotine.domain.model.WalletPassword
@@ -15,11 +17,14 @@ import eth.serotine.domain.usecase.DappMessageSigning
 import eth.serotine.domain.usecase.DappSignContent
 import eth.serotine.domain.usecase.DappSignRefusal
 import eth.serotine.domain.usecase.DappSignWarning
+import eth.serotine.domain.usecase.DescribeClearSigning
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveDappMessages
 import eth.serotine.domain.usecase.PerAppSigner
 import eth.serotine.domain.usecase.RefuseDappRequest
 import eth.serotine.domain.usecase.SignDappMessage
+import eth.serotine.ui.components.ClearSignedSection
+import eth.serotine.ui.components.ClearSignedText
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.biometricsOn
@@ -27,6 +32,8 @@ import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.platform.formatDateTime
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +42,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
@@ -93,6 +101,15 @@ data class DappRequestUiState(
     val domainFields: List<SignInField> = emptyList(),
     /** Every field of the typed data's message. */
     val typedRows: List<TypedRow> = emptyList(),
+    /**
+     * Typed data no hand-written decoder knows, described by a built-in ERC-7730 descriptor bound to its verifying
+     * contract's verified code (docs/clear-signing.md, A5); null when none describes it.
+     */
+    val described: ClearSignedSection? = null,
+    /** Being looked up in the built-in descriptors, the verifying contract's code being checked. */
+    val describing: Boolean = false,
+    /** Why a built-in descriptor that covers the verifying contract does not describe it, where that says more. */
+    val notDescribed: String? = null,
     val warnings: List<String> = emptyList(),
     val refusal: String? = null,
     /** How long the dApp waits for an answer. */
@@ -119,7 +136,9 @@ data class DappRequestUiState(
 class DappRequestViewModel(
     /** The request, as its route names it: `topic/id`. */
     requestKey: String,
-    observeDappMessages: ObserveDappMessages,
+    private val observeDappMessages: ObserveDappMessages,
+    /** The built-in descriptors, for typed data no hand-written decoder knows (docs/clear-signing.md). */
+    private val describeClearSigning: DescribeClearSigning,
     private val signDappMessage: SignDappMessage,
     private val refuseDappRequest: RefuseDappRequest,
     private val describeKeyStore: DescribeKeyStore,
@@ -143,6 +162,43 @@ class DappRequestViewModel(
 
     private val local = MutableStateFlow(Local())
 
+    /** What the built-in descriptors say of the typed data, once asked; null before, or when asking failed. */
+    private val description = MutableStateFlow<ClearSignResult?>(null)
+    private val describing = MutableStateFlow(false)
+    private var describeJob: Job? = null
+
+    /**
+     * Asks the built-in descriptors what the typed data lets someone do, for a struct no hand-written decoder knows:
+     * at opening and each time the screen is shown again, so that a verifying contract upgraded while the request
+     * waits is caught, and a check that could not be made is made again. The last answer stays meanwhile; one that
+     * fails leaves the data not decoded, with no reason claimed.
+     */
+    private fun describe() {
+        if (describeJob?.isActive == true) return
+        describeJob = viewModelScope.launch {
+            // The reviews as they are now, never a wait for one: a request answered, or not yet there, is no
+            // description, and the next showing (or quote) asks again.
+            val review = observeDappMessages().first().find { it.request.id == id } ?: return@launch
+            val content = review.content as? DappSignContent.Typed ?: return@launch
+            val network = review.request.network ?: return@launch
+            if (content.meaning != null) return@launch
+            describing.value = true
+            description.value = try {
+                describeClearSigning.typedData(network, review.address, content.typed.data)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } finally {
+                describing.value = false
+            }
+        }
+    }
+
+    init {
+        describe()
+    }
+
     init {
         viewModelScope.launch {
             val offered = try {
@@ -163,14 +219,17 @@ class DappRequestViewModel(
         }
         .distinctUntilChanged()
 
-    val uiState: StateFlow<DappRequestUiState> = combine(shownReview, local, ticks) { shown, local, _ ->
-        val (review, base) = shown
+    private val described = combine(description, describing) { result, busy -> result to busy }
+
+    val uiState: StateFlow<DappRequestUiState> = combine(shownReview, local, ticks, described) { shown, local, _, described ->
+        val (review, plain) = shown
             // No longer waiting: the screen leaves, unless an answer that did not take says why first.
             ?: return@combine if (local.notice != null && !local.done) {
                 DappRequestUiState(loading = false, ended = true, notice = local.notice)
             } else {
                 DappRequestUiState(loading = false, gone = true, done = local.done)
             }
+        val base = withDescription(plain, review, described.first, described.second)
         base.copy(
             waits = waitsLine(review.request.expiresAtSeconds - clock()),
             unlock = local.unlock,
@@ -211,6 +270,10 @@ class DappRequestViewModel(
             is DappSignContent.Typed -> {
                 val typed = TypedDataText(content, formatTime)
                 common.copy(
+                    // A permit is flagged by its type, whether or not anything describes it.
+                    warnings = common.warnings + listOfNotNull(
+                        TYPED_APPROVAL.takeIf { content.meaning == null && ClearSignFormatter.grantsApproval(content.typed.data) },
+                    ),
                     title = typed.title,
                     promptSubject = typed.promptSubject,
                     typed = true,
@@ -238,6 +301,33 @@ class DappRequestViewModel(
         signIn.requestId?.let { add(SignInField("Request ID", it)) }
         if (signIn.resources.isNotEmpty()) add(SignInField("Resources", signIn.resources.joinToString("\n")))
     }
+
+    /**
+     * [state] with what the built-in descriptors say of its typed data: a description replaces "not decoded";
+     * an approval it grants is flagged whatever the description says; a reason worth saying is said.
+     */
+    private fun withDescription(
+        state: DappRequestUiState,
+        review: DappMessageReview,
+        result: ClearSignResult?,
+        busy: Boolean,
+    ): DappRequestUiState {
+        if (!state.typed) return state
+        val notDecoded = warningLine(DappSignWarning.NOT_DECODED, review.perApp)
+        return when (result) {
+            is ClearSignResult.ClearSigned -> state.copy(
+                described = ClearSignedText.describedSection(result),
+                describing = busy,
+                warnings = state.warnings.filterNot { it == notDecoded } +
+                    listOfNotNull(TYPED_APPROVAL.takeIf { result.grantsApproval && TYPED_APPROVAL !in state.warnings }),
+            )
+            is ClearSignResult.NotCovered -> state.copy(describing = busy, notDescribed = ClearSignedText.notDescribedLine(result.reason))
+            null -> state.copy(describing = busy)
+        }
+    }
+
+    /** The screen is shown again: the typed data is described again, from fresh verified state. */
+    fun onShown() = describe()
 
     /** The password field now reads [text]. */
     fun onPasswordChange(text: String) = local.update {
@@ -379,6 +469,10 @@ class DappRequestViewModel(
          * What [warning] says; [perApp], the review's per-app signer, names the two sites of [DappSignWarning
          * .PER_APP_OTHER_SITE]. Required, so that no caller drops them.
          */
+        /** Typed data that grants an approval, flagged whatever its description says. */
+        const val TYPED_APPROVAL = "Signing this grants an approval: the spender may then take the tokens without " +
+            "asking you again. It moves nothing itself."
+
         fun warningLine(warning: DappSignWarning, perApp: PerAppSigner?): String = when (warning) {
             DappSignWarning.PER_APP_OTHER_SITE -> {
                 val made = perApp?.site?.name ?: "another site"

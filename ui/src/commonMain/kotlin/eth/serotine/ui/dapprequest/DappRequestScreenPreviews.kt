@@ -7,6 +7,10 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.usecase.DappSignRefusal
 import eth.serotine.domain.usecase.DappSignWarning
 import eth.serotine.domain.usecase.PerAppSigner
+import eth.serotine.ui.components.ClearSignedParameter
+import eth.serotine.ui.components.ClearSignedRow
+import eth.serotine.ui.components.ClearSignedSection
+import eth.serotine.ui.components.ClearSignedText
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.ScreenPreview
 import eth.serotine.ui.theme.SerotineTheme
@@ -74,6 +78,70 @@ private val approval = signIn.copy(
         TypedRow(0, "nonce", "0"),
         TypedRow(0, "deadline", "1793703600"),
     ),
+)
+
+private const val PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+private const val WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+private const val MAINNET_USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+
+/** A Permit2 batch, which no hand-written decoder knows: described by Permit2's built-in descriptor. */
+private val permitBatch = approval.copy(
+    title = "Data to sign",
+    meaning = null,
+    meaningFields = emptyList(),
+    network = "On Ethereum, real funds",
+    domainFields = listOf(
+        SignInField("Name", "Permit2"),
+        SignInField("Network", "Ethereum (1)"),
+        SignInField("Contract", PERMIT2),
+    ),
+    typedRows = listOf(
+        TypedRow(0, "details", "2 items"),
+        TypedRow(1, "[0]", null),
+        TypedRow(2, "token", MAINNET_USDC),
+        TypedRow(2, "amount", "2500000000"),
+        TypedRow(2, "expiration", "1782864000"),
+        TypedRow(2, "nonce", "0"),
+        TypedRow(1, "[1]", null),
+        TypedRow(2, "token", WETH),
+        TypedRow(2, "amount", "750000000000000000"),
+        TypedRow(2, "expiration", "1782864000"),
+        TypedRow(2, "nonce", "0"),
+        TypedRow(0, "spender", SPENDER),
+        TypedRow(0, "sigDeadline", "1774915200"),
+    ),
+    warnings = listOf(DappRequestViewModel.TYPED_APPROVAL),
+)
+
+private val typedDescribed = permitBatch.copy(
+    described = ClearSignedSection(
+        intent = "Authorize spending of tokens",
+        describedBy = "Described by Uniswap Labs, ${ClearSignedText.DESCRIBED_BY}",
+        rows = listOf(
+            ClearSignedRow(0, "Spender", SPENDER, raw = null, note = null),
+            ClearSignedRow(0, "Amount allowance", "2500 USDC", raw = "2500000000", note = null),
+            ClearSignedRow(0, "Approval expires", "2026-07-01 00:00:00Z", raw = "1782864000", note = null),
+            ClearSignedRow(0, "Amount allowance", "0.75 WETH", raw = "750000000000000000", note = null),
+            ClearSignedRow(0, "Approval expires", "2026-07-01 00:00:00Z", raw = "1782864000", note = null),
+        ),
+        otherParameters = listOf(
+            ClearSignedParameter("details.[0].token", MAINNET_USDC),
+            ClearSignedParameter("details.[0].nonce", "0"),
+            ClearSignedParameter("details.[1].token", WETH),
+            ClearSignedParameter("details.[1].nonce", "0"),
+            ClearSignedParameter("sigDeadline", "1774915200"),
+        ),
+    ),
+)
+
+private val typedDescribing = permitBatch.copy(
+    describing = true,
+    warnings = permitBatch.warnings + DappRequestViewModel.warningLine(DappSignWarning.NOT_DECODED, null),
+)
+
+private val typedContractChanged = permitBatch.copy(
+    notDescribed = ClearSignedText.CONTRACT_CHANGED,
+    warnings = permitBatch.warnings + DappRequestViewModel.warningLine(DappSignWarning.NOT_DECODED, null),
 )
 
 private val notDecoded = approval.copy(
@@ -226,6 +294,22 @@ private fun DappRequestNotDecodedPreview() = DappRequestPreview(notDecoded)
 
 @Preview
 @Composable
+private fun DappRequestTypedDescribedPreview() = DappRequestPreview(typedDescribed)
+
+@Preview
+@Composable
+private fun DappRequestTypedDescribedDarkPreview() = DappRequestPreview(typedDescribed, darkTheme = true)
+
+@Preview
+@Composable
+private fun DappRequestTypedDescribingPreview() = DappRequestPreview(typedDescribing)
+
+@Preview
+@Composable
+private fun DappRequestTypedContractChangedPreview() = DappRequestPreview(typedContractChanged)
+
+@Preview
+@Composable
 private fun DappRequestOtherNetworkPreview() = DappRequestPreview(
     notDecoded.copy(
         domainFields = notDecoded.domainFields.map {
@@ -307,6 +391,10 @@ internal val dappRequestScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("unlimited") { DappRequestUnlimitedPreview() },
     ScreenPreview("swap-order") { DappRequestSwapOrderPreview() },
     ScreenPreview("not-decoded") { DappRequestNotDecodedPreview() },
+    ScreenPreview("typed-described") { DappRequestTypedDescribedPreview() },
+    ScreenPreview("typed-described-dark") { DappRequestTypedDescribedDarkPreview() },
+    ScreenPreview("typed-describing") { DappRequestTypedDescribingPreview() },
+    ScreenPreview("typed-contract-changed") { DappRequestTypedContractChangedPreview() },
     ScreenPreview("other-network") { DappRequestOtherNetworkPreview() },
     ScreenPreview("real-funds") { DappRequestRealFundsPreview() },
     ScreenPreview("real-funds-dark") { DappRequestRealFundsDarkPreview() },

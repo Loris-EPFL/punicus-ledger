@@ -4,7 +4,8 @@ Before a dApp transaction, a typed-data message or a Safe transaction is
 signed, Punicus says in words what it does: "Swap 1,000 USDC for at least
 0.31 ETH on Uniswap, sent to you, until 14:05". This page is the contract for
 how those words come about. It records the owner's decisions of 2026-11-25
-(issue #240), and those of 2026-11-26 on phase B (*Phase B*), which
+(issue #240), and those of 2026-11-26 on phases B and C (*Phase B*,
+*Phase C*), which
 `.claude/rules/data-sources.md` (*The clear-signing descriptors are built
 in*) and `.claude/rules/trust.md` (*What a dApp sends is untrusted input*,
 *A clear-signed line*, *A verified trace*) carry as rules.
@@ -614,8 +615,8 @@ its parameters, from the contract's own verified source.
    settlement, Uniswap's Universal Router.
 4. **Exact matches only.** A contract is pinned only on Sourcify's exact
    (metadata-hash) match, which binds its function's and parameters' names
-   to the code; a partial match does not (the names do not change the
-   bytecode). A partial match is not pinned, and its contract stays not
+   to the code; a partial match does not. A partial match is not pinned,
+   and its contract stays not
    decoded until an exact match exists: today the Universal Router, Swarm's
    postage stamp, and CoW's settlement on Gnosis Chain.
 5. **MultiSend is named on the delegate call shown and refused.** Nothing more
@@ -635,9 +636,26 @@ its parameters, from the contract's own verified source.
   lib-sourcify places them. So the call's selector is that function's, its
   parameters decode as that function's types, and its names are the ones
   compiled into its metadata.
+- **Why only an exact match binds names.** A function's name goes into its
+  selector, but another name can be found for the same selector, and the
+  parameters' names never reach the bytecode. Only the metadata hash in the
+  code commits to them.
+- **Bound to the code, not to a deployment.** A verified ABI is looked up by
+  the network and the code hash alone, at whatever address holds that code
+  (which serves the minimal proxies): it speaks for the code. So the name
+  shown is the source's own contract name (its metadata's compilation
+  target), the author's word like the rest, never a name of our own.
 - **Not proven: what the function does.** The names are its author's choice,
   labelled so: a function called `deposit` may do anything. Phase B's trace,
   beside it, shows what it does at the head.
+- **A call inside a `bytes` parameter is not read.** An ABI does not say
+  which bytes are a call. So A3's flag "at every depth" does not reach
+  there: the Delay module's `execTransactionFromModule(to, value, data,
+  operation)` carrying an `approve` is named, not described, and its trace
+  is clean (the call is only queued). As applied: a `bytes` parameter that
+  starts with an approval's selector (A3's list) is flagged as one, loudly;
+  any other is shown as hex. Whether such calls are read further, or wait
+  for descriptors of our own, is the owner's.
 - **No claims to hold a trace against.** A name is no description: the trace
   of a call decoded this way shows its effects alone, as for a call not
   decoded (*Phase B*, *What the trace is held against*). A parameter named
@@ -653,7 +671,11 @@ entry its network, address, name and why it is there):
 - Swarm's chequebook (its master copy and the EIP-1167 proxies to it; the
   postage stamp waits for an exact match);
 - CoW Protocol's settlement on Ethereum (on Gnosis Chain it waits for an
-  exact match). The Universal Router waits for one too.
+  exact match, as Swarm's postage stamp does).
+- The Universal Router is compiled with no metadata hash (`bytecodeHash:
+  none`): it can never be an exact match, so under decision 4 it stays not
+  decoded for good. Whether it is reached another way (a registry
+  descriptor once there is one, a decoder of our own) is the owner's.
 
 **At build time** (C1, `scripts/verified-abis/`, beside
 `scripts/clear-signing/`):
@@ -662,12 +684,20 @@ entry its network, address, name and why it is there):
   code from Sourcify's API (`/v2/contract/{chainId}/{address}?fields=all`)
   into a vendored directory, each file pinned by its sha256, and refuses
   anything but an `exact_match`. The solc builds the metadata names are
-  vendored and pinned by sha256 too. Builds and CI read the vendored copies,
-  never the network.
+  pinned by sha256 too. Builds and CI read the vendored sources, never
+  Sourcify.
 - A Node script with lib-sourcify (pinned by version and hash) recompiles
   each contract with the vendored compiler and the metadata's settings, and
   matches the vendored runtime code, handed to it as the chain's (no RPC is
   asked). Anything but an exact match fails the build.
+- **The names come from the recompile's own output**: the compiler's ABI and
+  the metadata it emits, whose hash is the one in the matched code. Neither
+  the vendored `metadata.json`'s ABI nor Sourcify's `abi` field is read for
+  them: they would rest on the pin's reviewer, not on the recompile.
+- The solc builds are not committed: the build downloads each from
+  binaries.soliditylang.org and checks it against its pinned sha256 (as
+  docs/privacy-pools.md, D14a, leaves open for the proving keys; the
+  owner's to settle either way).
 - The code hash is read from the chain through Myotis when the pin is made,
   as phase A's are (`pin_code_hashes.py`), and must be the vendored code's.
   Each network has its own entry: where immutables differ, so does the hash.
@@ -683,11 +713,13 @@ entry its network, address, name and why it is there):
 
 **At runtime** (C3, C4):
 
-- **Which decoder speaks**: a hand-written decoder first, then a built-in
-  descriptor (phase A), then a verified ABI, else "not decoded". A call is
-  looked up by its network and the verified code hash at its `to`, at a
-  fresh head; code that cannot be read verified is no lookup, and the call
-  stays not decoded.
+- **Which decoder speaks**: a verified ABI speaks only where no hand-written
+  decoder claims the call (A3: its answer stands, "not decoded" included)
+  and no built-in descriptor has a format for it (a descriptor that does
+  not cover it, a changed contract among them, gives its reason, which
+  stands). A call is looked up by its network and the verified code hash at
+  its `to`, at a fresh head; code that cannot be read verified is no lookup,
+  and the call stays not decoded.
 - **Decoded exactly or not at all**: the data must be the canonical ABI
   encoding of the function's parameters (A3's decoder); anything else is not
   decoded.
@@ -696,12 +728,16 @@ entry its network, address, name and why it is there):
   the wallet names it, bytes as hex, a nested call not decoded further),
   under the label: "Names from this contract's verified source (Sourcify,
   recompiled for this release): its author's words, not a description".
-- **An approval** is flagged by its selector whatever decodes it (A3).
+- **An approval** is flagged by its selector whatever decodes it (A3), and in
+  a `bytes` parameter as above.
 - **Where**: D6 and the Safe review (screen 17), where a description would
-  stand; on a delegate call that is shown and refused (MultiSend), as its
-  label. Typed data (D5) has no ABI.
-- **A refresh is a step of every release PR**, as for the descriptors: it
-  pins a contract whose partial match has since become exact.
+  stand; on a delegate call that is shown and refused, as its label: MultiSend
+  by decision 5, and as applied the other libraries on the list a Safe
+  delegates to (MultiSendCallOnly, SignMessageLib, CreateCall), nothing
+  unlocked. Typed data (D5) has no ABI.
+- **A refresh is a step of every release PR**, as for the descriptors
+  (`.claude/skills/release/SKILL.md`, with the scripts of part 2): it pins a
+  contract whose partial match has since become exact.
 
 ## Open decisions
 

@@ -673,7 +673,13 @@ class SafeTxViewModel(
     private fun withTrace(state: SafeTxUiState, trace: TraceSection?): SafeTxUiState = when (state) {
         is SafeTxUiState.Overview -> state.copy(action = state.action.copy(trace = trace))
         is SafeTxUiState.Signing -> state.copy(action = state.action.copy(trace = trace))
-        is SafeTxUiState.Review -> state.copy(action = state.action.copy(trace = trace))
+        // A revert the trace shows while the run reviewed did not: the chain moved between the two.
+        is SafeTxUiState.Review -> state.copy(
+            action = state.action.copy(
+                trace = trace?.takeIf { it.revert != null && TraceText.REVERTS_UNLIKE_RUN !in it.warnings }
+                    ?.let { it.copy(warnings = it.warnings + TraceText.REVERTS_UNLIKE_RUN) } ?: trace,
+            ),
+        )
         is SafeTxUiState.DraftReview -> state.copy(action = state.action.copy(trace = trace))
         is SafeTxUiState.Held -> state.copy(action = state.action.copy(trace = trace))
         else -> state
@@ -696,15 +702,15 @@ class SafeTxViewModel(
         traceJob?.cancel()
         tracedTx = key
         traceJob = viewModelScope.launch {
-            traced.value = TraceSection(tracing = true)
+            // The last trace stays shown, its warnings with it, while the next is read.
+            traced.update { it?.copy(tracing = true) ?: TraceSection(tracing = true) }
             traced.value = try {
                 describeJob?.join()
                 val claims = if (action is SafeTxAction.ContractCall) description.value?.let(TraceClaims::of)
                 else TraceClaims.ofSafeAction(action, safe)
                 val outcome = traceCall.trace(network, safe, call.to, call.value, call.data, claims)
-                TraceText.section(outcome, safe, network, tracedAt = clock())
+                TraceText.section(outcome, safe, network, tracedAt = clock()).copy(note = TraceText.SAFE_CALL_NOTE)
             } catch (e: CancellationException) {
-                traced.value = null
                 throw e
             } catch (_: Exception) {
                 TraceText.section(TraceOutcome.Unavailable(ReadUnavailable.UNPROVEN), safe, network)
@@ -1605,7 +1611,7 @@ class SafeTxViewModel(
         val call = tx.request.tx
         describeJob = viewModelScope.launch {
             describing.value = true
-            description.value = try {
+            val answer = try {
                 describeClearSigning.call(network, safe, call.to, call.value, call.data)
             } catch (e: CancellationException) {
                 throw e
@@ -1614,6 +1620,11 @@ class SafeTxViewModel(
             } finally {
                 describing.value = false
             }
+            val changed = answer != description.value
+            description.value = answer
+            // A description that comes, or changes, after the call was traced is what the trace is held to now.
+            // A trace still waiting for this description reads it when it runs.
+            if (changed && tracedTx != null && traceJob?.isActive != true) trace(tx, again = true)
         }
     }
 

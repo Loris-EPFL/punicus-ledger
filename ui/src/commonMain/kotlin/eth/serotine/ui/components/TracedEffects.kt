@@ -40,6 +40,8 @@ data class TraceSection(
     val block: Long? = null,
     /** [provenAt] in simple mode's block-free words: when it was traced in place of the block. */
     val simpleProvenAt: String? = null,
+    /** What the run leaves out, where the screen says so (a Safe's call: [TraceText.SAFE_CALL_NOTE]). */
+    val note: String? = null,
     /** The account's currency and tokens sent and received, each with its counterparty. */
     val moves: List<String> = emptyList(),
     /** The rights over the account's tokens it grants. */
@@ -74,6 +76,8 @@ object TraceText {
     /** Beside the button that signs, while the trace disagrees: the call stays signable. */
     const val DISAGREES_NEAR_SIGN = "Its trace does not match what it says it does: see \"What it does now\" above " +
         "before you sign."
+    const val SAFE_CALL_NOTE = "Run as the Safe's own call: without what executing it adds, the Safe's checks " +
+        "(its signatures, a guard) and the refund of its gas terms."
     const val REVERTS_UNLIKE_RUN = "The trace reverts, while the verified run below did not: the chain moved " +
         "between the two. Quote it again before you send."
 
@@ -220,8 +224,9 @@ fun TracedEffects(section: TraceSection, onRetry: () -> Unit, modifier: Modifier
             Text(TraceText.DISAGREES, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
             section.warnings.forEach { Text("• $it", Modifier.padding(top = 2.dp), color = MaterialTheme.colorScheme.error) }
         }
-        when {
-            section.tracing -> Row(
+        // Traced again, the last trace stays shown, its warnings with it, under the spinner.
+        if (section.tracing) {
+            Row(
                 Modifier.padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -229,6 +234,9 @@ fun TracedEffects(section: TraceSection, onRetry: () -> Unit, modifier: Modifier
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 Text(TraceText.TRACING)
             }
+        }
+        when {
+            section.provenAt == null && section.notTraced == null -> Unit
             section.notTraced != null -> {
                 Text(section.notTraced, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (section.canRetry) TextButton(onClick = onRetry) { Text("Try again") }
@@ -236,6 +244,9 @@ fun TracedEffects(section: TraceSection, onRetry: () -> Unit, modifier: Modifier
             else -> SelectionContainer {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     section.provenAt?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    section.note?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     section.revert?.let { Text(it, color = MaterialTheme.colorScheme.error) }

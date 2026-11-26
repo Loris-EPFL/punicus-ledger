@@ -772,6 +772,7 @@ internal val safeTxScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("trace-disagrees-dark") { SafeTxTraceDisagreesDarkPreview() },
     ScreenPreview("tracing") { SafeTxTracingPreview() },
     ScreenPreview("not-traced-here") { SafeTxNotTracedHerePreview() },
+    ScreenPreview("review-trace-disagrees") { SafeTxReviewTraceDisagreesPreview() },
     ScreenPreview("share") { SafeTxSharePreview() },
     ScreenPreview("share-as-text") { SafeTxShareAsTextPreview() },
     ScreenPreview("signed") { SafeTxSignedPreview() },
@@ -841,3 +842,7 @@ private fun SafeTxTracingPreview() = SafeTxPreview(overview.copy(action = usdcTr
 @Composable
 private fun SafeTxNotTracedHerePreview() =
     SafeTxPreview(overview.copy(action = usdcTransfer.copy(trace = TraceSection(notTraced = TraceText.NOT_TRACED_HERE))))
+
+@Preview
+@Composable
+private fun SafeTxReviewTraceDisagreesPreview() = SafeTxPreview(review.copy(action = tracedTransferDisagrees))

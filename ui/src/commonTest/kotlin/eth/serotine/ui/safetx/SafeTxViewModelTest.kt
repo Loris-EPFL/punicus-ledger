@@ -1,5 +1,6 @@
 package eth.serotine.ui.safetx
 
+import eth.serotine.ui.components.TraceText
 import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.repository.FeeQuote
 import eth.serotine.domain.repository.HeldConflict
@@ -129,6 +130,7 @@ class SafeTxViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
+    private val traced = mutableListOf<Triple<Address, Address, UInt256>>()
     private var traceAnswer: eth.serotine.domain.repository.CallTraceReading = eth.serotine.domain.repository.CallTraceReading.NotTraced
 
     private fun TestScope.viewModel(
@@ -217,6 +219,7 @@ class SafeTxViewModelTest {
                     override fun observeTokens(network: Network) = kotlinx.coroutines.flow.flowOf(emptyList<eth.serotine.domain.model.Token>())
                 },
                 backgroundScope,
+                traced,
             ) { traceAnswer },
         )
         if (collect) backgroundScope.launch { viewModel.uiState.collect {} }
@@ -695,7 +698,15 @@ class SafeTxViewModelTest {
             ),
             77,
         )
-        val trace = viewModel(queued(world.request(deposit(weth)))).overview.action.trace!!
+        val viewModel = viewModel(queued(world.request(deposit(weth))))
+        val trace = viewModel.overview.action.trace!!
+        // As the Safe's own call: the Safe its sender, the transaction's recipient and value.
+        assertEquals(Triple(world.safe, weth, UInt256.of(5)), traced.single())
+        assertEquals(TraceText.SAFE_CALL_NOTE, trace.note)
+        viewModel.checkAgain()
+        runCurrent()
+        assertEquals(2, traced.size)
+        assertEquals(2, viewModel.overview.action.trace!!.warnings.size)
         assertEquals("Proven at block 77, at the verified head: what it does now, not when it is mined.", trace.provenAt)
         // The wrap's description names no token: the WETH it sends is one, and it ends with the thief.
         assertEquals(2, trace.warnings.size)

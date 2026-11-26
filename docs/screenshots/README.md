@@ -23,7 +23,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [Display currency](#currency) | `currency/` | 4 |
 | [dApp connection request](#dapp-proposal) | `dapp-proposal/` | 28 |
 | [dApp signing request](#dapp-request) | `dapp-request/` | 27 |
-| [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 30 |
+| [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 40 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
 | [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 36 |
@@ -421,7 +421,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a name="dapp-transaction"></a>
 ## dApp transaction
 
-`dapp-transaction/`, 30 states: `payment`, `payment-dark`, `token-transfer`, `approval`, `not-decoded`, `described`, `described-dark`, `described-nested`, `described-partly`, `described-approval`, `described-unlisted`, `describing`, `contract-changed`, `code-not-checked`, `not-as-described`, `quoting`, `not-quoted`, `refused`, `safe`, `safe-dark`, `safe-no-owner`, `safe-signing`, `safe-queued`, `sending`, `not-sent`, `explaining`, `ended`, `loading`, `real-funds`, `real-funds-dark`
+`dapp-transaction/`, 40 states: `payment`, `payment-dark`, `token-transfer`, `approval`, `not-decoded`, `described`, `described-dark`, `described-nested`, `described-partly`, `described-approval`, `described-unlisted`, `describing`, `contract-changed`, `code-not-checked`, `not-as-described`, `quoting`, `not-quoted`, `refused`, `safe`, `safe-dark`, `safe-no-owner`, `safe-signing`, `safe-queued`, `sending`, `not-sent`, `explaining`, `ended`, `loading`, `real-funds`, `real-funds-dark`, `traced`, `traced-dark`, `trace-disagrees`, `trace-disagrees-dark`, `trace-reverts`, `tracing`, `not-traced-here`, `not-traced-in-time`, `traced-nothing-logged`, `not-traced-unavailable`
 
 <a href="dapp-transaction/payment.png"><img src="dapp-transaction/payment.png" width="206" alt="payment"></a>
 <a href="dapp-transaction/payment-dark.png"><img src="dapp-transaction/payment-dark.png" width="206" alt="payment-dark"></a>
@@ -453,6 +453,16 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="dapp-transaction/loading.png"><img src="dapp-transaction/loading.png" width="206" alt="loading"></a>
 <a href="dapp-transaction/real-funds.png"><img src="dapp-transaction/real-funds.png" width="206" alt="real-funds"></a>
 <a href="dapp-transaction/real-funds-dark.png"><img src="dapp-transaction/real-funds-dark.png" width="206" alt="real-funds-dark"></a>
+<a href="dapp-transaction/traced.png"><img src="dapp-transaction/traced.png" width="206" alt="traced"></a>
+<a href="dapp-transaction/traced-dark.png"><img src="dapp-transaction/traced-dark.png" width="206" alt="traced-dark"></a>
+<a href="dapp-transaction/trace-disagrees.png"><img src="dapp-transaction/trace-disagrees.png" width="206" alt="trace-disagrees"></a>
+<a href="dapp-transaction/trace-disagrees-dark.png"><img src="dapp-transaction/trace-disagrees-dark.png" width="206" alt="trace-disagrees-dark"></a>
+<a href="dapp-transaction/trace-reverts.png"><img src="dapp-transaction/trace-reverts.png" width="206" alt="trace-reverts"></a>
+<a href="dapp-transaction/tracing.png"><img src="dapp-transaction/tracing.png" width="206" alt="tracing"></a>
+<a href="dapp-transaction/not-traced-here.png"><img src="dapp-transaction/not-traced-here.png" width="206" alt="not-traced-here"></a>
+<a href="dapp-transaction/not-traced-in-time.png"><img src="dapp-transaction/not-traced-in-time.png" width="206" alt="not-traced-in-time"></a>
+<a href="dapp-transaction/traced-nothing-logged.png"><img src="dapp-transaction/traced-nothing-logged.png" width="206" alt="traced-nothing-logged"></a>
+<a href="dapp-transaction/not-traced-unavailable.png"><img src="dapp-transaction/not-traced-unavailable.png" width="206" alt="not-traced-unavailable"></a>
 
 <a name="debug"></a>
 ## Debug

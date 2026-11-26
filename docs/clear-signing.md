@@ -370,15 +370,118 @@ the five steps of docs/architecture.md:
 
 Then, later parts: the attestations' check, and the descriptors of decision 5.
 
+Phase B lands through `feature/verified-trace`:
+
+1. **Rules and docs**: phase B here, in `.claude/rules/trust.md` and
+   `.claude/rules/data-sources.md`, and D6 and screen 17 in
+   docs/walletconnect.md and docs/wallet-ux.md.
+2. **`:domain`**: the trace port, the interpreter of the effects, the check
+   against a description, the use case.
+3. **`:data`**: the adapter over `traceCall`, routed per network.
+4. **D6**, with previews.
+5. **The Safe review** (screen 17), with previews and the `CHANGELOG.md`
+   entry.
+6. **The final PR**, `feature/verified-trace` → `main`.
+
+## Phase B: a verified trace
+
+(The owner's decisions, 2026-11-26, on #240: questions 6 and 7, and what a
+disagreement does.)
+
+The description of phase A is its author's claim of what a call does. A
+trace is what the call does when it runs at the verified head: Myotis's Rust
+engine runs it (`VerifiedReads.traceCall`, `debug_traceCall` with the
+`callTracer` and its logs; VesperBats/myotis#716) against state it proves slot
+by slot, as it runs the simulation D6 already shows. Phase B shows the trace's
+effects beside the description, and warns where the two disagree.
+
+### The owner's decisions (2026-11-26)
+
+1. **Where** (question 6): D6, a dApp's transaction, first; then the Safe
+   review (screen 17), a Safe transaction traced as the Safe's own call.
+2. **A description and a trace that disagree are warned about loudly, and the
+   call stays signable**: the user decides, as with every other warning.
+3. **`diffMode` later** (question 7): the effects come from the call tree and
+   its logs. Myotis 0.1.24 refuses the `prestateTracer`'s `diffMode` (exact
+   balance and storage changes); it is asked for once phase B shows what is
+   missing without it.
+4. **The plan lands through `feature/verified-trace`.** The owner allowed the
+   session that asked to merge the part PRs into it, once each is done under
+   the Workflow. The PR into `main` is the owner's.
+
+### What a trace proves, and what it does not
+
+- **Proven: the run at the verified head.** The exact transaction (its
+  sender, recipient, value and data) run against the state the light client
+  verified at that head: every contract it reaches, how (a call, a delegate
+  call, a static call, a creation), with how much of the network's currency,
+  every log it emits, and whether and why it reverts.
+- **Not proven: the run at inclusion.** The transaction is mined later, on
+  other state. A contract that branches on the block, a price or another
+  transaction can do something else then. Each effect says it is what the call
+  does now.
+- **An approval moves nothing at that moment**: its effect is a right granted,
+  shown as such, not a token movement.
+- **A signed message never runs.** Typed data (D5) has no trace.
+- **What the logs say is the contracts' own report.** A `Transfer` log is what
+  the token's code emitted; a token that lies in its logs lies here too. That
+  is why the effects are read only for tokens of the built-in list by name
+  and symbol; any other token's movement is shown by its address, in raw
+  units, marked as not in the list (as a `tokenAmount` is, A3).
+
+### The effects (B2)
+
+A pure interpreter turns the call tree and its logs into effects, counting only
+frames that did not revert:
+
+- **The network's currency** sent by the account and received by it (a
+  frame's `value`).
+- **Tokens** the account sends and receives: ERC-20 `Transfer`, ERC-721
+  `Transfer`, ERC-1155 `TransferSingle` and `TransferBatch`, with the
+  counterparty.
+- **Rights granted**: ERC-20 `Approval`, ERC-721 `Approval` and
+  `ApprovalForAll`, ERC-1155 `ApprovalForAll`, and Permit2's `Approval`, from
+  the account.
+- **The contracts reached**, each named where the wallet names it (a built-in
+  token, a pinned deployment), and **every delegate call into code that is
+  not a pinned deployment's**, flagged: that code runs as its caller.
+- **A revert**, with its reason where the contract gives one.
+
+### When the description and the trace disagree
+
+A described call (phase A) is held against its trace; each of these is a loud
+warning, and the call stays signable (decision 2):
+
+- the account sends a token, or the network's currency, that the description
+  names nowhere (no `tokenAmount`'s token, no `amount` of the value);
+- the account's tokens go to an address that is neither the contract called,
+  nor an address a shown field names, nor the account itself;
+- the trace grants a right the call is not flagged for (A3's approval flag).
+
+A call that is not described shows its effects alone, under "not decoded".
+
+### Where it shows (B4, B5)
+
+- **D6**: "What it does now", the effects, beside the verified run of the
+  simulation, with the block they are proven at.
+- **The Safe review** (screen 17): a Safe transaction's call (operation CALL)
+  traced as the Safe's own call: the Safe as its sender, its value and data. A
+  delegate call stays refused and is not traced.
+- Simple mode shows the effects without the block, as for other values.
+
+### Limits
+
+- **Only the Rust engine traces.** It is the engine of every host today; an
+  engine that does not (`supportsCallTracing`) is refused, and the screen says
+  the trace is not available.
+- **A deep call fetches many proofs.** A trace has a deadline (30 seconds);
+  past it the screen says it could not be traced in time, and offers to try
+  again.
+- **At a fresh verified head only**, as the simulation: while the light
+  client catches up, nothing is traced.
+
 ## Later phases (open)
 
-- **B. A verified trace.** Myotis's Rust engine serves
-  `VerifiedReads.traceCall` (`callTracer`, `prestateTracer`;
-  VesperBats/myotis#716) against verified state. It would show, next to the
-  description, what the call does at the head (the call tree, the token
-  movements, the approvals), and warn where they disagree. Its limits: at
-  the head, not at inclusion; an approval moves nothing by itself; off-chain
-  signatures never run; a deep DeFi call fetches many proofs.
 - **C. Verified ABIs for the long tail.** A build job runs lib-sourcify over a
   curated list, writing code hash → ABI (and NatSpec for a `perfect` match),
   checked at runtime against a verified `getCode` hash as in A4. It names the
@@ -389,9 +492,8 @@ Then, later parts: the attestations' check, and the descriptors of decision 5.
 The owner's, recorded here and in `.claude/rules/data-sources.md` before
 their code lands (#240):
 
-- Phase B on D6: whether the trace's asset changes and approvals are shown
-  beside the description and the simulation (question 6).
-- `diffMode` of `prestateTracer` in Myotis: asked for now, or after phase B's
-  first version (question 7).
+- When to ask Myotis for the `prestateTracer`'s `diffMode`: after phase B's
+  first version (question 7, decided 2026-11-26), once it shows what is
+  missing.
 - Phase C: where the build takes the sources from, and what a contract on no
   list shows (question 8).

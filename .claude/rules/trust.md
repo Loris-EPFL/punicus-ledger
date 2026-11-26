@@ -435,6 +435,31 @@ docs/clear-signing.md, *What a clear-signed line proves*.)
     order, `Erc20`'s `transfer` and `approve`, SwapRouter02's swaps, Safe's
     own methods), its answer stands, "not decoded" included.
 
+## A verified trace: what the call does at the head
+
+(Owner's decisions, 2026-11-26, on #240: questions 6 and 7;
+docs/clear-signing.md, *Phase B*.)
+
+- **Run by the engine on verified state.** A dApp's transaction (D6), and a
+  Safe transaction's call (screen 17, as the Safe's own call), is traced with
+  the engine's `debug_traceCall` at the verified head: the contracts it
+  reaches, the value each frame moves, its logs, its revert. No other source
+  traces it.
+- **Proven at the head, never at inclusion.** Every effect is labelled as
+  what the call does now, at its block; the transaction runs later, on other
+  state.
+- **What a log says is its contract's report.** Token movements and rights
+  are read from the logs of frames that did not revert. A token outside the
+  built-in list is named by its address, its amount raw.
+- **A delegate call into code that is not a pinned deployment's is flagged.**
+- **A description and a trace that disagree are warned about loudly**: a
+  token or the network's currency the description does not name leaving the
+  account, the account's tokens going to an address the description does not
+  show, a right granted the call is not flagged for. The call stays signable
+  (owner's decision, 2026-11-26).
+- **Not traced is said so**, never guessed: no tracing engine, no fresh head,
+  or past the deadline.
+
 ## Send from another wallet signs nothing here
 
 (Owner rulings, 2026-11-05, #255.)

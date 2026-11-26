@@ -109,8 +109,9 @@ object TraceReader {
         fun visit(frame: TraceFrame, sender: Address, counted: Boolean) {
             val counts = counted && !frame.failed
             frame.to?.takeUnless { isPrecompile(it) || it == account }?.let { contracts[it] = (contracts[it] ?: false) || frame.type.runsInCallersContext }
-            // A delegate call runs in its caller's context: its logs and calls have its caller's sender.
-            val inner = if (frame.type.runsInCallersContext) sender else frame.from
+            // A delegate call runs in its caller's context: its logs and calls have its caller's sender. Under
+            // CALLCODE the sender is the calling contract, its `from`.
+            val inner = if (frame.type == TraceFrame.Type.DELEGATECALL) sender else frame.from
             if (counts) {
                 val value = frame.value
                 if (frame.type.movesValue && value != null && value != UInt256.ZERO && frame.to != null) {

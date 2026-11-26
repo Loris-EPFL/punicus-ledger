@@ -114,7 +114,7 @@ class TraceCall(
         }.toMap()
         return TraceOutcome.Traced(
             effects = effects,
-            disagreements = TraceDisagreements.check(from, read, claims),
+            disagreements = TraceDisagreements.check(from, read, claims, builtIn.map { it.address }.toSet()),
             blockNumber = reading.blockNumber,
             names = names,
             tokens = listed.associate { it.address to ClearSigningToken(it.symbol, it.decimals) },

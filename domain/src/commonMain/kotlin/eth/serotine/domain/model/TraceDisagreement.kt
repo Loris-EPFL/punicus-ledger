@@ -89,22 +89,31 @@ data class TraceClaims(
  */
 object TraceDisagreements {
 
-    /** Every disagreement, each once, in the order: tokens not named, other recipients, rights not granted. */
-    fun check(account: Address, reading: TraceReading, claims: TraceClaims?): List<TraceDisagreement> {
+    /**
+     * Every disagreement, each once, in the order: tokens not named, other recipients, rights not granted.
+     * [listed] are the built-in tokens: with the tokens the claims name, the currency and its wrapped token,
+     * the assets whose moves are believed to pay something (a token anyone deploys can log any move).
+     */
+    fun check(account: Address, reading: TraceReading, claims: TraceClaims?, listed: Set<Address> = emptySet()): List<TraceDisagreement> {
         claims ?: return emptyList()
         val effects = reading.effects
         if (effects.revert != null) return emptyList()
         val named = claims.tokens
-        val recipients = claims.addresses
+        // Claims that show no address say the account keeps what the call gives it.
+        val recipients = claims.addresses.ifEmpty { setOf(account) }
+        val valued = named + listed + CURRENCY + listOfNotNull(reading.wrappedNative)
 
-        // A burn is sent to no one: it counts only where the account receives nothing in return.
-        val receives = effects.moves.any { it.to == account }
+        // A burn is sent to no one: it counts only where the account receives something of value in return.
+        val receives = effects.moves.any { it.to == account && key(it.asset) in valued }
         val sent = effects.moves.filter { it.from == account && !(receives && it.to == Address.ZERO) }.mapNotNull { it.asset.contract }
         val notNamed = sent.distinct().filter { it !in named }.map { TraceDisagreement.TokenNotNamed(it) }
 
-        val others = if (recipients.isEmpty()) emptyList() else otherRecipients(account, reading, named, recipients, claims.currency)
+        val others = otherRecipients(account, reading, named, recipients, claims.currency, valued)
 
-        val unflagged = if (claims.grantsRight) emptyList() else effects.rights.map { TraceDisagreement.RightNotFlagged(it) }
+        // A right is claimed only where the claims grant one, over a token they name, to an address they show.
+        val unflagged = effects.rights.filterNot { right ->
+            claims.grantsRight && right.over() in named && right.spender in claims.addresses
+        }.map { TraceDisagreement.RightNotFlagged(it) }
         return notNamed + others + unflagged
     }
 
@@ -123,6 +132,7 @@ object TraceDisagreements {
         named: Set<Address>,
         recipients: Set<Address>,
         namesCurrency: Boolean,
+        valued: Set<Address>,
     ): List<TraceDisagreement.OtherRecipient> {
         val mine = reading.effects.moves
         // The currency and its wrapped token are one to the account: it pays in either, wrapped or unwrapped on the way.
@@ -131,22 +141,32 @@ object TraceDisagreements {
         val sent = if (wrapped != null && (CURRENCY in paid || wrapped in paid)) paid + CURRENCY + wrapped else paid
         val considered = mine.map { key(it.asset) }.toSet() + named + listOfNotNull(CURRENCY.takeIf { namesCurrency })
         val ends = setOf(account, Address.ZERO) + recipients
-        val paysOn = payers(reading.allMoves, recipients + account)
+        val paysOn = payers(reading.allMoves, recipients + account) { key(it.asset) in valued || it.from == Address.ZERO }
         return endHolders(reading.allMoves.filter { key(it.asset) in considered })
             .filter { (asset, holder) -> holder !in ends && !(key(asset) in sent && holder in paysOn) }
             .map { (asset, holder) -> TraceDisagreement.OtherRecipient(asset, holder) }
     }
 
-    /** Every address from which a chain of [moves] leads to one of [targets]; a mint is its issuer's. */
-    private fun payers(moves: List<TracedMove>, targets: Set<Address>): Set<Address> {
-        val into = moves.groupBy({ it.to }, { if (it.from == Address.ZERO) it.asset.contract ?: it.from else it.from })
+    /**
+     * Every address from which a chain of [moves] leads to one of [targets]. The last move, into a target, must
+     * be [paying]: an asset of value, since any contract can log a junk token's move, or a mint, its issuer
+     * paying in its own shares as a lending pool or a vault does for what it takes. Moves further up may be in
+     * any asset: a route's middle token is often in no list.
+     */
+    private fun payers(moves: List<TracedMove>, targets: Set<Address>, paying: (TracedMove) -> Boolean): Set<Address> {
+        fun payer(move: TracedMove) = if (move.from == Address.ZERO) move.asset.contract ?: move.from else move.from
         val reached = targets.toMutableSet()
-        val queue = ArrayDeque(targets)
+        val queue = ArrayDeque<Address>()
+        for (move in moves) if (move.to in targets && paying(move) && reached.add(payer(move))) queue.addLast(payer(move))
+        val into = moves.groupBy({ it.to }, ::payer)
         while (queue.isNotEmpty()) {
             for (from in into[queue.removeFirst()].orEmpty()) if (reached.add(from)) queue.addLast(from)
         }
         return reached - targets
     }
+
+    /** The token a right is over: Permit2's is the token it lets the spender take. */
+    private fun TracedRight.over(): Address = if (this is TracedRight.Permit2) token else contract
 
     /** The contract an asset is told by: its issuer, or [CURRENCY] for the network's own. */
     private fun key(asset: TracedAsset): Address = asset.contract ?: CURRENCY

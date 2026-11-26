@@ -88,9 +88,21 @@ class TraceDisagreementsTest {
     }
 
     @Test
-    fun aDescriptionWithoutARecipientIsNotHeldToOne() {
+    fun aDescriptionWithoutARecipientIsHeldToTheAccount() {
         val stolen = trace(transfer(sold, user, pool, 10), transfer(bought, pool, thief, 5))
-        assertEquals(emptyList(), check(stolen, swap(recipient = null)))
+        assertEquals(TraceDisagreement.OtherRecipient(TracedAsset.Fungible(bought), thief), check(stolen, swap(recipient = null)).last())
+        assertEquals(emptyList(), check(trace(*honest), swap(recipient = null)))
+    }
+
+    @Test
+    fun aJunkTokensLoggedMoveMakesNoThiefAPayer() {
+        // The input goes to a thief, and a token anyone can deploy logs a move from the thief to the user.
+        val junk = address("0e")
+        val stolen = trace(transfer(sold, user, thief, 10), transfer(junk, thief, user, 1))
+        assertEquals(
+            TraceDisagreement.OtherRecipient(TracedAsset.Fungible(sold), thief),
+            check(stolen, swap(user)).first { it is TraceDisagreement.OtherRecipient },
+        )
     }
 
     @Test
@@ -192,7 +204,9 @@ class TraceDisagreementsTest {
             listOf(TraceDisagreement.RightNotFlagged(TracedRight.Allowance(sold, thief, UInt256.of(1_000)))),
             check(reading, swap(user)),
         )
-        assertEquals(emptyList(), check(reading, swap(user, grantsApproval = true)))
+        // Flagged as granting a right, but not this one: the thief is no address the call shows.
+        assertEquals(1, check(reading, swap(user, grantsApproval = true)).size)
+        assertEquals(emptyList(), check(reading, swap(thief, grantsApproval = true)))
     }
 
     @Test

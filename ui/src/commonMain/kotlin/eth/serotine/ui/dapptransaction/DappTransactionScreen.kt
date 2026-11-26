@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.AccountId
 import eth.serotine.ui.components.Blockie
+import eth.serotine.ui.components.ClearSignedDescription
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
@@ -182,9 +183,28 @@ fun DappTransactionScreen(
             Heading("What it does")
             state.meaning?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
             state.meaningFields.forEach { Field(it) }
+            if (state.describing) {
+                Row(
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("Looking it up in the built-in descriptions and checking the contract's code…")
+                }
+            }
+            state.described?.let { ClearSignedDescription(it) }
+            state.notDescribed?.let {
+                Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.error)
+            }
             state.dataHex?.let { hex ->
                 Text(
-                    "Call data (${state.dataSize})" + if (state.meaning == null) ", not decoded" else "",
+                    "Call data (${state.dataSize})" + when {
+                        state.described?.partly == true -> ", partly described above"
+                        state.described != null -> ", as described above"
+                        state.meaning == null -> ", not decoded"
+                        else -> ""
+                    },
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

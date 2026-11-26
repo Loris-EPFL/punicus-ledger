@@ -68,6 +68,9 @@ import eth.serotine.domain.repository.TokenMetadata
 import eth.serotine.domain.repository.TransactionHistory
 import eth.serotine.domain.repository.TransactionInputs
 import eth.serotine.domain.repository.UniswapV3Chain
+import eth.serotine.domain.repository.ClearSigningCatalog
+import eth.serotine.domain.repository.ContractCodes
+import eth.serotine.domain.usecase.DescribeClearSigning
 import eth.serotine.domain.repository.UserTokens
 import eth.serotine.domain.repository.WaitingSwaps
 import eth.serotine.domain.repository.WalletHandoff
@@ -404,6 +407,10 @@ class AppGraph(
     private val safeReleases: SafeReleases,
     /** Uniswap v3 on each network: its pinned contracts, proven by their code, and verified calls of them. */
     private val uniswap: UniswapV3Chain,
+    /** The built-in clear-signing descriptors and the deployments they are pinned to (docs/clear-signing.md). */
+    private val clearSigningCatalog: ClearSigningCatalog,
+    /** The code a descriptor is bound to, proven by each network's light client (docs/clear-signing.md, A4). */
+    private val contractCodes: ContractCodes,
     /** CoW Protocol's settlement contracts on each network, proven by their code, and verified calls of them. */
     private val cowChain: CowChain,
     /**
@@ -777,6 +784,7 @@ class AppGraph(
         ),
         QueueSafeCall(signer, outbox, outboxLock),
         imported = imported,
+        describeClearSigning = describeClearSigning(),
     )
 
     /**
@@ -1202,10 +1210,14 @@ class AppGraph(
     fun dappRequestsWaitingViewModel(): DappRequestsWaitingViewModel =
         DappRequestsWaitingViewModel(observeDappMessages())
 
+    /** What the built-in descriptors say a dApp's call or message does, bound to verified code. */
+    private fun describeClearSigning() = DescribeClearSigning(clearSigningCatalog, contractCodes, tokenCatalog, addressKinds)
+
     /** The review of the transaction [requestKey] names (`topic/id`, as its route carries it): screen D6. */
     fun dappTransactionViewModel(requestKey: String): DappTransactionViewModel = DappTransactionViewModel(
         requestKey,
         observeDappMessages(),
+        describeClearSigning(),
         QuoteDappTransaction(
             dappRequests,
             accounts,
@@ -1248,6 +1260,7 @@ class AppGraph(
     fun dappRequestViewModel(requestKey: String): DappRequestViewModel = DappRequestViewModel(
         requestKey,
         observeDappMessages(),
+        describeClearSigning(),
         SignDappMessage(dappRequests, accounts, networkSettings, signer),
         RefuseDappRequest(dappRequests, accounts, networkSettings),
         DescribeKeyStore(keys),

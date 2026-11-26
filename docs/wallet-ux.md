@@ -898,6 +898,11 @@ columns** (owner's request, 2026-11-25). Material's large window size class:
       module, the guard, the fallback handler), a rejection (the Safe calling
       itself with nothing: it uses up the nonce), or a contract call with its
       selector; and the Safe nonce, with how many run before it.
+    - A contract call a built-in ERC-7730 descriptor covers, bound to its
+      verified code, is shown clear-signed: its intent, its fields, and
+      every other parameter (owner's decisions, 2026-11-25, #240;
+      docs/clear-signing.md). The `safeTxHash` stays shown in full, and
+      every refusal below holds whatever the description says.
     - An approval or a swap says where it stands now (docs/swaps.md, *A
       Safe's swap*): whether its spender or router is Uniswap's pinned
       SwapRouter02, its code proven, with a warning when it is not; for a

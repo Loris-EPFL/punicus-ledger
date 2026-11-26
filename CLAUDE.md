@@ -257,7 +257,9 @@ Full text: `.claude/rules/trust.md`. These rules bind every change.
 - A parameter that can change the answer is APPLIED or REFUSED, never
   accepted and silently ignored (Myotis #314).
 - What a dApp sends is untrusted input, held to a closed method list;
-  `eth_sign` is refused in every case (owner rulings, 2026-11-03, #22).
+  `eth_sign` is refused in every case (owner rulings, 2026-11-03, #22). A
+  call is clear-signed only when bound to verified code, the descriptor's
+  words labelled as its claim (owner's decisions, 2026-11-25, #240).
 - **Key material** lives in the key-store adapter and nowhere else. The
   exceptions are a closed list of owner rulings: the mnemonic screens (owner
   ruling, 2026-10-15), the words travelling as the dedicated mnemonic type
@@ -287,6 +289,9 @@ rulings to the screens.
   2026-10-16). The token list is built in
   (owner ruling, 2026-10-16). Safe co-signing uses no off-chain service
   (owner ruling, 2026-10-16).
+- Clear signing's ERC-7730 descriptors are built in, pinned with each
+  contract's code hash; never fetched (owner's decisions, 2026-11-25, #240;
+  docs/clear-signing.md).
 - An account's history comes from the engine's verified log index (owner
   rulings, 2026-10-20, #85). Its walk back is a heavy download: it waits
   off a metered connection unless the user allows it in Settings (owner

@@ -10,6 +10,22 @@ and issues of this repository.
 
 ## [Unreleased]
 
+### Added
+
+- Clear signing of dApp transactions, and of Permit2's batch permits among
+  typed data: a call, or such a message, that Punicus did not decode before is
+  now put in words when a built-in ERC-7730 description covers its contract
+  (WETH, Permit2, Uniswap's SwapRouter02, Seaport 1.6, Lido's wstETH, the
+  Aave v3 Pool and the ENS registrar controller on Ethereum; Permit2 and the
+  Aave v3 Pool on Gnosis Chain; WETH and Permit2 on Sepolia). The
+  descriptions are built into the app, never fetched, and each is used only
+  while the contract's code, checked by the light client, is the code this
+  release was built for: a contract changed since says so and stays not
+  decoded. The words are the description's author's and are labelled so;
+  every value is decoded from what you sign and shown with its raw form, and
+  every parameter a description does not show is listed under "Other
+  parameters". An approval is flagged whatever its description says (#240).
+
 ## [0.6.0] - 2026-11-25
 
 ### Added

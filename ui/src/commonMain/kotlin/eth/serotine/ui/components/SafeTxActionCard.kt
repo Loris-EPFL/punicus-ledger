@@ -65,7 +65,17 @@ fun SafeTxActionCard(action: SafeTxActionItem, modifier: Modifier = Modifier) {
                     }
                 }
             }
+            if (action.describing) {
+                Text(
+                    "Looking it up in the built-in descriptions and checking the contract's code…",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            action.described?.let { ClearSignedDescription(it) }
             action.notes.forEach { note -> Text(note, style = MaterialTheme.typography.bodySmall) }
+            action.notDescribed?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            }
             action.warning?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             }

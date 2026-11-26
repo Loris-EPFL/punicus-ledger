@@ -139,6 +139,11 @@ import eth.serotine.domain.repository.TokenBalances
 import eth.serotine.domain.repository.TokenCatalog
 import eth.serotine.domain.repository.TransactionProgress
 import eth.serotine.domain.repository.UniswapV3Chain
+import eth.serotine.domain.model.ClearSigningDeployment
+import eth.serotine.domain.model.CodePin
+import eth.serotine.domain.repository.ClearSigningCatalog
+import eth.serotine.domain.repository.CodeReading
+import eth.serotine.domain.repository.ContractCodes
 import eth.serotine.domain.repository.VenueChoice
 import eth.serotine.domain.repository.VenueReading
 import eth.serotine.domain.usecase.FollowSafeDeployments
@@ -431,6 +436,13 @@ class AppNavigationTest {
 
             override suspend fun call(network: Network, to: Address, data: ByteArray): Simulation =
                 Simulation.Unavailable(ReadUnavailable.NO_ENGINE)
+        },
+        clearSigningCatalog = object : ClearSigningCatalog {
+            override fun deployment(network: Network, address: Address): ClearSigningDeployment? = null
+        },
+        contractCodes = object : ContractCodes {
+            override suspend fun read(network: Network, address: Address, pin: CodePin): CodeReading =
+                CodeReading.Unavailable(ReadUnavailable.NO_ENGINE)
         },
         cowChain = object : CowChain {
             override suspend fun venue(network: Network): CowVenueReading = CowVenueReading.NotPinned

@@ -4,7 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.ClearSignFormatter
+import eth.serotine.domain.model.ClearSignResult
+import eth.serotine.domain.model.ClearSignedField
 import eth.serotine.domain.model.DappCallMeaning
+import eth.serotine.domain.model.NotCoveredReason
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.Token
@@ -33,6 +37,7 @@ import eth.serotine.domain.usecase.DappSignRefusal
 import eth.serotine.domain.usecase.DappTransactionQuote
 import eth.serotine.domain.usecase.DappTransactionQuoting
 import eth.serotine.domain.usecase.DappTransactionSending
+import eth.serotine.domain.usecase.DescribeClearSigning
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveDappMessages
 import eth.serotine.domain.usecase.QuoteDappTransaction
@@ -47,6 +52,8 @@ import eth.serotine.ui.components.whileSyncing
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.CHECK_TOOK_THE_TIME
+import eth.serotine.ui.components.ClearSignedSection
+import eth.serotine.ui.components.ClearSignedText
 import eth.serotine.ui.components.MIN_PROMPT_TIME
 import eth.serotine.ui.components.PROMPT_TIMED_OUT
 import eth.serotine.ui.components.QUOTE_MAX_AGE
@@ -121,6 +128,15 @@ data class DappTransactionUiState(
     /** What the call does, in a sentence; null when it is not decoded. */
     val meaning: String? = null,
     val meaningFields: List<SignInField> = emptyList(),
+    /**
+     * A call the app does not decode, described by a built-in ERC-7730 descriptor bound to its verified code
+     * (docs/clear-signing.md, A5); null when none describes it.
+     */
+    val described: ClearSignedSection? = null,
+    /** Being looked up in the built-in descriptors, its code being checked. */
+    val describing: Boolean = false,
+    /** Why a built-in descriptor that covers the contract does not describe this call, where that says more. */
+    val notDescribed: String? = null,
     /** The call data as hex, when there is some, with its size. */
     val dataHex: String? = null,
     val dataSize: String = "",
@@ -168,6 +184,8 @@ class DappTransactionViewModel(
     /** The request, as its route names it: `topic/id`. */
     requestKey: String,
     private val observeDappMessages: ObserveDappMessages,
+    /** The built-in descriptors, for a call the app does not decode itself (docs/clear-signing.md). */
+    private val describeClearSigning: DescribeClearSigning,
     private val quoteDappTransaction: QuoteDappTransaction,
     private val sendDappTransaction: SendDappTransaction,
     private val proposeDappSafeTx: ProposeDappSafeTx,
@@ -229,6 +247,43 @@ class DappTransactionViewModel(
 
     private val local = MutableStateFlow(Local())
 
+    /** What the built-in descriptors say of the call, once asked; null before. Asked once per screen. */
+    private val description = MutableStateFlow<ClearSignResult?>(null)
+    private val describing = MutableStateFlow(false)
+
+    // Asked first by the quote the screen opens with (requote, below), then again with each new one.
+    private var describeJob: Job? = null
+
+    /**
+     * Asks the built-in descriptors what the call does, for a call the app does not decode itself: at opening,
+     * and again with each quote (a contract can be upgraded while the request waits, and a check that could not
+     * be made a moment ago may be made now). The last answer stays on screen while the next is read; one that
+     * fails leaves the call not decoded, with no reason claimed.
+     */
+    private fun describe() {
+        if (describeJob?.isActive == true) return
+        describeJob = viewModelScope.launch {
+            // The reviews as they are now, never a wait for one: a request answered, or not yet there, is no
+            // description, and the next showing (or quote) asks again.
+            val review = observeDappMessages().first().find { it.request.id == id } ?: return@launch
+            val transaction = (review.content as? DappSignContent.Transaction)?.transaction ?: return@launch
+            val network = review.request.network ?: return@launch
+            if (transaction.meaning !is DappCallMeaning.NotDecoded) return@launch
+            describing.value = true
+            description.value = try {
+                describeClearSigning.call(network, review.address, transaction.to, transaction.value, transaction.data)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } finally {
+                describing.value = false
+            }
+        }
+    }
+
+    private val described = combine(description, describing) { result, busy -> result to busy }
+
     private val shownReview = observeDappMessages()
         .map { reviews ->
             reviews.find { it.request.id == id && it.content is DappSignContent.Transaction }
@@ -236,13 +291,14 @@ class DappTransactionViewModel(
         }
         .distinctUntilChanged()
 
-    val uiState: StateFlow<DappTransactionUiState> = combine(shownReview, local, ticks) { shown, local, _ ->
-        val (review, base) = shown
+    val uiState: StateFlow<DappTransactionUiState> = combine(shownReview, local, ticks, described) { shown, local, _, described ->
+        val (review, plain) = shown
             ?: return@combine if (local.notice != null && !local.done) {
                 DappTransactionUiState(loading = false, ended = true, notice = local.notice)
             } else {
                 DappTransactionUiState(loading = false, gone = true, done = local.done)
             }
+        val base = withDescription(plain, described.first, described.second)
         base.copy(
             quoting = local.quoting,
             quote = local.quote?.let { quoteLines(it, review.request.network) }
@@ -278,6 +334,7 @@ class DappTransactionViewModel(
     fun requote(note: String? = null) {
         val request = id ?: return
         if (local.value.busy || local.value.quoting) return
+        describe()
         local.update {
             it.copy(quoting = true, notQuoted = null, gasTooLow = false, unlock = it.unlock.copy(error = note))
         }
@@ -677,12 +734,39 @@ class DappTransactionViewModel(
             dataSize = DappRequestViewModel.bytesLine(transaction.dataSize),
             warnings = buildList {
                 if (transaction.meaning is DappCallMeaning.NotDecoded) add(NOT_DECODED)
-                if (transaction.meaning is DappCallMeaning.TokenApproval) add(APPROVAL_NOTE)
+                // An approval is flagged by what the call is, whatever any description says or whether one does.
+                if (transaction.meaning is DappCallMeaning.TokenApproval || ClearSignFormatter.grantsApproval(transaction.data)) {
+                    add(APPROVAL_NOTE)
+                }
             },
             refusal = review.refusal?.let { refusalLine(it) },
             fromSafe = review.account?.kind == AccountKind.SAFE,
         )
     }
+
+    /**
+     * [state] with what the built-in descriptors say of its call: a description replaces "not decoded"; an
+     * approval it finds is flagged loudly whatever the description says; a reason worth saying is said.
+     */
+    private fun withDescription(state: DappTransactionUiState, result: ClearSignResult?, busy: Boolean): DappTransactionUiState =
+        when (result) {
+            is ClearSignResult.ClearSigned -> {
+                val partly = ClearSignedText.partlyNotDecoded(result)
+                state.copy(
+                    described = ClearSignedText.describedSection(result),
+                    describing = busy,
+                    // The selector row says nothing the description does not; the call data stays below.
+                    meaningFields = emptyList(),
+                    warnings = state.warnings.filterNot { it == NOT_DECODED } +
+                        listOfNotNull(
+                            ClearSignedText.PARTLY_NOT_DECODED.takeIf { partly },
+                            APPROVAL_NOTE.takeIf { result.grantsApproval && APPROVAL_NOTE !in state.warnings },
+                        ),
+                )
+            }
+            is ClearSignResult.NotCovered -> state.copy(describing = busy, notDescribed = ClearSignedText.notDescribedLine(result.reason))
+            null -> state.copy(describing = busy)
+        }
 
     /** The network request [id] is on, as the latest review has it: Sepolia, a test network's, if it cannot be read. */
     private suspend fun requestNetwork(): Network =
@@ -750,6 +834,7 @@ class DappTransactionViewModel(
             "shown as it is. Send it only if you trust this dApp."
         const val APPROVAL_NOTE = "An approval moves nothing itself, but the spender may then take the tokens " +
             "without asking you again."
+
 
         /**
          * [wei] in [network]'s native currency, a testnet's marked so (Sepolia's, and one that cannot be named,

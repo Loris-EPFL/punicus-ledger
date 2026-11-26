@@ -24,6 +24,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.size
+import eth.serotine.ui.components.ClearSignedDescription
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,6 +69,7 @@ fun DappRequestRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onHidden() }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onShown() }
     val done by rememberUpdatedState(onDone)
     LaunchedEffect(state.done, state.gone) {
         if (state.done || state.gone) done()
@@ -89,7 +92,8 @@ fun DappRequestRoute(
  * by field when it is a sign-in, as text, or as hex marked "not text"; or typed data, what it lets
  * someone do when decoded, its domain and every field; the warnings;
  * and the unlock, with Refuse beside it. One that cannot be signed shows why, its Sign greyed out and
- * still tappable. Nothing on it is read from the chain.
+ * still tappable. Nothing on it is read from the chain, except, for typed data no hand-written decoder knows,
+ * the verifying contract's code, which a built-in description is bound to (docs/clear-signing.md, A4).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -212,7 +216,13 @@ fun DappRequestScreen(
                 }
             }
             Text(
-                "Signing reads nothing from the chain and sends no transaction.",
+                // Only where a description was asked for did Punicus read anything: the verifying contract's code.
+                if (state.describing || state.described != null || state.notDescribed != null) {
+                    "Signing sends no transaction. To describe this data, Punicus read the code of the contract " +
+                        "that checks it, from the chain."
+                } else {
+                    "Signing reads nothing from the chain and sends no transaction."
+                },
                 Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -274,6 +284,21 @@ private fun TypedDataSections(state: DappRequestUiState) {
         Text(meaning, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
         state.meaningFields.forEach { Field(it) }
     }
+    if (state.describing || state.described != null || state.notDescribed != null) Heading("What signing it lets someone do")
+    if (state.describing) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            Text("Looking it up in the built-in descriptions and checking the contract's code…")
+        }
+    }
+    state.described?.let { ClearSignedDescription(it) }
+    state.notDescribed?.let {
+        Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.error)
+    }
     Heading("Who checks the signature")
     Text(
         "As the data states it: the contract and network it is for.",
@@ -282,7 +307,13 @@ private fun TypedDataSections(state: DappRequestUiState) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     state.domainFields.forEach { Field(it) }
-    Heading(if (state.meaning == null) "Every field, not decoded" else "Every field")
+    Heading(
+        when {
+            state.described?.partly == true -> "Every field, partly described above"
+            state.meaning == null && state.described == null -> "Every field, not decoded"
+            else -> "Every field"
+        },
+    )
     Surface(
         Modifier.padding(horizontal = 16.dp).fillMaxWidth().testTag(DAPP_REQUEST_FIELDS_TAG),
         color = MaterialTheme.colorScheme.surfaceVariant,

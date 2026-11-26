@@ -208,6 +208,16 @@ android {
     }
 }
 
+// The clear-signing conformance test (ClearSigningConformanceTest) runs the ERC-7730 registry's own test
+// vectors, vendored and pinned with the descriptors (scripts/clear-signing/registry/), through the catalog
+// and the formatter (docs/clear-signing.md, A1, step 6).
+tasks.matching { it.name == "desktopTest" }.configureEach {
+    (this as Test).systemProperty(
+        "serotine.clearSigningRegistry",
+        rootProject.layout.projectDirectory.dir("scripts/clear-signing/registry").asFile.absolutePath,
+    )
+}
+
 // The engine's real-network test (MyotisNodeSepoliaTest) runs only with
 // -PmyotisLibraryDir=<dir with the host library>; without it, it is skipped.
 providers.gradleProperty("myotisLibraryDir").orNull?.let { dir ->

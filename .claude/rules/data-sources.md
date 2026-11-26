@@ -205,6 +205,25 @@ of a stale feed.)
   lacks (Swarm's, the Gnosis Pay Delay module) come in a later part,
   contributed upstream.
 
+## Verified ABIs are built in: from Sourcify, recompiled at build time
+
+(Owner's decisions, 2026-11-26, #240: question 8 and the first list;
+docs/clear-signing.md, *Phase C*, is the contract.)
+
+- **For contracts no descriptor covers**, a curated list's functions and
+  their parameters' names ship in every build, keyed by the code hash they
+  compile to.
+- **From Sourcify's repository, at build time only.** Its sources are fetched
+  when the list is refreshed, vendored and pinned by sha256; lib-sourcify
+  recompiles each, and the runtime code must match before anything is
+  pinned. Sourcify's verdict is reproduced, never taken on trust.
+- **Never fetched on the device, never recompiled there.** A contract on no
+  list stays not decoded, beside its verified trace.
+- **The first list**: Safe's MultiSend and MultiSendCallOnly, the Gnosis Pay
+  Delay module, Swarm's postage stamp and chequebook, CoW Protocol's
+  settlement, Uniswap's Universal Router.
+- **A refresh is a step of every release PR**, as for the descriptors.
+
 ## An account's NFTs: found in its verified history, proven held, read on chain only
 
 (Owner rulings, 2026-11-05, #246.)
@@ -582,7 +601,6 @@ docs/walletconnect.md is the contract.)
 Each is recorded here before its code lands. Today: each optional
 WalletConnect service above; Swarm on Sepolia (docs/swarm.md); what follows a
 contradicted addr1 entry beyond the warning (no longer trusting the importer key,
-reporting it), the owner's to decide (2026-11-21, on #335); and clear
-signing's phase C, verified ABIs for contracts no descriptor covers, with its
-question 8, and whether the Safe refusals reach what a verified trace proves
-(#240; docs/clear-signing.md, *Open decisions*).
+reporting it), the owner's to decide (2026-11-21, on #335); and whether the
+Safe refusals reach what a verified trace proves, and the ordinary calls that
+still warn (#240; docs/clear-signing.md, *Open decisions*).

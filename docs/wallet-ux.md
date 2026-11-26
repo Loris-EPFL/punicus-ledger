@@ -928,6 +928,11 @@ time*.
       every other parameter (owner's decisions, 2026-11-25, #240;
       docs/clear-signing.md). The `safeTxHash` stays shown in full, and
       every refusal below holds whatever the description says.
+    - A contract call no descriptor covers, to a contract on phase C's list,
+      bound to its verified code by its hash: its function and parameters
+      by the names of its verified source, values raw, labelled as its
+      author's words (owner's decisions, 2026-11-26, #240;
+      docs/clear-signing.md, *Phase C*).
     - What a call (operation CALL) does now: traced at the verified head as
       the Safe's own call, the Safe's currency and tokens sent and received,
       the rights granted, the addresses it calls (a delegate call into code

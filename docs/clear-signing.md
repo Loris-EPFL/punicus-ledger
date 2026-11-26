@@ -45,8 +45,8 @@ that, and nothing it adds narrows what is already shown.
    the part PRs into it, once each is done under the Workflow (the
    feature-branch skill: the answer lives in that conversation, and a later
    session asks again). The PR into `main` is the
-   owner's. Phase B was decided on 2026-11-26 (*Phase B*); phase C stays
-   open (*Open decisions*).
+   owner's. Phases B and C were decided on 2026-11-26 (*Phase B*,
+   *Phase C*).
 
 ## ERC-7730 in short
 
@@ -387,6 +387,18 @@ Phase B lands through `feature/verified-trace`:
    entry.
 6. **The final PR**, `feature/verified-trace` → `main`.
 
+Phase C lands through `feature/verified-abis`:
+
+1. **Rules and docs**: phase C here, in `.claude/rules/data-sources.md` and
+   `.claude/rules/trust.md`.
+2. **The build job** (C1): the list, the fetch, the recompile, the pins, the
+   generated catalog, its CI job.
+3. **`:domain`** (C3): the model, the port, the use case, which decoder
+   speaks.
+4. **`:data`** (C4): the catalog adapter and the binding to verified code.
+5. **D6 and the Safe review**, with previews and the `CHANGELOG.md` entry.
+6. **The final PR**, `feature/verified-abis` → `main`.
+
 ## Phase B: a verified trace
 
 (The owner's decisions, 2026-11-26, on #240: questions 6 and 7, and what a
@@ -579,12 +591,92 @@ rare and meant (docs/balance-reconciliation.md, D3).
   answer, a contract that calls with much data again and again), or one not
   read exactly, is no verified answer: the screen says none could be had.
 
-## Later phases (open)
+## Phase C: verified ABIs for the long tail
 
-- **C. Verified ABIs for the long tail.** A build job runs lib-sourcify over a
-  curated list, writing code hash → ABI (and NatSpec for a `perfect` match),
-  checked at runtime against a verified `getCode` hash as in A4. It names the
-  function and its parameters, with no intent. Never on the device.
+(The owner's decisions, 2026-11-26, on #240: question 8 and the first list.)
+
+A descriptor (phase A) is its author's claim of what a call does, in words.
+Most contracts have none. For those, phase C names at least the function and
+its parameters, from the contract's own verified source: no intent, no
+formatting, the names its author chose.
+
+### The owner's decisions (2026-11-26)
+
+1. **The sources** (question 8a): Sourcify's repository, fetched at build
+   time only. lib-sourcify recompiles each contract at build time, and the
+   result must match the runtime code before anything is pinned: Sourcify's
+   verdict is reproduced, never taken on trust.
+2. **A contract on no list** (question 8b): not decoded, as today, beside
+   phase B's verified trace. Nothing is fetched at signing time; no
+   recompiling on the device.
+3. **The first list**: contracts the app pins or its features reach that no
+   descriptor covers: Safe's MultiSend and MultiSendCallOnly, the Gnosis Pay
+   Delay module (its mastercopy, and the minimal proxies to it), Swarm's
+   postage stamp and chequebook, CoW Protocol's settlement, and Uniswap's
+   Universal Router.
+4. **The plan lands through `feature/verified-abis`.** The owner allowed the
+   session that asked to merge the part PRs into it, once each is done under
+   the Workflow. The PR into `main` is the owner's.
+
+### What a verified ABI proves, and what it does not
+
+- **Proven: the code is compiled from that source.** Its runtime code, read
+  verified at a fresh head (as A4 reads a descriptor's), hashes to the code
+  this release recompiled. So the call's selector is that function's, and
+  its parameters decode as that function's types.
+- **Not proven: what the function does.** The function's and the parameters'
+  names are its author's choice, labelled so: a function called `deposit`
+  may do anything. Phase B's trace, beside it, shows what it does at the
+  head.
+- **No claims to hold a trace against.** A name is no description: the trace
+  of a call decoded this way shows its effects alone, as for a call not
+  decoded (*Phase B*, *What the trace is held against*).
+
+### How it is applied, not part of the decisions (the owner's to approve on #240)
+
+**At build time** (C1, `scripts/verified-abis/`, alongside
+`scripts/clear-signing/`):
+
+- `contracts.json`: the first list, each entry its network, address, name
+  and why it is there.
+- `fetch.py` downloads each contract's metadata, sources and runtime code
+  from Sourcify's API (`/v2/contract/{chainId}/{address}?fields=all`) into a
+  vendored directory, each file pinned by its sha256: the build and CI read
+  the vendored copy, never the network.
+- A Node script with lib-sourcify (pinned by version and hash) recompiles
+  each contract with the compiler and settings its metadata names, and
+  checks the runtime code against the vendored one, its immutables and
+  libraries as lib-sourcify places them. A mismatch fails the build.
+- The code hash is read from the chain through Myotis when the pin is made,
+  as phase A's are (`pin_code_hashes.py`), and must be the vendored code's.
+- `generate.py` writes the catalog (`VerifiedAbiCatalog.kt`): code hash →
+  the contract's name, its functions (selector, name, parameters with their
+  names and types) and the network it was pinned on. A CI job runs the
+  recompile again on every PR that touches it.
+- An EIP-1167 minimal proxy has the same runtime code for every proxy to one
+  implementation: its code hash is pinned beside the implementation's,
+  mapping to the implementation's functions (the Gnosis Pay Delay modules,
+  one per account, are such proxies).
+
+**At runtime** (C3, C4):
+
+- **Which decoder speaks**: a hand-written decoder first, then a built-in
+  descriptor (phase A), then a verified ABI, else "not decoded". A call is
+  looked up by the verified code hash at its `to`, at a fresh head; a code
+  that cannot be read verified is no lookup, and the call stays not
+  decoded.
+- **Decoded exactly or not at all**: the data must be the canonical ABI
+  encoding of the function's parameters (A3's decoder); anything else is not
+  decoded.
+- **Shown**: "Calls `name` on Name (address)", then each parameter by its
+  name and type with its value raw (an address checksummed and named where
+  the wallet names it, bytes as hex, a nested call not decoded further),
+  under the label: "Names from this contract's verified source (Sourcify,
+  recompiled for this release): its author's words, not a description".
+- **An approval** is flagged by its selector whatever decodes it (A3).
+- **Where**: D6 and the Safe review (screen 17), where a description would
+  stand. Typed data (D5) has no ABI.
+- **A refresh is a step of every release PR**, as for the descriptors.
 
 ## Open decisions
 
@@ -602,5 +694,3 @@ their code lands (#240):
   back; an allowance lowered (`decreaseAllowance`) or used up in the same
   call (`supplyWithPermit`), read as a right granted. Whether to accept
   these warnings or narrow the checks further is the owner's.
-- Phase C: where the build takes the sources from, and what a contract on no
-  list shows (question 8).

@@ -416,6 +416,12 @@ docs/clear-signing.md, *What a clear-signed line proves*.)
   docs/wallet-ux.md, screen 17), those above among them, holds whatever a
   descriptor says, and an approval is flagged loudly whatever its
   description, at any depth.
+- **A verified ABI names, it does not describe** (owner's decisions,
+  2026-11-26, #240; docs/clear-signing.md, *Phase C*). Bound to verified
+  code as a descriptor is, by its code hash; its function's and parameters'
+  names are its author's words, labelled so, with no intent and no
+  formatting. Below a hand-written decoder and a descriptor, above "not
+  decoded".
 - How it is applied, not part of the decisions (the owner's to approve on
   #378):
   - A formatted value keeps its raw decoded value beside it, in the detailed

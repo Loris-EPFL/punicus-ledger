@@ -593,78 +593,101 @@ rare and meant (docs/balance-reconciliation.md, D3).
 
 ## Phase C: verified ABIs for the long tail
 
-(The owner's decisions, 2026-11-26, on #240: question 8 and the first list.)
+(The owner's decisions, 2026-11-26, on #240: question 8, the first list, and
+two answers after the review of part 1.)
 
 A descriptor (phase A) is its author's claim of what a call does, in words.
 Most contracts have none. For those, phase C names at least the function and
-its parameters, from the contract's own verified source: no intent, no
-formatting, the names its author chose.
+its parameters, from the contract's own verified source.
 
 ### The owner's decisions (2026-11-26)
 
 1. **The sources** (question 8a): Sourcify's repository, fetched at build
-   time only. lib-sourcify recompiles each contract at build time, and the
-   result must match the runtime code before anything is pinned: Sourcify's
-   verdict is reproduced, never taken on trust.
+   time only. lib-sourcify recompiles each contract at build time, and its
+   runtime code must match before anything is pinned: Sourcify's verdict is
+   reproduced, not trusted.
 2. **A contract on no list** (question 8b): not decoded, as today, beside
-   phase B's verified trace. Nothing is fetched at signing time; no
-   recompiling on the device.
-3. **The first list**: contracts the app pins or its features reach that no
-   descriptor covers: Safe's MultiSend and MultiSendCallOnly, the Gnosis Pay
-   Delay module (its mastercopy, and the minimal proxies to it), Swarm's
-   postage stamp and chequebook, CoW Protocol's settlement, and Uniswap's
-   Universal Router.
-4. **The plan lands through `feature/verified-abis`.** The owner allowed the
+   phase B's verified trace. Nothing is fetched at signing time.
+3. **The first list**: contracts the app pins, or its features reach, that no
+   ERC-7730 descriptor covers: Safe's MultiSend and libraries, the Gnosis Pay
+   Delay module, Swarm's postage stamp and chequebook, CoW Protocol's
+   settlement, Uniswap's Universal Router.
+4. **Exact matches only.** A contract is pinned only on Sourcify's exact
+   (metadata-hash) match, which binds its function's and parameters' names
+   to the code; a partial match does not (the names do not change the
+   bytecode). A partial match is not pinned, and its contract stays not
+   decoded until an exact match exists: today the Universal Router, Swarm's
+   postage stamp, and CoW's settlement on Gnosis Chain.
+5. **MultiSend is named on the delegate call shown and refused.** Nothing more
+   is unlocked: delegate calls stay refused until #57.
+6. **The plan lands through `feature/verified-abis`.** The owner allowed the
    session that asked to merge the part PRs into it, once each is done under
    the Workflow. The PR into `main` is the owner's.
 
-### What a verified ABI proves, and what it does not
-
-- **Proven: the code is compiled from that source.** Its runtime code, read
-  verified at a fresh head (as A4 reads a descriptor's), hashes to the code
-  this release recompiled. So the call's selector is that function's, and
-  its parameters decode as that function's types.
-- **Not proven: what the function does.** The function's and the parameters'
-  names are its author's choice, labelled so: a function called `deposit`
-  may do anything. Phase B's trace, beside it, shows what it does at the
-  head.
-- **No claims to hold a trace against.** A name is no description: the trace
-  of a call decoded this way shows its effects alone, as for a call not
-  decoded (*Phase B*, *What the trace is held against*).
-
 ### How it is applied, not part of the decisions (the owner's to approve on #240)
 
-**At build time** (C1, `scripts/verified-abis/`, alongside
+**What a verified ABI proves, and what it does not:**
+
+- **Proven: the code at the address compiles from that source.** Its runtime
+  code, read verified at a fresh head (as A4 reads a descriptor's), hashes to
+  the on-chain code pinned for this release, which matched the recompile
+  exactly, immutables (a domain separator, a chain id) placed as
+  lib-sourcify places them. So the call's selector is that function's, its
+  parameters decode as that function's types, and its names are the ones
+  compiled into its metadata.
+- **Not proven: what the function does.** The names are its author's choice,
+  labelled so: a function called `deposit` may do anything. Phase B's trace,
+  beside it, shows what it does at the head.
+- **No claims to hold a trace against.** A name is no description: the trace
+  of a call decoded this way shows its effects alone, as for a call not
+  decoded (*Phase B*, *What the trace is held against*). A parameter named
+  `recipient` that the trace contradicts raises no warning.
+
+**The first list, as pinned** (`scripts/verified-abis/contracts.json`, each
+entry its network, address, name and why it is there):
+
+- Safe's MultiSend and its libraries (MultiSendCallOnly, SignMessageLib,
+  CreateCall), the versions the app's Safes use, on each network;
+- the Gnosis Pay Delay module: both mastercopies docs/gnosis-pay.md pins (the
+  current one and the retired one), and the EIP-1167 proxies to them;
+- Swarm's chequebook (its master copy and the EIP-1167 proxies to it; the
+  postage stamp waits for an exact match);
+- CoW Protocol's settlement on Ethereum (on Gnosis Chain it waits for an
+  exact match). The Universal Router waits for one too.
+
+**At build time** (C1, `scripts/verified-abis/`, beside
 `scripts/clear-signing/`):
 
-- `contracts.json`: the first list, each entry its network, address, name
-  and why it is there.
-- `fetch.py` downloads each contract's metadata, sources and runtime code
-  from Sourcify's API (`/v2/contract/{chainId}/{address}?fields=all`) into a
-  vendored directory, each file pinned by its sha256: the build and CI read
-  the vendored copy, never the network.
+- `fetch.py` downloads each contract's metadata, sources and on-chain runtime
+  code from Sourcify's API (`/v2/contract/{chainId}/{address}?fields=all`)
+  into a vendored directory, each file pinned by its sha256, and refuses
+  anything but an `exact_match`. The solc builds the metadata names are
+  vendored and pinned by sha256 too. Builds and CI read the vendored copies,
+  never the network.
 - A Node script with lib-sourcify (pinned by version and hash) recompiles
-  each contract with the compiler and settings its metadata names, and
-  checks the runtime code against the vendored one, its immutables and
-  libraries as lib-sourcify places them. A mismatch fails the build.
+  each contract with the vendored compiler and the metadata's settings, and
+  matches the vendored runtime code, handed to it as the chain's (no RPC is
+  asked). Anything but an exact match fails the build.
 - The code hash is read from the chain through Myotis when the pin is made,
   as phase A's are (`pin_code_hashes.py`), and must be the vendored code's.
-- `generate.py` writes the catalog (`VerifiedAbiCatalog.kt`): code hash →
-  the contract's name, its functions (selector, name, parameters with their
-  names and types) and the network it was pinned on. A CI job runs the
-  recompile again on every PR that touches it.
-- An EIP-1167 minimal proxy has the same runtime code for every proxy to one
-  implementation: its code hash is pinned beside the implementation's,
-  mapping to the implementation's functions (the Gnosis Pay Delay modules,
-  one per account, are such proxies).
+  Each network has its own entry: where immutables differ, so does the hash.
+- `generate.py` writes the catalog (`VerifiedAbiCatalog.kt`): per network,
+  code hash → the contract's name and its functions (selector, name,
+  parameters with their names and types). A CI job recompiles again on every
+  PR that touches it.
+- **An EIP-1167 minimal proxy** has the same runtime code for every proxy to
+  one implementation address. Its entry is held to the network it was pinned
+  on, and is used only once the implementation's code, read verified, hashes
+  to the implementation's pin (A4, step 3): the address alone is not the
+  code.
 
 **At runtime** (C3, C4):
 
 - **Which decoder speaks**: a hand-written decoder first, then a built-in
   descriptor (phase A), then a verified ABI, else "not decoded". A call is
-  looked up by the verified code hash at its `to`, at a fresh head; a code
-  that cannot be read verified is no lookup, and the call stays not
-  decoded.
+  looked up by its network and the verified code hash at its `to`, at a
+  fresh head; code that cannot be read verified is no lookup, and the call
+  stays not decoded.
 - **Decoded exactly or not at all**: the data must be the canonical ABI
   encoding of the function's parameters (A3's decoder); anything else is not
   decoded.
@@ -675,8 +698,10 @@ formatting, the names its author chose.
   recompiled for this release): its author's words, not a description".
 - **An approval** is flagged by its selector whatever decodes it (A3).
 - **Where**: D6 and the Safe review (screen 17), where a description would
-  stand. Typed data (D5) has no ABI.
-- **A refresh is a step of every release PR**, as for the descriptors.
+  stand; on a delegate call that is shown and refused (MultiSend), as its
+  label. Typed data (D5) has no ABI.
+- **A refresh is a step of every release PR**, as for the descriptors: it
+  pins a contract whose partial match has since become exact.
 
 ## Open decisions
 

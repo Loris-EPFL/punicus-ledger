@@ -207,22 +207,27 @@ of a stale feed.)
 
 ## Verified ABIs are built in: from Sourcify, recompiled at build time
 
-(Owner's decisions, 2026-11-26, #240: question 8 and the first list;
-docs/clear-signing.md, *Phase C*, is the contract.)
+(Owner's decisions, 2026-11-26, #240: question 8, the first list, exact
+matches only, MultiSend; docs/clear-signing.md, *Phase C*, is the contract.)
 
 - **For contracts no descriptor covers**, a curated list's functions and
-  their parameters' names ship in every build, keyed by the code hash they
-  compile to.
-- **From Sourcify's repository, at build time only.** Its sources are fetched
-  when the list is refreshed, vendored and pinned by sha256; lib-sourcify
-  recompiles each, and the runtime code must match before anything is
-  pinned. Sourcify's verdict is reproduced, never taken on trust.
-- **Never fetched on the device, never recompiled there.** A contract on no
-  list stays not decoded, beside its verified trace.
-- **The first list**: Safe's MultiSend and MultiSendCallOnly, the Gnosis Pay
-  Delay module, Swarm's postage stamp and chequebook, CoW Protocol's
-  settlement, Uniswap's Universal Router.
-- **A refresh is a step of every release PR**, as for the descriptors.
+  their parameters' names ship in every build.
+- **From Sourcify's repository, at build time only.** lib-sourcify recompiles
+  each contract, and its runtime code must match before anything is pinned:
+  Sourcify's verdict is reproduced, not trusted.
+- **Exact matches only**: a partial match binds no names to the code, and its
+  contract stays not decoded until an exact match exists.
+- **A contract on no list stays not decoded**, beside its verified trace.
+  Nothing is fetched at signing time.
+- **The first list**: Safe's MultiSend and libraries, the Gnosis Pay Delay
+  module, Swarm's postage stamp and chequebook, CoW Protocol's settlement,
+  Uniswap's Universal Router. MultiSend is named on the delegate call shown
+  and refused, nothing more.
+- How it is applied, not part of the decisions (the owner's to approve on
+  #240): sources and compilers vendored and pinned by sha256, one entry per
+  network keyed by its on-chain code hash, a minimal proxy's entry held to
+  its implementation's pin, a refresh in every release PR
+  (docs/clear-signing.md, *Phase C*).
 
 ## An account's NFTs: found in its verified history, proven held, read on chain only
 

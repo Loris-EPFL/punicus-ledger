@@ -101,6 +101,8 @@ data class ClearSignedSection(
     val rows: List<ClearSignedRow>,
     /** Every parameter no row shows, raw: a descriptor orders and labels, it hides nothing. */
     val otherParameters: List<SignInField>,
+    /** Whether a call inside it is not decoded: its call data is then only partly described. */
+    val partly: Boolean = false,
 )
 
 /**
@@ -268,8 +270,18 @@ class DappTransactionViewModel(
     private val description = MutableStateFlow<ClearSignResult?>(null)
     private val describing = MutableStateFlow(false)
 
-    init {
-        viewModelScope.launch {
+    // Asked first by the quote the screen opens with (requote, below), then again with each new one.
+    private var describeJob: Job? = null
+
+    /**
+     * Asks the built-in descriptors what the call does, for a call the app does not decode itself: at opening,
+     * and again with each quote (a contract can be upgraded while the request waits, and a check that could not
+     * be made a moment ago may be made now). The last answer stays on screen while the next is read; one that
+     * fails leaves the call not decoded, with no reason claimed.
+     */
+    private fun describe() {
+        if (describeJob?.isActive == true) return
+        describeJob = viewModelScope.launch {
             val review = observeDappMessages()
                 .mapNotNull { reviews -> reviews.find { it.request.id == id && it.content is DappSignContent.Transaction } }
                 .first()
@@ -282,8 +294,7 @@ class DappTransactionViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                // Fails closed: the call stays not decoded.
-                ClearSignResult.NotCovered(NotCoveredReason.NotDecodable)
+                null
             } finally {
                 describing.value = false
             }
@@ -342,6 +353,7 @@ class DappTransactionViewModel(
     fun requote(note: String? = null) {
         val request = id ?: return
         if (local.value.busy || local.value.quoting) return
+        describe()
         local.update {
             it.copy(quoting = true, notQuoted = null, gasTooLow = false, unlock = it.unlock.copy(error = note))
         }
@@ -757,13 +769,21 @@ class DappTransactionViewModel(
      */
     private fun withDescription(state: DappTransactionUiState, result: ClearSignResult?, busy: Boolean): DappTransactionUiState =
         when (result) {
-            is ClearSignResult.ClearSigned -> state.copy(
-                described = describedSection(result),
-                describing = false,
-                warnings = state.warnings.filterNot { it == NOT_DECODED } +
-                    listOfNotNull(APPROVAL_NOTE.takeIf { result.grantsApproval && APPROVAL_NOTE !in state.warnings }),
-            )
-            is ClearSignResult.NotCovered -> state.copy(describing = false, notDescribed = notDescribedLine(result.reason))
+            is ClearSignResult.ClearSigned -> {
+                val partly = partlyNotDecoded(result)
+                state.copy(
+                    described = describedSection(result),
+                    describing = busy,
+                    // The selector row says nothing the description does not; the call data stays below.
+                    meaningFields = emptyList(),
+                    warnings = state.warnings.filterNot { it == NOT_DECODED } +
+                        listOfNotNull(
+                            PARTLY_NOT_DECODED.takeIf { partly },
+                            APPROVAL_NOTE.takeIf { result.grantsApproval && APPROVAL_NOTE !in state.warnings },
+                        ),
+                )
+            }
+            is ClearSignResult.NotCovered -> state.copy(describing = busy, notDescribed = notDescribedLine(result.reason))
             null -> state.copy(describing = busy)
         }
 
@@ -833,6 +853,9 @@ class DappTransactionViewModel(
             "shown as it is. Send it only if you trust this dApp."
         const val APPROVAL_NOTE = "An approval moves nothing itself, but the spender may then take the tokens " +
             "without asking you again."
+        const val PARTLY_NOT_DECODED = "Part of this call is not decoded: a call inside it is shown raw below, and " +
+            "Punicus cannot tell what that part does. Send it only if you trust this dApp."
+        const val NESTED_NOT_DECODED = "Not decoded: Punicus cannot tell what this part does."
         const val CONTRACT_CHANGED = "This contract changed after this release was built; its description no " +
             "longer applies, so the call is not decoded."
         const val CODE_NOT_CHECKED = "This contract's code could not be checked at a verified head right now, so its " +
@@ -855,12 +878,21 @@ class DappTransactionViewModel(
             -> null
         }
 
+        /** Whether a call inside [result], at any depth, is not decoded. */
+        fun partlyNotDecoded(result: ClearSignResult.ClearSigned): Boolean = result.fields.any { field ->
+            field is ClearSignedField.Nested && when (val nested = field.result) {
+                is ClearSignResult.NotCovered -> true
+                is ClearSignResult.ClearSigned -> partlyNotDecoded(nested)
+            }
+        }
+
         /** [result] as the screen shows it: each value with its raw form where that differs, nested calls indented. */
         fun describedSection(result: ClearSignResult.ClearSigned): ClearSignedSection = ClearSignedSection(
             intent = result.interpolatedIntent ?: result.intent,
             describedBy = "Described by ${result.owner}, $DESCRIBED_BY",
             rows = rows(result, level = 0),
             otherParameters = result.otherParameters.map { SignInField(it.location, it.raw) },
+            partly = partlyNotDecoded(result),
         )
 
         private fun rows(result: ClearSignResult.ClearSigned, level: Int): List<ClearSignedRow> = result.fields.flatMap { field ->
@@ -891,7 +923,7 @@ class DappTransactionViewModel(
                         raw = field.data,
                         note = listOfNotNull(
                             "Grants an approval.".takeIf { field.grantsApproval },
-                            (nested as? ClearSignResult.NotCovered)?.reason?.let(::notDescribedLine),
+                            (nested as? ClearSignResult.NotCovered)?.reason?.let { notDescribedLine(it) ?: NESTED_NOT_DECODED },
                         ).joinToString(" ").ifEmpty { null },
                     )
                     // A nested call hides nothing either: its own other parameters, raw, under it.

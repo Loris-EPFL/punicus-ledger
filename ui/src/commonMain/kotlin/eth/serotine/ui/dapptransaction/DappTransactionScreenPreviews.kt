@@ -73,6 +73,18 @@ private val described = notDecoded.copy(
     network = "On Ethereum, real funds",
     meaningFields = emptyList(),
     warnings = emptyList(),
+    quote = listOf(
+        SignInField("Fee, at most", "0.00412 ETH"),
+        SignInField("Left in the account, at least", "2.31877 ETH"),
+        SignInField("Verified run", "Runs without reverting at block 26,494,404"),
+        SignInField("Gas limit", "260000"),
+        SignInField("Nonce", "41"),
+    ),
+    dataHex = "617ba037000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2" +
+        "00000000000000000000000000000000000000000000000014d1120d7b160000" +
+        "0000000000000000000000005aaeb6053f3e94c9b9a09f33669435e7ef1beaed" +
+        "0000000000000000000000000000000000000000000000000000000000000000",
+    dataSize = "132 bytes",
     described = ClearSignedSection(
         intent = "Supply",
         describedBy = DESCRIBED_BY,
@@ -108,6 +120,17 @@ private val describedNested = described.copy(
     ),
 )
 
+private val describedPartly = describedNested.copy(
+    warnings = listOf(DappTransactionViewModel.PARTLY_NOT_DECODED),
+    described = describedNested.described!!.copy(
+        rows = describedNested.described!!.rows.take(5) + ClearSignedRow(
+            0, "Call", "A call to $POOL, not decoded", raw = "0xab9c4b5d…0000",
+            note = DappTransactionViewModel.NESTED_NOT_DECODED,
+        ),
+        partly = true,
+    ),
+)
+
 private val describedApproval = described.copy(
     to = "0x000000000022D473030F116dDEE9F6B43aC78BA3",
     warnings = listOf(DappTransactionViewModel.APPROVAL_NOTE),
@@ -137,23 +160,26 @@ private val describedUnlisted = described.copy(
     ),
 )
 
-private val describing = notDecoded.copy(to = POOL, network = "On Ethereum, real funds", describing = true)
+private val describing = described.copy(described = null, warnings = listOf(DappTransactionViewModel.NOT_DECODED), describing = true)
 
-private val codeNotChecked = notDecoded.copy(
-    to = POOL,
-    network = "On Ethereum, real funds",
+private val codeNotChecked = described.copy(
+    described = null,
+    warnings = listOf(DappTransactionViewModel.NOT_DECODED),
+    meaningFields = listOf(SignInField("Function", "0x617ba037")),
     notDescribed = DappTransactionViewModel.CODE_NOT_CHECKED,
 )
 
-private val notAsDescribed = notDecoded.copy(
-    to = POOL,
-    network = "On Ethereum, real funds",
+private val notAsDescribed = described.copy(
+    described = null,
+    warnings = listOf(DappTransactionViewModel.NOT_DECODED),
+    meaningFields = listOf(SignInField("Function", "0x617ba037")),
     notDescribed = DappTransactionViewModel.NOT_AS_DESCRIBED,
 )
 
-private val contractChanged = notDecoded.copy(
-    to = POOL,
-    network = "On Ethereum, real funds",
+private val contractChanged = described.copy(
+    described = null,
+    warnings = listOf(DappTransactionViewModel.NOT_DECODED),
+    meaningFields = listOf(SignInField("Function", "0x617ba037")),
     notDescribed = DappTransactionViewModel.CONTRACT_CHANGED,
 )
 
@@ -253,6 +279,10 @@ private fun DappTransactionDescribedDarkPreview() = DappTransactionPreview(descr
 @Preview
 @Composable
 private fun DappTransactionDescribedNestedPreview() = DappTransactionPreview(describedNested)
+
+@Preview
+@Composable
+private fun DappTransactionDescribedPartlyPreview() = DappTransactionPreview(describedPartly)
 
 @Preview
 @Composable
@@ -376,6 +406,7 @@ internal val dappTransactionScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("described") { DappTransactionDescribedPreview() },
     ScreenPreview("described-dark") { DappTransactionDescribedDarkPreview() },
     ScreenPreview("described-nested") { DappTransactionDescribedNestedPreview() },
+    ScreenPreview("described-partly") { DappTransactionDescribedPartlyPreview() },
     ScreenPreview("described-approval") { DappTransactionDescribedApprovalPreview() },
     ScreenPreview("described-unlisted") { DappTransactionDescribedUnlistedPreview() },
     ScreenPreview("describing") { DappTransactionDescribingPreview() },

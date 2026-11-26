@@ -138,6 +138,7 @@ class DappTransactionViewModelTest {
     )
     private var deployments: Array<ClearSigningDeployment> = emptyArray()
     private var throwing = false
+    private var counting: () -> Unit = {}
 
     private fun TestScope.viewModel(id: Long = 1): DappTransactionViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
@@ -145,7 +146,7 @@ class DappTransactionViewModelTest {
         val vm = DappTransactionViewModel(
             "t/$id",
             ObserveDappMessages(requests, accounts, networks, catalog, MemoryAliases(), clock = { now }),
-            if (throwing) describingThat(throws = IllegalStateException("engine")) else describing(catalog, *deployments),
+            if (throwing) describingThat(throws = IllegalStateException("engine")) else describing(catalog, *deployments, onRead = counting),
             QuoteDappTransaction(
                 requests, accounts, networks, catalog, balances, inputs, sent, history, Outbox.None, clock = { now },
             ),
@@ -231,7 +232,57 @@ class DappTransactionViewModelTest {
         val state = viewModel().uiState.value
         assertNull(state.described)
         assertFalse(state.describing)
+        assertNull(state.notDescribed, "a failure claims nothing about the contract or the call")
         assertTrue(DappTransactionViewModel.NOT_DECODED in state.warnings)
+    }
+
+    @Test
+    fun aDescribedCallWithAPartNotDecodedSaysSo() = runTest {
+        val call = AbiFunction.parse("call(address target,bytes data)")!!
+        val outer = wrapping.copy(
+            descriptors = listOf(
+                wrapping.descriptors.single().copy(
+                    formats = listOf(
+                        ClearSigningFormat(
+                            key = "call(address target,bytes data)", function = call, selector = call.selector,
+                            encodeType = null, typeHash = null, primaryType = null, intent = "Call", interpolatedIntent = null,
+                            fields = listOf(
+                                ClearSigningField(
+                                    ClearSigningPath.parse("data"), "Inner",
+                                    FieldFormat.Calldata(ClearSigningPath.parse("target")!!), Visibility.Shown,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        deployments = arrayOf(outer)
+        // The inner call goes to an address no descriptor covers: not decoded, inside a described call.
+        val data = call.selector.removePrefix("0x").hexBytes() + ("000000000000000000000000" + "88".repeat(20) +
+            "0000000000000000000000000000000000000000000000000000000000000040" +
+            "0000000000000000000000000000000000000000000000000000000000000004" +
+            "01020304" + "00".repeat(28)).hexBytes()
+        requests.waiting.value = listOf(request(1, DappTransactionRequest(held.address, weth, UInt256.ZERO, data, null)))
+        val state = viewModel().uiState.value
+        val described = assertNotNull(state.described)
+        assertTrue(described.partly)
+        assertTrue(DappTransactionViewModel.PARTLY_NOT_DECODED in state.warnings)
+        assertEquals(DappTransactionViewModel.NESTED_NOT_DECODED, described.rows.single().note)
+    }
+
+    @Test
+    fun eachNewQuoteAsksTheDescriptionAgain() = runTest {
+        var asked = 0
+        deployments = arrayOf(wrapping)
+        counting = { asked++ }
+        val deposit = DappTransactionRequest(held.address, weth, UInt256.ZERO, byteArrayOf(-48, -29, 13, -80), null)
+        requests.waiting.value = listOf(request(1, deposit))
+        val vm = viewModel()
+        assertEquals(1, asked)
+        vm.requote()
+        runCurrent()
+        assertEquals(2, asked)
     }
 
     @Test

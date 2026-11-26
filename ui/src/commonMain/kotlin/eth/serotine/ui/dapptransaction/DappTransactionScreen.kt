@@ -199,6 +199,7 @@ fun DappTransactionScreen(
             state.dataHex?.let { hex ->
                 Text(
                     "Call data (${state.dataSize})" + when {
+                        state.described?.partly == true -> ", partly described above"
                         state.described != null -> ", as described above"
                         state.meaning == null -> ", not decoded"
                         else -> ""

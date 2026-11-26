@@ -15,7 +15,11 @@ import eth.serotine.domain.usecase.DescribeClearSigning
 import kotlinx.coroutines.flow.flowOf
 
 /** A [DescribeClearSigning] over the [deployments] given (none by default), their code always the pinned one. */
-internal fun describing(tokens: TokenCatalog, vararg deployments: ClearSigningDeployment): DescribeClearSigning =
+internal fun describing(
+    tokens: TokenCatalog,
+    vararg deployments: ClearSigningDeployment,
+    onRead: () -> Unit = {},
+): DescribeClearSigning =
     DescribeClearSigning(
         catalog = object : ClearSigningCatalog {
             override fun deployment(network: Network, address: Address) =
@@ -23,6 +27,7 @@ internal fun describing(tokens: TokenCatalog, vararg deployments: ClearSigningDe
         },
         codes = object : ContractCodes {
             override suspend fun read(network: Network, address: Address, pin: CodePin): CodeReading {
+                onRead()
                 val deployment = deployments.firstOrNull { it.network == network && it.address == address }
                     ?: return CodeReading.Unavailable(ReadUnavailable.NO_ENGINE)
                 return CodeReading.Read(eth.serotine.domain.model.ClearSigningCodeReads(deployment.codeHash, null, null))

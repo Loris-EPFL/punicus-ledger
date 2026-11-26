@@ -34,8 +34,10 @@ import kotlinx.coroutines.withTimeoutOrNull
  * 3. The selector is one of that contract's functions, and the bytes are exactly the canonical ABI encoding of
  *    its parameters (A3's decoder).
  *
- * The names are its author's words and are shown as such; an approval is flagged by the call's selector, or where
- * a `bytes` value starts with one's, the only way an ABI lets A3's flag reach inside a call.
+ * The names are its author's words and are shown as such. An approval is flagged by the call's selector, where a
+ * `bytes` value starts with one's, or where the call, or a `bytes` value, is a MultiSend batch with one among its
+ * entries; a delegate call inside it is flagged the same way, and by a parameter its source names `operation`.
+ * A batch not read exactly counts as holding both: for a flag, failing closed is raising it.
  */
 class NameVerifiedCall(
     private val catalog: VerifiedAbiCatalog,
@@ -52,15 +54,17 @@ class NameVerifiedCall(
         val decoded = AbiDecoder.decode(function.params, data.copyOfRange(SELECTOR, data.size))
             ?: return notNamed(NotNamedReason.NOT_DECODABLE)
         val values = decoded.members.map { it.second }
-        val inBytes = values.any(::holdsApproval)
-        val delegate = values.any(::holdsDelegateCall) || function.params.zip(values).any { (param, value) ->
-            param.name == "operation" && (value as? AbiValue.UintValue)?.value == UInt256.ONE
-        }
+        // The call may itself be a MultiSend batch: its own entries are read as one held in a `bytes` value is.
+        val inBytes = holdsApproval(data) || values.any(::holdsApproval)
+        val delegate = holdsDelegateCall(data) || values.any(::holdsDelegateCall) ||
+            function.params.zip(values).any { (param, value) ->
+                param.name == "operation" && (value as? AbiValue.UintValue)?.value?.let { it != UInt256.ZERO } == true
+            }
         return VerifiedAbiResult.Named(
             contract = contract.name,
             function = function.name,
             parameters = function.params.zip(values) { param, value ->
-                NamedParameter(param.name?.takeIf { it.isNotEmpty() }, AbiFunction.canonical(param.type), ClearSignFormatter.raw(value))
+                NamedParameter(param.name, AbiFunction.canonical(param.type), ClearSignFormatter.raw(value))
             },
             approval = ClearSignFormatter.grantsApproval(data) || inBytes,
             approvalInBytes = inBytes,
@@ -97,14 +101,23 @@ class NameVerifiedCall(
      * Whether [value], or any `bytes` within it, is a call that grants an approval (A3's list), or a MultiSend
      * batch (`multiSend(bytes)`, its entries packed) with one among its entries.
      */
-    private fun holdsApproval(value: AbiValue): Boolean = anyBytes(value) { bytes ->
-        ClearSignFormatter.grantsApproval(bytes) || batch(bytes)?.any { ClearSignFormatter.grantsApproval(it.data) } == true
-    }
+    private fun holdsApproval(value: AbiValue): Boolean = anyBytes(value, ::holdsApproval)
 
     /** Whether [value], or any `bytes` within it, is a MultiSend batch with a delegate call among its entries. */
-    private fun holdsDelegateCall(value: AbiValue): Boolean = anyBytes(value) { bytes ->
-        batch(bytes)?.any { it.operation != 0 } == true
-    }
+    private fun holdsDelegateCall(value: AbiValue): Boolean = anyBytes(value, ::holdsDelegateCall)
+
+    /**
+     * Whether the call [bytes] grants an approval, or is a MultiSend batch with one. A batch that cannot be read
+     * exactly (padding MultiSend skips, trailing calldata) still runs on chain: it counts as holding one.
+     */
+    private fun holdsApproval(bytes: ByteArray): Boolean = ClearSignFormatter.grantsApproval(bytes) ||
+        isBatch(bytes) && (batch(bytes)?.any { ClearSignFormatter.grantsApproval(it.data) } ?: true)
+
+    /** Whether the call [bytes] is a MultiSend batch with a delegate call among its entries, or one not read exactly. */
+    private fun holdsDelegateCall(bytes: ByteArray): Boolean = isBatch(bytes) && (batch(bytes)?.any { it.operation != 0 } ?: true)
+
+    private fun isBatch(bytes: ByteArray): Boolean =
+        bytes.size >= SELECTOR && "0x" + bytes.copyOf(SELECTOR).toHex() == MULTI_SEND
 
     private fun anyBytes(value: AbiValue, test: (ByteArray) -> Boolean): Boolean = when (value) {
         is AbiValue.BytesValue -> !value.fixed && test(value.bytes)
@@ -120,7 +133,7 @@ class NameVerifiedCall(
      * target (20), its value (32), its data's length (32) and its data; null when it is not one, or not exactly.
      */
     private fun batch(bytes: ByteArray): List<Entry>? {
-        if (bytes.size < SELECTOR || "0x" + bytes.copyOf(SELECTOR).toHex() != MULTI_SEND) return null
+        if (!isBatch(bytes)) return null
         val packed = (AbiDecoder.decode(MULTI_SEND_PARAMS, bytes.copyOfRange(SELECTOR, bytes.size))
             ?.members?.singleOrNull()?.second as? AbiValue.BytesValue)?.bytes ?: return null
         val entries = mutableListOf<Entry>()

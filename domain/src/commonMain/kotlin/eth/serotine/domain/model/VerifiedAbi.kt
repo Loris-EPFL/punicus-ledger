@@ -64,7 +64,10 @@ sealed interface VerifiedAbiResult {
     data class NotNamed(val reason: NotNamedReason) : VerifiedAbiResult
 }
 
-/** A parameter of a [VerifiedAbiResult.Named]: its [name] (null where the source gives none), [type] and [raw] value. */
+/**
+ * A parameter of a [VerifiedAbiResult.Named]: its [name], null where the source gives none (never empty: the
+ * catalog's reader reads an unnamed one so), its canonical [type] and its [raw] value.
+ */
 data class NamedParameter(val name: String?, val type: String, val raw: String)
 
 /** Why a call is not named from a verified ABI. */

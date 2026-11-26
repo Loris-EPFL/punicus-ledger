@@ -139,6 +139,20 @@ class NameVerifiedCallTest {
     }
 
     @Test
+    fun aMultiSendCallsOwnBatchIsReadAndOneNotReadExactlyCountsAsHoldingBoth() = runTest {
+        val own = assertIs<VerifiedAbiResult.Named>(name.call(Network.GNOSIS, multiSendAt, batch(0, approve).hexToBytes(), noDescriptor))
+        assertTrue(own.approvalInBytes)
+        val ownDelegate = assertIs<VerifiedAbiResult.Named>(name.call(Network.GNOSIS, multiSendAt, batch(1, "00").hexToBytes(), noDescriptor))
+        assertTrue(ownDelegate.delegateCall)
+        // Padding MultiSend skips: not read exactly, so both are raised, never neither.
+        val padded = assertIs<VerifiedAbiResult.Named>(
+            name.call(Network.GNOSIS, delayAt, execOf(batch(0, approve) + "00"), noDescriptor),
+        )
+        assertTrue(padded.approvalInBytes)
+        assertTrue(padded.delegateCall)
+    }
+
+    @Test
     fun aFixedBytesValueThatEqualsASelectorIsNoCall() = runTest {
         val selectorOnly = AbiFunction.parse("check(bytes4 selector)")!!
         val withIt = multiSendContract.copy(functions = listOf(multiSend, selectorOnly))

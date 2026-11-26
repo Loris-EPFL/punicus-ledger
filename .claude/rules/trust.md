@@ -427,7 +427,9 @@ docs/clear-signing.md, *What a clear-signed line proves*.)
   the source's own contract name; its names labelled as its author's
   words, with no intent and no formatting; it speaks only where no
   hand-written decoder claims the call and no descriptor has a format for
-  it, and a "not decoded" given with a reason stands.
+  it, and a "not decoded" given with a reason stands; an approval or a
+  delegate call inside it (a `bytes` value, a MultiSend batch) is warned
+  about, never described (docs/clear-signing.md, *Phase C*).
 - How it is applied, not part of the decisions (the owner's to approve on
   #378):
   - A formatted value keeps its raw decoded value beside it, in the detailed

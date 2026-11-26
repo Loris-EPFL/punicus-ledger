@@ -465,7 +465,7 @@ counting a frame only when neither it nor any frame above it failed:
   a token logs while its spender spends an allowance (from inside the
   spender's `transferFrom`) is no grant. It is told apart by who called the
   token: the sender of the token's own frame, the `from` of the nearest frame
-  at or above the log that is not a delegate call (`msg.sender` where the log
+  at or above the log that is not a DELEGATECALL (`msg.sender` where the log
   was emitted; for a token behind a proxy, the frame into the proxy). An
   `Approval` with that sender as its spender is a spend when the same frame
   also logs a `Transfer` of that token from the account, and a grant when it
@@ -503,22 +503,32 @@ with its effects alone, under "not decoded".
   currency or an NFT that the claims do not name. A token the account burns
   (sends to the zero address, as a lending pool's `withdraw` burns its
   shares) is not sent to anyone, and counts only where the account receives
-  nothing in return. The network's currency the transaction itself carries
+  nothing of value in return (as above: an asset the claims name, a built-in
+  token, the currency or its wrapped token). The network's currency the transaction itself carries
   (its value, shown on the screen already) is no disagreement.
-- **The user's tokens ending elsewhere**: where the claims show an address,
-  an asset (each the account sends or receives, each the claims name, and
-  the currency where the account moves it or the claims show an amount of
-  it) ends up, more of it than it started with, with an address that is none
-  of: the account, an address the claims show, the zero address (a burn),
-  and, for an asset the account pays with (the currency and its wrapped
-  token counting as one), a counterparty that pays on, from which a chain of
-  the trace's moves leads to the account or a shown address (a pool that is
-  paid and pays back; a token minted to the account counts as paid by its
-  issuer). A contract that only takes is never a counterparty, however much
-  code it runs. A counterparty that pays back a token's worth of dust is one:
-  the trace proves where tokens go, not that the price is fair.
+- **The user's tokens ending elsewhere**: an asset (each the account sends
+  or receives, each the claims name, and the currency where the account
+  moves it or the claims show an amount of it) ends up, more of it than it
+  started with, with an address that is none of: the account, an address the
+  claims show (claims that show none are held to the account alone), the
+  zero address (a burn), and, for an asset the account pays with (the
+  currency and its wrapped token counting as one), a counterparty that pays
+  on. A counterparty pays on when a chain of the trace's moves leads from it
+  to the account or a shown address, the last move of that chain an asset of
+  value (one the claims name, a built-in token, the currency or its wrapped
+  token: any contract can log a junk token's move) or a mint (its issuer
+  paying in its own shares, as a lending pool or a vault does for what it
+  takes). Moves further up the chain may be in any token, since a route's
+  middle token is often in no list. A contract that only takes is never a
+  counterparty, however much code it runs. What passes all the same, and the
+  trace cannot tell: a counterparty that pays back dust, a contract that
+  takes the tokens and mints its own shares for them, and a thief whose move
+  of a junk token into a real counterparty is logged. The trace proves where
+  tokens go, not that the price is fair.
 - **A right the claims do not grant**: the trace grants a right (as above)
-  while the claims grant none.
+  that the claims do not: they grant none, or not over that token (for
+  Permit2, the token it lets be taken), or not to that spender (an address
+  they show).
 
 The unit tests hold the checks against the traces of ordinary calls (a swap
 in one hop and in several, a wrap, a deposit into a lending pool and its

@@ -407,8 +407,11 @@ class EngineAddressIndexHistory internal constructor(
                 }
             }
             val transaction = if (entry.slot == 0) null else transactionOf(json) ?: return null
+            // The verified header's time, a JSON number from Myotis 0.1.24 on (`b.header.timestamp`); absent from an
+            // older engine, and then no time.
+            val blockTimestamp = number(json["blockTimestamp"])
             return try {
-                val row = AddressIndexRow(entry, blockHash, final, confirmed, unchecked, transaction)
+                val row = AddressIndexRow(entry, blockHash, final, confirmed, unchecked, transaction, blockTimestamp)
                 AddressIndexVerdict.Verified(row)
             } catch (e: IllegalArgumentException) {
                 // Every role but TRACE must be proven for a row (AddressIndexRow's rule).

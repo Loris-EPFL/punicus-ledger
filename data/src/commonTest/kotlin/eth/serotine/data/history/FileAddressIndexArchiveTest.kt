@@ -66,6 +66,7 @@ class FileAddressIndexArchiveTest {
                     value = Wei.of("0"),
                     transfer = TokenTransfer.Fungible(token, alice, bob, UInt256.of("1000000")),
                 ),
+                blockTimestamp = 1_795_600_000,
             ),
             AddressIndexRow(
                 entry = AddressIndexEntry(21_140_000, 2, setOf(AddressIndexRole.TO)),
@@ -153,6 +154,17 @@ class FileAddressIndexArchiveTest {
         assertTrue(archive().forget(onEthereum))
 
         assertEquals(listOf("address-index-100-${alice.hex}.json"), SystemFileSystem.list(directory).map { it.name })
+    }
+
+    @Test
+    fun aListKeptBeforeRowsCarriedTheirTimeIsReadAgainFromTheIndex() = runTest {
+        archive().write(onEthereum, kept)
+        val file = SystemFileSystem.list(directory).single()
+        val text = SystemFileSystem.source(file).buffered().use { source -> source.readString() }
+        SystemFileSystem.sink(file).buffered().use { it.writeString(text.replaceFirst("\"version\":2", "\"version\":1")) }
+
+        assertNull(archive().read(onEthereum), "a format-1 list is read again, so that its rows get their time")
+        assertEquals(1, SystemFileSystem.list(directory).size, "nothing set aside: it is no damaged file")
     }
 
     @Test

@@ -278,7 +278,8 @@ internal fun SimpleAccountActivitySelectedSample() =
 
 /**
  * The Activity with the addr1 index's rows, in simple mode's words: no block number, the publisher's key named, and
- * its end marker in words (owner ruling, 2026-11-21, #334).
+ * its end marker in words (owner ruling, 2026-11-21, #334); a row dated by its block's time, and below it an entry
+ * still being checked.
  */
 @Preview
 @Composable
@@ -293,21 +294,35 @@ private fun SimpleAccountActivityIndexPreview() = SimpleAccountDetailPreview(
                     title = "Named in a transaction · recipient",
                     detail = "From Family Safe · 0xdbF0…C6FB",
                     about = FAMILY_SAFE,
-                    time = "Block 23,590,120",
+                    // Dated by its block's verified time, as the engine reports it (Myotis 0.1.24 on).
+                    time = "Oct 26, 2026, 6:40 PM",
                     status = "Finalized in block 23,590,120 · checked against the chain",
                     state = ActivityState.DONE,
                     opens = ActivityKey(
                         "0x" + "d4".repeat(32),
                         index = IndexEntryKey(23_590_120, 7, setOf(AddressIndexRole.TO)),
                     ),
-                    simpleTime = null,
                     simpleStatus = "Final",
-                    day = "Date not reported: in block order",
-                    simpleDay = "Date not available",
+                    day = "Yesterday · Monday, October 26, 2026",
+                    clock = "6:40 PM",
                     direction = ActivityDirection.IN,
                     amount = "+0.5 ETH",
                     headline = "Received ETH · outcome not checked",
                     unchecked = true,
+                ),
+                // An older entry still being checked: a ghost with its row's time line, under the day of the row
+                // above it, since its own date cannot be told yet.
+                ActivityRow(
+                    key = "index:23540311:2",
+                    title = "",
+                    detail = "",
+                    about = "",
+                    time = "Block 23,540,311",
+                    status = "",
+                    state = ActivityState.WAITING,
+                    opens = ActivityKey("", index = IndexEntryKey(23_540_311, 2, setOf(AddressIndexRole.FROM))),
+                    pending = true,
+                    day = "Yesterday · Monday, October 26, 2026",
                 ),
             ),
             coverage = "Transactions sent from this device.",

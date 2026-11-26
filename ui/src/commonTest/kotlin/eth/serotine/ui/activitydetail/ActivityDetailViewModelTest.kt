@@ -438,7 +438,15 @@ class ActivityDetailViewModelTest {
     @Test
     fun anIndexRowIsCheckedAgainAndShownWithWhatItRestsOn() = runTest {
         val roles = setOf(AddressIndexRole.TO, AddressIndexRole.TRACE)
-        val row = indexRow(9_300_000, 3, bob, alice.address, wei = "1000000000000000000", roles = roles)
+        val row = indexRow(
+            9_300_000,
+            3,
+            bob,
+            alice.address,
+            wei = "1000000000000000000",
+            roles = roles,
+            blockTimestamp = 1_795_600_000,
+        )
         addressIndex.verifiedRows[row.entry] = row
 
         val shown = assertIs<ActivityDetailUiState.Shown>(
@@ -449,6 +457,7 @@ class ActivityDetailViewModelTest {
         assertEquals(ActivityState.CAUTION, shown.state, "from an address never sent to")
         val fields = shown.fields.associate { it.label to it.value }
         assertEquals(row.transaction?.hash, fields["Transaction hash"])
+        assertEquals("at 1795600000", fields["Time"], "when its block was produced, as the list says it")
         assertEquals("9,300,000", fields["Block"])
         assertEquals("Transaction 3", fields["In the block"])
         assertEquals("Recipient", fields["Proven on chain"])

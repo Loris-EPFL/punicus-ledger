@@ -53,7 +53,7 @@ internal fun List<Placed>.byDay(dates: ActivityDates, now: Long): List<ActivityR
         below[at] = last
         if (this[at].moment != null) last = this[at]
     }
-    return mapIndexed { at, placed ->
+    val placed = mapIndexed { at, placed ->
         val moment = placed.moment
         when {
             moment != null -> placed.row.copy(day = heading(moment), simpleDay = null, clock = dates.clock(moment))
@@ -67,6 +67,25 @@ internal fun List<Placed>.byDay(dates: ActivityDates, now: Long): List<ActivityR
             }
         }
     }
+    return placed.ghostsUnderTheirNeighboursDay()
+}
+
+/**
+ * These rows with each ghost (an entry still being checked) whose date cannot be told under the day of the row just
+ * above it, else, at the top, of the first row below it whose day is told: its row, dated by its block once checked,
+ * then takes its place without a heading of "date not reported" coming and going around it. A ghost with only such
+ * rows around it keeps that heading.
+ */
+private fun List<ActivityRow>.ghostsUnderTheirNeighboursDay(): List<ActivityRow> {
+    fun untold(row: ActivityRow) = row.pending && row.day == UNDATED_DAY
+    if (none(::untold)) return this
+    val out = toMutableList()
+    for (at in out.indices) {
+        if (!untold(out[at])) continue
+        val neighbour = out.getOrNull(at - 1) ?: drop(at + 1).firstOrNull { !untold(it) } ?: continue
+        out[at] = out[at].copy(day = neighbour.day, simpleDay = neighbour.simpleDay)
+    }
+    return out
 }
 
 /**

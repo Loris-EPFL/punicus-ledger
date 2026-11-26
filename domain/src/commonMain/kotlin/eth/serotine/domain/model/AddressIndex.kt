@@ -151,7 +151,8 @@ data class AddressIndexTransaction(
  * reorganisation may still replace it). Every role of the entry is in [confirmed], proven on chain, at least one,
  * or in [unchecked], which holds [AddressIndexRole.TRACE] alone, the one role resting on the importer's word; none
  * was contradicted, and no other role is left unchecked. [transaction] is what the engine read of its transaction,
- * null for an entry about the block itself (slot 0).
+ * null for an entry about the block itself (slot 0). [blockTimestamp] is the time of that verified block, its header's
+ * (unix seconds), as the engine reports it from Myotis 0.1.24 on (myotis#924); null from an engine that does not.
  */
 data class AddressIndexRow(
     val entry: AddressIndexEntry,
@@ -160,9 +161,11 @@ data class AddressIndexRow(
     val confirmed: Set<AddressIndexRole>,
     val unchecked: Set<AddressIndexRole>,
     val transaction: AddressIndexTransaction?,
+    val blockTimestamp: Long? = null,
 ) {
     init {
         require(isHash(blockHash)) { "a block hash is 0x and 64 lower-case hex digits" }
+        require(blockTimestamp == null || blockTimestamp >= 0) { "a block's time is never negative" }
         require(confirmed.isNotEmpty()) { "a verified entry has one role proven at least" }
         require(AddressIndexRole.TRACE !in confirmed) { "a trace is never proven" }
         require(unchecked.all { it == AddressIndexRole.TRACE }) { "only a trace rests on the importer's word" }

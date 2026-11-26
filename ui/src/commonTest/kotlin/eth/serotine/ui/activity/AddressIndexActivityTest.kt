@@ -764,4 +764,22 @@ class AddressIndexActivityTest {
 
         assertEquals(9_400_000, checkNotNull(archive.kept[account]).top)
     }
+
+    @Test
+    fun aRowWhoseBlockTimeTheEngineReportsIsDatedAndTimedByIt() = runTest {
+        val dated = indexRow(9_300_000, 3, alice.address, bob, wei = "250000000000000000", blockTimestamp = 500)
+        val undated = indexRow(9_200_000, 2, bob, alice.address, wei = "100000000000000000")
+        index.page(null, listOf(dated, undated), next = null)
+
+        val shown = shown(activity())
+
+        val row = shown.rows.single { it.key == "index:9300000:3" }
+        assertEquals("at 500", row.time, "its block's time, as a dated event's")
+        assertTrue(row.day != null && !row.day.startsWith("Date not"), "a day of its own: ${row.day}")
+        assertEquals(
+            "Block 9,200,000",
+            shown.rows.single { it.key == "index:9200000:2" }.time,
+            "an engine that reports no time: by its block, as before",
+        )
+    }
 }

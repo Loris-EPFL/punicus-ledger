@@ -9,6 +9,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.Broadcast
@@ -45,23 +46,25 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NATIVE_DECIMALS
 import eth.serotine.ui.components.NetworkChip
 import eth.serotine.ui.components.NetworkLabel
-import eth.serotine.ui.components.PROMPT_TIMED_OUT
-import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.addressFieldLabel
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.callRefusalText
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
+import eth.serotine.ui.components.forCustody
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.promptDeadline
+import eth.serotine.ui.components.promptTimedOut
+import eth.serotine.ui.components.promptTooLate
 import eth.serotine.ui.components.recipientNote
 import eth.serotine.ui.components.recipientStates
 import eth.serotine.ui.components.recipientText
@@ -180,11 +183,12 @@ class CreateSafeViewModel(
          */
         val eoas: List<Account> = accounts.filter { it.kind == AccountKind.EOA }
             .groupBy { it.address }
-            .map { (_, entries) -> entries.firstOrNull { it.custody == AccountCustody.InKeyStore } ?: entries.first() }
+            .map { (_, entries) -> entries.firstOrNull { it.network == network && it.custody.canSign }
+                ?: entries.firstOrNull { it.custody.canSign } ?: entries.first() }
 
         /** Those whose key is held here on [network]: what can pay for the deployment there. */
         val held: List<Account> = accounts.filter {
-            it.network == network && it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore
+            it.network == network && it.kind == AccountKind.EOA && it.custody.canSign
         }
 
         val selected: Set<Address> = inputs.selected ?: setOfNotNull(held.firstOrNull()?.address)
@@ -231,6 +235,7 @@ class CreateSafeViewModel(
             val payer: Address,
             val fee: FeeLevel,
             val unlock: UnlockStep,
+            val localBiometrics: Boolean = false,
             val quote: SafeDeploymentQuote? = null,
             val quotedAt: TimeMark? = null,
             val error: String? = null,
@@ -400,8 +405,13 @@ class CreateSafeViewModel(
         val payer = Address.parse(address) ?: return
         val current = step.value as? Step.Reviewing ?: return
         if (current.signing || current.notSent != null || payer == current.payer) return
-        if (current.payers.none { it.address == payer }) return
-        step.value = current.copy(payer = payer, quote = null, quotedAt = null)
+        val chosen = current.payers.firstOrNull { it.address == payer } ?: return
+        step.value = current.copy(
+            payer = payer,
+            quote = null,
+            quotedAt = null,
+            unlock = current.unlock.forCustody(chosen.custody, current.localBiometrics),
+        )
         requote(note = null)
     }
 
@@ -422,20 +432,26 @@ class CreateSafeViewModel(
 
     /** The password field now reads [text]. */
     fun onPasswordChange(text: String) = step.update { current ->
-        if (current is Step.Reviewing && !current.signing && current.notSent == null) {
+        if (current is Step.Reviewing && !current.signing && current.notSent == null && !current.unlock.ledger) {
             current.copy(unlock = current.unlock.copy(password = WalletPassword(text), error = null))
         } else {
             current
         }
     }
 
-    /** Signs the reviewed deployment with the typed wallet password, and broadcasts it. */
+    /** Authorizes the reviewed deployment with the payer's signing method, and broadcasts it. */
     fun sign() {
         val current = step.value as? Step.Reviewing ?: return
         val quote = current.quote ?: return
-        val password = current.unlock.password
-        if (!current.idle || password.text.isEmpty() || requoted(current)) return
-        sign(current, quote, Unlock.WithPassword(password))
+        if (!current.idle || !current.unlock.canAuthorize || requoted(current)) return
+        val notAfter = if (current.unlock.ledger) {
+            val quotedAt = current.quotedAt ?: return requote(note = STALE_QUOTE)
+            promptDeadline(quotedAt) ?: return requote(note = current.unlock.promptTooLate())
+        } else {
+            null
+        }
+        val unlock = current.unlock.approval(notAfter) ?: return
+        sign(current, quote, unlock)
     }
 
     /** Signs the reviewed deployment with a fingerprint or face, and broadcasts it. */
@@ -450,7 +466,7 @@ class CreateSafeViewModel(
             "paid from $payer"
         // The prompt gets what is left of the quote's age: past it, nothing is signed, and it is made again.
         val quotedAt = current.quotedAt ?: return requote(note = STALE_QUOTE)
-        val notAfter = promptDeadline(quotedAt) ?: return requote(note = PROMPT_TOO_LATE)
+        val notAfter = promptDeadline(quotedAt) ?: return requote(note = current.unlock.promptTooLate())
         sign(current, quote, Unlock.WithBiometrics(prompt, notAfter))
     }
 
@@ -543,7 +559,7 @@ class CreateSafeViewModel(
             payers = payers,
             payer = payer,
             fee = FeeLevel.NORMAL,
-            unlock = UnlockStep(),
+            unlock = UnlockStep().forCustody(payers.first { it.address == payer }.custody),
             quoting = true,
         )
         step.value = asked
@@ -553,7 +569,10 @@ class CreateSafeViewModel(
             val biometrics = biometricsOffered()
             step.update { latest ->
                 if (latest is Step.Reviewing && latest.plan == plan) {
-                    latest.copy(unlock = latest.unlock.copy(biometrics = biometrics))
+                    latest.copy(
+                        unlock = latest.unlock.copy(biometrics = biometrics && !latest.unlock.ledger),
+                        localBiometrics = biometrics,
+                    )
                 } else {
                     latest
                 }
@@ -673,7 +692,9 @@ class CreateSafeViewModel(
                 }
             }
             // The prompt outlived the quote's age: nothing was signed, and the quote is made again.
-            if ((sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut) requote(note = PROMPT_TIMED_OUT)
+            if ((sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut) {
+                requote(note = review.unlock.promptTimedOut())
+            }
             // Hidden while it ran and nothing was sent: the quote is from before, so it is made again.
             requoteIfHidden()
         }
@@ -753,7 +774,7 @@ class CreateSafeViewModel(
                 OwnerChoice(
                     address = Eip55.format(account.address),
                     label = account.label,
-                    note = if (account.custody == AccountCustody.InKeyStore) KEY_HERE else WATCHED,
+                    note = ownerCustodyNote(account.custody),
                     selected = account.address in model.selected,
                 )
             },
@@ -879,19 +900,25 @@ class CreateSafeViewModel(
     }
 
     private fun ownerItem(owner: Address, model: Model): OwnerItem {
-        val account = model.accounts.firstOrNull { it.address == owner }
+        val account = model.eoas.firstOrNull { it.address == owner }
+            ?: model.accounts.firstOrNull { it.address == owner }
         val typed = model.inputs.typed.firstOrNull { it.address == owner }
         return OwnerItem(
             address = Eip55.format(owner),
             label = account?.label ?: typed?.name,
             note = when {
-                account?.custody == AccountCustody.InKeyStore -> KEY_HERE
-                account != null -> WATCHED
+                account != null -> ownerCustodyNote(account.custody)
                 typed != null -> typedNote(typed, model)
                 else -> TYPED
             },
             simpleNote = typed?.takeIf { account == null }?.let { simpleTypedNote(it, model) },
         )
+    }
+
+    private fun ownerCustodyNote(custody: AccountCustody): String = when (custody) {
+        AccountCustody.InKeyStore -> KEY_HERE
+        is AccountCustody.Ledger -> "Key on Ledger"
+        AccountCustody.Watched -> WATCHED
     }
 
     private fun typedNote(typed: Typed, model: Model): String = when {
@@ -987,7 +1014,7 @@ class CreateSafeViewModel(
         return payable.firstOrNull() ?: Network.entries.firstOrNull { it in on } ?: Network.entries.first()
     }
 
-    private fun Account.isHeldEoa() = kind == AccountKind.EOA && custody == AccountCustody.InKeyStore
+    private fun Account.isHeldEoa() = kind == AccountKind.EOA && custody.canSign
 
     /** Each network as the first choice (N12), greyed out with the reason where a Safe cannot be created. */
     private fun chips(model: Model): List<NetworkChip> = Network.entries.map { network ->
@@ -1008,18 +1035,19 @@ class CreateSafeViewModel(
      * the wallet's held accounts on other networks, added there from their menu.
      */
     private fun noPayerText(model: Model, network: Network = model.network): String {
-        val elsewhere = model.accounts.filter { it.network != network && it.isHeldEoa() }
+        val elsewhere = model.accounts.filter {
+            it.network != network && it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore
+        }
             .map { it.label }
             .distinct()
         val name = network.displayName
         val would = if (elsewhere.isEmpty()) {
-            "Import or create an account on it first, and fund it."
+            "Import or create an account on it, or connect a Ledger, and fund the account."
         } else {
             "Add ${elsewhere.joinToString(" or ")} on $name (Add on another network, in its menu), or import or " +
                 "create an account on it, and fund it."
         }
-        return "Creating a Safe on $name needs an account whose key is on this device there, to pay for its " +
-            "deployment. $would"
+        return "Creating a Safe on $name needs an account that can sign there, to pay for its deployment. $would"
     }
 
     /** [text] resolved on [network]: the one chosen on the owners' step, the plan's on a review. */

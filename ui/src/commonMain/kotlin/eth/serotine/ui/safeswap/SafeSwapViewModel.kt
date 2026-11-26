@@ -44,8 +44,6 @@ import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.MIN_PROMPT_TIME
 import eth.serotine.ui.components.NOT_A_TOKEN
-import eth.serotine.ui.components.PROMPT_TIMED_OUT
-import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.ROUTER_NAME
 import eth.serotine.ui.components.STALE_QUOTE
@@ -56,12 +54,14 @@ import eth.serotine.ui.components.SwapForm
 import eth.serotine.ui.components.SwapPick
 import eth.serotine.ui.components.TOO_SMALL
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.amountHint
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.figureText
+import eth.serotine.ui.components.forCustody
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.noRouteText
 import eth.serotine.ui.components.noVenueText
@@ -70,6 +70,8 @@ import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.priceHintText
 import eth.serotine.ui.components.priceImpactText
 import eth.serotine.ui.components.promptDeadline
+import eth.serotine.ui.components.promptTimedOut
+import eth.serotine.ui.components.promptTooLate
 import eth.serotine.ui.components.redatedWhile
 import eth.serotine.ui.components.routeSteps
 import eth.serotine.ui.components.safeTxActionItem
@@ -226,6 +228,7 @@ class SafeSwapViewModel(
             val unlock: UnlockStep,
             val safeAccount: Account,
             val accounts: List<Account>,
+            val localBiometrics: Boolean,
             val refreshing: Boolean = false,
             val signing: Boolean = false,
             /** While [signing], the Safe is still being checked on chain: nothing is signed yet. */
@@ -367,7 +370,10 @@ class SafeSwapViewModel(
                 // Another owner signs every one of them, the approval queued by the last one too.
                 current.copy(
                     owner = owner,
-                    unlock = current.unlock.copy(error = null),
+                    unlock = current.unlock.forCustody(
+                        current.proposal.safe.ownersInWallet.firstOrNull { it.address == owner }?.custody,
+                        current.localBiometrics,
+                    ).copy(error = null),
                     error = null,
                     simpleError = null,
                     signed = 0,
@@ -388,7 +394,7 @@ class SafeSwapViewModel(
         step.value = current.copy(refreshing = true, hidden = false, error = null, simpleError = null, unlock = cleared)
         job = viewModelScope.launch {
             val accounts = model.value?.accounts ?: current.accounts
-            val next = proposed(current.request, current.owner, current.unlock, current.safeAccount, accounts)
+            val next = proposed(current.request, current.owner, current.localBiometrics, current.safeAccount, accounts)
             step.update { latest ->
                 when {
                     latest !is Step.Reviewing || !latest.refreshing -> latest
@@ -400,7 +406,10 @@ class SafeSwapViewModel(
                         accounts = next.accounts,
                         refreshing = false,
                         signed = 0,
-                        unlock = latest.unlock.copy(error = note),
+                        unlock = latest.unlock.forCustody(
+                            next.proposal.safe.ownersInWallet.firstOrNull { it.address == next.owner }?.custody,
+                            latest.localBiometrics,
+                        ).copy(error = note),
                     )
                     else -> next
                 }
@@ -412,19 +421,23 @@ class SafeSwapViewModel(
 
     /** The password field now reads [text]. */
     fun onPasswordChange(text: String) = step.update { current ->
-        if (current is Step.Reviewing && !current.signing) {
+        if (current is Step.Reviewing && !current.signing && !current.unlock.ledger) {
             current.copy(unlock = current.unlock.copy(password = WalletPassword(text), error = null))
         } else {
             current
         }
     }
 
-    /** Signs every transaction of the reviewed proposal with the typed wallet password, and queues them. */
+    /** Authorizes each transaction of the reviewed proposal with the selected owner's signing method. */
     fun sign() {
         val current = step.value as? Step.Reviewing ?: return
-        val password = current.unlock.password
-        if (!current.idle || password.text.isEmpty() || reproposed(current)) return
-        val unlock = Unlock.WithPassword(password)
+        if (!current.idle || !current.unlock.canAuthorize || reproposed(current)) return
+        val notAfter = if (current.unlock.ledger) {
+            promptDeadline(current.proposedAt) ?: return refresh(note = current.unlock.promptTooLate())
+        } else {
+            null
+        }
+        val unlock = current.unlock.approval(notAfter) ?: return
         sign(current) { unlock }
     }
 
@@ -433,7 +446,7 @@ class SafeSwapViewModel(
         val current = step.value as? Step.Reviewing ?: return
         if (!current.idle || !current.unlock.biometrics || reproposed(current)) return
         // The prompt gets what is left of the proposal's age: past it, nothing is signed, and it is made again.
-        val notAfter = promptDeadline(current.proposedAt) ?: return refresh(note = PROMPT_TOO_LATE)
+        val notAfter = promptDeadline(current.proposedAt) ?: return refresh(note = current.unlock.promptTooLate())
         val label = current.safeAccount.label
         val requests = current.proposal.requests
         val decoding = decodingTokens(current.request)
@@ -528,8 +541,11 @@ class SafeSwapViewModel(
                 val unlock = unlockFor(index)
                 // The check has what is left of the proposal's minute, less the prompt's least time
                 // when the prompt signs: past that the signature could not be made in time anyway.
-                val checkUntil = (unlock as? Unlock.WithBiometrics)?.notAfter?.let { it - MIN_PROMPT_TIME }
-                    ?: (review.proposedAt + QUOTE_MAX_AGE)
+                val checkUntil = when (unlock) {
+                    is Unlock.WithBiometrics -> unlock.notAfter
+                    is Unlock.WithLedger -> unlock.notAfter
+                    is Unlock.WithPassword -> null
+                }?.minus(MIN_PROMPT_TIME) ?: (review.proposedAt + QUOTE_MAX_AGE)
                 step.update { if (it is Step.Reviewing && it.signing) it.copy(checking = true) else it }
                 val checked = try {
                     signSafeTx.check(request, review.owner, budget = -checkUntil.elapsedNow())
@@ -568,7 +584,11 @@ class SafeSwapViewModel(
                 }
                 val why = when (signing) {
                     is SafeTxSigning.Signed -> NOT_SAVED
-                    is SafeTxSigning.NotSigned -> notSignedText(signing.signing, SIGN_FAILED)
+                    is SafeTxSigning.NotSigned -> if (review.unlock.ledger && signing.signing == Signing.TimedOut) {
+                        "Ledger approval expired before signing this step. Review it again before approving."
+                    } else {
+                        notSignedText(signing.signing, SIGN_FAILED)
+                    }
                     is SafeTxSigning.Refused -> safeTxRefusalText(signing.refusal, network)
                     null -> SIGN_FAILED
                 }
@@ -598,7 +618,7 @@ class SafeSwapViewModel(
                 }
                 // The prompt outlived the proposal's age: nothing was signed, and it is made again.
                 if (index == 0 && (signing as? SafeTxSigning.NotSigned)?.signing == Signing.TimedOut) {
-                    refresh(note = PROMPT_TIMED_OUT)
+                    refresh(note = review.unlock.promptTimedOut())
                 }
                 // Hidden while it ran: the proposal is from before, so it is made again.
                 reproposeIfHidden()
@@ -638,12 +658,12 @@ class SafeSwapViewModel(
 
     /**
      * The review of [request], proposed now, signed by [owner] (the first held when that is no
-     * owner any more) with [unlock] (a new one when null), or the form saying why there is none.
+     * owner any more), or the form saying why there is none. A refresh retains the offered [localBiometrics].
      */
     private suspend fun proposed(
         request: Request,
         owner: Address?,
-        unlock: UnlockStep?,
+        localBiometrics: Boolean?,
         safeAccount: Account,
         accounts: List<Account>,
     ): Step {
@@ -674,14 +694,18 @@ class SafeSwapViewModel(
         val held = proposal.safe.ownersHeld
         val signer = owner?.takeIf { it in held } ?: held.firstOrNull()
             ?: return Step.Composing(error = NO_OWNER_HELD)
+        val offered = localBiometrics ?: biometricsOffered()
         return Step.Reviewing(
             request,
             proposal,
             readFrom,
             signer,
-            unlock ?: UnlockStep(biometrics = biometricsOffered()),
+            UnlockStep(biometrics = offered).forCustody(
+                proposal.safe.ownersInWallet.firstOrNull { it.address == signer }?.custody,
+            ),
             safeAccount,
             accounts,
+            offered,
         )
     }
 

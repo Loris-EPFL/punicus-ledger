@@ -3,11 +3,11 @@ package eth.serotine.ui.swarm
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Account
-import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.ChequebookFinding
@@ -71,7 +71,7 @@ class SwarmViewModel(
 
     private val lookup = observeAccount(node)
 
-    /** Whether any account may pay for a batch here: an EOA on Gnosis Chain whose key is on this device. */
+    /** Whether any EOA on Gnosis Chain can sign a payment from here. */
     private val canPay = observeAccounts().map { list ->
         (list as? AccountList.Loaded)?.accounts?.any(::signsHere) == true
     }.distinctUntilChanged()
@@ -223,7 +223,7 @@ class SwarmViewModel(
 
     /**
      * What the batch actions need here: Gnosis Chain [on], an account that may pay ([pays]), and the
-     * node's own key on this device ([nodeSigns]), which a dilution needs.
+     * authority to sign as the node itself ([nodeSigns]), which a dilution or withdrawal needs.
      */
     private data class Signs(val on: Boolean, val pays: Boolean, val nodeSigns: Boolean) {
         fun pay(): SwarmAction = when {
@@ -236,7 +236,7 @@ class SwarmViewModel(
         fun unverified(): SwarmAction =
             if (!on) SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true) else SwarmAction(SwarmTexts.NOT_VERIFIED)
 
-        /** An action only the node's own key may sign: [notHeld] says so where that key is not here. */
+        /** An action only the node's own key may sign: [notHeld] says why it cannot be signed here. */
         fun sign(notHeld: String = SwarmTexts.NODE_KEY_NOT_HELD): SwarmAction = when {
             !on -> SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true)
             !nodeSigns -> SwarmAction(notHeld)
@@ -356,9 +356,9 @@ class SwarmViewModel(
     private fun stated(statement: String, reading: SwarmReading.Verified<*>, item: SwarmItem<*, *>): String =
         SwarmTexts.stated(statement, reading.blockNumber, item.held)
 
-    /** Whether [account] signs here on Gnosis Chain: an EOA there whose key is on this device. */
+    /** Whether [account] is an EOA that can sign on the node's network. */
     private fun signsHere(account: Account): Boolean = account.network == node.network &&
-        account.kind == AccountKind.EOA && account.custody == AccountCustody.InKeyStore
+        account.kind == AccountKind.EOA && account.custody.canSign
 
     private fun unread(reading: SwarmReading<*>): String = when (reading) {
         SwarmReading.Syncing -> SwarmTexts.SYNCING

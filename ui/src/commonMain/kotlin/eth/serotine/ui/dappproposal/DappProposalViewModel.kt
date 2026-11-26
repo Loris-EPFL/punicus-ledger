@@ -2,6 +2,7 @@ package eth.serotine.ui.dappproposal
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AppHost
@@ -175,6 +176,8 @@ data class AccountOption(
     val perAppSite: String? = null,
     /** Whether the user linked the dApp's site to this per-app address of another site: an alias. */
     val linked: Boolean = false,
+    /** This account's signatures need approval on a Ledger, not to connect or share its address. */
+    val ledger: Boolean = false,
 )
 
 /** What a tap on a greyed-out item says. */
@@ -318,6 +321,7 @@ class DappProposalViewModel(
                 network = choice.account.network.displayName,
                 perAppSite = choice.account.perApp?.site?.name,
                 linked = choice.account in perApp.aliased,
+                ledger = choice.account.custody is AccountCustody.Ledger,
             )
         }
         val chosenKeys = options.filter { it.chosen }.map { it.key }.toSet()

@@ -10,8 +10,10 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.ChequebookFinding
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.SwarmReading
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.AccountLookup
@@ -26,12 +28,16 @@ import eth.serotine.domain.usecase.WithdrawalQuoting
 import eth.serotine.domain.usecase.WithdrawalRefusal
 import eth.serotine.domain.usecase.WithdrawalSending
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.LEDGER_PROMPT_TIMED_OUT
+import eth.serotine.ui.components.LEDGER_PROMPT_TOO_LATE
 import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
+import eth.serotine.ui.components.forCustody
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.promptDeadline
@@ -45,6 +51,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -127,7 +134,7 @@ class WithdrawViewModel(
         if (account.network != Network.GNOSIS || account.kind != AccountKind.EOA) {
             return WithdrawUiState.Unavailable(WithdrawTexts.NOT_SWARM)
         }
-        if (account.custody != AccountCustody.InKeyStore) {
+        if (!account.custody.canSign) {
             return WithdrawUiState.Unavailable(WithdrawTexts.NODE_KEY_NOT_HELD)
         }
         val book = ((reading as? SwarmReading.Verified)?.finding as? ChequebookFinding.Node)?.chequebook
@@ -194,7 +201,8 @@ class WithdrawViewModel(
             val at = timeSource.markNow() to hides
             val quoting = safely { quoteWithdrawal(node.address, chequebook, amount, FeeLevel.NORMAL) }
             if (request != mine) return@launch
-            landed(after(current.amount, quoting, at, unlock = null, note = null))
+            val next = after(current.amount, quoting, at, unlock = null, note = null)
+            if (request == mine) landed(next)
         }
     }
 
@@ -205,18 +213,37 @@ class WithdrawViewModel(
         at: Pair<TimeMark, Long>,
         unlock: UnlockStep?,
         note: String?,
-    ): Step = when (quoting) {
-        is WithdrawalQuoting.Quoted -> Step.Reviewing(
-            amount,
-            quoting.quote,
-            at.first,
-            unlock ?: unlockStep(),
-            note = note,
-            hidden = hides != at.second || !shown,
-        )
-        is WithdrawalQuoting.Refused ->
-            Step.Composing(amount, WithdrawTexts.refused(quoting.refusal), pending = pendingOf(quoting.refusal))
-        null -> Step.Composing(amount, WithdrawTexts.QUOTE_FAILED)
+    ): Step {
+        return when (quoting) {
+            is WithdrawalQuoting.Quoted -> {
+                val account = when (val found = lookup.first()) {
+                    AccountLookup.ListUnavailable -> return Step.Composing(amount, WithdrawTexts.LIST_UNAVAILABLE)
+                    AccountLookup.NotInList -> return Step.Composing(amount, WithdrawTexts.NODE_KEY_NOT_HELD)
+                    is AccountLookup.Found -> found.account
+                }
+                if (account.network != Network.GNOSIS || account.kind != AccountKind.EOA) {
+                    return Step.Composing(amount, WithdrawTexts.NOT_SWARM)
+                }
+                if (!account.custody.canSign) return Step.Composing(amount, WithdrawTexts.NODE_KEY_NOT_HELD)
+                val authorization = unlockStep(account.custody, unlock)
+                val hidden = hides != at.second || !shown
+                Step.Reviewing(
+                    amount,
+                    quoting.quote,
+                    at.first,
+                    if (hidden && authorization.password.text.isNotEmpty()) {
+                        authorization.copy(password = WalletPassword.EMPTY)
+                    } else {
+                        authorization
+                    },
+                    note = note,
+                    hidden = hidden,
+                )
+            }
+            is WithdrawalQuoting.Refused ->
+                Step.Composing(amount, WithdrawTexts.refused(quoting.refusal), pending = pendingOf(quoting.refusal))
+            null -> Step.Composing(amount, WithdrawTexts.QUOTE_FAILED)
+        }
     }
 
     /** The earlier withdrawal on its way that [refusal] names, for its status. */
@@ -233,14 +260,20 @@ class WithdrawViewModel(
 
     fun onPasswordChange(text: String) {
         val review = step.value as? Step.Reviewing ?: return
-        if (review.signing || review.requoting) return
+        if (review.signing || review.requoting || review.unlock.ledger) return
         step.value = review.copy(unlock = review.unlock.copy(password = WalletPassword(text), error = null))
     }
 
     fun sign() {
         val review = step.value as? Step.Reviewing ?: return
-        if (review.signing || review.requoting || review.unlock.password.text.isEmpty() || requoted(review)) return
-        send(review, Unlock.WithPassword(review.unlock.password))
+        if (review.signing || review.requoting || !review.unlock.canAuthorize || requoted(review)) return
+        val deadline = if (review.unlock.ledger) {
+            promptDeadline(review.quotedAt) ?: return requote(review, LEDGER_PROMPT_TOO_LATE)
+        } else {
+            null
+        }
+        val unlock = review.unlock.approval(deadline) ?: return
+        send(review, unlock)
     }
 
     fun signWithBiometrics() {
@@ -269,7 +302,8 @@ class WithdrawViewModel(
             val quoting = safely { quoteWithdrawal(node.address, chequebook, review.quote.amount, FeeLevel.NORMAL) }
             val current = step.value as? Step.Reviewing ?: return@launch
             if (request != mine) return@launch
-            landed(after(review.amount, quoting, at, current.unlock.copy(error = null), note))
+            val next = after(review.amount, quoting, at, current.unlock.copy(error = null), note)
+            if (request == mine) landed(next)
         }
     }
 
@@ -299,14 +333,19 @@ class WithdrawViewModel(
             is TransferSending.Sent -> sending.hash
             is TransferSending.NotSent -> if (sending.transfer.maybeSent) sending.transfer.hash else null
             is TransferSending.RejectionUnverified -> sending.transfer.hash
-            is TransferSending.NotSigned -> return landed(
-                review.copy(
-                    unlock = review.unlock.copy(
-                        error = notSignedText(sending.signing, WithdrawTexts.SEND_FAILED),
-                        biometrics = review.unlock.biometrics && biometricsStillOffered(sending.signing),
+            is TransferSending.NotSigned -> {
+                if (review.unlock.ledger && sending.signing == Signing.TimedOut) {
+                    return requote(review, LEDGER_PROMPT_TIMED_OUT)
+                }
+                return landed(
+                    review.copy(
+                        unlock = review.unlock.copy(
+                            error = notSignedText(sending.signing, WithdrawTexts.SEND_FAILED),
+                            biometrics = review.unlock.biometrics && biometricsStillOffered(sending.signing),
+                        ),
                     ),
-                ),
-            )
+                )
+            }
         }
         if (hash == null) {
             val why = notSentItem((sending as TransferSending.NotSent).broadcast, false, "withdrawal").message
@@ -362,8 +401,11 @@ class WithdrawViewModel(
         if (review.hidden && !review.signing && !review.requoting) requote(review, carried(review))
     }
 
-    private suspend fun unlockStep(): UnlockStep =
-        UnlockStep(biometrics = safely { biometricsOn(describeKeyStore()) } == true)
+    private suspend fun unlockStep(custody: AccountCustody, previous: UnlockStep?): UnlockStep = when {
+        custody is AccountCustody.Ledger -> previous?.forCustody(custody) ?: UnlockStep(ledger = true)
+        previous != null && !previous.ledger -> previous
+        else -> UnlockStep(biometrics = safely { biometricsOn(describeKeyStore()) } == true)
+    }
 
     private suspend fun <T> safely(block: suspend () -> T): T? = try {
         block()

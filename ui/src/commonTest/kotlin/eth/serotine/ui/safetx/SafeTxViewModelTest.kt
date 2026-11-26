@@ -10,9 +10,13 @@ import eth.serotine.domain.repository.KeptNonce
 import eth.serotine.domain.repository.KeptSafe
 import eth.serotine.domain.repository.SafeDraftBasis
 import kotlin.test.assertNotNull
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Erc20
+import eth.serotine.domain.model.Eip1559Transaction
+import eth.serotine.domain.model.Eip712Hashes
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeOperation
@@ -38,9 +42,11 @@ import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.LedgerProblem
 import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TransactionProgress
@@ -139,6 +145,7 @@ class SafeTxViewModelTest {
         request: SigningRequest,
         collect: Boolean = true,
         imported: Boolean = false,
+        signer: Signer = world.signer,
     ): SafeTxViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val now = { 1_800_000_000L }
@@ -151,7 +158,7 @@ class SafeTxViewModelTest {
             ReadSafeTxOwners(world.observeSafe, world.recovery, world.approvals, Network.SEPOLIA),
             EncodeSigningRequest(world.codec),
             DescribeKeyStore(keys),
-            SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA),
+            SignSafeTx(signer, world.observeSafe, world.recovery, world.queue, Network.SEPOLIA),
             QuoteSafeApproval(
                 world.observeSafe,
                 world.approvals,
@@ -162,7 +169,7 @@ class SafeTxViewModelTest {
                 Outbox.None,
                 now,
             ),
-            ApproveSafeTxOnChain(world.signer, world.broadcaster, world.sent, now),
+            ApproveSafeTxOnChain(signer, world.broadcaster, world.sent, now),
             QuoteSafeExecution(
                 world.observeSafe,
                 world.recovery,
@@ -174,7 +181,7 @@ class SafeTxViewModelTest {
                 Outbox.None,
                 now,
             ),
-            ExecuteSafeTx(world.signer, world.broadcaster, world.sent, now),
+            ExecuteSafeTx(signer, world.broadcaster, world.sent, now),
             RebroadcastTransfer(world.broadcaster, world.sent, world.receipts, now),
             RemoveQueuedSafeTx(world.queue, world.outbox, world.outboxLock),
             WarmFeeHistory(world.inputs),
@@ -387,6 +394,76 @@ class SafeTxViewModelTest {
             "Through Uniswap's SwapRouter02, its code proven by the light client.",
             viewModel.signing.swap?.lines?.first(),
         )
+    }
+
+    @Test
+    fun aLedgerOwnerCoSignsTypedSafeDataOnlyAfterTheFreshCheck() = runTest {
+        val ledger = world.bob.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        world.accounts.accounts.value = listOf(world.alice, ledger, world.dave, world.treasury)
+        val request = queued(world.request(world.ether(4)))
+        val calls = mutableListOf<AccountId>()
+        val signer = object : Signer by world.signer {
+            override suspend fun signTypedData(account: AccountId, hashes: Eip712Hashes, unlock: Unlock): Signing {
+                assertIs<Unlock.WithLedger>(unlock)
+                assertEquals(request.hash, hashes.digest)
+                calls += account
+                return Signing.Signed(world.recovery.sign(account.address, hashes.digest))
+            }
+        }
+        val viewModel = viewModel(request, signer = signer)
+        viewModel.startSigning()
+        viewModel.onPasswordChange("only for Alice")
+        viewModel.onSignerChange(Eip55.format(ledger.address))
+        assertTrue(viewModel.signing.unlock.ledger)
+        assertTrue(viewModel.signing.canSign, "no password required")
+        assertEquals("", viewModel.signing.unlock.password.text)
+
+        val freshCheck = CompletableDeferred<Unit>()
+        world.kindGate = freshCheck
+        viewModel.sign()
+        runCurrent()
+        assertTrue(viewModel.signing.checking)
+        assertTrue(calls.isEmpty(), "do not ask the device until the Safe has been verified")
+        freshCheck.complete(Unit)
+        runCurrent()
+
+        assertEquals(listOf(ledger.id), calls)
+        assertEquals(listOf(ledger.address), world.queue.requests.value.single().signers)
+        assertTrue(world.signer.asked.isEmpty(), "no digest fallback")
+    }
+
+    @Test
+    fun aLedgerOwnerApprovesTheReviewedSafeHashOnChain() = runTest {
+        funded()
+        val ledger = world.alice.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        world.accounts.accounts.value = listOf(ledger, world.bob, world.dave, world.treasury)
+        val request = queued(world.request(world.ether(4)))
+        val calls = mutableListOf<AccountId>()
+        val signer = object : Signer by world.signer {
+            override suspend fun signTransaction(
+                account: AccountId,
+                transaction: Eip1559Transaction,
+                unlock: Unlock,
+            ): Signing {
+                assertEquals(world.safe, transaction.to)
+                assertContentEquals(("d4d9bdcd" + request.hash.hex).hexBytes(), transaction.data)
+                assertIs<Unlock.WithLedger>(unlock)
+                calls += account
+                return world.signer.answer
+            }
+        }
+        val viewModel = viewModel(request, signer = signer)
+        viewModel.startApproval()
+        runCurrent()
+        assertEquals(ReviewKind.APPROVAL, viewModel.review.kind)
+        assertTrue(viewModel.review.unlock.ledger)
+        viewModel.sign()
+        runCurrent()
+
+        assertIs<SafeTxUiState.Sent>(viewModel.uiState.value)
+        assertEquals(listOf(ledger.id), calls)
+        assertTrue(world.signer.asked.isEmpty(), "no digest fallback")
+        assertEquals(1, world.broadcaster.sent.size)
     }
 
     @Test
@@ -931,6 +1008,47 @@ class SafeTxViewModelTest {
         assertEquals(Eip55.format(world.dave.address), review.account)
         assertEquals("Executed with: Bob's signature; 0x3333…3333's signature", review.confirmations)
         assertEquals("ETH balance of Dave, which pays the fee", review.balance.what)
+    }
+
+    @Test
+    fun aLedgerFeePayerCanExecuteAndRejectionDoesNotRetryOrBroadcast() = runTest {
+        funded()
+        world.inputs.simulation = executed
+        val ledger = world.dave.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        world.accounts.accounts.value = listOf(world.alice, world.bob, ledger, world.treasury)
+        val request = queued(world.request(world.ether(4), world.bob.address, world.carol))
+        val calls = mutableListOf<AccountId>()
+        val signer = object : Signer by world.signer {
+            override suspend fun signTransaction(
+                account: AccountId,
+                transaction: Eip1559Transaction,
+                unlock: Unlock,
+            ): Signing {
+                assertEquals(world.safe, transaction.to)
+                assertEquals(Network.SEPOLIA.chainId, transaction.chainId)
+                assertIs<Unlock.WithLedger>(unlock)
+                calls += account
+                return Signing.LedgerFailed(LedgerProblem.REJECTED)
+            }
+        }
+        val viewModel = viewModel(request, signer = signer)
+        viewModel.startExecution()
+        runCurrent()
+        viewModel.onPasswordChange("only for Alice")
+        viewModel.onAccountChange(Eip55.format(ledger.address))
+        runCurrent()
+        assertTrue(viewModel.review.unlock.ledger)
+        assertEquals("", viewModel.review.unlock.password.text)
+        assertTrue(viewModel.review.canSign)
+
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(listOf(ledger.id), calls)
+        assertNotNull(viewModel.review.unlock.error)
+        assertNull(viewModel.review.notSent)
+        assertTrue(world.signer.asked.isEmpty(), "no digest fallback")
+        assertTrue(world.broadcaster.sent.isEmpty())
     }
 
     @Test
@@ -1546,6 +1664,27 @@ class SafeTxViewModelTest {
             FeeQuote(UInt256.of(10_000_000_000L), FeeLevel.entries.associateWith { UInt256.of(1_000_000_000L) }, 89),
             1_800_000_000L - 900,
         )
+    }
+
+    @Test
+    fun aLedgerOwnerWaitsForFreshReviewEvenInLenientMode() = runTest {
+        val ledger = world.alice.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        world.accounts.accounts.value = listOf(ledger, world.bob, world.dave, world.treasury)
+        lenientWhileSyncing()
+        val viewModel = viewModel(queued(world.request(world.ether(4), world.carol)))
+
+        assertFalse(viewModel.overview.canSign)
+        assertFalse(viewModel.overview.canApprove)
+        assertFalse(viewModel.overview.canExecute)
+        assertTrue(viewModel.overview.signNote.orEmpty().contains("Ledger"))
+        assertTrue(viewModel.overview.approveNote.orEmpty().contains("Ledger"))
+        assertTrue(viewModel.overview.executeNote.orEmpty().contains("Ledger"))
+        viewModel.startSigning()
+        viewModel.startApproval()
+        viewModel.startExecution()
+        runCurrent()
+        assertIs<SafeTxUiState.Overview>(viewModel.uiState.value)
+        assertTrue(world.signer.asked.isEmpty())
     }
 
     @Test

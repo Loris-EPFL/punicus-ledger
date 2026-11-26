@@ -47,8 +47,8 @@ sealed interface PostageUiState {
 sealed interface PostageStep {
 
     /**
-     * The form. [payers]: the accounts whose key is held here on Gnosis Chain that may pay, with
-     * the one chosen ([payer], EIP-55); empty for a dilution, which [signer] says the node's own key
+     * The form. [payers]: the accounts on Gnosis Chain that can sign a payment, with the one
+     * chosen ([payer], EIP-55); empty for a dilution, which [signer] says the node's own key
      * signs. [depths] offered with the one chosen ([depth]); empty for a top-up. [days] as typed with
      * what it means ([daysLabel]); null for a dilution. [immutable] for a purchase; null otherwise.
      * [explains] what the form does in a line; [error] why the last Review quoted nothing; [quoting]

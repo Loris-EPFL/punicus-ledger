@@ -12,9 +12,11 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwarmCalls
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.FeeLevel
+import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.SwarmReading
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.AccountLookup
@@ -36,12 +38,16 @@ import eth.serotine.domain.usecase.SendBatchCall
 import eth.serotine.domain.usecase.TokenApprovalQuote
 import eth.serotine.domain.usecase.TransferSending
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.LEDGER_PROMPT_TIMED_OUT
+import eth.serotine.ui.components.LEDGER_PROMPT_TOO_LATE
 import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
+import eth.serotine.ui.components.forCustody
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.promptDeadline
@@ -183,7 +189,7 @@ class PostageViewModel(
 
     private val lookup = observeAccount(node)
 
-    /** The accounts that may pay: an EOA on Gnosis Chain whose key is held here; null when the list cannot be read. */
+    /** Signing EOAs on Gnosis Chain; null when the account list cannot be read. */
     private val payers: Flow<List<Account>?> = observeAccounts().map { list ->
         (list as? AccountList.Loaded)?.accounts?.filter { canPay(it) }
     }
@@ -333,11 +339,12 @@ class PostageViewModel(
         }
     }
 
-    /** The payer chosen, or by default the node itself where it may pay, else the first that may. */
-    private fun payerOf(form: Form, payers: List<Account>): Address? =
-        form.payer?.takeIf { chosen -> payers.any { it.address == chosen } }
-            ?: payers.firstOrNull { it.address == node.address }?.address
-            ?: payers.firstOrNull()?.address
+    /** An explicit payer is never replaced by the default if it stops being able to sign. */
+    private fun payerOf(form: Form, payers: List<Account>): Address? {
+        val chosen = form.payer
+        if (chosen != null) return chosen.takeIf { address -> payers.any { it.address == address } }
+        return payers.firstOrNull { it.address == node.address }?.address ?: payers.firstOrNull()?.address
+    }
 
     private fun verifiedBatch(batch: SwarmReading<BatchFinding>?) =
         ((batch as? SwarmReading.Verified)?.finding as? BatchFinding.Node)?.batch
@@ -405,7 +412,8 @@ class PostageViewModel(
             if (request != mine) return@launch
             // After an approval sent from here, the call is its step 2.
             val position = if (asked.perChunk != null) 2 else null
-            landed(after(form, asked, quoted, at, position, unlock = null, note = null))
+            val next = after(form, asked, quoted, at, position, unlock = null, note = null)
+            if (request == mine) landed(next)
         }
     }
 
@@ -419,8 +427,11 @@ class PostageViewModel(
         // Only a dilution's depths come from the batch; a quote reads it fresh anyway.
         val batch = if (action == PostageAction.DILUTE) batchReading.first { it != null } else null
         val payer = when (action) {
-            PostageAction.DILUTE -> node.address
-            else -> payerOf(form, payers) ?: return Resolved.Refused(PostageTexts.NO_PAYER)
+            PostageAction.DILUTE -> node.address.takeIf { address -> payers.any { it.address == address } }
+                ?: return Resolved.Refused(PostageTexts.NODE_KEY_NOT_HELD)
+            else -> payerOf(form, payers) ?: return Resolved.Refused(
+                if (form.payer == null) PostageTexts.NO_PAYER else PostageTexts.PAYER_UNAVAILABLE,
+            )
         }
         val depth = depthOf(form, batch)
         if (action == PostageAction.DILUTE && depth == null) return Resolved.Refused(PostageTexts.BATCH_NOT_READ)
@@ -468,15 +479,30 @@ class PostageViewModel(
         unlock: UnlockStep?,
         note: String?,
     ): Step {
+        val quotedPayer = when (quoting) {
+            is BatchQuoting.Quoted -> quoting.quote.quote.from
+            is BatchQuoting.NeedsApproval -> quoting.approval.from
+            else -> null
+        }
+        val authorization = quotedPayer?.let { payer ->
+            val currentPayers = payers.first()
+                ?: return Step.Composing(form.copy(quoting = false, error = PostageTexts.LIST_UNAVAILABLE))
+            val account = currentPayers.firstOrNull { it.address == payer }
+                ?: return Step.Composing(form.copy(quoting = false, error = PostageTexts.PAYER_UNAVAILABLE))
+            unlockStep(account.custody, unlock)
+        }
         val quotedAt = at.time
         val hidden = hides != at.hides || !shown
+        val currentUnlock = authorization?.let {
+            if (hidden && it.password.text.isNotEmpty()) it.copy(password = WalletPassword.EMPTY) else it
+        }
         return when (quoting) {
             is BatchQuoting.Quoted -> Step.Reviewing(
                 form.copy(quoting = false),
                 request,
                 Reviewed.Call(quoting.quote),
                 quotedAt,
-                unlock ?: unlockStep(),
+                checkNotNull(currentUnlock),
                 position,
                 note = note,
                 hidden = hidden,
@@ -487,7 +513,7 @@ class PostageViewModel(
                 request.copy(perChunk = quoting.perChunk),
                 Reviewed.Approval(quoting.approval, quoting.total),
                 quotedAt,
-                unlock ?: unlockStep(),
+                checkNotNull(currentUnlock),
                 position = 1,
                 note = note,
                 hidden = hidden,
@@ -517,14 +543,20 @@ class PostageViewModel(
 
     fun onPasswordChange(text: String) {
         val review = step.value as? Step.Reviewing ?: return
-        if (review.signing || review.requoting) return
+        if (review.signing || review.requoting || review.unlock.ledger) return
         step.value = review.copy(unlock = review.unlock.copy(password = WalletPassword(text), error = null))
     }
 
     fun sign() {
         val review = step.value as? Step.Reviewing ?: return
-        if (review.signing || review.requoting || review.unlock.password.text.isEmpty() || requoted(review)) return
-        send(review, Unlock.WithPassword(review.unlock.password))
+        if (review.signing || review.requoting || !review.unlock.canAuthorize || requoted(review)) return
+        val deadline = if (review.unlock.ledger) {
+            promptDeadline(review.quotedAt) ?: return requote(review, LEDGER_PROMPT_TOO_LATE)
+        } else {
+            null
+        }
+        val unlock = review.unlock.approval(deadline) ?: return
+        send(review, unlock)
     }
 
     fun signWithBiometrics() {
@@ -569,7 +601,8 @@ class PostageViewModel(
                 error = null,
                 password = if (same) current.unlock.password else WalletPassword.EMPTY,
             )
-            landed(after(formOf(review), review.request, quoting, at, position, unlock, note))
+            val next = after(formOf(review), review.request, quoting, at, position, unlock, note)
+            if (request == mine) landed(next)
         }
     }
 
@@ -619,6 +652,9 @@ class PostageViewModel(
             is TransferSending.NotSent -> if (sending.transfer.maybeSent) sending.transfer.hash else null
             is TransferSending.RejectionUnverified -> sending.transfer.hash
             is TransferSending.NotSigned -> {
+                if (review.unlock.ledger && sending.signing == Signing.TimedOut) {
+                    return requote(review, LEDGER_PROMPT_TIMED_OUT)
+                }
                 landed(
                     review.copy(
                         signing = false,
@@ -665,12 +701,14 @@ class PostageViewModel(
                 when {
                     quoting is BatchQuoting.ApprovalPending -> failed = 0
                     quoting is BatchQuoting.Quoted -> {
-                        landed(after(form, asked, quoting, at, position = 2, unlock = null, note = null))
+                        val next = after(form, asked, quoting, at, position = 2, unlock = null, note = null)
+                        if (step.value == awaiting) landed(next)
                         return@launch
                     }
                     quoting is BatchQuoting.NeedsApproval -> {
                         val note = PostageTexts.APPROVAL_FAILED_MAYBE
-                        landed(after(form, asked, quoting, at, position = 1, unlock = null, note = note))
+                        val next = after(form, asked, quoting, at, position = 1, unlock = null, note = note)
+                        if (step.value == awaiting) landed(next)
                         return@launch
                     }
                     // A read that failed for a moment (a peer, the light client between heads): waited out.
@@ -737,8 +775,11 @@ class PostageViewModel(
         if (review.hidden && !review.signing && !review.requoting) requote(review, note = carried(review))
     }
 
-    private suspend fun unlockStep(): UnlockStep =
-        UnlockStep(biometrics = safely { biometricsOn(describeKeyStore()) } == true)
+    private suspend fun unlockStep(custody: AccountCustody, previous: UnlockStep?): UnlockStep = when {
+        custody is AccountCustody.Ledger -> previous?.forCustody(custody) ?: UnlockStep(ledger = true)
+        previous != null && !previous.ledger -> previous
+        else -> UnlockStep(biometrics = safely { biometricsOn(describeKeyStore()) } == true)
+    }
 
     private suspend fun <T> safely(block: suspend () -> T): T? = try {
         block()
@@ -760,8 +801,8 @@ class PostageViewModel(
         /** How many failed reads in a row the wait for an approval sits out. */
         const val AWAIT_FAILURES = 3
 
-        /** Whether [account] may pay or sign here: an EOA on Gnosis Chain whose key is on this device. */
+        /** Whether [account] is a signing EOA on Gnosis Chain. */
         fun canPay(account: Account): Boolean = account.network == Network.GNOSIS &&
-            account.kind == AccountKind.EOA && account.custody == AccountCustody.InKeyStore
+            account.kind == AccountKind.EOA && account.custody.canSign
     }
 }

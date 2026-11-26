@@ -328,7 +328,7 @@ private fun Review(step: PostageStep.Review, actions: PostageActions) {
     UnlockFields(
         unlock = step.unlock,
         signing = step.signing,
-        canSign = !step.signing && step.unlock.password.text.isNotEmpty(),
+        canSign = !step.signing && step.unlock.canAuthorize,
         canSignWithBiometrics = !step.signing && step.unlock.biometrics,
         signLabel = "Sign and send",
         signingLabel = if (step.checking) "Checking on chain…" else "Sending…",

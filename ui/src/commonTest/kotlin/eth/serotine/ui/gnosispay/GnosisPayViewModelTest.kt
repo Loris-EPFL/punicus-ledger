@@ -9,6 +9,7 @@ import eth.serotine.domain.model.DelayMemberChange
 import eth.serotine.domain.model.DelayTransfer
 import eth.serotine.domain.model.DelayTransferPlan
 import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.TransferAsset
@@ -28,6 +29,7 @@ import eth.serotine.domain.repository.DelayReading
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.HistoryEntry
 import eth.serotine.domain.repository.KindReading
+import eth.serotine.domain.repository.LedgerProblem
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
 import eth.serotine.domain.repository.SentAction
@@ -35,6 +37,7 @@ import eth.serotine.domain.repository.SentOutcome
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.SentTransferList
 import eth.serotine.domain.repository.Signing
+import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.DelayQuoting
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.GnosisPayReading
@@ -512,6 +515,35 @@ class GnosisPayViewModelTest {
 
         assertEquals(FeeLevel.NORMAL, review.fee)
         assertTrue(review.lines.any { (label, value) -> label == "Fee" && "normal" in value }, review.lines.toString())
+    }
+
+    @Test
+    fun theLedgerControllerApprovesTheQueueingWithoutUsingALocalKey() = runTest {
+        val ledger = owner.copy(custody = AccountCustody.Ledger(checkNotNull(LedgerPath.parse("m/44'/60'/0'/0/0"))))
+        accounts.accounts.value = listOf(card, ledger)
+        val requests = mutableListOf<Pair<AccountId, Unlock.WithLedger>>()
+        signer.signLedgerTransaction = { account, _, unlock ->
+            requests += account to unlock
+            Signing.LedgerFailed(LedgerProblem.REJECTED)
+        }
+        val viewModel = viewModel()
+        val review = viewModel.reviewTransfer()
+        assertTrue(review.unlock.ledger)
+        assertEquals(false, review.unlock.biometrics)
+        time += 10.seconds
+
+        viewModel.onPasswordChange("not used")
+        viewModel.signWithBiometrics()
+        viewModel.sign()
+
+        val (account, unlock) = requests.single()
+        assertEquals(ledger.id, account)
+        assertEquals(50.seconds, -unlock.notAfter.elapsedNow())
+        assertTrue(signer.asked.isEmpty())
+        assertTrue(sent.transfers.value.isEmpty())
+        val refused = viewModel.ready().step as GnosisPayStep.Review
+        assertNotNull(refused.unlock.error)
+        assertEquals("", refused.unlock.password.text)
     }
 
     @Test

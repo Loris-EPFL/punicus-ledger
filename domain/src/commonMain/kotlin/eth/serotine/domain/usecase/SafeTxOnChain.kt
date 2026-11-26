@@ -186,7 +186,7 @@ class ReadKeptSafeTxOwners(
             ?: return SafeTxOwnersReading.Refused(SafeTxRefusal.Syncing)
         val state = safe.state
         val signed = recovery.valid(request, state.owners).map { it.owner }.toSet()
-        val held = accounts.ownersHeldOf(state).toSet()
+        val held = accounts.localOwnersHeld(state, network).toSet()
         val owners = state.owners.map { owner ->
             val confirmation = if (owner in signed) {
                 OwnerConfirmation.Signed

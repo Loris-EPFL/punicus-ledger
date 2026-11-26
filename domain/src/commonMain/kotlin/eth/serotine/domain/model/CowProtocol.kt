@@ -52,12 +52,11 @@ data class CowOrder(
     }
 
     /**
-     * The EIP-712 digest this order's owner signs on the chain [chainId], for its [settlement]
-     * contract: GPv2's `keccak256(0x19 ‖ 0x01 ‖ domainSeparator ‖ structHash)`, under the domain
+     * The EIP-712 hashes for this order on [chainId], for its [settlement] contract, under
      * `EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)` with
      * the name "Gnosis Protocol" and the version "v2".
      */
-    fun digest(chainId: Long, settlement: Address): Digest = GPv2Signing.digest(
+    internal fun hashes(chainId: Long, settlement: Address): Eip712Hashes = Eip712Hashes.fromBytes(
         GPv2Signing.domainSeparator(chainId, settlement),
         GPv2Signing.structHash(
             sellToken = sellToken,
@@ -72,6 +71,9 @@ data class CowOrder(
             kind = kind,
         ),
     )
+
+    /** The EIP-712 digest this order's owner signs on [chainId] for [settlement]. */
+    fun digest(chainId: Long, settlement: Address): Digest = hashes(chainId, settlement).digest
 
     /** This order's UID once [owner] signs it on [chainId] for [settlement] ([CowOrderUid.of]). */
     fun uid(chainId: Long, settlement: Address, owner: Address): CowOrderUid =
@@ -182,7 +184,6 @@ internal object GPv2Signing {
 
     private val NAME_HASH = keccak256("Gnosis Protocol".encodeToByteArray())
     private val VERSION_HASH = keccak256("v2".encodeToByteArray())
-    private val EIP712_PREFIX = byteArrayOf(0x19, 0x01)
 
     /** The settlement contract's domain separator on [chainId] (its `domainSeparator()`). */
     fun domainSeparator(chainId: Long, settlement: Address): ByteArray =
@@ -223,10 +224,6 @@ internal object GPv2Signing {
                 BALANCE_ERC20,
         )
     }
-
-    /** EIP-712's `keccak256(0x19 ‖ 0x01 ‖ domain ‖ struct)`. */
-    fun digest(domainSeparator: ByteArray, structHash: ByteArray): Digest =
-        Digest.of(keccak256(EIP712_PREFIX + domainSeparator + structHash).toHex())
 }
 
 /**

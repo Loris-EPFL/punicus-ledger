@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
 import org.junit.Test
@@ -78,6 +79,16 @@ class DappRequestScreenTest {
         assertEquals(listOf("pw"), typed)
         rule.onNodeWithTag(DAPP_REQUEST_REFUSE_TAG).performScrollTo().performClick()
         assertEquals(1, refusals)
+    }
+
+    @Test
+    fun ledgerApprovalShowsTheBlindSigningWarningInsteadOfAPassword() {
+        show(state.copy(unlock = UnlockStep(ledger = true)))
+
+        rule.onNodeWithTag(DAPP_REQUEST_PASSWORD_TAG).assertDoesNotExist()
+        rule.onNodeWithText("ask for blind signing", substring = true).performScrollTo().assertExists()
+        rule.onNodeWithText("Approve on Ledger").performScrollTo().performClick()
+        assertEquals(1, signs)
     }
 
     @Test

@@ -2,6 +2,7 @@ package eth.serotine.ui.coworder
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Network
@@ -10,6 +11,7 @@ import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.CowOrderEnd
@@ -36,6 +38,8 @@ import eth.serotine.domain.usecase.SendCowCancellation
 import eth.serotine.domain.usecase.TransferSending
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.LEDGER_PROMPT_TIMED_OUT
+import eth.serotine.ui.components.LEDGER_PROMPT_TOO_LATE
 import eth.serotine.ui.components.NATIVE_DECIMALS
 import eth.serotine.ui.components.PROMPT_TIMED_OUT
 import eth.serotine.ui.components.PROMPT_TOO_LATE
@@ -45,6 +49,7 @@ import eth.serotine.ui.components.SWAPS_STAY_STRICT
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.SpenderItem
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.epochSecondsNow
@@ -52,6 +57,7 @@ import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.figureText
 import eth.serotine.ui.components.finalityWaitText
+import eth.serotine.ui.components.forCustody
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
@@ -168,13 +174,13 @@ class CowOrderViewModel(
     }
 
     /**
-     * The order, the account's name for its account, why that account cannot sign here ([cannotSign],
-     * null when its key is on this device), CoW's word while it is live, and whether its validity has
-     * passed by [clock] (which changes at that moment, not only with the record).
+     * The order, its account's label, why it cannot sign here (if anything), the [accounts] available for
+     * signing a review, CoW's word while the order is live, and whether its validity has passed by [clock].
      */
     private data class Model(
         val reading: CowOrderReading,
         val label: String?,
+        val accounts: AccountList,
         val cannotSign: String?,
         val life: CowOrderLife?,
         val validityPassed: Boolean,
@@ -212,14 +218,14 @@ class CowOrderViewModel(
             .flatMapLatest { validTo -> validityPassed(validTo) },
     ) { reading, accounts, life, passed ->
         val record = (reading as? CowOrderReading.Found)?.record
-        val account = (accounts as? AccountList.Loaded)?.accounts?.firstOrNull { it.address == record?.account }
+        val account = record?.let { accounts.accountOf(it) }
         val cannotSign = when {
             accounts !is AccountList.Loaded -> LIST_UNAVAILABLE
             account == null -> NOT_IN_WALLET
-            account.custody != AccountCustody.InKeyStore -> WATCH_ONLY
+            !account.custody.canSign -> WATCH_ONLY
             else -> null
         }
-        Model(reading, account?.label, cannotSign, life, passed)
+        Model(reading, account?.label, accounts, cannotSign, life, passed)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000, replayExpirationMillis = 0),
@@ -247,8 +253,9 @@ class CowOrderViewModel(
     fun cancel() {
         val current = step.value as? Step.Viewing ?: return
         if (current.quoting) return
-        val record = (model.value?.reading as? CowOrderReading.Found)?.record ?: return
-        if (!record.live || model.value?.cannotSign != null) return
+        val model = model.value ?: return
+        val record = (model.reading as? CowOrderReading.Found)?.record ?: return
+        if (!record.live || model.cannotSign != null) return
         step.value = current.copy(quoting = true, error = null, earlier = null, simpleError = null)
         hiddenWhileQuoting = false
         job = viewModelScope.launch {
@@ -292,7 +299,8 @@ class CowOrderViewModel(
                         quote = next.quote,
                         quotedAt = next.quotedAt,
                         refreshing = false,
-                        unlock = latest.unlock.copy(error = note),
+                        unlock = (latest.unlock.takeIf { it.ledger == next.unlock.ledger } ?: next.unlock)
+                            .copy(error = note),
                     )
                     else -> next
                 }
@@ -303,19 +311,23 @@ class CowOrderViewModel(
 
     /** The password field now reads [text]. */
     fun onPasswordChange(text: String) = step.update { current ->
-        if (current is Step.Reviewing && !current.signing && current.notSent == null) {
+        if (current is Step.Reviewing && !current.signing && current.notSent == null && !current.unlock.ledger) {
             current.copy(unlock = current.unlock.copy(password = WalletPassword(text), error = null))
         } else {
             current
         }
     }
 
-    /** Signs the cancellation with the typed wallet password, and broadcasts it. */
+    /** Signs the cancellation with the wallet password or Ledger, and broadcasts it. */
     fun sign() {
         val current = step.value as? Step.Reviewing ?: return
-        val password = current.unlock.password
-        if (!current.idle || password.text.isEmpty() || requoted(current)) return
-        sign(current, Unlock.WithPassword(password))
+        if (!current.idle || !current.unlock.canAuthorize || requoted(current)) return
+        val notAfter = if (current.unlock.ledger) {
+            promptDeadline(current.quotedAt) ?: return refresh(note = LEDGER_PROMPT_TOO_LATE)
+        } else {
+            null
+        }
+        sign(current, current.unlock.approval(notAfter) ?: return)
     }
 
     /** Signs the cancellation with a fingerprint or face, and broadcasts it. */
@@ -387,7 +399,9 @@ class CowOrderViewModel(
             val sending = safely { sendCowCancellation(review.quote, unlock) }
             step.update { latest -> if (latest is Step.Reviewing) after(latest, sending) else latest }
             // The prompt outlived the quote's age: nothing was signed, and the quote is made again.
-            if ((sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut) refresh(note = PROMPT_TIMED_OUT)
+            if ((sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut) {
+                refresh(note = if (unlock is Unlock.WithLedger) LEDGER_PROMPT_TIMED_OUT else PROMPT_TIMED_OUT)
+            }
             requoteIfHidden()
         }
     }
@@ -423,8 +437,17 @@ class CowOrderViewModel(
             CowCancellationQuoting.Unavailable(ReadUnavailable.UNPROVEN) // the use case promises not to throw
         }
         return when (quoting) {
-            is CowCancellationQuoting.Quoted ->
-                Step.Reviewing(quoting.quote, readFrom, unlock ?: UnlockStep(biometrics = biometricsOffered()))
+            is CowCancellationQuoting.Quoted -> {
+                val accounts = model.value?.accounts ?: return Step.Viewing(error = LIST_UNAVAILABLE)
+                val custody = accounts.accountOf(record)?.custody
+                if (custody == null) {
+                    return Step.Viewing(error = if (accounts is AccountList.Loaded) NOT_IN_WALLET else LIST_UNAVAILABLE)
+                }
+                if (!custody.canSign) return Step.Viewing(error = WATCH_ONLY)
+                val authorization = unlock?.takeUnless { it.ledger && custody == AccountCustody.InKeyStore }
+                    ?: UnlockStep(biometrics = custody == AccountCustody.InKeyStore && biometricsOffered())
+                Step.Reviewing(quoting.quote, readFrom, authorization.forCustody(custody))
+            }
             is CowCancellationQuoting.CancellationPending -> Step.Viewing(
                 earlier = EarlierTransaction(
                     quoting.hash,
@@ -447,6 +470,11 @@ class CowOrderViewModel(
             else -> Step.Viewing(error = refusal(quoting))
         }
     }
+
+    private fun AccountList.accountOf(record: CowOrderRecord): Account? =
+        (this as? AccountList.Loaded)?.accounts?.firstOrNull {
+            it.network == record.network && it.address == record.account
+        }
 
     private fun refusal(quoting: CowCancellationQuoting): String = when (quoting) {
         is CowCancellationQuoting.Quoted, is CowCancellationQuoting.CancellationPending ->

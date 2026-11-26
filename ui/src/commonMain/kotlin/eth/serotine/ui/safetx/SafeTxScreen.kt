@@ -364,7 +364,7 @@ private fun OverviewContent(
     details: List<String>,
 ) {
     var confirmRemove by remember { mutableStateOf(false) }
-    var unavailable by remember { mutableStateOf<String?>(null) }
+    var unavailable by remember { mutableStateOf<UnavailableNotice?>(null) }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -421,16 +421,30 @@ private fun OverviewContent(
                 Text("Share request")
             }
         }
-        if (state.canSign) {
-            Button(onClick = actions.onSign, enabled = !state.quoting, modifier = Modifier.fillMaxWidth()) {
+        val signReason = state.signNote.takeUnless { state.canSign }
+        if (state.canSign || signReason != null) {
+            Button(
+                onClick = {
+                    if (signReason == null) actions.onSign() else unavailable = UnavailableNotice("Sign", signReason)
+                },
+                enabled = !state.quoting,
+                modifier = Modifier.fillMaxWidth().unavailable(signReason != null),
+                colors = if (signReason == null) ButtonDefaults.buttonColors() else Unavailable.buttonColors(),
+            ) {
                 Text("Sign")
             }
         }
-        if (state.canApprove) {
+        val approveReason = state.approveNote.takeUnless { state.canApprove }
+        if (state.canApprove || approveReason != null) {
             FilledTonalButton(
-                onClick = actions.onApprove,
+                onClick = {
+                    if (approveReason == null) actions.onApprove()
+                    else unavailable = UnavailableNotice("Approve on chain", approveReason)
+                },
                 enabled = !state.quoting,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().unavailable(approveReason != null),
+                colors = if (approveReason == null) ButtonDefaults.filledTonalButtonColors()
+                    else Unavailable.buttonColors(),
             ) {
                 Text("Approve on chain")
             }
@@ -440,7 +454,10 @@ private fun OverviewContent(
         val executeReason = state.executeNote.takeUnless { state.canExecute }
         if (state.canExecute || executeReason != null) {
             Button(
-                onClick = { if (executeReason == null) actions.onExecute() else unavailable = executeReason },
+                onClick = {
+                    if (executeReason == null) actions.onExecute()
+                    else unavailable = UnavailableNotice("Execute", executeReason)
+                },
                 enabled = !state.quoting,
                 modifier = Modifier.fillMaxWidth().unavailable(executeReason != null),
                 colors = if (executeReason == null) ButtonDefaults.buttonColors() else Unavailable.buttonColors(),
@@ -449,8 +466,8 @@ private fun OverviewContent(
             }
         }
         state.executeNote?.let { Note(it) }
-        unavailable?.let { reason ->
-            UnavailableDialog(UnavailableNotice("Execute", reason), onDismiss = { unavailable = null })
+        unavailable?.let { notice ->
+            UnavailableDialog(notice, onDismiss = { unavailable = null })
         }
         if (state.quoting) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -581,7 +598,9 @@ private fun OwnerItem(owner: OwnerStateRow) {
                     OwnerState.UNKNOWN -> Icon(Icons.Filled.Info, null, mark, tint = colors.onSurfaceVariant)
                     OwnerState.MISSING -> Unit
                 }
-                if (owner.heldHere) Text("This device", style = MaterialTheme.typography.labelMedium)
+                if (owner.heldHere || owner.ledger) {
+                    Text(if (owner.ledger) "Ledger" else "This device", style = MaterialTheme.typography.labelMedium)
+                }
             }
         },
     )

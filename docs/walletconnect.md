@@ -166,6 +166,11 @@ not expose `traceCall` yet.
   - an EOA watched with no key on this device: it can sign nothing here. A
     watched Safe is offered, since its owners sign for it; until Safe
     messages come, it answers transactions alone (*The methods*).
+- On desktop a Ledger EOA can be offered like a software EOA. Its message,
+  typed-data and transaction reviews still require a tap in Punicus and
+  explicit approval on the device, including when it signs as a Safe owner.
+  The review warns that the device may show only a hash or require blind
+  signing. No method refusal changes.
 - The dApp's name, URL and description are its own claim. The screen says
   so, and shows no icon (ruling 7).
 - `wc_sessionAuthenticate` (one-click sign-in) is not answered in v1. Signing
@@ -414,9 +419,9 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
 
 - **The digest is computed here**: Keccak-256 of
   `"\x19Ethereum Signed Message:\n" ‖ the message's length in bytes ‖ the
-  message` (EIP-191, version `0x45`). The signer port signs it as given,
-  under the account's unlock, as Send does. `eth_sign`, which would sign a
-  digest the dApp chose, stays refused.
+  message` (EIP-191, version `0x45`). The software signer signs this digest;
+  the Ledger takes the same message bytes and applies the prefix on the
+  device. `eth_sign`, which would sign a digest the dApp chose, stays refused.
 - **The message is shown as the dApp sent it.** Bytes that decode as UTF-8
   are shown as text; others as hex, marked "not text". So is text holding a
   control character other than a line break or a tab, a formatting one (a
@@ -683,10 +688,9 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   signature is kept only when it recovers to the session's account and that
   account is a current owner. `v` is normalised: 0 or 1 becomes 27 or 28.
 - **The request carries the `SafeTx`, never a bare digest**, since the
-  external wallet must have the struct to show it. The signer port of
-  docs/keys-and-signing.md takes a digest and stays as it is; the external
-  wallet is a port of its own, `ExternalWallets`, whose outcomes are sealed
-  results: signed, rejected in the wallet, expired, disconnected, or not the
+  external wallet must have the struct to show it. The external wallet is a
+  port of its own, `ExternalWallets`, whose outcomes are sealed results:
+  signed, rejected in the wallet, expired, disconnected, or not the
   expected owner.
 - **Who executes** (ruling 4): the external wallet by default when this
   device holds no key. Its `eth_sendTransaction` goes out through the
@@ -736,6 +740,8 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   2026-10-18, #50, widened 2026-11-03 on #218; docs/architecture.md), so the
   digest the user approves is computed where the use case can show what it
   is the hash of.
+  The desktop Ledger receives the EIP-712 domain separator and struct hash,
+  not a caller-supplied signing digest.
 - **The typed data's JSON is read in `:data`**, by the adapter that decodes
   the request, since `:domain` reaches JSON only through a port. It parses
   strictly, with size limits, into `:domain`'s typed-data model: the types,

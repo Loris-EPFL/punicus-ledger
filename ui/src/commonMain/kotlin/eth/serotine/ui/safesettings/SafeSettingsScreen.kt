@@ -353,7 +353,12 @@ private fun OverviewContent(state: SafeSettingsUiState.Overview, actions: SafeSe
                                 if (owner.label != null) shortAddress(owner.address) else "Not in this wallet",
                                 fontFamily = FontFamily.Monospace,
                             )
-                            if (owner.heldHere) Text("This device", style = MaterialTheme.typography.labelMedium)
+                            if (owner.heldHere) {
+                                Text(
+                                    if (owner.ledger) "Ledger" else "This device",
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
                             Row {
                                 SettingsAction(
                                     "Replace",
@@ -539,7 +544,12 @@ private fun FormContent(state: SafeSettingsUiState.Edit, actions: SafeSettingsAc
                         SelectionContainer {
                             Text(subject.address, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
                         }
-                        if (subject.heldHere) Text("This device", style = MaterialTheme.typography.labelMedium)
+                        if (subject.heldHere) {
+                            Text(
+                                if (subject.ledger) "Ledger" else "This device",
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
                     }
                 },
             )

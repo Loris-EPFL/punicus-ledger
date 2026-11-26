@@ -142,9 +142,11 @@ Activity: turned off, it stays off.
 
 ### A Ledger connected by USB (desktop only)
 
-When you confirm an address or approve an ETH transfer, Punicus talks to
-the Ledger over USB. This sends no data to a Ledger server. Myotis still
-talks to peers to verify balances and broadcast the signed transfer.
+When you confirm an address or approve a transaction or signature, Punicus
+talks to the Ledger over USB. This sends no data to a Ledger server. Myotis
+still talks to peers to verify chain state and broadcast transactions.
+Signatures for a dApp or a CoW order are delivered through the same channels
+as for a software account.
 
 ### Another wallet app (only if you hand a transfer to one)
 

@@ -1,10 +1,13 @@
 package eth.serotine.ui.safeswap
 
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Erc20
+import eth.serotine.domain.model.Eip712Hashes
 import eth.serotine.domain.model.FeeTier
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PoolKey
@@ -23,6 +26,7 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.LedgerProblem
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.Signer
@@ -247,6 +251,39 @@ class SafeSwapViewModelTest {
         assertTrue(queued.all { it.signers == listOf(world.alice.address) }, "each signed by the owner held here")
         assertEquals("0x" + queued[1].hash.hex, proposed.hash, "the swap's screen opens")
         assertEquals(listOf("made-up test password", "made-up test password"), world.signer.passwords)
+    }
+
+    @Test
+    fun aLedgerOwnerAuthorizesEachReviewedSwapStepAndRejectionStopsTheSequence() = runTest {
+        val ledger = world.alice.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        world.accounts.accounts.value = listOf(ledger, world.bob, world.dave, world.treasury)
+        val approved = mutableListOf<Digest>()
+        val signer = object : Signer by world.signer {
+            override suspend fun signTypedData(account: AccountId, hashes: Eip712Hashes, unlock: Unlock): Signing {
+                assertEquals(ledger.id, account)
+                assertIs<Unlock.WithLedger>(unlock)
+                approved += hashes.digest
+                return if (approved.size == 1) {
+                    Signing.Signed(world.recovery.sign(account.address, hashes.digest))
+                } else {
+                    Signing.LedgerFailed(LedgerProblem.REJECTED)
+                }
+            }
+        }
+        val viewModel = reviewed(signer)
+        assertEquals(2, viewModel.review.transactions.size)
+        assertTrue(viewModel.review.unlock.ledger)
+        assertTrue(viewModel.review.canSign)
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(2, approved.distinct().size)
+        val queuedApproval = world.queue.requests.value.single()
+        assertEquals(4L, queuedApproval.nonce)
+        assertEquals(approved.first(), queuedApproval.hash)
+        assertEquals(listOf(ledger.address), queuedApproval.signers)
+        assertTrue(world.signer.asked.isEmpty())
+        assertTrue(viewModel.review.error.orEmpty().isNotEmpty())
     }
 
     @Test

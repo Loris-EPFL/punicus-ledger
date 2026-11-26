@@ -95,7 +95,7 @@ sealed interface SafeSwapUiState {
 
         /** Something is typed and nothing runs: the password may sign. */
         val canSign: Boolean
-            get() = idle && unlock.password.text.isNotEmpty()
+            get() = idle && unlock.canAuthorize
 
         /** The biometric prompt may be offered now. */
         val canSignWithBiometrics: Boolean

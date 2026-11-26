@@ -1,7 +1,9 @@
 package eth.serotine.ui.safepropose
 
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SyncPolicy
@@ -181,6 +183,28 @@ class SafeProposeViewModelTest {
         viewModel.review()
         runCurrent()
         return viewModel
+    }
+
+    @Test
+    fun selectingTheLedgerOwnerDropsThePasswordAndSwitchingBackRestoresBiometrics() = runTest {
+        val ledger = world.bob.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        world.accounts.accounts.value = listOf(world.alice, ledger, world.dave, world.treasury)
+        biometrics = BiometricUnlock.On
+        val viewModel = reviewed()
+        viewModel.onPasswordChange("only for Alice")
+        viewModel.onOwnerChange(Eip55.format(ledger.address))
+        runCurrent()
+
+        assertTrue(viewModel.review.unlock.ledger)
+        assertTrue(viewModel.review.canSign)
+        assertFalse(viewModel.review.canSignWithBiometrics)
+        assertEquals("", viewModel.review.unlock.password.text)
+
+        viewModel.onOwnerChange(Eip55.format(world.alice.address))
+        runCurrent()
+        assertFalse(viewModel.review.unlock.ledger)
+        assertTrue(viewModel.review.canSignWithBiometrics)
+        assertFalse(viewModel.review.canSign, "the old wallet password is gone")
     }
 
     @Test

@@ -307,6 +307,27 @@ class SafeTxScreenTest {
     }
 
     @Test
+    fun theLedgerApprovalShowsItsDeviceWarningInsteadOfThePasswordField() {
+        show(review.copy(unlock = UnlockStep(ledger = true)))
+
+        rule.onNodeWithTag(SAFE_TX_PASSWORD_TAG).assertDoesNotExist()
+        rule.onNodeWithText("The Ledger may show only a hash", substring = true).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag(SAFE_TX_SIGN_TAG).performScrollTo().assertTextEquals("Approve on Ledger")
+            .assertIsEnabled().performClick()
+        assertEquals(listOf("confirm"), events)
+    }
+
+    @Test
+    fun aLedgerOwnerWaitingForVerificationCanTapTheGreyedOutActionForItsReason() {
+        val reason = "Ledger signing waits for the light client to catch up and check this transaction on chain."
+        show(overview.copy(canSign = false, signNote = reason))
+
+        rule.onNodeWithText("Sign").performScrollTo().performClick()
+        rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(reason)
+        assertEquals(emptyList(), events)
+    }
+
+    @Test
     fun anApprovalSignedButNotSentOffersOnlyToSendItAgainAndBackLeaves() {
         show(review.copy(notSent = NotSentItem("Signed, but not sent: no peer took it right now.", canRetry = true)))
 

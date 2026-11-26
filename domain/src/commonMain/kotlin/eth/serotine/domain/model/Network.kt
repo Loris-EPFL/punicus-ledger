@@ -81,7 +81,3 @@ enum class Network(
         fun ofChainId(chainId: Long): Network? = entries.firstOrNull { it.chainId == chainId }
     }
 }
-
-/** Whether an EOA on this network can be enrolled for plain ETH transfers with a Ledger. */
-val Network.supportsLedger: Boolean
-    get() = this == Network.ETHEREUM || this == Network.SEPOLIA

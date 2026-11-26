@@ -12,7 +12,6 @@ import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
-import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.SignedTransfer
@@ -42,8 +41,6 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
-import eth.serotine.domain.repository.LedgerDevice
-import eth.serotine.domain.repository.LedgerResult
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NameResolution
@@ -52,7 +49,7 @@ import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
-import eth.serotine.domain.repository.SignatureRecovery
+import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
@@ -74,7 +71,6 @@ import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.QuoteTransfer
 import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.ResolveRecipient
-import eth.serotine.domain.usecase.SendLedgerTransfer
 import eth.serotine.domain.usecase.SendTransfer
 import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.FakeAccounts
@@ -222,7 +218,7 @@ class SendViewModelTest {
         from: Address = daily.address,
         asset: Address? = null,
         fill: SendFill? = null,
-        ledger: LedgerDevice? = null,
+        ledger: Signer? = null,
     ): SendViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val currency = MemoryCurrencySetting()
@@ -258,7 +254,7 @@ class SendViewModelTest {
                 Network.SEPOLIA,
                 outbox,
             ),
-            SendTransfer(signer, broadcaster, sent) { 1_800_000_000 },
+            SendTransfer(ledger ?: signer, broadcaster, sent) { 1_800_000_000 },
             RebroadcastTransfer(broadcaster, sent, receipts),
             WarmFeeHistory(inputs),
             ObserveSyncPolicy(policy),
@@ -270,17 +266,7 @@ class SendViewModelTest {
             fill = fill,
             timeSource = clock,
             now = { wallClock },
-            sendLedgerTransfer = ledger?.let {
-                SendLedgerTransfer(
-                    it,
-                    object : SignatureRecovery {
-                        override fun recover(digest: Digest, signature: Signature) = daily.address
-                    },
-                    broadcaster,
-                    sent,
-                    accounts,
-                )
-            },
+            offersLedgerSigning = ledger != null,
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -297,9 +283,9 @@ class SendViewModelTest {
     }
 
     /** Composes 0.1 ETH to Savings, picked from the wallet's accounts, and asks for the review. */
-    private fun TestScope.reviewed(ledger: LedgerDevice? = null): SendViewModel {
+    private fun TestScope.reviewed(): SendViewModel {
         holding()
-        val viewModel = viewModel(ledger = ledger)
+        val viewModel = viewModel()
         viewModel.onPickAccount(viewModel.compose.accounts.single().address)
         viewModel.onAmountChange("0.1")
         viewModel.review()
@@ -308,23 +294,31 @@ class SendViewModelTest {
     }
 
     @Test
-    fun aLedgerReviewWaitsForDeviceApprovalWithoutUsingTheSoftwareSigner() = runTest {
-        val path = LedgerPath.DEFAULT
-        accounts.setCustody(daily.id, AccountCustody.Ledger(path))
-        val approval = CompletableDeferred<LedgerResult<Signature>>()
+    fun aLedgerTokenTransferWaitsForApprovalOfTheTokenCallBeforeBroadcast() = runTest {
+        accounts.setCustody(daily.id, AccountCustody.Ledger(LedgerPath.DEFAULT))
+        val approval = CompletableDeferred<Signing>()
         val asked = CompletableDeferred<Eip1559Transaction>()
-        val viewModel = reviewed(object : LedgerDevice {
-            override suspend fun confirmAddress(path: LedgerPath) = error("not enrolling")
+        val ledger = object : Signer {
+            override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing =
+                error("A Ledger account must authorize the transaction, not a bare digest")
 
             override suspend fun signTransaction(
-                path: LedgerPath,
-                expectedAddress: Address,
+                account: AccountId,
                 transaction: Eip1559Transaction,
-            ): LedgerResult<Signature> {
+                unlock: Unlock,
+            ): Signing {
+                assertEquals(daily.id, account)
+                assertIs<Unlock.WithLedger>(unlock)
                 asked.complete(transaction)
                 return approval.await()
             }
-        })
+        }
+        holding()
+        val viewModel = viewModel(asset = usdc.address, ledger = ledger)
+        viewModel.onPickAccount(viewModel.compose.accounts.single().address)
+        viewModel.onAmountChange("12")
+        viewModel.review()
+        runCurrent()
 
         assertTrue(viewModel.review.canSign)
         viewModel.sign()
@@ -333,10 +327,13 @@ class SendViewModelTest {
         assertTrue(broadcaster.sent.isEmpty())
         assertTrue(signer.asked.isEmpty())
 
-        approval.complete(LedgerResult.Ok(FakeSigner.SIGNATURE))
+        val transaction = asked.await()
+        assertEquals(usdc.address, transaction.to)
+        assertTrue(transaction.hasCallData)
+        approval.complete(Signing.Signed(FakeSigner.SIGNATURE))
         runCurrent()
         assertIs<SendUiState.Sent>(viewModel.uiState.value)
-        assertContentEquals(asked.await().encodeSigned(FakeSigner.SIGNATURE), broadcaster.sent.single())
+        assertContentEquals(transaction.encodeSigned(FakeSigner.SIGNATURE), broadcaster.sent.single())
         assertTrue(signer.asked.isEmpty())
     }
 

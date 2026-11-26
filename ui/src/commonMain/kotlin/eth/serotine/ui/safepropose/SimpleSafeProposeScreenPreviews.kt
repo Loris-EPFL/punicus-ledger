@@ -84,6 +84,11 @@ private fun SimpleSafeProposeReviewPreview() = SimpleSafeProposePreview(review)
 @Composable
 private fun SimpleSafeProposeReviewDarkPreview() = SimpleSafeProposePreview(review, darkTheme = true)
 
+@Preview
+@Composable
+private fun SimpleSafeProposeReviewLedgerPreview() =
+    SimpleSafeProposePreview(review.copy(unlock = UnlockStep(ledger = true)))
+
 /** A proposal refused: said with no block. */
 @Preview
 @Composable
@@ -113,6 +118,7 @@ internal val simpleSafeProposeScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("refused") { SimpleSafeProposeRefusedPreview() },
     ScreenPreview("review") { SimpleSafeProposeReviewPreview() },
     ScreenPreview("review-dark") { SimpleSafeProposeReviewDarkPreview() },
+    ScreenPreview("review-ledger") { SimpleSafeProposeReviewLedgerPreview() },
     ScreenPreview("draft") { SimpleSafeProposeDraftPreview() },
     ScreenPreview("draft-dark") { SimpleSafeProposeDraftDarkPreview() },
 )

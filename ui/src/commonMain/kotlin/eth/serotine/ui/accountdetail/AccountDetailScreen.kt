@@ -403,7 +403,7 @@ fun AccountDetailScreen(
     }
     val send: (String?) -> Unit = { contract ->
         val ready = state as? AccountDetailUiState.Ready
-        val reason = ready?.sendReasonFor(contract)
+        val reason = ready?.sendReason
         when {
             // A Gnosis Pay account controlled from here: its transfers go through its Delay, on its own screen.
             reason == null && ready?.sendsThroughGnosisPay == true -> onGnosisPay()
@@ -902,7 +902,7 @@ private fun Assets(
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         state.assets.forEach { asset ->
             val contract = asset.contract
-            val canSend = state.sendReasonFor(contract) == null
+            val canSend = state.sendReason == null
             // Long press (right click): docs/wallet-ux.md, screen 5. Each action is also behind a
             // visible button: Send and Swap above (the asset chosen there), the others in Settings → Tokens.
             val actions = listOfNotNull(
@@ -1258,7 +1258,7 @@ private fun QueueItem(row: QueueRow, onClick: () -> Unit) {
 }
 
 /**
- * A Safe's owners with their blockies, "this device" on the ones whose keys are held here, and
+ * A Safe's owners with their blockies, custody labels for the owners that can sign here, and
  * the threshold; the modules and the guard follow them (docs/wallet-ux.md, screen 16). Safe
  * settings, above them, opens the screen that shows and changes them ([onSafeSettings], screen 28),
  * which says itself when they cannot be read or changed; greyed out unless [settingsAvailable]
@@ -1311,7 +1311,12 @@ private fun SafeOwners(
                             )
                         },
                         trailingContent = {
-                            if (owner.heldHere) Text("This device", style = MaterialTheme.typography.labelMedium)
+                            if (owner.heldHere) {
+                                Text(
+                                    if (owner.ledger) "Ledger" else "This device",
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
                         },
                     )
                 }

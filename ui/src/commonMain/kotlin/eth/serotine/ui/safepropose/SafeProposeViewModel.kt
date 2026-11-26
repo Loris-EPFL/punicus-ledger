@@ -3,6 +3,7 @@ package eth.serotine.ui.safepropose
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
@@ -46,14 +47,13 @@ import eth.serotine.domain.usecase.SafeTxSignCheck
 import eth.serotine.domain.usecase.SafeTxSigning
 import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.domain.usecase.ownersHeld
+import eth.serotine.domain.usecase.safeOwnerAccount
 import eth.serotine.ui.components.AccountChoice
 import eth.serotine.ui.components.AssetOption
 import eth.serotine.ui.components.CHECK_TOOK_THE_TIME
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.MIN_PROMPT_TIME
-import eth.serotine.ui.components.PROMPT_TIMED_OUT
-import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.RecipientState
 import eth.serotine.ui.components.ResolvedAgain
@@ -63,6 +63,7 @@ import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.TransferForm
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.ZERO_ADDRESS
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.addressFieldLabel
 import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.amountHint
@@ -71,9 +72,12 @@ import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.exactAmount
+import eth.serotine.ui.components.forCustody
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.promptDeadline
+import eth.serotine.ui.components.promptTimedOut
+import eth.serotine.ui.components.promptTooLate
 import eth.serotine.ui.components.recipientHint
 import eth.serotine.ui.components.recipientItem
 import eth.serotine.ui.components.recipientNote
@@ -239,6 +243,7 @@ class SafeProposeViewModel(
             val unlock: UnlockStep,
             val safeAccount: Account,
             val accounts: List<Account>,
+            val localBiometrics: Boolean,
             val refreshing: Boolean = false,
             val signing: Boolean = false,
             /** While [signing], the Safe is still being checked on chain: nothing is signed yet. */
@@ -441,7 +446,10 @@ class SafeProposeViewModel(
             if (current is Step.Reviewing && current.idle && owner in current.proposal.safe.ownersHeld) {
                 current.copy(
                     owner = owner,
-                    unlock = current.unlock.copy(error = null),
+                    unlock = current.unlock.forCustody(
+                        current.proposal.safe.ownersInWallet.firstOrNull { it.address == owner }?.custody,
+                        current.localBiometrics,
+                    ).copy(error = null),
                     error = null,
                     simpleError = null,
                 )
@@ -461,7 +469,7 @@ class SafeProposeViewModel(
         step.value = current.copy(refreshing = true, hidden = false, error = null, simpleError = null, unlock = cleared)
         job = viewModelScope.launch {
             val accounts = model.value?.accounts ?: current.accounts
-            val next = proposed(current.request, current.owner, current.unlock, current.safeAccount, accounts)
+            val next = proposed(current.request, current.owner, current.localBiometrics, current.safeAccount, accounts)
             step.update { latest ->
                 when {
                     latest !is Step.Reviewing || !latest.refreshing -> latest
@@ -478,7 +486,10 @@ class SafeProposeViewModel(
                             owner = next.owner,
                             accounts = next.accounts,
                             refreshing = false,
-                            unlock = latest.unlock.copy(error = note),
+                            unlock = latest.unlock.forCustody(
+                                next.proposal.safe.ownersInWallet.firstOrNull { it.address == next.owner }?.custody,
+                                latest.localBiometrics,
+                            ).copy(error = note),
                             unsaved = unsaved,
                             error = if (latest.unsaved != null && unsaved == null) UNSAVED_REPLACED else latest.error,
                             askingToDrop = latest.askingToDrop && unsaved != null,
@@ -504,7 +515,7 @@ class SafeProposeViewModel(
     /** The password field now reads [text]. */
     fun onPasswordChange(text: String) = step.update { current ->
         when {
-            current is Step.Reviewing && !current.signing ->
+            current is Step.Reviewing && !current.signing && !current.unlock.ledger ->
                 current.copy(unlock = current.unlock.copy(password = WalletPassword(text), error = null))
             current is Step.Drafting && !current.signing ->
                 current.copy(unlock = current.unlock.copy(password = WalletPassword(text), error = null))
@@ -512,7 +523,7 @@ class SafeProposeViewModel(
         }
     }
 
-    /** Signs the reviewed proposal with the typed wallet password, and queues it. */
+    /** Authorizes the proposal with its owner's chosen custody, and queues it. */
     fun sign() {
         (step.value as? Step.Drafting)?.let { draft ->
             val password = draft.unlock.password
@@ -520,9 +531,14 @@ class SafeProposeViewModel(
             return hold(draft, Unlock.WithPassword(password))
         }
         val current = step.value as? Step.Reviewing ?: return
-        val password = current.unlock.password
-        if (!current.idle || password.text.isEmpty() || reproposed(current)) return
-        sign(current, Unlock.WithPassword(password))
+        if (!current.idle || !current.unlock.canAuthorize || reproposed(current)) return
+        val notAfter = if (current.unlock.ledger) {
+            promptDeadline(current.proposedAt) ?: return refresh(note = current.unlock.promptTooLate())
+        } else {
+            null
+        }
+        val unlock = current.unlock.approval(notAfter) ?: return
+        sign(current, unlock)
     }
 
     /** Signs the reviewed proposal with a fingerprint or face, and queues it. */
@@ -547,7 +563,7 @@ class SafeProposeViewModel(
         val to = Eip55.format(current.request.to.address)
         val warning = option.warning?.let { " ($it)" }.orEmpty()
         // The prompt gets what is left of the proposal's age: past it, nothing is signed, and it is made again.
-        val notAfter = promptDeadline(current.proposedAt) ?: return refresh(note = PROMPT_TOO_LATE)
+        val notAfter = promptDeadline(current.proposedAt) ?: return refresh(note = current.unlock.promptTooLate())
         sign(current, Unlock.WithBiometrics("Sign a Safe transaction of $label: send $amount$warning to $to", notAfter))
     }
 
@@ -611,8 +627,11 @@ class SafeProposeViewModel(
         step.value = review.copy(signing = true, checking = true, error = null, simpleError = null, unlock = unlocked)
         // The check has what is left of the proposal's minute, less the prompt's least time when
         // the prompt signs: past that the signature could not be made in time anyway.
-        val checkUntil = (unlock as? Unlock.WithBiometrics)?.notAfter?.let { it - MIN_PROMPT_TIME }
-            ?: (review.proposedAt + QUOTE_MAX_AGE)
+        val checkUntil = when (unlock) {
+            is Unlock.WithBiometrics -> unlock.notAfter
+            is Unlock.WithLedger -> unlock.notAfter
+            is Unlock.WithPassword -> null
+        }?.minus(MIN_PROMPT_TIME) ?: (review.proposedAt + QUOTE_MAX_AGE)
         job = viewModelScope.launch {
             // The Safe is checked first, which leaving the screen or Back cancels: no key is asked
             // for, and no prompt shown, until it has passed.
@@ -675,7 +694,9 @@ class SafeProposeViewModel(
                 }
             }
             // The prompt outlived the proposal's age: nothing was signed, and it is made again.
-            if ((signing as? SafeTxSigning.NotSigned)?.signing == Signing.TimedOut) refresh(note = PROMPT_TIMED_OUT)
+            if ((signing as? SafeTxSigning.NotSigned)?.signing == Signing.TimedOut) {
+                refresh(note = review.unlock.promptTimedOut())
+            }
             // Hidden while it ran and nothing was queued: the proposal is from before, so it is made again.
             reproposeIfHidden()
         }
@@ -683,13 +704,13 @@ class SafeProposeViewModel(
 
     /**
      * The review of [request], proposed now, signed by [owner] (the first held when that is no
-     * owner any more) with [unlock] (a new one when null), or the form saying why there is none.
+     * owner any more), or the form saying why there is none. A refresh retains the offered [localBiometrics].
      * A name is resolved again first: what is proposed is the address the name has now.
      */
     private suspend fun proposed(
         request: Request,
         owner: Address?,
-        unlock: UnlockStep?,
+        localBiometrics: Boolean?,
         safeAccount: Account,
         accounts: List<Account>,
         lenient: Boolean = false,
@@ -723,14 +744,18 @@ class SafeProposeViewModel(
         val held = proposal.safe.ownersHeld
         val signer = owner?.takeIf { it in held } ?: held.firstOrNull()
             ?: return Step.Composing(error = NO_OWNER_HELD)
+        val offered = localBiometrics ?: biometricsOffered()
         return Step.Reviewing(
             request.copy(to = to),
             proposal,
             readFrom,
             signer,
-            unlock ?: UnlockStep(biometrics = biometricsOffered()),
+            UnlockStep(biometrics = offered).forCustody(
+                proposal.safe.ownersInWallet.firstOrNull { it.address == signer }?.custody,
+            ),
             safeAccount,
             accounts,
+            offered,
         )
     }
 
@@ -885,9 +910,15 @@ class SafeProposeViewModel(
                             !lenient -> Sender.Checking
                             kept == null -> Sender.Cannot(NEVER_VERIFIED)
                             else -> {
-                                val all = (list as? AccountList.Loaded)?.accounts.orEmpty()
-                                val held = kept.state.ownersHeld(all.filter { it.address in kept.state.owners })
-                                if (held.isEmpty()) Sender.Cannot(WATCH_ONLY) else Sender.Kept(account, kept, held)
+                                val held = kept.state.ownersHeld(list.accounts, network)
+                                val local = held.filter {
+                                    list.accounts.safeOwnerAccount(network, it)?.custody == AccountCustody.InKeyStore
+                                }
+                                when {
+                                    local.isNotEmpty() -> Sender.Kept(account, kept, local)
+                                    held.isNotEmpty() -> Sender.Cannot(LEDGER_WAITS_TO_PROPOSE)
+                                    else -> Sender.Cannot(WATCH_ONLY)
+                                }
                             }
                         }
                         SafeReading.NotASafe -> Sender.Cannot(NOT_A_SAFE)
@@ -1167,6 +1198,8 @@ class SafeProposeViewModel(
     }
 
     private companion object {
+        const val LEDGER_WAITS_TO_PROPOSE =
+            "A Ledger owner can propose a transaction once the light client catches up and verifies the Safe."
         const val NEVER_VERIFIED = "The light client is still syncing, and this Safe's owners and nonce have " +
             "never been verified on this device, so nothing can be prepared from it yet. Punicus keeps trying."
         const val NO_NAME_IN_A_DRAFT = "The light client is still syncing, and a name is resolved only once it " +

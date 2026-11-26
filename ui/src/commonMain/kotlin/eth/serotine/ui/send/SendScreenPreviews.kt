@@ -443,16 +443,16 @@ private fun SendReviewSigningPreview() = SendPreview(review.copy(signing = true)
 
 @Preview
 @Composable
-private fun SendLedgerReviewPreview() = SendPreview(review.copy(ledger = true))
+private fun SendLedgerReviewPreview() = SendPreview(review.copy(unlock = UnlockStep(ledger = true)))
 
 @Preview
 @Composable
-private fun SendLedgerApprovePreview() = SendPreview(review.copy(ledger = true, signing = true))
+private fun SendLedgerApprovePreview() = SendPreview(review.copy(unlock = UnlockStep(ledger = true), signing = true))
 
 @Preview
 @Composable
 private fun SendLedgerRejectedPreview() =
-    SendPreview(review.copy(ledger = true, unlock = UnlockStep(error = "Rejected on the Ledger. Nothing was sent.")))
+    SendPreview(review.copy(unlock = UnlockStep(ledger = true, error = "You declined the request on the Ledger.")))
 
 @Preview
 @Composable

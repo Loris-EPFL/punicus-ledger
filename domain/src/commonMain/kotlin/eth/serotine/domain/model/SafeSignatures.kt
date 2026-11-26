@@ -135,8 +135,11 @@ data class SigningRequest private constructor(
     val tx: SafeTx,
     val signatures: List<SafeSignature.Ecdsa>,
 ) {
-    /** The hash its owners sign, recomputed from [tx] for [safe] on [network]. */
-    val hash: Digest = tx.hash(network.chainId, safe)
+    /** EIP-712 components recomputed from [tx] for [safe] on [network]. */
+    internal val hashes: Eip712Hashes = tx.hashes(network.chainId, safe)
+
+    /** The hash its owners sign, computed from [hashes]. */
+    val hash: Digest get() = hashes.digest
 
     /** Its Safe nonce. */
     val nonce: Long

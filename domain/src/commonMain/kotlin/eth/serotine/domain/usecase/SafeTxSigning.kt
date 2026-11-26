@@ -553,12 +553,12 @@ class SignSafeTx(
     internal suspend fun signature(checked: SafeTxSignCheck.Ready, unlock: Unlock): SafeTxSignature {
         val request = checked.request
         val owner = checked.owner
-        val signature = when (val signing = signer.sign(owner, request.hash, unlock)) {
+        val signing = signer.signTypedData(AccountId(request.network, owner), request.hashes, unlock)
+        val signature = when (signing) {
             is Signing.Signed -> signing.signature
             else -> return SafeTxSignature.NotMade(SafeTxSigning.NotSigned(signing))
         }
-        // The key store's signature is checked like a co-signer's: one that recovers to another
-        // address is never kept, nor shared.
+        // This signature is checked like a co-signer's: one that recovers to another address is never kept or shared.
         if (recovery.recover(request.hash, signature) != owner) {
             return SafeTxSignature.NotMade(SafeTxSigning.Refused(SafeTxRefusal.BadSignature(owner)))
         }

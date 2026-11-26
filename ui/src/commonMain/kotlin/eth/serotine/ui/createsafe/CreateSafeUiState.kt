@@ -122,7 +122,7 @@ sealed interface CreateSafeUiState {
 
         /** A quote stands, something is typed, and nothing else runs or has run: the password may sign. */
         val canSign: Boolean
-            get() = idle && quote != null && unlock.password.text.isNotEmpty()
+            get() = idle && quote != null && unlock.canAuthorize
 
         /** The biometric prompt may be offered now. */
         val canSignWithBiometrics: Boolean

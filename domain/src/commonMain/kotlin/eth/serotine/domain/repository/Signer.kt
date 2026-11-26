@@ -1,15 +1,18 @@
 package eth.serotine.domain.repository
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.Eip1559Transaction
+import eth.serotine.domain.model.Eip712Hashes
+import eth.serotine.domain.model.PersonalMessage
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.WalletPassword
 import kotlin.time.TimeMark
 
 /**
- * The signer port (docs/keys-and-signing.md, *Where it lives in the architecture*): a signing
- * request in, a signature out. :data implements it in the key adapter, the one place a key
- * exists, and only inside one call; nothing that comes back up is key material.
+ * A reviewed signing request in, a signature out. Keys stay in the key store or on the
+ * signing device; nothing that comes back is key material.
  */
 interface Signer {
     /**
@@ -23,9 +26,33 @@ interface Signer {
      * unlock's deadline is applied, never ignored ([Signing.TimedOut]). Never throws.
      */
     suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing
+
+    /**
+     * Signs the exact [transaction] reviewed for [account] on its network, authorized by [unlock].
+     * The default implementation supports local keys only.
+     */
+    suspend fun signTransaction(account: AccountId, transaction: Eip1559Transaction, unlock: Unlock): Signing =
+        when {
+            transaction.chainId != account.network.chainId -> Signing.Unavailable
+            unlock is Unlock.WithLedger -> Signing.LedgerFailed(LedgerProblem.UNAVAILABLE)
+            else -> sign(account.address, transaction.signingDigest(), unlock)
+        }
+
+    /** Signs the reviewed EIP-712 [hashes] for [account] under [unlock]. The default supports local keys only. */
+    suspend fun signTypedData(account: AccountId, hashes: Eip712Hashes, unlock: Unlock): Signing =
+        if (unlock is Unlock.WithLedger) Signing.LedgerFailed(LedgerProblem.UNAVAILABLE)
+        else sign(account.address, hashes.digest, unlock)
+
+    /**
+     * Signs the literal [message] with EIP-191 for [account] under [unlock].
+     * The default implementation supports local keys only.
+     */
+    suspend fun signPersonalMessage(account: AccountId, message: PersonalMessage, unlock: Unlock): Signing =
+        if (unlock is Unlock.WithLedger) Signing.LedgerFailed(LedgerProblem.UNAVAILABLE)
+        else sign(account.address, message.digest(), unlock)
 }
 
-/** How [Signer.sign] opens the account's envelope. */
+/** How the signer authorizes one reviewed request. */
 sealed interface Unlock {
 
     /** With [password], the wallet password: the path every envelope has. */
@@ -42,12 +69,15 @@ sealed interface Unlock {
      * nothing is signed ([Signing.TimedOut]): a quote past its age is never signed.
      */
     data class WithBiometrics(val reason: String, val notAfter: TimeMark? = null) : Unlock
+
+    /** Approve on the enrolled Ledger by [notAfter]; a bare digest never accepts this unlock. */
+    data class WithLedger(val notAfter: TimeMark) : Unlock
 }
 
-/** The outcome of [Signer.sign]. */
+/** The outcome of a [Signer] request. */
 sealed interface Signing {
 
-    /** [signature] is [Signer.sign]'s digest signed by the account's key. */
+    /** [signature] is the account's signature of the request's exact digest. */
     data class Signed(val signature: Signature) : Signing
 
     /** The password does not open the account's envelope. Nothing was signed. */
@@ -69,8 +99,8 @@ sealed interface Signing {
     data object Cancelled : Signing
 
     /**
-     * Not signed by the unlock's deadline ([Unlock.WithBiometrics.notAfter]): the prompt was
-     * dismissed, and nothing was signed. What it was to sign is too old by now, and is made again.
+     * No usable signature by the unlock's deadline. The authorization is dismissed and what
+     * it was to sign must be reviewed again.
      */
     data object TimedOut : Signing
 
@@ -79,6 +109,9 @@ sealed interface Signing {
      * the password still works.
      */
     data class BiometricsUnusable(val reason: BiometricUnusable) : Signing
+
+    /** The device signing request failed for [problem]; no local-key fallback was attempted. */
+    data class LedgerFailed(val problem: LedgerProblem) : Signing
 }
 
 /** Why [Unlock.WithBiometrics] cannot open an envelope. */

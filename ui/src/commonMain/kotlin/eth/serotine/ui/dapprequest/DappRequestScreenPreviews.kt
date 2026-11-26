@@ -195,6 +195,19 @@ private fun DappRequestBiometricsPreview() =
 
 @Preview
 @Composable
+private fun DappRequestLedgerMessagePreview() = DappRequestPreview(
+    message.copy(accountName = "Ledger", unlock = UnlockStep(ledger = true)),
+)
+
+@Preview
+@Composable
+private fun DappRequestLedgerTypedWaitingPreview() = DappRequestPreview(
+    approval.copy(accountName = "Ledger", unlock = UnlockStep(ledger = true), busy = true),
+    darkTheme = true,
+)
+
+@Preview
+@Composable
 private fun DappRequestOtherSitePreview() = DappRequestPreview(
     signIn.copy(
         signIn = signIn.signIn.map { if (it.label == "Site") it.copy(value = "app.example.org.evil.test") else it },
@@ -377,6 +390,8 @@ internal val dappRequestScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("sign-in") { DappRequestSignInPreview() },
     ScreenPreview("sign-in-dark") { DappRequestSignInDarkPreview() },
     ScreenPreview("biometrics") { DappRequestBiometricsPreview() },
+    ScreenPreview("ledger-message") { DappRequestLedgerMessagePreview() },
+    ScreenPreview("ledger-typed-waiting-dark") { DappRequestLedgerTypedWaitingPreview() },
     ScreenPreview("other-site") { DappRequestOtherSitePreview() },
     ScreenPreview("message") { DappRequestMessagePreview() },
     ScreenPreview("hex") { DappRequestHexPreview() },

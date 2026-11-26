@@ -26,6 +26,13 @@ sealed interface AccountCustody {
     data class Ledger(val path: LedgerPath) : AccountCustody
 }
 
+/** Whether this custody can authorize a supported signing request, without exporting a key. */
+val AccountCustody.canSign: Boolean
+    get() = when (this) {
+        AccountCustody.InKeyStore, is AccountCustody.Ledger -> true
+        AccountCustody.Watched -> false
+    }
+
 /**
  * What names one account of the wallet: an [address] on a [network] (docs/networks.md, *An
  * account is an address on a network*). The same address on two networks is two accounts,
@@ -66,8 +73,8 @@ data class Account(
         require(label.isNotBlank()) { "an account needs a label" }
         require(ensName == null || label == ensName) { "an account that follows an ENS name is named by it" }
         if (custody is AccountCustody.Ledger) {
-            require(kind == AccountKind.EOA && network.supportsLedger && perApp == null) {
-                "a Ledger account must be an ordinary Ethereum or Sepolia EOA"
+            require(kind == AccountKind.EOA && perApp == null) {
+                "a Ledger account must be an ordinary EOA"
             }
         }
     }

@@ -36,9 +36,9 @@ What the app does today:
   held, or watch any address, which is told apart from verified code and
   storage as an EOA (delegated or not), a Safe or another contract. Accounts
   are kept across restarts and can be renamed and removed.
-- **Ledger on desktop.** Add an address confirmed on a USB Ledger and
-  approve plain ETH transfers on it. Ethereum and Sepolia only. No seed
-  import, Ledger web service, or Node process. See
+- **Ledger on desktop.** Add a USB Ledger account on Ethereum, Gnosis Chain
+  or Sepolia and approve transactions, Safe co-signatures and dApp requests
+  on the device. No seed import, Ledger web service, or Node process. See
   [setup and limits](docs/keys-and-signing.md#usb-ledger-on-desktop).
 - **Keys.** An imported or created seed is held in an envelope that opens only
   with the Argon2id-stretched wallet password AND, where the device has one,

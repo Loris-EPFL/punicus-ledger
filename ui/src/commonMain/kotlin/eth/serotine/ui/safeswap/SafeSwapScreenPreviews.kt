@@ -161,6 +161,10 @@ private fun SafeSwapReviewDarkPreview() = SafeSwapPreview(review, darkTheme = tr
 
 @Preview
 @Composable
+private fun SafeSwapReviewLedgerPreview() = SafeSwapPreview(review.copy(unlock = UnlockStep(ledger = true)))
+
+@Preview
+@Composable
 private fun SafeSwapReviewSwapOnlyPreview() = SafeSwapPreview(
     review.copy(
         transactions = listOf(swap.copy(nonce = "Safe nonce 12")),
@@ -266,6 +270,7 @@ internal val safeSwapScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("propose-again") { SafeSwapProposeAgainPreview() },
     ScreenPreview("review") { SafeSwapReviewPreview() },
     ScreenPreview("review-dark") { SafeSwapReviewDarkPreview() },
+    ScreenPreview("review-ledger") { SafeSwapReviewLedgerPreview() },
     ScreenPreview("review-swap-only") { SafeSwapReviewSwapOnlyPreview() },
     ScreenPreview("review-reset-first") { SafeSwapReviewResetFirstPreview() },
     ScreenPreview("review-replaces") { SafeSwapReviewReplacesPreview() },

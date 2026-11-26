@@ -251,6 +251,10 @@ private fun SafeSettingsReviewDarkPreview() = SafeSettingsPreview(review, darkTh
 
 @Preview
 @Composable
+private fun SafeSettingsReviewLedgerPreview() = SafeSettingsPreview(review.copy(unlock = UnlockStep(ledger = true)))
+
+@Preview
+@Composable
 private fun SafeSettingsReviewQueuedPreview() = SafeSettingsPreview(
     review.copy(
         queued = "1 transaction queued on this device runs before it.",
@@ -309,6 +313,7 @@ internal val safeSettingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("remove-guard") { SafeSettingsRemoveGuardPreview() },
     ScreenPreview("review") { SafeSettingsReviewPreview() },
     ScreenPreview("review-dark") { SafeSettingsReviewDarkPreview() },
+    ScreenPreview("review-ledger") { SafeSettingsReviewLedgerPreview() },
     ScreenPreview("review-queued") { SafeSettingsReviewQueuedPreview() },
     ScreenPreview("review-not-saved") { SafeSettingsReviewNotSavedPreview() },
     ScreenPreview("review-asking-to-drop") { SafeSettingsReviewAskingToDropPreview() },

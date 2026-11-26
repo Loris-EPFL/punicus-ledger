@@ -224,6 +224,7 @@ sealed interface DappSafeSigning {
  */
 class SignDappSafeTx(
     private val requests: DappRequests,
+    private val clock: () -> Long = ::epochSecondsNow,
     /** The Safe transaction signer of each network: [SignSafeTx] refuses a request of another network. */
     private val signSafeTx: (Network) -> SignSafeTx,
 ) {
@@ -233,6 +234,7 @@ class SignDappSafeTx(
 
     /** Signs [checked] with [unlock], ties [proposal]'s request to it, and queues it. */
     suspend fun sign(proposal: DappSafeProposal, checked: SafeTxSignCheck.Ready, unlock: Unlock): DappSafeSigning {
+        if (unlock is Unlock.WithLedger && !stillWaiting(proposal)) return DappSafeSigning.NotRecorded
         val signSafeTx = signerOf(proposal)
         val signed = when (val made = signSafeTx.signature(checked, unlock)) {
             is SafeTxSignature.Made -> made.request
@@ -243,9 +245,18 @@ class SignDappSafeTx(
             }
         }
         // Not tied, it is dropped: never queued, never shared, so it can never run for this request.
+        if (unlock is Unlock.WithLedger) {
+            if (!stillWaiting(proposal)) return DappSafeSigning.NotRecorded
+            if (unlock.notAfter.hasPassedNow()) return DappSafeSigning.NotSigned(Signing.TimedOut)
+        }
         if (!requests.recordSafeTx(proposal.id, signed.hash)) return DappSafeSigning.NotRecorded
         val queued = signSafeTx.queue(checked, signed)
         return DappSafeSigning.Signed(queued.request, queued.saved)
+    }
+
+    private suspend fun stillWaiting(proposal: DappSafeProposal): Boolean {
+        val request = requests.observe().first().firstOrNull { it.id == proposal.id } ?: return false
+        return request == proposal.review.request && request.expiresAtSeconds > clock()
     }
 
     private fun signerOf(proposal: DappSafeProposal): SignSafeTx = signSafeTx(proposal.proposal.request.network)

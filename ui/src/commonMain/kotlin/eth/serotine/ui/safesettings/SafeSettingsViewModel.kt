@@ -11,6 +11,7 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeSettingsChange
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SafeState
@@ -40,18 +41,20 @@ import eth.serotine.ui.components.GUARD_REMOVED_WARNING
 import eth.serotine.ui.components.MIN_PROMPT_TIME
 import eth.serotine.ui.components.MODULE_DISABLED_WARNING
 import eth.serotine.ui.components.MODULE_ENABLED_REFUSAL
-import eth.serotine.ui.components.PROMPT_TIMED_OUT
-import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.SendFrom
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
+import eth.serotine.ui.components.forCustody
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.promptDeadline
+import eth.serotine.ui.components.promptTimedOut
+import eth.serotine.ui.components.promptTooLate
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
 import eth.serotine.ui.gnosispay.GnosisPayTexts
@@ -171,6 +174,7 @@ class SafeSettingsViewModel(
             val safeAccount: Account,
             val accounts: List<Account>,
             val keys: Set<Address>,
+            val localBiometrics: Boolean,
             val refreshing: Boolean = false,
             val signing: Boolean = false,
             /** While [signing], the Safe is still being checked on chain: nothing is signed yet. */
@@ -339,7 +343,14 @@ class SafeSettingsViewModel(
         val owner = Address.parse(address) ?: return
         step.update { current ->
             if (current is Step.Reviewing && current.idle && owner in current.proposal.safe.ownersHeld) {
-                current.copy(owner = owner, unlock = current.unlock.copy(error = null), error = null)
+                current.copy(
+                    owner = owner,
+                    unlock = current.unlock.forCustody(
+                        current.proposal.safe.ownersInWallet.firstOrNull { it.address == owner }?.custody,
+                        current.localBiometrics,
+                    ).copy(error = null),
+                    error = null,
+                )
             } else {
                 current
             }
@@ -360,7 +371,7 @@ class SafeSettingsViewModel(
                 current.form,
                 current.change,
                 current.owner,
-                current.unlock,
+                current.localBiometrics,
                 Model.Shown(
                     current.safeAccount,
                     current.proposal.safe,
@@ -383,7 +394,10 @@ class SafeSettingsViewModel(
                             accounts = next.accounts,
                             keys = next.keys,
                             refreshing = false,
-                            unlock = latest.unlock.copy(error = note),
+                            unlock = latest.unlock.forCustody(
+                                next.proposal.safe.ownersInWallet.firstOrNull { it.address == next.owner }?.custody,
+                                latest.localBiometrics,
+                            ).copy(error = note),
                             unsaved = unsaved,
                             error = if (latest.unsaved != null && unsaved == null) UNSAVED_REPLACED else latest.error,
                             askingToDrop = latest.askingToDrop && unsaved != null,
@@ -410,19 +424,24 @@ class SafeSettingsViewModel(
 
     /** The password field now reads [text]. */
     fun onPasswordChange(text: String) = step.update { current ->
-        if (current is Step.Reviewing && !current.signing) {
+        if (current is Step.Reviewing && !current.signing && !current.unlock.ledger) {
             current.copy(unlock = current.unlock.copy(password = WalletPassword(text), error = null))
         } else {
             current
         }
     }
 
-    /** Signs the reviewed proposal with the typed wallet password, and queues it. */
+    /** Authorizes the reviewed proposal with its owner's chosen method, and queues it. */
     fun sign() {
         val current = step.value as? Step.Reviewing ?: return
-        val password = current.unlock.password
-        if (!current.idle || password.text.isEmpty() || reproposed(current)) return
-        sign(current, Unlock.WithPassword(password))
+        if (!current.idle || !current.unlock.canAuthorize || reproposed(current)) return
+        val notAfter = if (current.unlock.ledger) {
+            promptDeadline(current.proposedAt) ?: return refresh(note = current.unlock.promptTooLate())
+        } else {
+            null
+        }
+        val unlock = current.unlock.approval(notAfter) ?: return
+        sign(current, unlock)
     }
 
     /** Signs the reviewed proposal with a fingerprint or face, and queues it. */
@@ -436,7 +455,7 @@ class SafeSettingsViewModel(
         val warning = action.warning?.let { " ($it)" }.orEmpty()
         val label = current.safeAccount.label
         // The prompt gets what is left of the proposal's age: past it, nothing is signed, and it is made again.
-        val notAfter = promptDeadline(current.proposedAt) ?: return refresh(note = PROMPT_TOO_LATE)
+        val notAfter = promptDeadline(current.proposedAt) ?: return refresh(note = current.unlock.promptTooLate())
         val text = "Sign a Safe transaction of $label: ${action.title.replaceFirstChar(Char::lowercase)}" +
             "$named$notes$warning"
         sign(current, Unlock.WithBiometrics(text, notAfter))
@@ -501,8 +520,11 @@ class SafeSettingsViewModel(
         step.value = review.copy(signing = true, checking = true, error = null, unlock = unlocked)
         // The check has what is left of the proposal's minute, less the prompt's least time when
         // the prompt signs: past that the signature could not be made in time anyway.
-        val checkUntil = (unlock as? Unlock.WithBiometrics)?.notAfter?.let { it - MIN_PROMPT_TIME }
-            ?: (review.proposedAt + QUOTE_MAX_AGE)
+        val checkUntil = when (unlock) {
+            is Unlock.WithBiometrics -> unlock.notAfter
+            is Unlock.WithLedger -> unlock.notAfter
+            is Unlock.WithPassword -> null
+        }?.minus(MIN_PROMPT_TIME) ?: (review.proposedAt + QUOTE_MAX_AGE)
         job = viewModelScope.launch {
             // The Safe is checked first, which leaving the screen or Back cancels: no key is asked
             // for, and no prompt shown, until it has passed.
@@ -564,7 +586,9 @@ class SafeSettingsViewModel(
                 }
             }
             // The prompt outlived the proposal's age: nothing was signed, and it is made again.
-            if ((signing as? SafeTxSigning.NotSigned)?.signing == Signing.TimedOut) refresh(note = PROMPT_TIMED_OUT)
+            if ((signing as? SafeTxSigning.NotSigned)?.signing == Signing.TimedOut) {
+                refresh(note = review.unlock.promptTimedOut())
+            }
             // Hidden while it ran and nothing was queued: the proposal is from before, so it is made again.
             reproposeIfHidden()
         }
@@ -572,15 +596,15 @@ class SafeSettingsViewModel(
 
     /**
      * The review of [change], filled in as [form], proposed now, signed by [owner] (the first held
-     * when that is no owner any more) with [unlock] (a new one when null), or the form saying why
-     * there is none. [wallet] is the Safe's account and the wallet's accounts and keys the review
+     * when that is no owner any more), or the form saying why there is none. A refresh retains the
+     * offered [localBiometrics]. [wallet] is the Safe's account and the wallet's accounts and keys the review
      * stands on; its reading is not proposed on: the proposal reads the Safe itself.
      */
     private suspend fun proposed(
         form: Step.Editing,
         change: SafeSettingsChange,
         owner: Address?,
-        unlock: UnlockStep?,
+        localBiometrics: Boolean?,
         wallet: Model.Shown,
     ): Step {
         // Its age runs from its first read, not from its answer: the figures are as old as that. The
@@ -614,16 +638,20 @@ class SafeSettingsViewModel(
         val held = proposal.safe.ownersHeld
         val signer = owner?.takeIf { it in held } ?: held.firstOrNull()
             ?: return failed.copy(error = NO_OWNER_HELD)
+        val offered = localBiometrics ?: biometricsOffered()
         return Step.Reviewing(
             form.copy(proposing = false, error = null),
             change,
             proposal,
             readFrom,
             signer,
-            unlock ?: UnlockStep(biometrics = biometricsOffered()),
+            UnlockStep(biometrics = offered).forCustody(
+                proposal.safe.ownersInWallet.firstOrNull { it.address == signer }?.custody,
+            ),
             wallet.safeAccount,
             wallet.accounts,
             wallet.keys,
+            offered,
         )
     }
 
@@ -653,7 +681,10 @@ class SafeSettingsViewModel(
                             account,
                             reading,
                             accounts,
-                            all.filter { it.custody == AccountCustody.InKeyStore }.mapTo(HashSet()) { it.address },
+                            all.filter {
+                                it.kind == AccountKind.EOA && it.custody.canSign &&
+                                    (it.network == network || it.custody == AccountCustody.InKeyStore)
+                            }.mapTo(HashSet()) { it.address },
                         )
                     }
                 }
@@ -734,7 +765,11 @@ class SafeSettingsViewModel(
                     typed.isEmpty() -> "An address: another device's account, a hardware wallet, another Safe."
                     owner == null -> "Not an address: 0x and 40 hexadecimal digits."
                     inWallet != null -> "${inWallet.label}, in this wallet" +
-                        (if (inWallet.custody == AccountCustody.InKeyStore) ": its key is on this device." else ".")
+                        when (inWallet.custody) {
+                            AccountCustody.InKeyStore -> ": its key is on this device."
+                            is AccountCustody.Ledger -> ": its key is on a Ledger."
+                            AccountCustody.Watched -> "."
+                        }
                     else -> "${Eip55.format(owner)}: not in this wallet."
                 },
                 isError = typed.isNotEmpty() && owner == null,
@@ -856,7 +891,12 @@ class SafeSettingsViewModel(
 
     private fun settingsOwner(owner: Address, reading: SafeReading.Verified): SettingsOwner {
         val account = reading.ownersInWallet.firstOrNull { it.address == owner }
-        return SettingsOwner(Eip55.format(owner), account?.label, account?.custody == AccountCustody.InKeyStore)
+        return SettingsOwner(
+            Eip55.format(owner),
+            account?.label,
+            heldHere = account?.custody?.canSign == true,
+            ledger = account?.custody is AccountCustody.Ledger,
+        )
     }
 
     /** Why no change can be proposed from here, or null when one can: an owner held here signs it. */
@@ -919,13 +959,12 @@ class SafeSettingsViewModel(
         val others = reading.ownersHeld - removed
         return when {
             added != null && added in keys ->
-                "Its key is on this device, and so is the new owner's: once the change runs, this device signs " +
-                    "for the Safe as the new owner" + (if (others.isEmpty()) "." else " and its other owners held here.")
+                "The new owner can sign from this wallet once the change runs" +
+                    (if (others.isEmpty()) "." else ", along with its other owners supported here.")
             others.isEmpty() ->
-                "Its key is the only one of this Safe's owners on this device: once the change runs, this device " +
-                    "can no longer sign for the Safe, which becomes watch-only here."
-            else -> "Its key is on this device: once the change runs, this device signs for the Safe with its " +
-                "other owners held here only."
+                "This is the only owner that can sign from this wallet. Once the change runs, the Safe becomes " +
+                    "watch-only here."
+            else -> "Once the change runs, only the Safe's other owners supported here can sign from this wallet."
         }
     }
 

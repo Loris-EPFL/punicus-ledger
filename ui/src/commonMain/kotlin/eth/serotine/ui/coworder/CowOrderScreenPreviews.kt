@@ -191,6 +191,11 @@ private fun CowOrderCancelReviewPreview() = CowOrderPreview(
 
 @Preview
 @Composable
+private fun CowOrderLedgerCancelReviewPreview() =
+    CowOrderPreview(review.copy(unlock = UnlockStep(ledger = true)))
+
+@Preview
+@Composable
 private fun CowOrderCancelNotSentPreview() = CowOrderPreview(
     review.copy(
         notSent = NotSentItem(
@@ -242,6 +247,7 @@ internal val cowOrderScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("cancelled") { CowOrderCancelledPreview() },
     ScreenPreview("not-provable") { CowOrderNotProvablePreview() },
     ScreenPreview("cancel-review") { CowOrderCancelReviewPreview() },
+    ScreenPreview("cancel-review-ledger") { CowOrderLedgerCancelReviewPreview() },
     ScreenPreview("cancel-not-sent") { CowOrderCancelNotSentPreview() },
     ScreenPreview("cancel-sent") { CowOrderCancelSentPreview() },
     ScreenPreview("missing") { CowOrderMissingPreview() },

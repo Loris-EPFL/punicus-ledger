@@ -8,6 +8,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AppHost
 import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.AppIsolation
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.model.PersonalMessage
@@ -149,6 +150,9 @@ class DappViewModelsTest {
         assertEquals(RequestRow("t1/9", "Test dApp", "https://dapp.test", "Asks you to sign a message · Review"), state.requests.single())
         assertEquals("On Sepolia, a test network · Sees 1 account · Ends in 6 days", state.sessions.single().line)
         assertEquals("On Ethereum and Gnosis Chain, real funds", ConnectionsViewModel.networksLine(setOf(Network.GNOSIS, Network.ETHEREUM)))
+        accounts.accounts.value = listOf(held.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT)), watched)
+        runCurrent()
+        assertEquals(state.requests, vm.uiState.value.requests, "Ledger requests still wait for a review")
         vm.disconnect("t1")
         runCurrent()
         assertEquals(listOf(DappSessionId("t1")), sessions.disconnected)
@@ -228,6 +232,37 @@ class DappViewModelsTest {
         runCurrent()
         assertEquals(listOf(proposalId to listOf(held.id)), sessions.approved)
         assertTrue(vm.uiState.value.done)
+    }
+
+    @Test
+    fun aLedgerAccountCanBeSharedWhenTheUserApprovesWithoutSigning() = runTest {
+        main()
+        val ledger = held.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        accounts.accounts.value = listOf(ledger, watched)
+        sessions.connections.value = DappConnections.On(DappRelayLink.CONNECTED, listOf(proposal()), emptyList())
+        val vm = DappProposalViewModel(
+            "${proposalId.pairing}/7",
+            observe(),
+            ApproveDappProposal(sessions, accounts, networks, sites, aliases),
+            RejectDappProposal(sessions),
+            ObservePerAppChoice(accounts, keys, sites, networks, aliases),
+            MakePerAppAddress(keys, accounts, WalletChanges(), aliases),
+            LinkPerAppAlias(accounts, aliases, WalletChanges()),
+            makeAndLink(accounts),
+        )
+        backgroundScope.launch { vm.uiState.collect {} }
+        runCurrent()
+        val option = vm.uiState.value.accounts.single { it.key == key(ledger) }
+        assertTrue(option.ledger)
+        assertNull(option.unavailable)
+        assertFalse(option.chosen)
+        assertTrue(sessions.approved.isEmpty())
+        vm.toggle(option.key)
+        assertFalse(vm.uiState.value.approveUnavailable)
+        assertTrue(vm.uiState.value.password.text.isEmpty())
+        vm.approve()
+        runCurrent()
+        assertEquals(listOf(proposalId to listOf(ledger.id)), sessions.approved)
     }
 
     @Test

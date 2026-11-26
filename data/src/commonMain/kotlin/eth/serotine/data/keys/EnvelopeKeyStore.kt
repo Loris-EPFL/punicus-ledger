@@ -482,6 +482,7 @@ class EnvelopeKeyStore internal constructor(
      * either way, in the steps that cancelling cannot cut into.
      */
     override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing {
+        if (unlock is Unlock.WithLedger) return Signing.NoKey
         val notAfter = (unlock as? Unlock.WithBiometrics)?.notAfter ?: return signNow(account, digest, unlock)
         // A mark ahead reads a negative elapsed time: what is left. One gone asks nothing.
         val left = -notAfter.elapsedNow()
@@ -499,6 +500,7 @@ class EnvelopeKeyStore internal constructor(
                     when (unlock) {
                         is Unlock.WithPassword -> signWithPassword(file, account, digest, unlock.password)
                         is Unlock.WithBiometrics -> signWithBiometrics(file, account, digest, unlock.reason)
+                        is Unlock.WithLedger -> Signing.NoKey
                     }
                 } catch (e: CancellationException) {
                     throw e

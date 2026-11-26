@@ -4,8 +4,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineDispatcher
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.ClearSignFormatter
 import eth.serotine.domain.model.ClearSignResult
 import eth.serotine.domain.model.ClearSignedField
@@ -17,10 +19,12 @@ import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.DappAnswer
 import eth.serotine.domain.repository.DappRequestError
 import eth.serotine.domain.repository.DappRequestId
 import eth.serotine.domain.repository.DappSessionId
+import eth.serotine.domain.repository.LedgerProblem
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.CallRefusal
@@ -44,6 +48,7 @@ import eth.serotine.domain.usecase.DescribeClearSigning
 import eth.serotine.domain.usecase.TraceCall
 import eth.serotine.domain.usecase.TraceOutcome
 import eth.serotine.domain.usecase.DescribeKeyStore
+import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDappMessages
 import eth.serotine.domain.usecase.QuoteDappTransaction
 import eth.serotine.domain.usecase.RefuseDappRequest
@@ -51,6 +56,7 @@ import eth.serotine.domain.usecase.SendDappTransaction
 import eth.serotine.domain.usecase.SignedAnswer
 import eth.serotine.domain.usecase.SignedState
 import eth.serotine.domain.usecase.TransferSending
+import eth.serotine.domain.usecase.safeOwnerAccount
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.ui.components.DAPP_REQUESTS_STAY_STRICT
 import eth.serotine.ui.components.whileSyncing
@@ -66,16 +72,19 @@ import eth.serotine.ui.components.PROMPT_TIMED_OUT
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.callRefusalText
 import eth.serotine.ui.components.epochSecondsNow
+import eth.serotine.ui.components.forCustody
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.safeTxRefusalText
 import eth.serotine.ui.components.promptDeadline
 import eth.serotine.ui.dapprequest.DappRequestViewModel
 import eth.serotine.ui.dapprequest.SignInField
+import eth.serotine.ui.ledger.ledgerProblemText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -89,10 +98,12 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
@@ -171,6 +182,8 @@ data class DappTransactionUiState(
     val done: Boolean = false,
     /** Sent from a Safe: proposed as a Safe transaction, which its owners sign and an account here executes. */
     val fromSafe: Boolean = false,
+    /** The owner named in the Safe proposal the user is reviewing. */
+    internal val signingOwner: Address? = null,
     /** The Safe transaction queued for it, `0x` and its 64 hex digits: opened from here. */
     val queued: String? = null,
     /** Just signed and queued: its Safe transaction screen opens now. */
@@ -184,13 +197,12 @@ data class DappTransactionUiState(
 }
 
 /**
- * Screen D6's ViewModel: quotes the dApp's transaction from verified state, and signs and sends it with
- * the wallet password or a fingerprint or face, or refuses it. A quote older than a minute, or one made
- * before the screen was last hidden, is made again before anything is signed. The password typed is held
- * while the field is shown, handed to the signer in an [Unlock], and dropped once used and whenever the
- * screen is not shown (CLAUDE.md, *Trust*). From a Safe it is proposed instead ([proposeDappSafeTx]),
- * signed by the first of its owners held here and queued ([signDappSafeTx]), under the same minute: the
- * Safe is checked first, within what is left of it, and leaving the screen stops that check.
+ * Screen D6's ViewModel: quotes from verified state and sends after the account's Ledger approval, wallet
+ * password or fingerprint or face, or refuses. A quote older than a minute, or one made before the screen
+ * was last hidden, is made again before anything is signed. The password stays only while the field is
+ * shown, goes to the signer in an [Unlock], and is dropped once used or hidden (CLAUDE.md, *Trust*).
+ * From a Safe, the transaction is proposed instead ([proposeDappSafeTx]) and the first eligible owner
+ * signs and queues it ([signDappSafeTx]); the Safe is checked first and leaving the screen stops that check.
  */
 class DappTransactionViewModel(
     /** The request, as its route names it: `topic/id`. */
@@ -208,6 +220,7 @@ class DappTransactionViewModel(
     private val describeKeyStore: DescribeKeyStore,
     /** Whether the user chose *Sign while syncing*, which a dApp's request does not follow: its refusal says so. */
     observeSyncPolicy: ObserveSyncPolicy,
+    observeAccounts: ObserveAccounts,
     private val clock: () -> Long = ::epochSecondsNow,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     /** When how long the dApp waits is said again: every 15 seconds while the screen is open. */
@@ -239,6 +252,9 @@ class DappTransactionViewModel(
         val notQuoted: String? = null,
         val hidden: Boolean = false,
         val unlock: UnlockStep = UnlockStep(),
+        val biometricsOffered: Boolean = false,
+        val signingOwner: Address? = null,
+        val ownerUnavailable: Boolean = false,
         val busy: Boolean = false,
         val notSent: Pair<NotSentItem, SentTransfer>? = null,
         /** The dApp asks for a gas limit below the verified estimate: refused as invalid, not declined. */
@@ -355,6 +371,12 @@ class DappTransactionViewModel(
         return section.copy(warnings = section.warnings + warning)
     }
 
+    private data class Authorization(
+        val custody: AccountCustody?,
+        val owner: Address?,
+        val ownerUnavailable: Boolean,
+    )
+
     private data class Reviews(
         val description: ClearSignResult?,
         val describing: Boolean,
@@ -371,7 +393,37 @@ class DappTransactionViewModel(
         }
         .distinctUntilChanged()
 
-    val uiState: StateFlow<DappTransactionUiState> = combine(shownReview, local, ticks, described) { shown, local, _, described ->
+    private val authorizedReview = combine(
+        shownReview,
+        local.map { it.proposal }.distinctUntilChanged(),
+        observeAccounts(),
+    ) { shown, proposal, accounts ->
+        val owner = proposal?.heldOwners?.first()
+        val safeOwner = if (proposal != null && owner != null) {
+            (accounts as? AccountList.Loaded)?.accounts?.safeOwnerAccount(proposal.proposal.request.network, owner)
+        } else {
+            null
+        }
+        val custody = if (proposal != null) safeOwner?.custody else shown?.first?.account?.custody
+        shown to Authorization(custody, owner, ownerUnavailable = proposal != null && safeOwner == null)
+    }.onEach { (_, authorization) ->
+        local.update {
+            val unlock = if (it.signingOwner != authorization.owner || authorization.ownerUnavailable) {
+                it.unlock.copy(password = WalletPassword.EMPTY)
+            } else {
+                it.unlock
+            }
+            it.copy(
+                unlock = unlock.forCustody(authorization.custody),
+                signingOwner = authorization.owner,
+                ownerUnavailable = authorization.ownerUnavailable,
+            )
+        }
+    }
+
+    val uiState: StateFlow<DappTransactionUiState> = combine(
+        authorizedReview, local, ticks, described,
+    ) { (shown, authorization), local, _, described ->
         val (review, plain) = shown
             ?: return@combine if (local.notice != null && !local.done) {
                 DappTransactionUiState(loading = false, ended = true, notice = local.notice)
@@ -388,11 +440,15 @@ class DappTransactionViewModel(
         base.copy(
             trace = trace,
             quoting = local.quoting,
-            quote = local.quote?.let { quoteLines(it, review.request.network) }
-                ?: local.proposal?.let { proposalLines(it, review.request.network) }.orEmpty(),
-            notQuoted = local.notQuoted,
+            quote = if (authorization.ownerUnavailable) emptyList() else {
+                local.quote?.let { quoteLines(it, network) }
+                    ?: local.proposal?.let { proposalLines(it, network) }.orEmpty()
+            },
+            notQuoted = if (authorization.ownerUnavailable) PROPOSE_AGAIN else local.notQuoted,
             waits = DappRequestViewModel.waitsLine(review.request.expiresAtSeconds - clock()),
-            unlock = local.unlock,
+            unlock = local.unlock.forCustody(authorization.custody).let {
+                it.copy(biometrics = !it.ledger && local.biometricsOffered)
+            },
             busy = local.busy,
             notSent = local.notSent?.first,
             refuseUnavailable = local.notSent?.second?.maybeSent == true || local.signedAndSent,
@@ -400,6 +456,7 @@ class DappTransactionViewModel(
             explaining = local.explaining,
             done = local.done,
             fromSafe = base.fromSafe || local.fromSafe,
+            signingOwner = authorization.owner,
             queued = local.queued,
             openQueued = local.openQueued,
         )
@@ -412,7 +469,7 @@ class DappTransactionViewModel(
             } catch (_: Exception) {
                 false // the use case promises not to throw; the backstop: the password still works
             }
-            local.update { it.copy(unlock = it.unlock.copy(biometrics = offered)) }
+            local.update { it.copy(biometricsOffered = offered) }
         }
         requote(note = null)
     }
@@ -473,23 +530,50 @@ class DappTransactionViewModel(
 
     /** The password field now reads [text]. */
     fun onPasswordChange(text: String) = local.update {
-        if (it.busy) it else it.copy(unlock = it.unlock.copy(password = WalletPassword(text), error = null))
+        if (it.busy || it.unlock.ledger || it.ownerUnavailable) it
+        else it.copy(unlock = it.unlock.copy(password = WalletPassword(text), error = null))
     }
 
-    /** Signs with the typed wallet password and sends. */
+    /** Asks for Ledger approval or signs with the typed wallet password, as shown in the review. */
     fun send() {
         if (explainUnavailable()) return
-        val password = local.value.unlock.password
-        if (local.value.busy || password.text.isEmpty()) return
-        if (local.value.fromSafe) return signSafe(freshProposal() ?: return, Unlock.WithPassword(password))
+        val current = local.value
+        val step = current.unlock
+        if (cannotSign(current) || step.ledger != uiState.value.unlock.ledger || !step.canAuthorize) return
+        if (current.fromSafe) {
+            val proposal = freshProposal() ?: return
+            val unlock = reviewApproval(step, proposal.review.request.expiresAtSeconds) ?: return
+            return signSafe(proposal, unlock)
+        }
         val quote = freshQuote() ?: return
-        send(quote, Unlock.WithPassword(password))
+        val unlock = reviewApproval(step, quote.review.request.expiresAtSeconds) ?: return
+        send(quote, unlock)
     }
+
+    private fun reviewApproval(step: UnlockStep, expiresAt: Long): Unlock? {
+        if (!step.ledger) return step.approval()
+        val now = timeSource.markNow()
+        val deadline = local.value.quotedAt?.let(::promptDeadline)
+        if (deadline == null) {
+            requote(
+                note = "Too little of the quote's minute was left for Ledger approval. Check the new quote, then approve.",
+            )
+            return null
+        }
+        // The review's minute cannot be stretched by opening the device prompt, nor can it outlast the request.
+        val expiry = now + (expiresAt - clock()).coerceIn(0L, QUOTE_MAX_AGE.inWholeSeconds).seconds
+        return step.approval(if (deadline.elapsedNow() > expiry.elapsedNow()) deadline else expiry)
+    }
+
+    private fun cannotSign(local: Local): Boolean =
+        local.busy || local.quoting || local.done || local.signedAndSent ||
+            local.notSent != null || local.queued != null || local.ownerUnavailable
 
     /** Signs with a fingerprint or face and sends. */
     fun sendWithBiometrics() {
         if (explainUnavailable()) return
-        if (local.value.busy || !local.value.unlock.biometrics) return
+        val current = local.value
+        if (cannotSign(current) || current.unlock.ledger || !uiState.value.unlock.biometrics) return
         if (local.value.fromSafe) {
             val proposal = freshProposal() ?: return
             val notAfter = local.value.quotedAt?.let(::promptDeadline) ?: return requote(note = STALE_QUOTE)
@@ -585,6 +669,7 @@ class DappTransactionViewModel(
     private fun freshProposal(): DappSafeProposal? {
         val current = local.value
         val proposal = current.proposal ?: return null
+        if (uiState.value.signingOwner != proposal.heldOwners.first()) return null
         val age = current.quotedAt?.elapsedNow()
         if (current.hidden || age == null || age > QUOTE_MAX_AGE) {
             requote(note = STALE_QUOTE)
@@ -642,8 +727,12 @@ class DappTransactionViewModel(
         }
         // The check has what is left of the proposal's minute, less the prompt's least time when the
         // prompt signs: past that the signature could not be made in time anyway.
-        val checkUntil = (unlock as? Unlock.WithBiometrics)?.notAfter?.let { it - MIN_PROMPT_TIME }
-            ?: (proposedAt + QUOTE_MAX_AGE)
+        val promptUntil = when (unlock) {
+            is Unlock.WithBiometrics -> unlock.notAfter
+            is Unlock.WithLedger -> unlock.notAfter
+            else -> null
+        }
+        val checkUntil = promptUntil?.let { it - MIN_PROMPT_TIME } ?: (proposedAt + QUOTE_MAX_AGE)
         checkJob = viewModelScope.launch {
             // The Safe is checked first, which leaving the screen cancels: no key is asked for, and no
             // prompt shown, until it has passed.
@@ -685,10 +774,8 @@ class DappTransactionViewModel(
                     }
                     is DappSafeSigning.NotSigned -> current.copy(
                         busy = false,
-                        unlock = current.unlock.copy(
-                            error = notSignedText(signing.signing, SIGN_FAILED),
-                            biometrics = current.unlock.biometrics && biometricsStillOffered(signing.signing),
-                        ),
+                        unlock = current.unlock.copy(error = notSignedText(signing.signing, SIGN_FAILED)),
+                        biometricsOffered = current.biometricsOffered && biometricsStillOffered(signing.signing),
                     )
                     is DappSafeSigning.Refused -> current.copy(
                         busy = false,
@@ -702,7 +789,7 @@ class DappTransactionViewModel(
                     null -> current.copy(busy = false, unlock = current.unlock.copy(error = SIGN_FAILED))
                 }
             }
-            if ((signing as? DappSafeSigning.NotSigned)?.signing == Signing.TimedOut) requote(note = PROMPT_TIMED_OUT)
+            if ((signing as? DappSafeSigning.NotSigned)?.signing == Signing.TimedOut) requote(note = timeoutNote(unlock))
             if (signing is DappSafeSigning.Refused) requote(note = null)
         }
     }
@@ -733,10 +820,13 @@ class DappTransactionViewModel(
             if (((sending as? DappTransactionSending.NotSent)?.sending as? TransferSending.NotSigned)?.signing ==
                 Signing.TimedOut
             ) {
-                requote(note = PROMPT_TIMED_OUT)
+                requote(note = timeoutNote(unlock))
             }
         }
     }
+
+    private fun timeoutNote(unlock: Unlock): String =
+        if (unlock is Unlock.WithLedger) ledgerProblemText(LedgerProblem.TIMED_OUT) else PROMPT_TIMED_OUT
 
     /** Where [local] goes when [answer] was signed already as this request's answer: never signed again. */
     private fun signedEarlier(local: Local, answer: SignedAnswer): Local = when (answer.state) {
@@ -784,10 +874,8 @@ class DappTransactionViewModel(
         is DappTransactionSending.NotSent -> when (val inner = sending.sending) {
             is TransferSending.NotSigned -> local.copy(
                 busy = false,
-                unlock = local.unlock.copy(
-                    error = notSignedText(inner.signing, SEND_FAILED),
-                    biometrics = local.unlock.biometrics && biometricsStillOffered(inner.signing),
-                ),
+                unlock = local.unlock.copy(error = notSignedText(inner.signing, SEND_FAILED)),
+                biometricsOffered = local.biometricsOffered && biometricsStillOffered(inner.signing),
             )
             is TransferSending.NotSent ->
                 local.copy(busy = false, notSent = notSentItem(inner.broadcast, false, "transaction") to inner.transfer)
@@ -908,8 +996,10 @@ class DappTransactionViewModel(
             "and it is never replaced by another one. Refuse answers the dApp; ask it again for a new one."
         const val SAFE_SHORT = "The Safe's verified balance, less what its queued transactions may move, cannot " +
             "pay this value. Refuse, or ask the dApp again once the Safe has more."
-        const val NO_OWNER_HERE = "No owner of this Safe has its key on this device, so nobody here can sign it. " +
-            "Add an owner's key to Punicus, or refuse."
+        const val NO_OWNER_HERE = "No owner of this Safe can sign here. Add an owner's key or Ledger account " +
+            "to Punicus, or refuse."
+        private const val PROPOSE_AGAIN = "The owner chosen for this proposal can no longer sign here. " +
+            "Try again to review a new proposal, or refuse."
         const val SAFE_NOTE = "From a Safe: this proposes a Safe transaction at the Safe's next nonce. Its owners " +
             "sign it, and an account here executes it from its screen; the dApp is told the hash of that execution."
         const val QUEUED_NOTE = "Queued as a Safe transaction. Collect the owners' signatures and execute it on its " +

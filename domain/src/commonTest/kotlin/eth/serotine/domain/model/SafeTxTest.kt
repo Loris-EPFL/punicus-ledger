@@ -73,7 +73,11 @@ class SafeTxTest {
         // 0.1 ETH at nonce 4 (domain hash 0x611379c1…, message hash 0x565bba8b…) ...
         val primary = Address.of("0x657ff0D4eC65D82b2bC1247b0a558bcd2f80A0f1")
         val transfer = tx(to = "0x255C3912f91eF11bFDadd405F13144a823Da8cc5", value = 100_000_000_000_000_000, "0x", 4)
-        val hash = transfer.hash(Network.SEPOLIA.chainId, primary)
+        val hashes = transfer.hashes(Network.SEPOLIA.chainId, primary)
+        assertEquals("611379c1", hashes.domainSeparator.hex.take(8))
+        assertEquals("565bba8b", hashes.structHash.hex.take(8))
+        val hash = hashes.digest
+        assertEquals(transfer.hash(Network.SEPOLIA.chainId, primary), hash)
         assertEquals(Digest.of("0xcb8bbe7bf8f8a1f3f57658e450d07d4422356ac042d96a87ba425b19e67a78a1"), hash)
 
         // ... and its owner, itself a Safe, approves that hash on chain, also at nonce 4.

@@ -145,6 +145,10 @@ private fun SafeProposeReviewDarkPreview() = SafeProposePreview(review, darkThem
 
 @Preview
 @Composable
+private fun SafeProposeReviewLedgerPreview() = SafeProposePreview(review.copy(unlock = UnlockStep(ledger = true)))
+
+@Preview
+@Composable
 private fun SafeProposeReviewQueuedNotSimulatedPreview() = SafeProposePreview(
     review.copy(
         owners = listOf(AccountChoice("Daily", DAILY), AccountChoice("Savings", SAVINGS)),
@@ -236,6 +240,7 @@ internal val safeProposeScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("proposing") { SafeProposeProposingPreview() },
     ScreenPreview("review") { SafeProposeReviewPreview() },
     ScreenPreview("review-dark") { SafeProposeReviewDarkPreview() },
+    ScreenPreview("review-ledger") { SafeProposeReviewLedgerPreview() },
     ScreenPreview("review-queued-not-simulated") { SafeProposeReviewQueuedNotSimulatedPreview() },
     ScreenPreview("review-not-saved") { SafeProposeReviewNotSavedPreview() },
     ScreenPreview("review-asking-to-drop") { SafeProposeReviewAskingToDropPreview() },

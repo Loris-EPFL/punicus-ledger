@@ -116,7 +116,7 @@ sealed interface SafeSettingsUiState {
 
         /** Something is typed and nothing runs: the password may sign. */
         val canSign: Boolean
-            get() = idle && unlock.password.text.isNotEmpty()
+            get() = idle && unlock.canAuthorize
 
         /** The biometric prompt may be offered now. */
         val canSignWithBiometrics: Boolean
@@ -133,9 +133,9 @@ sealed interface SafeSettingsUiState {
 
 /**
  * One owner of the Safe: its EIP-55 [address], its name in the wallet ([label], null: not in it),
- * and whether its key is held here ([heldHere]).
+ * and whether it can sign from here ([heldHere]), using a [ledger] or the local key store.
  */
-data class SettingsOwner(val address: String, val label: String?, val heldHere: Boolean)
+data class SettingsOwner(val address: String, val label: String?, val heldHere: Boolean, val ledger: Boolean = false)
 
 /** The changes the settings screen proposes. */
 enum class SettingsChangeKind {

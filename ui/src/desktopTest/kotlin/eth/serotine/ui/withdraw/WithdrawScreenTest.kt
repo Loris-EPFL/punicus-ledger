@@ -69,4 +69,21 @@ class WithdrawScreenTest {
         rule.onNodeWithTag(WITHDRAW_PASSWORD_TAG).performTextInput("pw")
         assertEquals(listOf("password"), events)
     }
+
+    @Test
+    fun theLedgerReviewDoesNotAskForTheWalletPassword() {
+        show(
+            ready.copy(
+                step = WithdrawStep.Review(
+                    lines = listOf("Withdraws" to "1 BZZ"),
+                    warnings = emptyList(),
+                    unlock = UnlockStep(ledger = true),
+                ),
+            ),
+        )
+        rule.onNodeWithTag(WITHDRAW_PASSWORD_TAG).assertDoesNotExist()
+        rule.onNodeWithText("Approve on Ledger").assertIsDisplayed()
+        rule.onNodeWithTag(WITHDRAW_SIGN_TAG).performClick()
+        assertEquals(listOf("sign"), events)
+    }
 }

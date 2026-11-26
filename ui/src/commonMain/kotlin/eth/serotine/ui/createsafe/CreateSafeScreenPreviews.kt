@@ -188,6 +188,10 @@ private fun CreateSafeReviewDarkPreview() = CreateSafePreview(review, darkTheme 
 
 @Preview
 @Composable
+private fun CreateSafeReviewLedgerPreview() = CreateSafePreview(review.copy(unlock = UnlockStep(ledger = true)))
+
+@Preview
+@Composable
 private fun CreateSafeReviewTypedPreview() =
     CreateSafePreview(review.copy(unlock = UnlockStep(password = WalletPassword("made-up preview password"))))
 
@@ -284,6 +288,7 @@ internal val createSafeScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("threshold-refused") { CreateSafeThresholdRefusedPreview() },
     ScreenPreview("review") { CreateSafeReviewPreview() },
     ScreenPreview("review-dark") { CreateSafeReviewDarkPreview() },
+    ScreenPreview("review-ledger") { CreateSafeReviewLedgerPreview() },
     ScreenPreview("review-typed") { CreateSafeReviewTypedPreview() },
     ScreenPreview("review-quoting") { CreateSafeReviewQuotingPreview() },
     ScreenPreview("review-refused") { CreateSafeReviewRefusedPreview() },

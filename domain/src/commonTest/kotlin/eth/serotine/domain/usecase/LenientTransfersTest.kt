@@ -22,6 +22,7 @@ import eth.serotine.domain.repository.GasEstimate
 import eth.serotine.domain.repository.KeptFees
 import eth.serotine.domain.repository.KeptNonce
 import eth.serotine.domain.repository.KeptTransactionInputs
+import eth.serotine.domain.repository.LedgerProblem
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.NonceReading
@@ -50,6 +51,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -128,6 +131,20 @@ class LenientTransfersTest {
         assertEquals(1_800_000_000, drafted.builtOn.oldestAsOf)
         assertEquals(90, drafted.builtOn.balanceBlock)
         assertEquals(80, drafted.builtOn.nonceBlock)
+    }
+
+    @Test
+    fun ledgerApprovalDoesNotReachTheSignerForALenientDraft() = runTest {
+        val reviewed = assertIs<TransferDrafting.Drafted>(draftTenth()).draft
+        val signer = FakeSigner(Signing.Signed(signature))
+        val queue = QueueTransfer(signer, outbox, queueLock) { now }
+        val approval = Unlock.WithLedger(TestTimeSource().markNow() + 1.seconds)
+        assertEquals(
+            TransferQueuing.NotSigned(Signing.LedgerFailed(LedgerProblem.UNSUPPORTED_TRANSACTION)),
+            queue(reviewed, approval),
+        )
+        assertTrue(signer.asked.isEmpty())
+        assertTrue(outbox.queued.value.isEmpty())
     }
 
     @Test

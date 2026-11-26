@@ -846,7 +846,12 @@ class AccountDetailViewModel(
                 signers = "${state.threshold} of ${state.owners.size} owners must sign",
                 owners = state.owners.map { owner ->
                     val account = inWallet[owner]
-                    OwnerRow(Eip55.format(owner), account?.label, account?.custody == AccountCustody.InKeyStore)
+                    OwnerRow(
+                        Eip55.format(owner),
+                        account?.label,
+                        owner in reading.ownersHeld,
+                        ledger = account?.custody is AccountCustody.Ledger,
+                    )
                 },
                 modules = state.modules.map(Eip55::format),
                 guard = state.guard?.let(Eip55::format),

@@ -75,6 +75,12 @@ private fun DappProposalRequestDarkPreview() = DappProposalPreview(request, dark
 
 @Preview
 @Composable
+private fun DappProposalLedgerPreview() = DappProposalPreview(
+    request.copy(accounts = listOf(accounts.first().copy(name = "Ledger", ledger = true), accounts[2])),
+)
+
+@Preview
+@Composable
 private fun DappProposalEitherKindPreview() = DappProposalPreview(eitherKind)
 
 @Preview
@@ -361,6 +367,7 @@ private fun DappProposalSeenBeforePreview() = DappProposalPreview(
 internal val dappProposalScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("request") { DappProposalRequestPreview() },
     ScreenPreview("request-dark") { DappProposalRequestDarkPreview() },
+    ScreenPreview("ledger") { DappProposalLedgerPreview() },
     ScreenPreview("none-chosen") { DappProposalNoneChosenPreview() },
     ScreenPreview("either-kind") { DappProposalEitherKindPreview() },
     ScreenPreview("real-funds") { DappProposalRealFundsPreview() },

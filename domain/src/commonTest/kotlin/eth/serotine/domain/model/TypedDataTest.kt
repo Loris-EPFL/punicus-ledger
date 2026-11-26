@@ -45,8 +45,14 @@ class TypedDataTest {
     fun theEipsExampleHashesToItsDigest() {
         val encoded = assertNotNull(Eip712.encode(mail))
         assertEquals("Mail(Person from,Person to,string contents)Person(string name,address wallet)", Eip712.encodeType(mail.types, "Mail"))
-        assertEquals("f2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f", encoded.domainSeparator)
-        assertEquals("c52c0ee5d84264471806290a3f2c4cecfc5490626bf912d01f240d7a274b371e", encoded.messageHash)
+        assertEquals(
+            "f2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f",
+            encoded.hashes.domainSeparator.hex,
+        )
+        assertEquals(
+            "c52c0ee5d84264471806290a3f2c4cecfc5490626bf912d01f240d7a274b371e",
+            encoded.hashes.structHash.hex,
+        )
         assertEquals(Digest.of("be609aee343fb3c4b28e1df9e632fca64fcfaede20f02e86244efddf30957bd2"), encoded.digest)
     }
 

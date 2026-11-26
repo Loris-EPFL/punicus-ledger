@@ -1,5 +1,6 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.Erc20
@@ -45,6 +46,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 
@@ -501,6 +504,20 @@ class CowSwapsTest {
         assertEquals(quote.order to quote.uid, cowApi.placed.single())
         assertEquals(CowPlacement.Accepted(quote.uid), placed.placement)
         assertEquals(listOf(placed), orders.orders.value)
+    }
+
+    @Test
+    fun anOrderSendsItsEip712ComponentsToTheLedgerAndKeepsTheSameUidAndSignature() = runTest {
+        val quote = assertIs<CowSwapQuoting.Quoted>(quoteUsdcForWeth()).quote
+        val unlock = Unlock.WithLedger(TestTimeSource().markNow() + 1.seconds)
+        val placed = assertIs<CowOrderPlacing.Placed>(place(quote, unlock)).record
+        val (signingAccount, hashes) = signer.ledgerTypedData.single()
+
+        assertEquals(AccountId(quote.network, quote.from), signingAccount)
+        assertEquals(quote.order.hashes(quote.network.chainId, quote.deployment.settlement), hashes)
+        assertEquals(quote.uid.digest, hashes.digest)
+        assertEquals(quote.from, recovery.recover(quote.uid.digest, placed.signature))
+        assertTrue(signer.asked.isEmpty())
     }
 
     @Test

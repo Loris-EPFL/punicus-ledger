@@ -120,12 +120,12 @@ sealed interface AccountsUiState {
             get() = sections.flatMap { it.accounts }
 
         /**
-         * Whether Create Safe can be done: once an externally owned account's key is held here, since
-         * one pays for the deployment (docs/wallet-ux.md, screen 2). It is offered either way, greyed
+         * Whether Create Safe can be done: once a signing account can pay for the deployment
+         * (docs/wallet-ux.md, screen 2). It is offered either way, greyed
          * out until then, and a tap on it says [createSafeReason] (owner ruling, 2026-10-18, #55).
          */
         val canCreateSafe: Boolean
-            get() = accounts.any { it.kind == AccountKind.EOA && it.control == Control.FULL_CONTROL }
+            get() = accounts.any { it.kind == AccountKind.EOA && it.control.canSignForEoa }
 
         /** Why Create Safe cannot be done now, and how to get there; null when it can. */
         override val createSafeReason: String?
@@ -482,20 +482,16 @@ internal fun networkBlockedReason(network: String, done: String = "sent"): Strin
 /** What Create Safe says while the account list is still being read. */
 internal const val CREATE_SAFE_CHECKING = "Checking which accounts can pay…"
 
-/** What Create Safe says while no account whose key is on this device can pay for the deployment. */
-internal const val CREATE_SAFE_NEEDS_A_KEY = "Creating a Safe needs an account whose key is on this device, to pay " +
-    "for its deployment. Import or create an account, and fund it, first."
+/** What Create Safe says while no signing account can pay for the deployment. */
+internal const val CREATE_SAFE_NEEDS_A_KEY = "Creating a Safe needs a signing account to pay for its deployment. " +
+    "Add and fund an account first."
 
 /**
  * Why Send cannot be done from an account of [kind] under [control], and how to get there, or
  * null when it can: the reason a greyed-out Send says on a tap (owner ruling, 2026-10-18, #55).
  */
 internal fun sendBlockedReason(kind: AccountKind, control: Control): String? = when (kind) {
-    AccountKind.EOA -> if (control == Control.FULL_CONTROL || control == Control.LEDGER) {
-        null
-    } else {
-        watchOnlyReason("sent", "send")
-    }
+    AccountKind.EOA -> if (control.canSignForEoa) null else watchOnlyReason("sent", "send")
     AccountKind.SAFE -> if (control != Control.WATCH_ONLY) {
         null
     } else {
@@ -511,13 +507,12 @@ internal fun sendBlockedReason(kind: AccountKind, control: Control): String? = w
  * (owner ruling, 2026-10-18, #55).
  */
 internal fun swapBlockedReason(kind: AccountKind, control: Control): String? = when (kind) {
-    AccountKind.EOA -> when (control) {
-        Control.FULL_CONTROL -> null
-        Control.LEDGER -> "This Ledger account can send ETH, but cannot sign swaps in Punicus."
-        else -> watchOnlyReason("swapped", "swap")
-    }
+    AccountKind.EOA -> if (control.canSignForEoa) null else watchOnlyReason("swapped", "swap")
     AccountKind.SAFE -> sendBlockedReason(kind, control)
 }
+
+private val Control.canSignForEoa: Boolean
+    get() = this == Control.FULL_CONTROL || this == Control.LEDGER
 
 /**
  * Why no account of an externally owned account's recovery phrase can be added from it under

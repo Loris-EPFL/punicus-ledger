@@ -2,11 +2,10 @@ package eth.serotine.ui.ledger
 
 import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.model.supportsLedger
 import eth.serotine.ui.components.NetworkChip
 import eth.serotine.ui.components.NetworkLabel
 
-internal val ledgerNetworks = Network.entries.filter { it.supportsLedger }
+internal val ledgerNetworks = Network.entries
 private val ledgerNetworkLabels = ledgerNetworks.associateWith { NetworkLabel.of(it) }
 
 /** The Ledger enrollment form and the current device or save step. */

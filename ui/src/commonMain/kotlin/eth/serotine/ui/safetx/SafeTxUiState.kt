@@ -74,6 +74,8 @@ sealed interface SafeTxUiState {
         val draftNote: String? = null,
         val simpleDraftNote: String? = null,
         val held: HeldSignatureItem? = null,
+        val signNote: String? = null,
+        val approveNote: String? = null,
     ) : SafeTxUiState
 
     /**
@@ -100,9 +102,9 @@ sealed interface SafeTxUiState {
         val signLabel: String = "Sign",
     ) : SafeTxUiState {
 
-        /** Something is typed and nothing runs: the password may sign. */
+        /** Nothing runs and the selected owner can authorize without biometrics. */
         val canSign: Boolean
-            get() = !signing && unlock.password.text.isNotEmpty()
+            get() = !signing && unlock.canAuthorize
 
         /** The biometric prompt may be offered now. */
         val canSignWithBiometrics: Boolean
@@ -150,9 +152,9 @@ sealed interface SafeTxUiState {
         val simpleSimulation: String? = null,
     ) : SafeTxUiState {
 
-        /** Something is typed, and nothing else runs or has run: the password may sign. */
+        /** Nothing else runs or has run, and the selected payer can authorize without biometrics. */
         val canSign: Boolean
-            get() = idle && notNeeded == null && unlock.password.text.isNotEmpty()
+            get() = idle && notNeeded == null && unlock.canAuthorize
 
         /** The biometric prompt may be offered now. */
         val canSignWithBiometrics: Boolean
@@ -341,9 +343,9 @@ sealed interface OwnersItem {
 }
 
 /**
- * One owner: its EIP-55 [address], its name in the wallet ([label], null: not in it), whether its
- * key is held on this device ([heldHere]), its [state], and [detail] ("Approved on chain at block
- * 9,412,118"); [simpleDetail] that with no block, for simple mode, null where it is [detail] itself.
+ * One owner: its EIP-55 [address], its name in the wallet ([label], null: not in it), whether it
+ * can sign from this wallet ([heldHere]), whether it signs with a [ledger], its [state], and [detail].
+ * [simpleDetail] leaves out the block, for simple mode, null where it is [detail] itself.
  */
 data class OwnerStateRow(
     val address: String,
@@ -352,6 +354,7 @@ data class OwnerStateRow(
     val state: OwnerState,
     val detail: String,
     val simpleDetail: String? = null,
+    val ledger: Boolean = false,
 )
 
 /** Where one owner stands on a Safe transaction. */

@@ -33,7 +33,7 @@ enum class Control(val label: String) {
     /** Its key is held here (or, for a Safe, enough of its owners' keys to reach its threshold). */
     FULL_CONTROL("Full control"),
 
-    /** The key stays in a USB Ledger; it can authorize plain ETH transfers here. */
+    /** The account signs on a USB Ledger; its key does not leave the device. */
     LEDGER("Ledger"),
 
     /** A Safe with some of its owners held here, fewer than its threshold. */

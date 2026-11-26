@@ -44,10 +44,11 @@ data class TypedData(
 @ConsistentCopyVisibility
 data class EncodedTypedData internal constructor(
     val data: TypedData,
-    val domainSeparator: String,
-    val messageHash: String,
-    val digest: Digest,
-)
+    val hashes: Eip712Hashes,
+) {
+    /** The digest signed by both local keys and the signing device. */
+    val digest: Digest get() = hashes.digest
+}
 
 /**
  * EIP-712's encoding of typed data (`eth_signTypedData_v4`'s), done here so the digest the user approves
@@ -98,7 +99,6 @@ object Eip712 {
     private val HEX = Regex("^0x[0-9a-fA-F]*$")
     private val DECIMAL = Regex("^-?(0|[1-9][0-9]*)$")
     private val ADDRESS = Regex("^0x[0-9a-fA-F]{40}$")
-    private val PREFIX = byteArrayOf(0x19, 0x01)
 
     /** [data] encoded and hashed, or null when it is not exactly EIP-712 (see [Eip712]). */
     fun encode(data: TypedData): EncodedTypedData? = try {
@@ -107,12 +107,7 @@ object Eip712 {
         require(data.primaryType != DOMAIN_TYPE && data.primaryType in data.types)
         val separator = hashStruct(data.types, DOMAIN_TYPE, data.domain, 0)
         val message = hashStruct(data.types, data.primaryType, data.message, 0)
-        EncodedTypedData(
-            data,
-            separator.toHex(),
-            message.toHex(),
-            Digest.of(keccak256(PREFIX + separator + message).toHex()),
-        )
+        EncodedTypedData(data, Eip712Hashes.fromBytes(separator, message))
     } catch (_: IllegalArgumentException) {
         null
     }

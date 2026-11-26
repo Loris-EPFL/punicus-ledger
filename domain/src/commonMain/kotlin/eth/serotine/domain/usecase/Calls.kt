@@ -13,6 +13,7 @@ import eth.serotine.domain.repository.Broadcaster
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.FeeReading
 import eth.serotine.domain.repository.GasEstimate
+import eth.serotine.domain.repository.LedgerProblem
 import eth.serotine.domain.repository.NonceReading
 import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.OutboxList
@@ -31,6 +32,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
@@ -401,26 +404,40 @@ private fun aboutFunds(detail: String): Boolean =
 /**
  * Signs [quote]'s transaction with its sender's key as [unlock] opens it ([Signer]) and hands it
  * to the network. What is signed is exactly what was quoted; [broadcastAndRecord] handles the outcome.
+ * [beforeBroadcast] runs after a successful signature, in the caller's cancellable context. The caller can
+ * return from it to discard the signature (for example, when a dApp stopped waiting during approval).
  */
-internal suspend fun signAndSend(
+internal suspend inline fun signAndSend(
     signer: Signer,
     broadcaster: Broadcaster,
     sentTransfers: SentTransfers,
     network: Network,
     quote: CallQuote,
     action: SentAction,
-    clock: () -> Long,
+    noinline clock: () -> Long,
     unlock: Unlock,
+    beforeBroadcast: () -> Unit = {},
 ): TransferSending {
-    val transaction = quote.transaction
-    val signature = when (val signed = signer.sign(quote.from, transaction.signingDigest(), unlock)) {
+    if (quote.transaction.chainId != network.chainId) {
+        val failure = if (unlock is Unlock.WithLedger) Signing.LedgerFailed(LedgerProblem.UNSUPPORTED_TRANSACTION)
+        else Signing.Unavailable
+        return TransferSending.NotSigned(failure)
+    }
+    val signed = signer.signTransaction(AccountId(network, quote.from), quote.transaction, unlock)
+    val signature = when (signed) {
         is Signing.Signed -> signed.signature
         else -> return TransferSending.NotSigned(signed)
+    }
+    beforeBroadcast()
+    val transfer = quote.signedTransfer(network, signature, action, clock)
+    currentCoroutineContext().ensureActive()
+    if (unlock is Unlock.WithLedger && unlock.notAfter.hasPassedNow()) {
+        return TransferSending.NotSigned(Signing.TimedOut)
     }
     return broadcastAndRecord(
         broadcaster,
         sentTransfers,
-        quote.signedTransfer(network, signature, action, clock),
+        transfer,
         clock,
     )
 }

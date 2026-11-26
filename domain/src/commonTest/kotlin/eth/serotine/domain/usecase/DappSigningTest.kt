@@ -2,11 +2,14 @@ package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AppHost
 import eth.serotine.domain.model.AppIsolation
 import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.Eip712Hashes
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.model.PersonalMessage
@@ -41,6 +44,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -83,8 +88,25 @@ class DappSigningTest {
     private class FakeSigner : Signer {
         var answer: Signing = Signing.Signed(Signature("1".padStart(64, '0'), "2".padStart(64, '0'), 1))
         val asked = mutableListOf<Pair<Address, Digest>>()
+        val ledgerTypedData = mutableListOf<Pair<AccountId, Eip712Hashes>>()
+        val ledgerMessages = mutableListOf<Pair<AccountId, PersonalMessage>>()
+        var beforeLedgerReply: () -> Unit = {}
         override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing {
             asked += account to digest
+            return answer
+        }
+
+        override suspend fun signTypedData(account: AccountId, hashes: Eip712Hashes, unlock: Unlock): Signing {
+            if (unlock !is Unlock.WithLedger) return super<Signer>.signTypedData(account, hashes, unlock)
+            ledgerTypedData += account to hashes
+            beforeLedgerReply()
+            return answer
+        }
+
+        override suspend fun signPersonalMessage(account: AccountId, message: PersonalMessage, unlock: Unlock): Signing {
+            if (unlock !is Unlock.WithLedger) return super<Signer>.signPersonalMessage(account, message, unlock)
+            ledgerMessages += account to message
+            beforeLedgerReply()
             return answer
         }
     }
@@ -120,7 +142,7 @@ class DappSigningTest {
     ) = DappRequest(
         DappRequestId(DappSessionId("t"), id),
         dapp,
-        sessionAccounts.map { eth.serotine.domain.model.AccountId(sessionNetwork, it) },
+        sessionAccounts.map { AccountId(sessionNetwork, it) },
         chain,
         DappAsk.PersonalSign(signer, PersonalMessage.of(text.encodeToByteArray())!!),
         now + 300,
@@ -348,6 +370,36 @@ class DappSigningTest {
         assertEquals(first.id, requests.answered.single().first)
         assertTrue(requests.answered.single().second is Signature)
         assertEquals(DappMessageSigning.Gone, sign(first.id, Unlock.WithBiometrics("Sign in")))
+    }
+
+    @Test
+    fun ledgerSignsTheLiteralPersonalMessageAndTypedHashesOnTheRequestedChain() = runTest {
+        val ledger = held.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        accounts.accounts.value = listOf(ledger)
+        val literal = checkNotNull(PersonalMessage.of(byteArrayOf(0, -1, 0, 65)))
+        val personal = request(1).copy(ask = DappAsk.PersonalSign(ledger.address, literal))
+        val typed = permit()
+        requests.waiting.value = listOf(personal, typed)
+        val sign = SignDappMessage(requests, accounts, networks, signer, clock = { now })
+        val approval = Unlock.WithLedger(TestTimeSource().markNow() + 1.seconds)
+
+        assertEquals(DappMessageSigning.Signed(true), sign(personal.id, approval))
+        assertEquals(DappMessageSigning.Signed(true), sign(typed.id, approval))
+        assertEquals(listOf(ledger.id to literal), signer.ledgerMessages)
+        assertEquals(listOf(ledger.id to (typed.ask as DappAsk.SignTypedData).typed.hashes), signer.ledgerTypedData)
+        assertTrue(signer.asked.isEmpty())
+    }
+
+    @Test
+    fun aLedgerMessageIsNotAnsweredAfterTheRequestDisappearedDuringApproval() = runTest {
+        accounts.accounts.value = listOf(held.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT)))
+        val pending = request(1)
+        requests.waiting.value = listOf(pending)
+        signer.beforeLedgerReply = { requests.waiting.value = emptyList() }
+        val sign = SignDappMessage(requests, accounts, networks, signer, clock = { now })
+        val approval = Unlock.WithLedger(TestTimeSource().markNow() + 1.seconds)
+        assertEquals(DappMessageSigning.Gone, sign(pending.id, approval))
+        assertTrue(requests.answered.isEmpty())
     }
 
     @Test

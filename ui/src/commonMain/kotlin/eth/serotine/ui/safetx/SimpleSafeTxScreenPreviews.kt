@@ -134,6 +134,10 @@ private fun SimpleSafeTxDescribedPreview() = SimpleSafeTxPreview(overview.copy(a
 @Composable
 private fun SimpleSafeTxReviewPreview() = SimpleSafeTxPreview(review)
 
+@Preview
+@Composable
+private fun SimpleSafeTxReviewLedgerPreview() = SimpleSafeTxPreview(review.copy(unlock = UnlockStep(ledger = true)))
+
 private val swapNow = SafeSwapItem(
     lines = listOf(
         "Through Uniswap's SwapRouter02, its code proven by the light client.",
@@ -243,6 +247,7 @@ internal val simpleSafeTxScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("described") { SimpleSafeTxDescribedPreview() },
     ScreenPreview("traced") { SimpleSafeTxTracedPreview() },
     ScreenPreview("review") { SimpleSafeTxReviewPreview() },
+    ScreenPreview("review-ledger") { SimpleSafeTxReviewLedgerPreview() },
     ScreenPreview("swap") { SimpleSafeTxSwapPreview() },
     ScreenPreview("refused") { SimpleSafeTxRefusedPreview() },
     ScreenPreview("signing") { SimpleSafeTxSigningPreview() },

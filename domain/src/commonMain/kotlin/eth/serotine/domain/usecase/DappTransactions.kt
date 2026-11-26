@@ -226,10 +226,10 @@ sealed interface DappTransactionSending {
     /** Not signed again: [answer] is signed already as the answer to this request. */
     data class AlreadySigned(val answer: SignedAnswer) : DappTransactionSending
 
-    /** The dApp stopped waiting before it was signed: nothing was signed. */
+    /** The dApp stopped waiting: nothing was broadcast. */
     data object Expired : DappTransactionSending
 
-    /** The request is no longer waiting: nothing was signed. */
+    /** The same request is no longer waiting: nothing was broadcast. */
     data object Gone : DappTransactionSending
 }
 
@@ -265,6 +265,7 @@ class SendDappTransaction(
         review?.refusal?.let { return DappTransactionSending.Refused(it) }
         if (review?.account?.kind == AccountKind.SAFE) return DappTransactionSending.Gone
         if (request.expiresAtSeconds <= clock()) return DappTransactionSending.Expired
+        if (unlock is Unlock.WithLedger && request != quote.review.request) return DappTransactionSending.Gone
         // Sent on the network it was quoted on, which must be the request's: never signed for another chain.
         val network = Network.ofChainId(quote.call.transaction.chainId)
         if (network == null || network != request.network) {
@@ -276,8 +277,15 @@ class SendDappTransaction(
             request.dapp.name,
             quote.id,
         )
-        val sending =
-            signAndSend(signer, broadcaster, sentTransfers, network, quote.call, action, clock, unlock)
+        val sending = signAndSend(signer, broadcaster, sentTransfers, network, quote.call, action, clock, unlock) {
+            if (unlock is Unlock.WithLedger) {
+                // Do not release signed bytes if authorization took longer than the request/session.
+                signedFor(sentTransfers, history, quote.id)?.let { return DappTransactionSending.AlreadySigned(it) }
+                val current = requests.observe().first().firstOrNull { it.id == quote.id }
+                if (request.expiresAtSeconds <= clock()) return DappTransactionSending.Expired
+                if (current != request) return DappTransactionSending.Gone
+            }
+        }
         return answered(quote.id, sending)
     }
 

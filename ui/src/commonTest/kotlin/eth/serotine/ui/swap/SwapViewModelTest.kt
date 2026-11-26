@@ -6,9 +6,13 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowDeployment
+import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.Eip1559Transaction
+import eth.serotine.domain.model.Eip712Hashes
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.FeeTier
 import eth.serotine.domain.model.GPv2Settlement
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PoolKey
@@ -47,12 +51,15 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.LedgerProblem
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.Signer
+import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.UniswapV3Chain
@@ -152,6 +159,7 @@ class SwapViewModelTest {
         "Daily",
         AccountCustody.InKeyStore,
     )
+    private val ledgerAccount = daily.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
     private val watched = Account(
         Network.SEPOLIA,
         Address.of("0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359"),
@@ -188,6 +196,27 @@ class SwapViewModelTest {
     private val uniswap = PoolChain()
     private val light = FakeLightClient()
     private val signer = FakeSigner()
+    private val ledgerTransactions = mutableListOf<Pair<AccountId, Unlock.WithLedger>>()
+    private val ledgerOrders = mutableListOf<AccountId>()
+    private val ledgerSigner = object : Signer {
+        override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing =
+            error("Ledger requests must not use a raw digest")
+
+        override suspend fun signTransaction(
+            account: AccountId,
+            transaction: Eip1559Transaction,
+            unlock: Unlock,
+        ): Signing {
+            ledgerTransactions += account to assertIs<Unlock.WithLedger>(unlock)
+            return Signing.Signed(FakeSigner.SIGNATURE)
+        }
+
+        override suspend fun signTypedData(account: AccountId, hashes: Eip712Hashes, unlock: Unlock): Signing {
+            assertIs<Unlock.WithLedger>(unlock)
+            ledgerOrders += account
+            return Signing.LedgerFailed(LedgerProblem.REJECTED)
+        }
+    }
     private val broadcaster = FakeBroadcaster()
     private val sent = MemorySentTransfers()
     private val cowOrders = MemoryCowOrders()
@@ -227,6 +256,7 @@ class SwapViewModelTest {
         fill: SwapFill? = null,
         continuing: Boolean = false,
         listed: List<Token> = listOf(usdc, link),
+        signing: Signer = signer,
     ): SwapViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val now = { headTime }
@@ -258,11 +288,11 @@ class SwapViewModelTest {
                 now,
             ),
             EstimateSwap(FindUniswapRoute(uniswap, inputs), RouteRanking.NET_OF_FEES),
-            SendSwap(inputs, signer, broadcaster, sent, now),
+            SendSwap(inputs, signing, broadcaster, sent, now),
             QuoteWrap(uniswap, inputs, balances, tokenBalances, sent, cowOrders, cowChain, light, Network.SEPOLIA, Outbox.None, now),
-            SendWrap(signer, broadcaster, sent, now),
+            SendWrap(signing, broadcaster, sent, now),
             QuoteTokenApproval(inputs, balances, sent, Network.SEPOLIA, Outbox.None, now),
-            SendTokenApproval(signer, broadcaster, sent, now),
+            SendTokenApproval(signing, broadcaster, sent, now),
             RebroadcastTransfer(broadcaster, sent, FakeReceipts()),
             WarmFeeHistory(inputs),
             ObserveSwapVenue(swapVenue),
@@ -281,7 +311,7 @@ class SwapViewModelTest {
                 Outbox.None,
                 now,
             ),
-            PlaceCowOrder(signer, cowOrders, cowApi, light),
+            PlaceCowOrder(signing, cowOrders, cowApi, light),
             EstimateCowSwap(cowChain, cowApi, light),
             KeepWaitingSwap(waitingSwaps),
             DropWaitingSwap(waitingSwaps),
@@ -331,8 +361,8 @@ class SwapViewModelTest {
     }
 
     /** Composes 40 USDC for ETH and asks for the review. */
-    private fun TestScope.reviewed(): SwapViewModel {
-        val viewModel = viewModel(sell = usdc.address)
+    private fun TestScope.reviewed(signing: Signer = signer): SwapViewModel {
+        val viewModel = viewModel(sell = usdc.address, signing = signing)
         viewModel.onBuyChange(null)
         viewModel.onAmountChange("40")
         viewModel.review()
@@ -765,6 +795,42 @@ class SwapViewModelTest {
         assertEquals("Step 2 of 2", swap.step)
         assertEquals(WalletPassword.EMPTY, swap.unlock.password, "nothing typed for the approval signs the swap")
         assertEquals(1, signer.passwords.size, "nothing signed for step 2 before the user confirms it")
+    }
+
+    @Test
+    fun ledgerApprovalAndSwapRequireSeparateConfirmationsWithinTheirQuoteDeadlines() = runTest {
+        accounts.accounts.value = listOf(ledgerAccount)
+        biometrics = BiometricUnlock.On
+        allow(UInt256.of(5_000_000))
+        val viewModel = reviewed(ledgerSigner)
+        viewModel.onShown()
+        val approval = assertIs<SwapUiState.ApprovalReview>(viewModel.uiState.value)
+        assertTrue(approval.unlock.ledger)
+        assertTrue(approval.canSign)
+        assertFalse(approval.canSignWithBiometrics)
+
+        clock += 40.seconds
+        viewModel.sign()
+        runCurrent()
+        assertIs<SentAction.TokenApproval>(sent.transfers.value.single().action)
+        val (firstAccount, firstUnlock) = ledgerTransactions.single()
+        assertEquals(ledgerAccount.id, firstAccount)
+        assertEquals((-20).seconds, firstUnlock.notAfter.elapsedNow())
+
+        inputs.mined = 8
+        allow(fortyUsdc)
+        advanceTimeBy(5.seconds)
+        runCurrent()
+        val swap = assertIs<SwapUiState.SwapReview>(viewModel.uiState.value)
+        assertTrue(swap.unlock.ledger)
+        assertTrue(swap.canSign)
+        assertEquals(1, ledgerTransactions.size)
+
+        viewModel.sign()
+        runCurrent()
+        assertIs<SwapUiState.Sent>(viewModel.uiState.value)
+        assertEquals(2, ledgerTransactions.size)
+        assertEquals((-60).seconds, ledgerTransactions.last().second.notAfter.elapsedNow())
     }
 
     @Test
@@ -1259,6 +1325,26 @@ class SwapViewModelTest {
     }
 
     @Test
+    fun wrappingUsesTheLedgerWithoutAWalletPassword() = runTest {
+        accounts.accounts.value = listOf(ledgerAccount)
+        tokenBalances.of(daily.address, weth.address).value =
+            TokenBalanceReading.Verified(TokenUnits.of("0"), 9_412_117)
+        val viewModel = viewModel(listed = listOf(usdc, link, weth), signing = ledgerSigner)
+        viewModel.onBuyChange(weth.address.hex)
+        viewModel.onAmountChange("0.1")
+        viewModel.review()
+        runCurrent()
+        assertTrue(assertIs<SwapUiState.WrapReview>(viewModel.uiState.value).canSign)
+
+        viewModel.sign()
+        runCurrent()
+
+        assertIs<SwapUiState.Sent>(viewModel.uiState.value)
+        assertEquals(ledgerAccount.id, ledgerTransactions.single().first)
+        assertIs<SentAction.Wrap>(sent.transfers.value.single().action)
+    }
+
+    @Test
     fun wethForEthIsAnUnwrapAndCowIsNeverAskedEvenWhenChosen() = runTest {
         cowReady()
         tokenBalances.of(daily.address, weth.address).value =
@@ -1404,6 +1490,26 @@ class SwapViewModelTest {
         assertEquals(record.uid.hex, placed.uid)
         assertEquals(listOf(record.uid), cowApi.placed)
         assertEquals(listOf("made-up test password"), signer.passwords)
+    }
+
+    @Test
+    fun rejectingTheLedgerOrderLeavesItUnsentWithoutAnotherSigningAttempt() = runTest {
+        accounts.accounts.value = listOf(ledgerAccount)
+        cowReady()
+        val viewModel = reviewed(ledgerSigner)
+        val review = assertIs<SwapUiState.CowReview>(viewModel.uiState.value)
+        assertTrue(review.canSign)
+        assertTrue(review.unlock.ledger)
+
+        viewModel.sign()
+        runCurrent()
+
+        assertEquals(ledgerAccount.id, ledgerOrders.single())
+        assertTrue(cowApi.placed.isEmpty())
+        assertTrue(cowOrders.orders.value.isEmpty())
+        val declined = assertIs<SwapUiState.CowReview>(viewModel.uiState.value)
+        assertNotNull(declined.unlock.error)
+        assertTrue(declined.unlock.ledger)
     }
 
     @Test

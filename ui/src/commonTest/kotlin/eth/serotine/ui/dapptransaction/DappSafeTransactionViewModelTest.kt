@@ -1,6 +1,10 @@
 package eth.serotine.ui.dapptransaction
 
+import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Eip712Hashes
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.DappTransactionRequest
@@ -15,10 +19,13 @@ import eth.serotine.domain.repository.DappRequest
 import eth.serotine.domain.repository.DappRequestError
 import eth.serotine.domain.repository.DappRequestId
 import eth.serotine.domain.repository.DappSessionId
+import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.usecase.DescribeKeyStore
+import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDappMessages
 import eth.serotine.domain.usecase.ObserveSyncPolicy
 import eth.serotine.domain.usecase.ProposeDappSafeTx
@@ -65,6 +72,14 @@ class DappSafeTransactionViewModelTest {
         it.state = SafeState("1.4.1", l2 = false, listOf(it.alice.address, it.bob.address, it.carol), 2, 4, emptyList(), null)
         it.balances.of(it.safe).value = BalanceReading.Verified(Wei.of("1000000000000000000"), 100)
     }
+    private val ledgerSignatures = mutableListOf<Pair<AccountId, Eip712Hashes>>()
+    private val signing = object : Signer by world.signer {
+        override suspend fun signTypedData(account: AccountId, hashes: Eip712Hashes, unlock: Unlock): Signing {
+            if (unlock !is Unlock.WithLedger) return world.signer.signTypedData(account, hashes, unlock)
+            ledgerSignatures += account to hashes
+            return Signing.Signed(world.recovery.sign(account.address, hashes.digest))
+        }
+    }
     private val networks = MemoryNetworkSettings(setOf(Network.SEPOLIA))
     private val requests = FakeDappRequests()
     private val clock = TestTimeSource()
@@ -104,10 +119,13 @@ class DappSafeTransactionViewModelTest {
                 requests, world.accounts, networks, world.catalog, world.observeSafe, world.balances, world.inputs,
                 world.queue, Outbox.None, clock = { now },
             ),
-            SignDappSafeTx(requests) { SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, it) },
+            SignDappSafeTx(requests, clock = { now }) {
+                SignSafeTx(signing, world.observeSafe, world.recovery, world.queue, it)
+            },
             RefuseDappRequest(requests, world.accounts, networks, clock = { now }),
             DescribeKeyStore(FakeKeys()),
             observeSyncPolicy = ObserveSyncPolicy(policy),
+            observeAccounts = ObserveAccounts(world.accounts),
             clock = { now },
             timeSource = clock,
             ticks = kotlinx.coroutines.flow.flowOf(Unit),
@@ -157,6 +175,7 @@ class DappSafeTransactionViewModelTest {
             RefuseDappRequest(requests, gnosis.accounts, on, clock = { now }),
             DescribeKeyStore(FakeKeys()),
             observeSyncPolicy = ObserveSyncPolicy(MemorySyncPolicy()),
+            observeAccounts = ObserveAccounts(gnosis.accounts),
             clock = { now },
             timeSource = clock,
             ticks = kotlinx.coroutines.flow.flowOf(Unit),
@@ -213,6 +232,49 @@ class DappSafeTransactionViewModelTest {
         assertEquals(emptyList(), requests.refusals, "the dApp waits for the execution's hash")
         vm.onQueuedOpened()
         assertFalse(vm.uiState.value.openQueued)
+    }
+
+    @Test
+    fun aSafeRequestUsesItsVerifiedFirstOwnersLedgerNotTheSafeOrTheOwnersOtherNetwork() = runTest {
+        world.accounts.accounts.value = listOf(
+            world.alice.copy(network = Network.ETHEREUM),
+            world.alice.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT)),
+            world.bob,
+            world.treasury,
+        )
+        requests.waiting.value = listOf(request(1))
+        val vm = viewModel()
+        assertTrue(vm.uiState.value.unlock.ledger)
+        assertEquals(Eip55.format(world.alice.address), vm.uiState.value.quote[3].value)
+        assertTrue(ledgerSignatures.isEmpty())
+        vm.send()
+        runCurrent()
+        val queued = world.queue.requests.value.single()
+        val (owner, hashes) = ledgerSignatures.single()
+        assertEquals(world.alice.id, owner)
+        assertEquals(queued.hash, hashes.digest)
+        assertTrue(world.signer.asked.isEmpty())
+        assertTrue(requests.hashes.isEmpty(), "the dApp waits for the execution's hash")
+    }
+
+    @Test
+    fun removingTheProposedOwnerDoesNotSwitchToAnotherOwnerWithoutReview() = runTest {
+        world.accounts.accounts.value = listOf(
+            world.alice, world.bob.copy(custody = AccountCustody.InKeyStore), world.treasury,
+        )
+        requests.waiting.value = listOf(request(1))
+        val vm = viewModel()
+        vm.onPasswordChange("test password")
+        world.accounts.accounts.value = world.accounts.accounts.value.filterNot { it.id == world.alice.id }
+        runCurrent()
+        vm.send()
+        runCurrent()
+        assertTrue(vm.uiState.value.sendUnavailable)
+        assertTrue(vm.uiState.value.unlock.password.text.isEmpty())
+        assertNotNull(vm.uiState.value.explaining)
+        assertTrue(ledgerSignatures.isEmpty())
+        assertTrue(world.signer.asked.isEmpty())
+        assertTrue(world.queue.requests.value.isEmpty())
     }
 
     @Test

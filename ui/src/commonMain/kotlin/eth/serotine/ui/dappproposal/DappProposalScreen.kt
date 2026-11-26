@@ -248,16 +248,22 @@ fun DappProposalScreen(
                     },
                     headlineContent = { Text(account.name, color = color) },
                     supportingContent = {
-                        val where = when {
-                            account.network.isEmpty() -> account.address
-                            else -> "${account.network} · ${account.address}"
+                        val where = if (account.network.isEmpty()) {
+                            account.address
+                        } else {
+                            "${account.network} · ${account.address}"
                         }
                         val line = when {
                             account.perAppSite == null -> where
                             account.linked -> "Per-app address for ${account.perAppSite}, linked by you · $where"
                             else -> "Per-app address for ${account.perAppSite} · $where"
                         }
-                        Text(account.unavailable ?: line, color = color)
+                        Column {
+                            Text(account.unavailable ?: line, color = color)
+                            if (account.ledger && !unavailable) {
+                                Text("Ledger · Approve signing requests on the device", color = color)
+                            }
+                        }
                     },
                     colors = ListItemDefaults.colors(),
                 )

@@ -304,6 +304,11 @@ private fun GnosisPayReviewBiometricsPreview() =
 
 @Preview
 @Composable
+private fun GnosisPayReviewLedgerPreview() =
+    GnosisPayPreview(overview.copy(step = review.copy(unlock = UnlockStep(ledger = true))))
+
+@Preview
+@Composable
 private fun GnosisPayQueuedUnverifiedPreview() = GnosisPayPreview(
     overview.copy(
         queued = listOf(
@@ -580,6 +585,7 @@ internal val gnosisPayScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("review-wrong-password") { GnosisPayReviewWrongPasswordPreview() },
     ScreenPreview("review-not-sent") { GnosisPayReviewNotSentPreview() },
     ScreenPreview("review-biometrics") { GnosisPayReviewBiometricsPreview() },
+    ScreenPreview("review-ledger") { GnosisPayReviewLedgerPreview() },
     ScreenPreview("queued-unverified") { GnosisPayQueuedUnverifiedPreview() },
     ScreenPreview("member-safe") { GnosisPayMemberSafePreview() },
     ScreenPreview("co-signer") { GnosisPayCoSignerPreview() },

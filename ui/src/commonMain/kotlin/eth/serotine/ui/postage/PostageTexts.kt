@@ -47,6 +47,7 @@ internal object PostageTexts {
     const val NODE_SIGNS = "Signed by the node's own key, which pays the fee: only a batch's owner may dilute it."
 
     const val NO_PAYER = SwarmTexts.NO_PAYER
+    const val PAYER_UNAVAILABLE = "The selected account can no longer sign. Choose an account that can pay."
     const val NODE_KEY_NOT_HELD = SwarmTexts.NODE_KEY_NOT_HELD
     const val NOT_SWARM = "Only an account on Gnosis Chain that is no Safe can be a Swarm node."
     const val LIST_UNAVAILABLE = "The wallet's account list cannot be read right now."

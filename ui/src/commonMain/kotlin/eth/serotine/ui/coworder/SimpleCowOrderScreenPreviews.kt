@@ -91,9 +91,15 @@ private fun SimpleCowOrderFilledDarkPreview() = SimpleCowOrderPreview(filled, da
 @Composable
 private fun SimpleCowOrderCancelReviewPreview() = SimpleCowOrderPreview(review)
 
+@Preview
+@Composable
+private fun SimpleCowOrderLedgerCancelReviewPreview() =
+    SimpleCowOrderPreview(review.copy(unlock = UnlockStep(ledger = true)))
+
 /** Every preview above, which SimpleCowOrderScreenPreviewsTest renders: a new preview goes in here too. */
 internal val simpleCowOrderScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("filled") { SimpleCowOrderFilledPreview() },
     ScreenPreview("filled-dark") { SimpleCowOrderFilledDarkPreview() },
     ScreenPreview("cancel-review") { SimpleCowOrderCancelReviewPreview() },
+    ScreenPreview("cancel-review-ledger") { SimpleCowOrderLedgerCancelReviewPreview() },
 )

@@ -2,8 +2,11 @@ package eth.serotine.ui.createsafe
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Eip1559Transaction
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeCreation
@@ -30,6 +33,7 @@ import eth.serotine.domain.repository.NewMnemonic
 import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.Unlock
@@ -166,7 +170,7 @@ class CreateSafeViewModelTest {
     private val networks = MemoryNetworkSettings()
     private val policy = MemorySyncPolicy()
 
-    private fun TestScope.viewModel(): CreateSafeViewModel {
+    private fun TestScope.viewModel(deploymentSigner: Signer = signer): CreateSafeViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = CreateSafeViewModel(
             ObserveAccounts(accounts),
@@ -174,7 +178,7 @@ class CreateSafeViewModelTest {
             ResolveRecipient(names),
             PlanSafe(releases) { UInt256.of(++salts) },
             QuoteSafeDeployment(kinds, balances, inputs, sent, Outbox.None) { 1_800_000_000 },
-            DeploySafe(signer, broadcaster, sent) { 1_800_000_000 },
+            DeploySafe(deploymentSigner, broadcaster, sent) { 1_800_000_000 },
             RebroadcastTransfer(broadcaster, sent, receipts),
             WarmFeeHistory(inputs),
             ObserveEnabledNetworks(networks),
@@ -199,9 +203,9 @@ class CreateSafeViewModelTest {
     private fun eip55(address: Address) = Eip55.format(address)
 
     /** Daily and Savings at 1 of 2, named "Family vault", under review. */
-    private fun TestScope.reviewed(): CreateSafeViewModel {
+    private fun TestScope.reviewed(deploymentSigner: Signer = signer): CreateSafeViewModel {
         balances.of(daily.address).value = BalanceReading.Verified(Wei.of("1500000000000000000"), 9_412_118)
-        val viewModel = viewModel()
+        val viewModel = viewModel(deploymentSigner)
         viewModel.onNameChange("Family vault")
         viewModel.onToggleOwner(eip55(savings.address))
         viewModel.onContinue()
@@ -485,6 +489,37 @@ class CreateSafeViewModelTest {
             SentAction.SafeDeployment(address, listOf(daily.address, savings.address), 1, "1.4.1", "Family vault"),
             sent.transfers.value.single().action,
         )
+    }
+
+    @Test
+    fun ledgerCanPayForTheVerifiedDeploymentWithoutAWalletPassword() = runTest {
+        val ledger = daily.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        accounts.accounts.value = listOf(ledger, savings, treasury)
+        val signers = mutableListOf<AccountId>()
+        val hardware = object : Signer by signer {
+            override suspend fun signTransaction(
+                account: AccountId,
+                transaction: Eip1559Transaction,
+                unlock: Unlock,
+            ): Signing {
+                assertIs<Unlock.WithLedger>(unlock)
+                assertEquals(Network.SEPOLIA.chainId, transaction.chainId)
+                signers += account
+                return Signing.Signed(FakeSigner.SIGNATURE)
+            }
+        }
+        val viewModel = reviewed(hardware)
+        assertEquals(eip55(ledger.address), viewModel.review.payer)
+        assertTrue(viewModel.review.unlock.ledger)
+        assertTrue(viewModel.review.canSign)
+        assertFalse(viewModel.review.canSignWithBiometrics)
+        viewModel.sign()
+        runCurrent()
+
+        assertIs<CreateSafeUiState.Sent>(viewModel.uiState.value)
+        assertEquals(listOf(ledger.id), signers)
+        assertTrue(signer.asked.isEmpty(), "no digest or password fallback")
+        assertEquals(1, broadcaster.sent.size)
     }
 
     @Test

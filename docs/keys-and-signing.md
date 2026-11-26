@@ -1142,9 +1142,9 @@ deception path, and nothing on a phone closes it completely.
 ## USB Ledger on desktop
 
 Connect one Ledger by USB, unlock it, and open **Ethereum** on the device.
-In Punicus, choose **Accounts → + → Add Ledger account**. Choose Ethereum
-or Sepolia and the account's derivation path (the first Ledger Live
-account is `m/44'/60'/0'/0/0`). Select **Confirm address on Ledger** and
+In Punicus, choose **Accounts → + → Add Ledger account**. Choose Ethereum,
+Gnosis Chain or Sepolia, and the account's derivation path (the first Ledger
+Live account is `m/44'/60'/0'/0/0`). Select **Confirm address on Ledger** and
 check the full address on the device before approving it. Compare it with
 the address Punicus shows and select **Add account**. An existing entry
 for the address and network is not overwritten. The wallet stores only the
@@ -1159,14 +1159,29 @@ public address, path and ordinary account metadata.
   search path. This build has no Myotis engine on Windows, so it cannot
   quote or broadcast a transfer there.
 
-**Send** uses the same Myotis-backed review as a software account, but
-**Sign on Ledger and send** asks the device, not the wallet password.
-Check the recipient, amount and fee on the Ledger. Punicus verifies the
-signature against the reviewed EIP-1559 bytes and the enrolled address
-before sending it through Myotis. A rejected or expired review sends nothing.
-Only plain ETH transfers are supported: no token transfers, swaps, Safe
-co-signing, dApp signatures, stale quotes or blind-signing fallback.
-Android and iOS do not offer Ledger enrollment or signing.
+Ledger accounts use Punicus's normal verified reviews for native currency
+and token sends, swaps and approvals, wrapping, Safe deployment and
+on-chain Safe operations, and permitted dApp calls. **Approve on Ledger**
+asks the device instead of the wallet password. The same approval covers
+EIP-191 `personal_sign` and the EIP-712 signatures used for dApps, Safe
+co-signing and CoW orders. `eth_sign` is still refused. No Ledger signing
+while syncing: use a fresh review.
+The wallet builds type-2 (EIP-1559) transactions on every network. Adding
+Ledger does not add acceptance of raw dApp transactions or other envelope
+types.
+
+Check the complete request in Punicus and compare what the Ledger shows.
+The device can require **Blind signing** in its Ethereum app settings for
+contract calls, and requires it for the EIP-712 hashed form Punicus uses.
+That form shows hashes on the Ledger, not the typed fields shown in
+Punicus. Only enable it on the device if you accept that limitation.
+Punicus does not change that setting, fetch Ledger metadata, or silently
+retry with a less informative mode. Try Sepolia first.
+
+Punicus checks that the returned signature matches the exact reviewed
+request and enrolled address before it uses it. A rejected or expired
+review is not sent. Broadcast still goes through Myotis. Android and iOS
+do not offer Ledger enrollment or signing.
 
 Compose Desktop is Kotlin on the JVM. Its existing JNA bridge calls the
 system's [native HIDAPI](https://github.com/libusb/hidapi) from `:data`'s

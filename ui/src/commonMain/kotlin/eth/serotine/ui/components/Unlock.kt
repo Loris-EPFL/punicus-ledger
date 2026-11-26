@@ -18,18 +18,22 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.BiometricUnlock
 import eth.serotine.domain.repository.BiometricUnusable
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.Signing
+import eth.serotine.domain.repository.Unlock
+import eth.serotine.ui.ledger.ledgerProblemText
 import eth.serotine.ui.platform.protectFromScreenCapture
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
- * How a screen signs (Send's review, a Safe transaction's signature, approval or execution): with
- * the wallet [password] being typed, or, when [biometrics], with a fingerprint or face, the
- * password the fallback. [error] says why the last try signed nothing. The password is held only
+ * How a review signs: with a connected [ledger], or with the wallet [password] or [biometrics].
+ * [error] says why the last try signed nothing. The password is held only
  * while the field is shown (CLAUDE.md, *Trust*); its ViewModel drops it once used and whenever the
  * screen is not shown.
  */
@@ -37,7 +41,29 @@ data class UnlockStep(
     val password: WalletPassword = WalletPassword.EMPTY,
     val biometrics: Boolean = false,
     val error: String? = null,
-)
+    val ledger: Boolean = false,
+) {
+    /** Whether this review can request a signature without a biometric prompt. */
+    val canAuthorize: Boolean get() = ledger || password.text.isNotEmpty()
+}
+
+/** Apply the custody of the actual sender or owner; never carry a local credential into a Ledger review. */
+internal fun UnlockStep.forCustody(custody: AccountCustody?, localBiometrics: Boolean = false): UnlockStep = when {
+    custody is AccountCustody.Ledger -> if (ledger) this else UnlockStep(ledger = true)
+    ledger -> UnlockStep(biometrics = localBiometrics)
+    else -> this
+}
+
+/** A tap on the review's button. A Ledger approval cannot outlive this review's deadline. */
+internal fun UnlockStep.approval(notAfter: TimeMark? = null): Unlock? = when {
+    ledger -> Unlock.WithLedger(notAfter ?: (TimeSource.Monotonic.markNow() + QUOTE_MAX_AGE))
+    password.text.isNotEmpty() -> Unlock.WithPassword(password)
+    else -> null
+}
+
+internal fun UnlockStep.promptTooLate(): String = if (ledger) LEDGER_PROMPT_TOO_LATE else PROMPT_TOO_LATE
+
+internal fun UnlockStep.promptTimedOut(): String = if (ledger) LEDGER_PROMPT_TIMED_OUT else PROMPT_TIMED_OUT
 
 /**
  * A transaction signed but not broadcast: [message] why, and [canRetry] when sending the same signed
@@ -66,6 +92,21 @@ internal fun UnlockFields(
     passwordTag: String,
     signTag: String,
 ) {
+    if (unlock.ledger) {
+        Text("Connect your Ledger by USB, unlock it, and open the Ethereum app.")
+        Text(
+            "The Ledger may show only a hash or ask for blind signing. Check the details in Punicus and on the " +
+                "Ledger before approving. Enable blind signing on the device only if you accept that it " +
+                "cannot show the full request.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        unlock.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        SigningButton(
+            onSign, canSign, signing, "Approve on Ledger", "Waiting for Ledger…", signTag,
+        )
+        return
+    }
     // Only while the password field is shown: rule 8's protections of a screen that takes it.
     val captureBlocked = protectFromScreenCapture()
     if (unlock.biometrics) {
@@ -99,19 +140,7 @@ internal fun UnlockFields(
         ),
         keyboardActions = KeyboardActions(onDone = { onSign() }),
     )
-    Button(
-        onClick = onSign,
-        enabled = canSign,
-        modifier = Modifier.fillMaxWidth().testTag(signTag),
-    ) {
-        if (signing) {
-            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            Spacer(Modifier.size(8.dp))
-            Text(signingLabel)
-        } else {
-            Text(signLabel)
-        }
-    }
+    SigningButton(onSign, canSign, signing, signLabel, signingLabel, signTag)
     if (!captureBlocked) {
         Text(
             "Screenshots and screen recordings of this window cannot be blocked here. Make sure nothing is " +
@@ -119,6 +148,24 @@ internal fun UnlockFields(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
         )
+    }
+}
+
+@Composable
+private fun SigningButton(
+    onSign: () -> Unit,
+    canSign: Boolean,
+    signing: Boolean,
+    signLabel: String,
+    signingLabel: String,
+    signTag: String,
+) {
+    Button(onClick = onSign, enabled = canSign, modifier = Modifier.fillMaxWidth().testTag(signTag)) {
+        if (signing) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.size(8.dp))
+        }
+        Text(if (signing) signingLabel else signLabel)
     }
 }
 
@@ -156,6 +203,7 @@ internal fun notSignedText(signing: Signing, failed: String): String = when (sig
         BiometricUnusable.NO_PROMPT -> "The fingerprint or face check could not be shown: use the wallet password."
     }
     Signing.TimedOut -> PROMPT_TIMED_OUT
+    is Signing.LedgerFailed -> ledgerProblemText(signing.problem)
     Signing.NoKey -> "This device holds no key for this account, so nothing was signed."
     Signing.Unavailable -> "The key store cannot open this account's key on this device. Nothing was signed."
     Signing.NotEnoughMemory ->

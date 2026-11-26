@@ -2,6 +2,8 @@ package eth.serotine.ui.gnosispay
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DelayMemberChange
@@ -14,6 +16,7 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.ReadUnavailable
+import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.TokenBalanceReading
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.AccountLookup
@@ -43,10 +46,13 @@ import eth.serotine.domain.usecase.TokenHoldings
 import eth.serotine.domain.usecase.TransferSending
 import eth.serotine.ui.components.AddressInput
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.LEDGER_PROMPT_TIMED_OUT
+import eth.serotine.ui.components.LEDGER_PROMPT_TOO_LATE
 import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.notSignedText
@@ -551,7 +557,7 @@ class GnosisPayViewModel(
         val change = (plan as? DelayMemberChangePlan.Planned)?.change
             ?: return show(GnosisPayTexts.memberPlanRefused(plan))
         flowState.value = form.copy(quoting = true, error = null)
-        quoteQueueing(change, sender.account.address, sender.via, fee, form)
+        quoteQueueing(change, sender.account, sender.via, fee, form)
     }
 
     /**
@@ -577,16 +583,16 @@ class GnosisPayViewModel(
             return
         }
         flowState.value = Flow.Overview(busy = REMOVING + address)
-        quoteQueueing(change, sender.account.address, sender.via, fee, form = null)
+        quoteQueueing(change, sender.account, sender.via, fee, form = null)
     }
 
     /**
-     * [change]'s queueing by [member] through [via], quoted and shown for review; refused, said on
+     * [change]'s queueing by [payer] through [via], quoted and shown for review; refused, said on
      * [form] when it came from one, else on the overview.
      */
     private fun quoteQueueing(
         change: DelayMemberChange,
-        member: Address,
+        payer: Account,
         via: List<Address>,
         fee: FeeLevel,
         form: Flow.AddMember?,
@@ -595,15 +601,15 @@ class GnosisPayViewModel(
         viewModelScope.launch {
             val quotedAt = timeSource.markNow()
             val hidesAtQuote = hides
-            val quoting = safely { quoteDelayQueue(member, change, fee, via = via) }
-            val unlock = if (quoting is DelayQuoting.Quoted) unlockStep() else UnlockStep()
+            val quoting = safely { quoteDelayQueue(payer.address, change, fee, via = via) }
+            val unlock = if (quoting is DelayQuoting.Quoted) unlockStep(payer.custody) else UnlockStep()
             val current = flowState.value
             // Left meanwhile (Back, another action), the unlock's check included: the answer is no one's.
             if (request != mine || (current !is Flow.AddMember && current !is Flow.Overview)) return@launch
             if (quoting is DelayQuoting.Quoted) {
                 val hidden = hides != hidesAtQuote || !shown
                 val reviewed = Reviewed.Call(quoting.quote)
-                val review = Flow.Review(reviewed, member, unlock, quotedAt, form = form, hidden = hidden)
+                val review = Flow.Review(reviewed, payer.address, unlock, quotedAt, form = form, hidden = hidden)
                 return@launch landed(review)
             }
             val why = if (quoting == null) {
@@ -673,7 +679,7 @@ class GnosisPayViewModel(
             val quotedAt = timeSource.markNow()
             val hidesAtQuote = hides
             val quoting = safely { quoteDelayQueue(member, transfer, fee, via = sender.via) }
-            val unlock = if (quoting is DelayQuoting.Quoted) unlockStep() else UnlockStep()
+            val unlock = if (quoting is DelayQuoting.Quoted) unlockStep(sender.account.custody) else UnlockStep()
             // Left meanwhile (Back, a new Send), the unlock's check included: the answer is no one's.
             if (request != mine || flowState.value !is Flow.Compose) return@launch
             if (quoting is DelayQuoting.Quoted) {
@@ -720,10 +726,14 @@ class GnosisPayViewModel(
         }
         // The key that queued a blocked transfer pays for its skip, where it is held; then a controlling
         // key; then any key held here on the network (docs/gnosis-pay.md, *Skipping expired entries*).
-        val queuers = if (compose == null) latestQueued.filter { it.expiredHead }.map { it.member } else emptyList()
-        val held = found.keysHere.map { it.address }
-        val sender = (queuers.filter { it in held } + found.controllersHeld.map { it.account.address } + held)
-            .firstOrNull()
+        val queuer = if (compose == null) {
+            latestQueued.firstNotNullOfOrNull { queued ->
+                if (queued.expiredHead) found.keysHere.firstOrNull { it.address == queued.member } else null
+            }
+        } else {
+            null
+        }
+        val sender = queuer ?: found.controllersHeld.firstOrNull()?.account ?: found.keysHere.firstOrNull()
         if (sender == null) {
             if (compose != null) {
                 flowState.value = compose.formed(quoting = false, error = GnosisPayTexts.SKIP_NEEDS_KEY)
@@ -737,14 +747,16 @@ class GnosisPayViewModel(
         viewModelScope.launch {
             val quotedAt = timeSource.markNow()
             val hidesAtQuote = hides
-            val quoting = safely { quoteDelaySkip(sender, safe.address, found.delay.address, fee) }
-            val unlock = if (quoting is DelaySkipQuoting.Quoted) unlockStep() else UnlockStep()
+            val quoting = safely { quoteDelaySkip(sender.address, safe.address, found.delay.address, fee) }
+            val unlock = if (quoting is DelaySkipQuoting.Quoted) unlockStep(sender.custody) else UnlockStep()
             if (request != mine || flowState.value::class != from::class) return@launch
             if (quoting is DelaySkipQuoting.Quoted) {
                 val hidden = hides != hidesAtQuote || !shown
                 val form = compose?.formed(quoting = false, error = null, skip = false)
                 return@launch landed(
-                    Flow.Review(Reviewed.Skip(quoting.quote), sender, unlock, quotedAt, form = form, hidden = hidden),
+                    Flow.Review(
+                        Reviewed.Skip(quoting.quote), sender.address, unlock, quotedAt, form = form, hidden = hidden,
+                    ),
                 )
             }
             val why = if (quoting == null) GnosisPayTexts.QUOTE_FAILED else GnosisPayTexts.skipRefused(quoting)
@@ -767,7 +779,7 @@ class GnosisPayViewModel(
         if (overview.busy != null) return
         val queued = latestQueued.firstOrNull { it.queuedBy == id } ?: return
         leaveOnBack = false
-        if (found.keysHere.none { it.address == queued.member }) return
+        val sender = found.keysHere.firstOrNull { it.address == queued.member } ?: return
         if (found.sending == GnosisPaySending.RETIRED_MODULE || queued.state !is DelayTransferState.Ready) return
         flowState.value = Flow.Overview(busy = id)
         val mine = ++request
@@ -775,7 +787,7 @@ class GnosisPayViewModel(
             val quotedAt = timeSource.markNow()
             val hidesAtQuote = hides
             val quoting = safely { quoteDelayExecution(queued.member, queued.call, fee) }
-            val unlock = if (quoting is DelayQuoting.Quoted) unlockStep() else UnlockStep()
+            val unlock = if (quoting is DelayQuoting.Quoted) unlockStep(sender.custody) else UnlockStep()
             if (request != mine || flowState.value !is Flow.Overview) return@launch
             if (quoting is DelayQuoting.Quoted) {
                 val hidden = hides != hidesAtQuote || !shown
@@ -792,14 +804,20 @@ class GnosisPayViewModel(
 
     fun onPasswordChange(text: String) {
         val review = flowState.value as? Flow.Review ?: return
-        if (review.signing || review.requoting) return
+        if (review.signing || review.requoting || review.unlock.ledger) return
         flowState.value = review.copy(unlock = review.unlock.copy(password = WalletPassword(text), error = null))
     }
 
     fun sign() {
         val review = flowState.value as? Flow.Review ?: return
-        if (review.signing || review.requoting || review.unlock.password.text.isEmpty() || requoted(review)) return
-        send(review, Unlock.WithPassword(review.unlock.password))
+        if (review.signing || review.requoting || !review.unlock.canAuthorize || requoted(review)) return
+        val deadline = if (review.unlock.ledger) {
+            promptDeadline(review.quotedAt) ?: return requote(review, LEDGER_PROMPT_TOO_LATE)
+        } else {
+            null
+        }
+        val unlock = review.unlock.approval(deadline) ?: return
+        send(review, unlock)
     }
 
     fun signWithBiometrics() {
@@ -924,16 +942,21 @@ class GnosisPayViewModel(
                     flowState.value = Flow.Overview()
                     sentHash.value = sending.hash
                 }
-                is TransferSending.NotSigned -> landed(
-                    current.copy(
-                        signing = false,
-                        hidden = current.hidden || hiddenMeanwhile,
-                        unlock = current.unlock.copy(
-                            error = notSignedText(sending.signing, GnosisPayTexts.SEND_FAILED),
-                            biometrics = current.unlock.biometrics && biometricsStillOffered(sending.signing),
-                        ),
-                    ),
-                )
+                is TransferSending.NotSigned -> {
+                    val unsigned = current.copy(signing = false, hidden = current.hidden || hiddenMeanwhile)
+                    if (review.unlock.ledger && sending.signing == Signing.TimedOut) {
+                        requote(unsigned, LEDGER_PROMPT_TIMED_OUT)
+                    } else {
+                        landed(
+                            unsigned.copy(
+                                unlock = current.unlock.copy(
+                                    error = notSignedText(sending.signing, GnosisPayTexts.SEND_FAILED),
+                                    biometrics = current.unlock.biometrics && biometricsStillOffered(sending.signing),
+                                ),
+                            ),
+                        )
+                    }
+                }
                 // Maybe taken: its record is what its status retries from, byte for byte.
                 is TransferSending.NotSent -> if (sending.transfer.maybeSent) {
                     leaveOnBack = false
@@ -1017,8 +1040,12 @@ class GnosisPayViewModel(
         flowState.value = compose.copy(error = error, quoting = false)
     }
 
-    private suspend fun unlockStep(): UnlockStep =
-        UnlockStep(biometrics = safely { biometricsOn(describeKeyStore()) } == true)
+    private suspend fun unlockStep(custody: AccountCustody): UnlockStep =
+        if (custody is AccountCustody.Ledger) {
+            UnlockStep(ledger = true)
+        } else {
+            UnlockStep(biometrics = safely { biometricsOn(describeKeyStore()) } == true)
+        }
 
     private suspend fun <T> safely(block: suspend () -> T): T? = try {
         block()

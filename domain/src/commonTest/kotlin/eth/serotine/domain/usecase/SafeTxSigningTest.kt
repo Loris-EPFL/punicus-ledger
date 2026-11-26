@@ -1,8 +1,11 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.FeeTier
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeOperation
 import eth.serotine.domain.model.SafeSignature
@@ -33,6 +36,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -317,6 +321,27 @@ class SafeTxSigningTest {
         assertEquals(listOf(world.alice.address, world.carol), signed.request.signers)
         assertTrue(signed.saved)
         assertEquals(listOf(signed.request), world.queue.requests.value)
+    }
+
+    @Test
+    fun aLedgerOwnerIsSelectedOnTheSafesChainAndSignsTheSameEip712Hashes() = runTest {
+        val ledger = world.alice.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        val localElsewhere = world.alice.copy(network = Network.ETHEREUM)
+        world.accounts.accounts.value = listOf(localElsewhere, ledger, world.bob)
+        val safe = AccountId(world.network, world.safe)
+        val reading = assertIs<SafeReading.Verified>(world.observeSafe(safe).first())
+        assertEquals(listOf(ledger.address), reading.ownersHeld)
+        assertEquals(ledger, reading.ownersInWallet.first { it.address == ledger.address })
+        val request = world.request(usdcTransfer(4))
+        val unlock = Unlock.WithLedger(TestTimeSource().markNow() + 1.seconds)
+
+        assertIs<SafeTxSigning.Signed>(sign(request, ledger.address, unlock))
+        assertEquals(listOf(ledger.id to request.hashes), world.signer.ledgerTypedData)
+        assertTrue(world.signer.asked.isEmpty())
+
+        world.accounts.accounts.value = listOf(ledger.copy(network = Network.GNOSIS))
+        val foreign = assertIs<SafeReading.Verified>(world.observeSafe(safe).first())
+        assertTrue(foreign.ownersHeld.isEmpty())
     }
 
     @Test

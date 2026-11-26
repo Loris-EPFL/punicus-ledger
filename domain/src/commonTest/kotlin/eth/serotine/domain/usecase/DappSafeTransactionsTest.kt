@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.DappTransactionRequest
 import eth.serotine.domain.model.AccountId
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeSettingsCalls
 import eth.serotine.domain.model.SignedTransfer
@@ -34,6 +35,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 
 /** A dApp's transaction from a Safe, proposed as a Safe transaction, and its dApp answered once it is executed. */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -169,6 +172,26 @@ class DappSafeTransactionsTest {
         requests.recordSaves = false
         assertEquals(DappSafeSigning.NotRecorded, signed(proposed))
         assertTrue(world.queue.requests.value.isEmpty(), "its signature dropped: never queued, never shared")
+        assertEquals(null, requests.waiting.value.single().safeTx)
+    }
+
+    @Test
+    fun aLedgerSafeSignatureIsDiscardedWhenTheRequestExpiresDuringApproval() = runTest {
+        val ledger = world.alice.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        world.accounts.accounts.value = world.accounts.accounts.value.map { if (it.id == ledger.id) ledger else it }
+        val pending = request(payment)
+        requests.waiting.value = listOf(pending)
+        val proposed = assertIs<DappSafeProposing.Proposed>(propose()(pending.id)).proposal
+        var wallClock = now
+        val sign = SignDappSafeTx(requests, clock = { wallClock }) { network ->
+            SignSafeTx(world.signer, world.observeSafe, world.recovery, world.queue, network)
+        }
+        val checked = assertIs<SafeTxSignCheck.Ready>(sign.check(proposed))
+        world.signer.beforeLedgerReply = { wallClock = pending.expiresAtSeconds }
+        val approval = Unlock.WithLedger(TestTimeSource().markNow() + 1.seconds)
+        assertEquals(DappSafeSigning.NotRecorded, sign.sign(proposed, checked, approval))
+        assertEquals(listOf(ledger.id to proposed.proposal.request.hashes), world.signer.ledgerTypedData)
+        assertTrue(world.queue.requests.value.isEmpty())
         assertEquals(null, requests.waiting.value.single().safeTx)
     }
 

@@ -109,10 +109,11 @@ class SendScreenTest {
 
     @Test
     fun ledgerReviewUsesTheDeviceInsteadOfAskingForTheWalletPassword() {
-        show(review.copy(ledger = true, unlock = UnlockStep(biometrics = true)))
+        show(review.copy(unlock = UnlockStep(ledger = true)))
 
         rule.onNodeWithTag(SEND_PASSWORD_TAG).assertDoesNotExist()
-        rule.onNodeWithText("Sign on Ledger and send").performScrollTo().assertIsEnabled().performClick()
+        rule.onNodeWithText("The Ledger may show only a hash", substring = true).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Approve on Ledger").performScrollTo().assertIsEnabled().performClick()
         assertEquals(listOf("sign"), events)
     }
 

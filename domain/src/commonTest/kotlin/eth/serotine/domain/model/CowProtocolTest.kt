@@ -73,7 +73,7 @@ class CowProtocolTest {
             feeAmount = UInt256.ZERO,
             partiallyFillable = true,
         )
-        val digest = GPv2Signing.digest(GPv2Signing.domainSeparator(Network.SEPOLIA.chainId, settlement), struct)
+        val digest = Eip712Hashes.fromBytes(GPv2Signing.domainSeparator(Network.SEPOLIA.chainId, settlement), struct).digest
         assertEquals(realUid.digest, digest)
         assertEquals(realUid, CowOrderUid.of(digest, owner, 1_792_665_588))
         for (appData in listOf("0x" + "1c".repeat(16), "0x" + "1c".repeat(64))) {
@@ -105,7 +105,7 @@ class CowProtocolTest {
             partiallyFillable = true,
             kind = SwapKind.BUY,
         )
-        val digest = GPv2Signing.digest(GPv2Signing.domainSeparator(Network.GNOSIS.chainId, settlement), struct)
+        val digest = Eip712Hashes.fromBytes(GPv2Signing.domainSeparator(Network.GNOSIS.chainId, settlement), struct).digest
         assertEquals(uid.digest, digest)
     }
 

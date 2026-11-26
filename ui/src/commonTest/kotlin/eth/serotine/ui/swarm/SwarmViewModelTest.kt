@@ -7,6 +7,7 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Chequebook
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PostageBatch
 import eth.serotine.domain.model.UInt256
@@ -222,6 +223,29 @@ class SwarmViewModelTest {
         runCurrent()
         assertEquals(SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true), viewModel.ready.buy)
         assertEquals(SwarmAction(SwarmTexts.NETWORK_OFF_ACTION, turnOn = true), viewModel.ready.batches.single().dilute)
+    }
+
+    @Test
+    fun ledgerAuthorityIsLimitedToItsOwnNetworkAndNodeOnlyActions() = runTest {
+        val ledger = AccountCustody.Ledger(checkNotNull(LedgerPath.parse("m/44'/60'/0'/0/0")))
+        val payer = Account(Network.ETHEREUM, stranger, AccountKind.EOA, "Savings", ledger)
+        accounts.add(payer)
+        kept.value = SwarmCandidateList.Loaded(listOf(chequebookAddress), listOf(batchId))
+        val viewModel = viewModel()
+        runCurrent()
+        assertEquals(SwarmAction(SwarmTexts.NO_PAYER), viewModel.ready.buy)
+
+        accounts.add(payer.copy(network = Network.GNOSIS))
+        runCurrent()
+        assertEquals(SwarmAction(), viewModel.ready.buy)
+        assertEquals(SwarmAction(), viewModel.ready.batches.single().topUp)
+        assertEquals(SwarmAction(SwarmTexts.NODE_KEY_NOT_HELD), viewModel.ready.batches.single().dilute)
+        assertEquals(SwarmAction(SwarmTexts.NODE_KEY_NOT_WITHDRAWING), viewModel.ready.chequebooks.single().withdraw)
+
+        accounts.setCustody(bee.id, ledger)
+        runCurrent()
+        assertEquals(SwarmAction(), viewModel.ready.batches.single().dilute)
+        assertEquals(SwarmAction(), viewModel.ready.chequebooks.single().withdraw)
     }
 
     @Test

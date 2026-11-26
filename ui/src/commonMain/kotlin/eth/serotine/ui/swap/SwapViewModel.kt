@@ -18,6 +18,7 @@ import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.model.WrapDirection
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.CowOrderRecord
@@ -83,6 +84,8 @@ import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NATIVE_DECIMALS
 import eth.serotine.ui.components.NOT_A_TOKEN
+import eth.serotine.ui.components.LEDGER_PROMPT_TIMED_OUT
+import eth.serotine.ui.components.LEDGER_PROMPT_TOO_LATE
 import eth.serotine.ui.components.PROMPT_TIMED_OUT
 import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
@@ -97,12 +100,14 @@ import eth.serotine.ui.components.TOLERANCE_ERROR
 import eth.serotine.ui.components.TOO_SMALL
 import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.components.amountHint
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.figureText
+import eth.serotine.ui.components.forCustody
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.noRouteText
 import eth.serotine.ui.components.finalityWaitText
@@ -703,7 +708,8 @@ class SwapViewModel(
                             quoted = next.quoted,
                             quotedAt = next.quotedAt,
                             refreshing = false,
-                            unlock = latest.unlock.copy(error = note),
+                            unlock = latest.unlock.takeIf { it.ledger == next.unlock.ledger }
+                                ?.copy(error = note) ?: next.unlock.copy(error = note),
                         )
                     } else {
                         latest.copy(
@@ -711,7 +717,8 @@ class SwapViewModel(
                             quoted = next.quoted,
                             quotedAt = next.quotedAt,
                             refreshing = false,
-                            unlock = latest.unlock.copy(password = WalletPassword.EMPTY, error = note),
+                            unlock = (latest.unlock.takeIf { it.ledger == next.unlock.ledger } ?: next.unlock)
+                                .copy(password = WalletPassword.EMPTY, error = note),
                             position = null,
                             earlierFailed = null,
                         )
@@ -725,19 +732,23 @@ class SwapViewModel(
 
     /** The password field now reads [text]. */
     fun onPasswordChange(text: String) = step.update { current ->
-        if (current is Step.Reviewing && !current.signing && current.notSent == null) {
+        if (current is Step.Reviewing && !current.signing && current.notSent == null && !current.unlock.ledger) {
             current.copy(unlock = current.unlock.copy(password = WalletPassword(text), error = null))
         } else {
             current
         }
     }
 
-    /** Signs the reviewed approval or swap with the typed wallet password, and broadcasts it. */
+    /** Signs the review with the wallet password or Ledger, then sends the transaction or places the order. */
     fun sign() {
         val current = step.value as? Step.Reviewing ?: return
-        val password = current.unlock.password
-        if (!current.idle || password.text.isEmpty() || requoted(current)) return
-        sign(current, Unlock.WithPassword(password))
+        if (!current.idle || !current.unlock.canAuthorize || requoted(current)) return
+        val notAfter = if (current.unlock.ledger) {
+            promptDeadline(current.quotedAt) ?: return refresh(note = LEDGER_PROMPT_TOO_LATE)
+        } else {
+            null
+        }
+        sign(current, current.unlock.approval(notAfter) ?: return)
     }
 
     /** Signs the reviewed approval or swap with a fingerprint or face, and broadcasts it. */
@@ -1026,7 +1037,9 @@ class SwapViewModel(
             keepOrLetGo(review)
             awaitApproval()
             // The prompt outlived the quote's age: nothing was signed, and the quote is made again.
-            if ((sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut) refresh(note = PROMPT_TIMED_OUT)
+            if ((sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut) {
+                refresh(note = unlock.promptTimedOut())
+            }
             requoteIfHidden()
         }
     }
@@ -1046,7 +1059,7 @@ class SwapViewModel(
                 return
             }
             CowOrderPlacing.QuoteStale -> STALE_QUOTE
-            is CowOrderPlacing.NotSigned -> if (placing.signing == Signing.TimedOut) PROMPT_TIMED_OUT else null
+            is CowOrderPlacing.NotSigned -> unlock.promptTimedOut().takeIf { placing.signing == Signing.TimedOut }
             else -> null
         }
         step.update { latest ->
@@ -1067,6 +1080,9 @@ class SwapViewModel(
         if (requote != null) refresh(note = requote)
         requoteIfHidden()
     }
+
+    private fun Unlock.promptTimedOut(): String =
+        if (this is Unlock.WithLedger) LEDGER_PROMPT_TIMED_OUT else PROMPT_TIMED_OUT
 
     /**
      * Where [review] goes once its transaction's signature or broadcast came to [sending]: a swap
@@ -1125,7 +1141,14 @@ class SwapViewModel(
             is Quoted -> next
             is Step.Composing -> return next
         }
-        return Step.Reviewing(request, quoted, readFrom, unlock ?: UnlockStep(biometrics = biometricsOffered()), sender)
+        val swapper = model.value?.swapper ?: return Step.Composing(error = LIST_UNAVAILABLE)
+        val custody = when (swapper) {
+            is Swapper.From -> swapper.account.custody
+            is Swapper.Cannot -> return Step.Composing(error = swapper.message)
+        }
+        val authorization = unlock?.takeUnless { it.ledger && custody == AccountCustody.InKeyStore }
+            ?: UnlockStep(biometrics = custody == AccountCustody.InKeyStore && biometricsOffered())
+        return Step.Reviewing(request, quoted, readFrom, authorization.forCustody(custody), sender)
     }
 
     /**
@@ -1347,7 +1370,7 @@ class SwapViewModel(
                 when {
                     account == null -> Swapper.Cannot(NOT_IN_WALLET)
                     account.kind == AccountKind.SAFE -> Swapper.Cannot(SAFE)
-                    account.custody != AccountCustody.InKeyStore -> Swapper.Cannot(WATCH_ONLY)
+                    !account.custody.canSign -> Swapper.Cannot(WATCH_ONLY)
                     else -> Swapper.From(account)
                 }
             }

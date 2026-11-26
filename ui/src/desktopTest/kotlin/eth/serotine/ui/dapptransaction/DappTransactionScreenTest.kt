@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.dapprequest.SignInField
 import eth.serotine.ui.theme.SerotineTheme
 import org.junit.Rule
@@ -67,6 +68,16 @@ class DappTransactionScreenTest {
         assertEquals(listOf("pw"), typed)
         rule.onNodeWithTag(DAPP_TRANSACTION_REFUSE_TAG).performScrollTo().performClick()
         assertEquals(1, refusals)
+    }
+
+    @Test
+    fun ledgerApprovalDoesNotTakeAPasswordAndKeepsTheVerifiedQuote() {
+        show(state.copy(unlock = UnlockStep(ledger = true)))
+
+        rule.onNodeWithText("0.00168 ETH (testnet)").performScrollTo().assertExists()
+        rule.onNodeWithTag(DAPP_TRANSACTION_PASSWORD_TAG).assertDoesNotExist()
+        rule.onNodeWithText("Approve on Ledger").performScrollTo().performClick()
+        assertEquals(1, sends)
     }
 
     @Test

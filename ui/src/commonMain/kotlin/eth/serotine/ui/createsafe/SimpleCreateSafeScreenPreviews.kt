@@ -86,6 +86,11 @@ private fun SimpleCreateSafeReviewPreview() = SimpleCreateSafePreview(review)
 @Composable
 private fun SimpleCreateSafeReviewDarkPreview() = SimpleCreateSafePreview(review, darkTheme = true)
 
+@Preview
+@Composable
+private fun SimpleCreateSafeReviewLedgerPreview() =
+    SimpleCreateSafePreview(review.copy(unlock = UnlockStep(ledger = true)))
+
 @Composable
 private fun SimpleCreateSafePreview(state: CreateSafeUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
@@ -98,4 +103,5 @@ internal val simpleCreateSafeScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("owners") { SimpleCreateSafeOwnersPreview() },
     ScreenPreview("review") { SimpleCreateSafeReviewPreview() },
     ScreenPreview("review-dark") { SimpleCreateSafeReviewDarkPreview() },
+    ScreenPreview("review-ledger") { SimpleCreateSafeReviewLedgerPreview() },
 )

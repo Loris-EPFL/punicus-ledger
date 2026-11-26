@@ -110,6 +110,11 @@ private fun SimpleSafeSwapReviewPreview() = SimpleSafeSwapPreview(review)
 @Composable
 private fun SimpleSafeSwapReviewDarkPreview() = SimpleSafeSwapPreview(review, darkTheme = true)
 
+@Preview
+@Composable
+private fun SimpleSafeSwapReviewLedgerPreview() =
+    SimpleSafeSwapPreview(review.copy(unlock = UnlockStep(ledger = true)))
+
 /** A swap refused: said with no block. */
 @Preview
 @Composable
@@ -130,4 +135,5 @@ internal val simpleSafeSwapScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("refused") { SimpleSafeSwapRefusedPreview() },
     ScreenPreview("review") { SimpleSafeSwapReviewPreview() },
     ScreenPreview("review-dark") { SimpleSafeSwapReviewDarkPreview() },
+    ScreenPreview("review-ledger") { SimpleSafeSwapReviewLedgerPreview() },
 )

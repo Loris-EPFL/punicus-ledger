@@ -241,7 +241,6 @@ import eth.serotine.domain.usecase.SendCowCancellation
 import eth.serotine.domain.usecase.SendDappTransaction
 import eth.serotine.domain.usecase.SendDelayCall
 import eth.serotine.domain.usecase.SendDelaySkip
-import eth.serotine.domain.usecase.SendLedgerTransfer
 import eth.serotine.domain.usecase.SendSwap
 import eth.serotine.domain.usecase.SendTokenApproval
 import eth.serotine.domain.usecase.SendTransfer
@@ -965,9 +964,7 @@ class AppGraph(
         ),
         QueueTransfer(signer, outbox, outboxLock),
         fill = fill,
-        sendLedgerTransfer = ledgerDevice?.let {
-            SendLedgerTransfer(it, signatureRecovery, broadcaster, sentTransfers, accounts)
-        },
+        offersLedgerSigning = offersLedgerAccounts,
     )
 
     /**
@@ -1299,10 +1296,11 @@ class AppGraph(
             safeTxQueue,
             outbox,
         ),
-        SignDappSafeTx(dappRequests, ::signSafeTx),
+        SignDappSafeTx(dappRequests, signSafeTx = ::signSafeTx),
         RefuseDappRequest(dappRequests, accounts, networkSettings),
         DescribeKeyStore(keys),
         ObserveSyncPolicy(syncPolicy),
+        observeAccounts = ObserveAccounts(accounts),
     )
 
     /** The review of the request [requestKey] names (`topic/id`, as its route carries it): screen D4. */

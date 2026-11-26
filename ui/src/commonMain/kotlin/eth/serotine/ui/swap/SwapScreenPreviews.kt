@@ -489,6 +489,10 @@ private fun SwapApprovalPreview() = SwapPreview(approval)
 
 @Preview
 @Composable
+private fun SwapLedgerApprovalPreview() = SwapPreview(approval.copy(unlock = UnlockStep(ledger = true)))
+
+@Preview
+@Composable
 private fun SwapApprovalResetFirstPreview() = SwapPreview(
     approval.copy(
         amount = "0 USDC",
@@ -700,6 +704,7 @@ internal val swapScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("compose-earlier-maybe-sent") { SwapComposeEarlierMaybeSentPreview() },
     ScreenPreview("compose-token-not-found") { SwapComposeTokenNotFoundPreview() },
     ScreenPreview("approval") { SwapApprovalPreview() },
+    ScreenPreview("approval-ledger") { SwapLedgerApprovalPreview() },
     ScreenPreview("approval-reset-first") { SwapApprovalResetFirstPreview() },
     ScreenPreview("review") { SwapReviewPreview() },
     ScreenPreview("review-dark") { SwapReviewDarkPreview() },

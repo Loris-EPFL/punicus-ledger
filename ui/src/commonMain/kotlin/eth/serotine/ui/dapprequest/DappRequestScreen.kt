@@ -255,7 +255,7 @@ fun DappRequestScreen(
                     UnlockFields(
                         unlock = state.unlock,
                         signing = state.busy,
-                        canSign = !state.busy && state.unlock.password.text.isNotEmpty(),
+                        canSign = !state.busy && state.unlock.canAuthorize,
                         canSignWithBiometrics = !state.busy,
                         signLabel = state.signLabel,
                         signingLabel = "Signing…",

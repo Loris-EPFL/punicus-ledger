@@ -243,9 +243,9 @@ sealed interface Signable {
     val signing: Boolean
     val notSent: NotSentItem?
 
-    /** Something is typed, and nothing else runs or has run: the password may sign. */
+    /** The review is idle and has a password or a Ledger to authorize signing. */
     val canSign: Boolean
-        get() = idle && unlock.password.text.isNotEmpty()
+        get() = idle && unlock.canAuthorize
 
     /** The biometric prompt may be offered now. */
     val canSignWithBiometrics: Boolean

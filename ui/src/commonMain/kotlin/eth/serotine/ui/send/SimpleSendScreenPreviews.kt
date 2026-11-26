@@ -288,11 +288,10 @@ private fun SimpleSendReviewPlantedSenderPreview() = SimpleSendPreview(
 @Composable
 private fun SimpleSendLedgerReviewDarkPreview() = SimpleSendPreview(
     review.copy(
-        ledger = true,
         amount = "0.1 ETH",
         asset = ether,
         balances = review.balances.filter { it.short == "ETH balance" },
-        unlock = UnlockStep(),
+        unlock = UnlockStep(ledger = true),
         simulation = "The transfer, run as a verified call from this account, goes through.",
     ),
     darkTheme = true,

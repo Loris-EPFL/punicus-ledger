@@ -548,6 +548,37 @@ private fun SafeTxReviewApprovalPreview() = SafeTxPreview(approval.copy(unlock =
 
 @Preview
 @Composable
+private fun SafeTxSigningLedgerPreview() = SafeTxPreview(signing.copy(unlock = UnlockStep(ledger = true)))
+
+@Preview
+@Composable
+private fun SafeTxReviewApprovalLedgerPreview() = SafeTxPreview(approval.copy(unlock = UnlockStep(ledger = true)))
+
+@Preview
+@Composable
+private fun SafeTxReviewExecutionLedgerPreview() = SafeTxPreview(review.copy(unlock = UnlockStep(ledger = true)))
+
+@Preview
+@Composable
+private fun SafeTxLedgerWaitingForVerificationPreview() {
+    val reason = "Ledger signing waits for the light client to catch up and check this transaction on chain."
+    SafeTxPreview(
+        lenientOverviewSample.copy(
+            owners = keptOwnersSample.copy(
+                rows = keptOwnersSample.rows.map { if (it.heldHere) it.copy(heldHere = false, ledger = true) else it },
+            ),
+            canSign = false,
+            canApprove = false,
+            canExecute = false,
+            signNote = reason,
+            approveNote = reason,
+            executeNote = reason,
+        ),
+    )
+}
+
+@Preview
+@Composable
 private fun SafeTxReviewRefreshingPreview() = SafeTxPreview(approval.copy(refreshing = true))
 
 @Preview
@@ -789,6 +820,7 @@ internal val safeTxScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("owners-unavailable") { SafeTxOwnersUnavailablePreview() },
     ScreenPreview("quoting") { SafeTxQuotingPreview() },
     ScreenPreview("signing") { SafeTxSigningPreview() },
+    ScreenPreview("signing-ledger") { SafeTxSigningLedgerPreview() },
     ScreenPreview("signing-dark") { SafeTxSigningDarkPreview() },
     ScreenPreview("signing-wrong-password") { SafeTxSigningWrongPasswordPreview() },
     ScreenPreview("signing-runs") { SafeTxSigningRunsPreview() },
@@ -796,6 +828,9 @@ internal val safeTxScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("review-execution") { SafeTxReviewExecutionPreview() },
     ScreenPreview("review-execution-dark") { SafeTxReviewExecutionDarkPreview() },
     ScreenPreview("review-approval") { SafeTxReviewApprovalPreview() },
+    ScreenPreview("review-approval-ledger") { SafeTxReviewApprovalLedgerPreview() },
+    ScreenPreview("ledger-waiting-for-verification") { SafeTxLedgerWaitingForVerificationPreview() },
+    ScreenPreview("review-execution-ledger") { SafeTxReviewExecutionLedgerPreview() },
     ScreenPreview("review-refreshing") { SafeTxReviewRefreshingPreview() },
     ScreenPreview("review-signing") { SafeTxReviewSigningPreview() },
     ScreenPreview("review-not-sent") { SafeTxReviewNotSentPreview() },

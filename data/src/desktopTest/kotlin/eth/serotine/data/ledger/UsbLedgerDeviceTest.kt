@@ -2,9 +2,12 @@ package eth.serotine.data.ledger
 
 import eth.serotine.data.keys.Secp256k1Recovery
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Digest
 import eth.serotine.domain.model.Eip1559Transaction
+import eth.serotine.domain.model.Eip712Hashes
 import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.PersonalMessage
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.LedgerProblem
@@ -63,28 +66,142 @@ class UsbLedgerDeviceTest {
     }
 
     @Test
-    fun refusesTheWrongSenderBeforeAskingToSign() = runTest {
-        val reports = ReportScript({ replies(it, addressResponse) })
-        val result = UsbLedgerDevice { reports }.signTransaction(LedgerPath.DEFAULT, recipient, transaction())
-        assertEquals(LedgerResult.Failed(LedgerProblem.WRONG_ACCOUNT), result)
-        assertEquals(1, reports.writes.size)
+    fun refusesTheWrongSenderBeforeAnySigningCommand() = runTest {
+        val signers: List<suspend (UsbLedgerDevice) -> LedgerResult<Signature>> = listOf(
+            { it.signTransaction(LedgerPath.DEFAULT, recipient, transaction()) },
+            { it.signTypedData(LedgerPath.DEFAULT, recipient, typedHashes) },
+            { it.signPersonalMessage(LedgerPath.DEFAULT, recipient, assertNotNull(PersonalMessage.of(byteArrayOf(1)))) },
+        )
+        for (sign in signers) {
+            val reports = ReportScript({ replies(it, addressResponse) })
+            assertEquals(LedgerResult.Failed(LedgerProblem.WRONG_ACCOUNT), sign(UsbLedgerDevice { reports }))
+            assertEquals(1, reports.writes.size)
+            assertTrue(reports.closed)
+        }
+    }
+
+    @Test
+    fun refusesAnUnknownNetworkBeforeOpeningUsb() = runTest {
+        val device = UsbLedgerDevice { error("unsupported transactions must not open USB") }
+        assertEquals(
+            LedgerResult.Failed(LedgerProblem.UNSUPPORTED_TRANSACTION),
+            device.signTransaction(LedgerPath.DEFAULT, address, transaction(chainId = 999)),
+        )
+    }
+
+    @Test
+    fun streamsTheExactArbitraryCalldataTransactionAtShortApduBoundaries() = runTest {
+        for ((size, lengths) in listOf(
+            189 to listOf(234),
+            190 to listOf(234, 1),
+            442 to listOf(234, 255),
+            443 to listOf(234, 255, 1),
+        )) {
+            val data = ByteArray(size) { (it * 177 + 36).toByte() }
+            val transaction = transaction(Network.GNOSIS, data, to = Address.ZERO, value = UInt256.ZERO)
+            val reports = signingReports(lengths.size, config = blindSigningOff)
+            val result = UsbLedgerDevice { reports }.signTransaction(LedgerPath.DEFAULT, address, transaction)
+
+            assertEquals(LedgerResult.Ok(Signature(R, vectors.first().third, 1)), result)
+            val commands = sentApdus(reports.writes)
+            assertContentEquals("e002000015$DEFAULT_PATH".hexToByteArray(), commands[0])
+            assertContentEquals("e006000000".hexToByteArray(), commands[1])
+            assertStream(0x04, transaction.encodeUnsigned(), DEFAULT_PATH, lengths, commands.drop(2))
+            assertTrue(reports.closed)
+        }
+    }
+
+    @Test
+    fun intermediateChunksRequireEmptySuccessAndAreNeverResent() = runTest {
+        for ((reply, problem) in listOf(
+            "019000" to LedgerProblem.INVALID_RESPONSE,
+            "6985" to LedgerProblem.REJECTED,
+            "6401" to LedgerProblem.TIMED_OUT,
+        )) {
+            val reports = ReportScript(
+                { replies(it, addressResponse) },
+                { replies(it, blindSigningOn) },
+                { replies(it, reply.hexToByteArray()) },
+            )
+            val tx = transaction(data = ByteArray(600))
+            assertEquals(
+                LedgerResult.Failed(problem),
+                UsbLedgerDevice { reports }.signTransaction(LedgerPath.DEFAULT, address, tx),
+            )
+            assertEquals(3, sentApdus(reports.writes).size)
+            assertTrue(reports.closed)
+        }
+    }
+
+    @Test
+    fun aCalldataRefusalOnlySuggestsBlindSigningIfTheDeviceReportedItDisabled() = runTest {
+        for ((config, problem) in listOf(
+            blindSigningOff to LedgerProblem.BLIND_SIGNING_DISABLED,
+            blindSigningOn to LedgerProblem.INVALID_RESPONSE,
+        )) {
+            val reports = ReportScript(
+                { replies(it, addressResponse) },
+                { replies(it, config) },
+                { replies(it, "6a80".hexToByteArray()) },
+            )
+            val tx = transaction(data = byteArrayOf(1))
+            assertEquals(
+                LedgerResult.Failed(problem),
+                UsbLedgerDevice { reports }.signTransaction(LedgerPath.DEFAULT, address, tx),
+            )
+            assertEquals(3, sentApdus(reports.writes).size)
+            assertTrue(reports.closed)
+        }
+    }
+
+    @Test
+    fun typedDataSendsV0DomainAndStructHashesAndAppliesFirmwareParity() = runTest {
+        val reports = signingReports(1, config = blindSigningOn, v = 27)
+        val result = UsbLedgerDevice { reports }.signTypedData(LedgerPath.DEFAULT, address, typedHashes)
+
+        assertEquals(LedgerResult.Ok(Signature(R, vectors.first().third, 0)), result)
+        val commands = sentApdus(reports.writes)
+        assertEquals(3, commands.size)
+        assertContentEquals("e002000015$DEFAULT_PATH".hexToByteArray(), commands[0])
+        assertContentEquals("e006000000".hexToByteArray(), commands[1])
+        assertContentEquals(
+            ("e00c000055$DEFAULT_PATH" + typedHashes.domainSeparator.hex + typedHashes.structHash.hex).hexToByteArray(),
+            commands[2],
+        )
         assertTrue(reports.closed)
     }
 
     @Test
-    fun refusesUnsupportedTransactionsBeforeOpeningUsb() = runTest {
-        val device = UsbLedgerDevice { error("unsupported transactions must not open USB") }
-        val unsupported = listOf(
-            transaction(Network.GNOSIS),
-            transaction(data = byteArrayOf(1)),
-            transaction(value = UInt256.of(0)),
-            transaction(to = Address.ZERO),
-        )
-        for (transaction in unsupported) {
-            assertEquals(
-                LedgerResult.Failed(LedgerProblem.UNSUPPORTED_TRANSACTION),
-                device.signTransaction(LedgerPath.DEFAULT, address, transaction),
-            )
+    fun typedDataRefusesDisabledBlindSigningBeforeSendingHashes() = runTest {
+        val reports = ReportScript({ replies(it, addressResponse) }, { replies(it, blindSigningOff) })
+        val result = UsbLedgerDevice { reports }.signTypedData(LedgerPath.DEFAULT, address, typedHashes)
+
+        assertEquals(LedgerResult.Failed(LedgerProblem.BLIND_SIGNING_DISABLED), result)
+        val commands = sentApdus(reports.writes)
+        assertEquals(2, commands.size)
+        assertContentEquals("e006000000".hexToByteArray(), commands.last())
+        assertTrue(reports.closed)
+    }
+
+    @Test
+    fun personalSignStreamsLiteralBytesWithBigEndianLengthOnlyInTheFirstCommand() = runTest {
+        for ((size, lengths) in listOf(
+            0 to listOf(0),
+            230 to listOf(230),
+            231 to listOf(230, 1),
+            486 to listOf(230, 255, 1),
+        )) {
+            val bytes = ByteArray(size) { (128 + it).toByte() }
+            val message = assertNotNull(PersonalMessage.of(bytes))
+            val reports = signingReports(lengths.size, v = 28)
+            val result = UsbLedgerDevice { reports }.signPersonalMessage(LedgerPath.DEFAULT, address, message)
+
+            assertEquals(LedgerResult.Ok(Signature(R, vectors.first().third, 1)), result)
+            val commands = sentApdus(reports.writes)
+            assertContentEquals("e002000015$DEFAULT_PATH".hexToByteArray(), commands[0])
+            val length = size.toString(16).padStart(8, '0')
+            assertStream(0x08, bytes, DEFAULT_PATH + length, lengths, commands.drop(1))
+            assertTrue(reports.closed)
         }
     }
 
@@ -176,13 +293,27 @@ class UsbLedgerDeviceTest {
         }
     }
 
+    @Test
+    fun acceptsOnlyLegacyMessageParity() {
+        val response = signatureReply(vectors.first().third, v = 27)
+        assertEquals(0, LedgerEthereum.parseSignature(response, vBase = 27).recoveryId)
+        assertEquals(1, LedgerEthereum.parseSignature(response.copyOf().apply { this[0] = 28 }, vBase = 27).recoveryId)
+        for (v in listOf(0, 1, 26, 29, 30, 255)) {
+            val failure = assertFailsWith<LedgerFailure> {
+                LedgerEthereum.parseSignature(response.copyOf().apply { this[0] = v.toByte() }, vBase = 27)
+            }
+            assertEquals(LedgerProblem.INVALID_RESPONSE, failure.problem)
+        }
+    }
+
     private fun transaction(
         network: Network = Network.ETHEREUM,
         data: ByteArray = byteArrayOf(),
         to: Address = recipient,
         value: UInt256 = UInt256.of(1_000_000_000_000_000_000),
+        chainId: Long = network.chainId,
     ) = Eip1559Transaction(
-        chainId = network.chainId,
+        chainId = chainId,
         nonce = 785,
         maxPriorityFeePerGas = UInt256.of(2_000_000_000),
         maxFeePerGas = UInt256.of(2_000_000_000),
@@ -191,6 +322,47 @@ class UsbLedgerDeviceTest {
         value = value,
         data = data,
     )
+
+    private fun signingReports(chunks: Int, config: ByteArray? = null, v: Int = 1): ReportScript {
+        val scripts = buildList<(Int) -> List<ByteArray>> {
+            add { replies(it, addressResponse) }
+            if (config != null) add { replies(it, config) }
+            repeat(chunks - 1) { add { replies(it, "9000".hexToByteArray()) } }
+            add { replies(it, signatureReply(vectors.first().third, v)) }
+        }
+        return ReportScript(*scripts.toTypedArray())
+    }
+
+    private fun assertStream(
+        ins: Int,
+        source: ByteArray,
+        firstPrefix: String,
+        lengths: List<Int>,
+        commands: List<ByteArray>,
+    ) {
+        assertEquals(lengths.size, commands.size)
+        var offset = 0
+        for ((index, count) in lengths.withIndex()) {
+            val prefix = if (index == 0) firstPrefix.hexToByteArray() else byteArrayOf()
+            val header = byteArrayOf(
+                0xe0.toByte(), ins.toByte(), if (index == 0) 0 else 0x80.toByte(), 0, (prefix.size + count).toByte(),
+            )
+            assertContentEquals(header + prefix + source.copyOfRange(offset, offset + count), commands[index])
+            offset += count
+        }
+        assertEquals(source.size, offset)
+    }
+
+    private fun sentApdus(reports: List<ByteArray>): List<ByteArray> = buildList {
+        var start = 0
+        for (index in 1 until reports.size) {
+            if (reports[index].uint16(4) == 0) {
+                add(sentApdu(reports.subList(start, index)))
+                start = index
+            }
+        }
+        if (start < reports.size) add(sentApdu(reports.subList(start, reports.size)))
+    }
 
     private fun sentApdu(reports: List<ByteArray>): ByteArray {
         val first = reports.first()
@@ -218,6 +390,9 @@ class UsbLedgerDeviceTest {
         val recipient = Address.of("0x70997970c51812dc3a010c7d01b50e0d17dc79c8")
         val addressResponse = "4104$R${Y}28".hexToByteArray() +
             "7E5F4552091A69125d5DFcB7b8C2659029395Bdf".encodeToByteArray() + "9000".hexToByteArray()
+        val blindSigningOff = "020200009000".hexToByteArray()
+        val blindSigningOn = "030200009000".hexToByteArray()
+        val typedHashes = Eip712Hashes(Digest.of("12".repeat(32)), Digest.of("34".repeat(32)))
 
         // Independent typed RLP and Keccak-256 (OpenSSL), with ECDSA r=G.x and s=lowS(hash + r).
         // High s in each unnormalized signature flips the parity of the even-y point G to 1.
@@ -234,6 +409,7 @@ class UsbLedgerDeviceTest {
             ),
         )
 
-        fun signatureReply(s: String): ByteArray = "01$R${s}9000".hexToByteArray()
+        fun signatureReply(s: String, v: Int = 1): ByteArray =
+            byteArrayOf(v.toByte()) + "$R${s}9000".hexToByteArray()
     }
 }

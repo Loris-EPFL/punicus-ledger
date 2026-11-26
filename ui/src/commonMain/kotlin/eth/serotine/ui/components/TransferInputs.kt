@@ -86,7 +86,6 @@ internal fun assetOptions(
     network: Network,
     everyToken: Boolean = false,
     lastKnown: Boolean = false,
-    nativeOnly: Boolean = false,
 ): List<AssetOption> {
     val native = value.native
     val nativeKnown = (native as? BalanceReading.LastKnown)?.takeIf { lastKnown }
@@ -112,7 +111,6 @@ internal fun assetOptions(
         warning = null,
         lastKnown = nativeKnown != null,
     )
-    if (nativeOnly) return listOf(nativeOption)
     val tokens = value.tokens.mapNotNull { (holding, valuation) ->
         val token = holding.token
         val reading = holding.reading
@@ -426,6 +424,12 @@ internal const val PROMPT_TOO_LATE =
 internal const val PROMPT_TIMED_OUT =
     "The fingerprint or face check took longer than the quote could wait, so nothing was signed and the quote " +
         "was made again: check it, then sign."
+
+internal const val LEDGER_PROMPT_TOO_LATE =
+    "Too little time was left to approve on the Ledger. Check the refreshed quote, then approve."
+
+internal const val LEDGER_PROMPT_TIMED_OUT =
+    "Approval on the Ledger outlived the review. Nothing was sent. Check the refreshed details before approving again."
 
 /**
  * What a review says under its unlock once the Safe's check before a signature used up what was

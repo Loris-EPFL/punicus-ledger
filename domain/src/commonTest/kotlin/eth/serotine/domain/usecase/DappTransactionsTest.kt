@@ -7,6 +7,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DappCallMeaning
 import eth.serotine.domain.model.DappTransactionRequest
 import eth.serotine.domain.model.Erc20
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.UInt256
@@ -42,6 +43,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 
 class DappTransactionsTest {
 
@@ -266,6 +269,30 @@ class DappTransactionsTest {
         )
         requests.waiting.value = listOf(request(1, payment()).copy(expiresAtSeconds = now))
         assertEquals(DappTransactionSending.Expired, send()(quoted, Unlock.WithBiometrics("x")))
+    }
+
+    @Test
+    fun anExpiredOrChangedLedgerRequestDoesNotBroadcastAfterApproval() = runTest {
+        val ledger = held.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        accounts.accounts.value = listOf(ledger)
+        val pending = request(1, payment())
+        requests.waiting.value = listOf(pending)
+        val quoted = assertIs<DappTransactionQuoting.Quoted>(quote()(pending.id)).quote
+        val approval = Unlock.WithLedger(TestTimeSource().markNow() + 1.seconds)
+        var wallClock = now
+        val send = SendDappTransaction(requests, accounts, networks, signer, broadcaster, sent, history, receipts) {
+            wallClock
+        }
+        signer.beforeLedgerReply = { wallClock = pending.expiresAtSeconds }
+        assertEquals(DappTransactionSending.Expired, send(quoted, approval))
+
+        wallClock = now
+        signer.beforeLedgerReply = { requests.waiting.value = listOf(request(1, payment(gas = 100_000))) }
+        assertEquals(DappTransactionSending.Gone, send(quoted, approval))
+        assertEquals(List(2) { ledger.id to quoted.call.transaction }, signer.ledgerTransactions)
+        assertTrue(broadcaster.sent.isEmpty())
+        assertTrue(sent.transfers.value.isEmpty())
+        assertTrue(requests.hashes.isEmpty())
     }
 
     @Test

@@ -143,12 +143,11 @@ internal object SwarmTexts {
     }
 
     const val NO_PAYER =
-        "No account of this wallet on Gnosis Chain has its key on this device, so nothing can be paid from " +
-            "here. Create or import one, and send it xBZZ and xDAI."
+        "No account here can sign a payment on Gnosis Chain. Add a signing account and fund it with xBZZ and xDAI."
     const val NODE_KEY_NOT_HELD =
-        "Only the batch's owner may dilute it, and this node's key is not on this device: its own key signs it."
+        "Only the batch's owner may dilute it. Add this node as a signing account first."
     const val NODE_KEY_NOT_WITHDRAWING =
-        "Only the chequebook's issuer may withdraw from it, and this node's key is not on this device."
+        "Only the chequebook's issuer may withdraw. Add this node as a signing account first."
     const val NOT_VERIFIED =
         "It is not verified as this node's right now: once the light client has read it, this can be done."
     const val NOTHING_FREE = "Nothing is free to withdraw from this chequebook now."

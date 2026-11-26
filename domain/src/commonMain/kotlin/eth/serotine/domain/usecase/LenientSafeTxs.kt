@@ -1,5 +1,6 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
@@ -25,6 +26,7 @@ import eth.serotine.domain.repository.HeldSafeSignature
 import eth.serotine.domain.repository.KeptSafe
 import eth.serotine.domain.repository.KeptSafes
 import eth.serotine.domain.repository.KeptTransactionInputs
+import eth.serotine.domain.repository.LedgerProblem
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.OutboxList
@@ -75,12 +77,10 @@ internal fun SigningRequest.undraftable(): SafeTxRefusal? {
     }
 }
 
-/** The owners of [state] whose keys the wallet holds, in the Safe's order, as [ObserveSafe] finds them. */
-internal suspend fun AccountRepository.ownersHeldOf(state: SafeState): List<Address> {
-    // An address is an owner on any chain, and its key, held here on one network, signs on every one.
-    val inWallet = (observeAccounts().first() as? AccountList.Loaded)?.accounts.orEmpty()
-        .filter { it.address in state.owners }
-    return state.ownersHeld(inWallet)
+/** The owners whose key-store keys may sign a lenient draft, in the Safe's order. */
+internal suspend fun AccountRepository.localOwnersHeld(state: SafeState, network: Network): List<Address> {
+    val accounts = (observeAccounts().first() as? AccountList.Loaded)?.accounts.orEmpty()
+    return state.owners.filter { accounts.safeOwnerAccount(network, it)?.custody == AccountCustody.InKeyStore }
 }
 
 /**
@@ -186,7 +186,7 @@ class DraftSafeTx(
             SafeTxDraft(
                 tx = DecodedSafeTx.of(request),
                 safe = keptSafe,
-                ownersHeld = accounts.ownersHeldOf(keptSafe.state),
+                ownersHeld = accounts.localOwnersHeld(keptSafe.state, network),
                 queuedAhead = (nonce - safeNonce).toInt(),
                 balanceBefore = before,
                 queuedAmount = queuedAmount,
@@ -334,6 +334,9 @@ class HoldSafeSignature(
      * given (its balance's age is kept with it), a co-signature otherwise.
      */
     suspend fun sign(checked: HeldSignCheck.Ready, unlock: Unlock, draft: SafeTxDraft? = null): SafeSignatureHolding {
+        if (unlock is Unlock.WithLedger) {
+            return SafeSignatureHolding.NotSigned(Signing.LedgerFailed(LedgerProblem.UNSUPPORTED_TRANSACTION))
+        }
         val request = checked.request
         require(draft == null || draft.request.hash == request.hash) { "a draft holds the request it drafted" }
         val signature = when (val signing = signer.sign(checked.owner, request.hash, unlock)) {
@@ -790,6 +793,9 @@ class QueueSafeCall(
 ) {
     /** Signs [draft] and queues it. */
     suspend operator fun invoke(draft: SafeCallDraft, unlock: Unlock): TransferQueuing {
+        if (unlock is Unlock.WithLedger) {
+            return TransferQueuing.NotSigned(Signing.LedgerFailed(LedgerProblem.UNSUPPORTED_TRANSACTION))
+        }
         val call = draft.call
         // An outbox that cannot be read could not keep it: refused before the key is asked for.
         val list = outbox.observe().first() as? OutboxList.Loaded ?: return TransferQueuing.NotSaved

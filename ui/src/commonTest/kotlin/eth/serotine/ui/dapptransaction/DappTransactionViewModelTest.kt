@@ -6,10 +6,13 @@ import eth.serotine.ui.components.ClearSignedSection
 import eth.serotine.ui.components.ClearSignedText
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DappTransactionRequest
+import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Erc20
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.UInt256
@@ -26,10 +29,14 @@ import eth.serotine.domain.repository.DappRequest
 import eth.serotine.domain.repository.DappRequestError
 import eth.serotine.domain.repository.DappRequestId
 import eth.serotine.domain.repository.DappSessionId
+import eth.serotine.domain.repository.LedgerProblem
 import eth.serotine.domain.repository.Outbox
+import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.DescribeKeyStore
+import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveDappMessages
 import eth.serotine.domain.usecase.ObserveSyncPolicy
 import eth.serotine.domain.usecase.ProposeDappSafeTx
@@ -113,6 +120,19 @@ class DappTransactionViewModelTest {
     private val history = eth.serotine.ui.MemoryTransactionHistory()
     private val broadcaster = FakeBroadcaster()
     private val signer = FakeSigner()
+    private val ledgerCalls = mutableListOf<Triple<AccountId, Eip1559Transaction, Unlock.WithLedger>>()
+    private var ledgerResult: Signing = Signing.Signed(FakeSigner.SIGNATURE)
+    private val signing = object : Signer by signer {
+        override suspend fun signTransaction(
+            account: AccountId,
+            transaction: Eip1559Transaction,
+            unlock: Unlock,
+        ): Signing {
+            if (unlock !is Unlock.WithLedger) return signer.signTransaction(account, transaction, unlock)
+            ledgerCalls += Triple(account, transaction, unlock)
+            return ledgerResult
+        }
+    }
     private val clock = TestTimeSource()
     private val safes = SafeWorld()
 
@@ -164,7 +184,9 @@ class DappTransactionViewModelTest {
             QuoteDappTransaction(
                 requests, accounts, networks, catalog, balances, inputs, sent, history, Outbox.None, clock = { now },
             ),
-            SendDappTransaction(requests, accounts, networks, signer, broadcaster, sent, history, FakeReceipts(), clock = { now }),
+            SendDappTransaction(
+                requests, accounts, networks, signing, broadcaster, sent, history, FakeReceipts(), clock = { now },
+            ),
             // A Safe's side, never reached from an account held here.
             ProposeDappSafeTx(
                 requests, accounts, networks, catalog, safes.observeSafe, balances, inputs, safes.queue, Outbox.None,
@@ -174,6 +196,7 @@ class DappTransactionViewModelTest {
             RefuseDappRequest(requests, accounts, networks, clock = { now }),
             DescribeKeyStore(FakeKeys()),
             observeSyncPolicy = ObserveSyncPolicy(MemorySyncPolicy()),
+            observeAccounts = ObserveAccounts(accounts),
             clock = { now },
             timeSource = clock,
             ticks = kotlinx.coroutines.flow.flowOf(Unit),
@@ -202,6 +225,49 @@ class DappTransactionViewModelTest {
         assertEquals(listOf("correct horse"), signer.passwords)
         assertEquals(request(1, payment).id, requests.hashes.single().first)
         assertTrue(vm.uiState.value.done)
+    }
+
+    @Test
+    fun ledgerReviewsTheExactContractCallAndDoesNotRetryARejection() = runTest {
+        accounts.accounts.value = listOf(held.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT)))
+        ledgerResult = Signing.LedgerFailed(LedgerProblem.REJECTED)
+        val data = byteArrayOf(10, 20, -30, 40)
+        val call = DappTransactionRequest(held.address, weth, UInt256.ZERO, data, gas = null)
+        requests.waiting.value = listOf(request(1, call))
+        val vm = viewModel()
+        val state = vm.uiState.value
+        assertTrue(state.unlock.ledger)
+        assertFalse(state.sendUnavailable)
+        assertEquals("4 bytes", state.dataSize)
+        assertTrue(ledgerCalls.isEmpty(), "quoting and tracing do not ask the device to sign")
+        vm.sendWithBiometrics()
+        vm.send()
+        runCurrent()
+        val (account, transaction, unlock) = ledgerCalls.single()
+        assertEquals(held.id, account)
+        assertEquals(weth, transaction.to)
+        assertTrue(transaction.data.contentEquals(data))
+        assertEquals(-60.seconds, unlock.notAfter.elapsedNow())
+        assertTrue(signer.asked.isEmpty(), "no fallback to the key store")
+        assertTrue(broadcaster.sent.isEmpty())
+        assertTrue(requests.hashes.isEmpty())
+        assertNotNull(vm.uiState.value.unlock.error)
+    }
+
+    @Test
+    fun ledgerQuoteTooLateForThePromptIsReviewedAgainWithoutApproving() = runTest {
+        accounts.accounts.value = listOf(held.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT)))
+        requests.waiting.value = listOf(request(1, payment))
+        val vm = viewModel()
+        clock += 46.seconds
+        vm.send()
+        runCurrent()
+        assertTrue(vm.uiState.value.unlock.error.orEmpty().contains("Too little of the quote's minute"))
+        assertTrue(ledgerCalls.isEmpty())
+        vm.send()
+        runCurrent()
+        assertEquals(1, ledgerCalls.size)
+        assertEquals(request(1, payment).id, requests.hashes.single().first)
     }
 
     @Test

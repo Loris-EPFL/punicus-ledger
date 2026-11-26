@@ -84,11 +84,11 @@ internal object GnosisPayTexts {
             "This account's Delay module runs the code Gnosis Pay retired after the exploit of June 2026. Punicus " +
                 "sends nothing through it. Gnosis Pay's own app can move the account to the current module."
         GnosisPaySending.MEMBER_ON_ANOTHER_NETWORK ->
-            "The key that controls this account is on this device, but not as an account on Gnosis Chain. Add it " +
-                "on Gnosis Chain from its account's menu, then send from here."
+            "The account that controls this one can sign on another network. Add it as a signing account " +
+                "on Gnosis Chain to send from here."
         GnosisPaySending.MEMBER_WATCHED_HERE ->
-            "The account that controls this one is watched on Gnosis Chain, while its key is held under another " +
-                "network. Remove the watched entry, then add the held account on Gnosis Chain."
+            "The account that controls this one is watched on Gnosis Chain. Remove the watched entry, " +
+                "then add it as a signing account on Gnosis Chain."
         GnosisPaySending.ACCOUNTS_UNREADABLE ->
             "The wallet's list of accounts cannot be read right now, so whether the controlling key is here " +
                 "cannot be told. Try again in a moment."
@@ -105,8 +105,8 @@ internal object GnosisPayTexts {
             "A key on this device controls this account only together with others: a Safe on its way needs more " +
                 "than one signature. Punicus sends through a Delay only with a key that can act alone."
         GnosisPaySending.NO_MEMBER_KEY ->
-            "No key that controls this Gnosis Pay account is on this device. Import the recovery phrase of one of " +
-                "the keys listed here to send from here; until then the account is watched."
+            "No account that controls this Gnosis Pay account can sign here. Add one of the accounts listed here " +
+                "as a signing account; until then the account is watched."
     }
 
     /**
@@ -547,8 +547,7 @@ internal object GnosisPayTexts {
     const val BLOCKED_BY_EXPIRED = "An entry ahead of it in the Delay module's queue has expired and blocks it. " +
         "Skip expired entries, then execute it before it expires too."
 
-    const val SKIP_NEEDS_KEY = "Skipping expired entries is a transaction of an account whose key is on this " +
-        "device, on Gnosis Chain, which pays its fee. Add or import one."
+    const val SKIP_NEEDS_KEY = "Skipping expired entries needs a signing account on Gnosis Chain to pay the fee."
 
     const val EXECUTABLE_SHORTLY = "Executable shortly: waiting for a block past its cooldown"
 

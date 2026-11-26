@@ -25,6 +25,7 @@ import eth.serotine.domain.model.SafeTxAction
 import eth.serotine.domain.model.SigningRequest
 import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.WalletPassword
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.FeeLevel
@@ -82,17 +83,18 @@ import eth.serotine.domain.usecase.SignSafeTx
 import eth.serotine.domain.usecase.TransferQueuing
 import eth.serotine.domain.usecase.TransferSending
 import eth.serotine.domain.usecase.WarmFeeHistory
+import eth.serotine.domain.usecase.safeOwnerAccount
 import eth.serotine.ui.components.BalanceChange
 import eth.serotine.ui.components.DecodingToken
 import eth.serotine.ui.components.Eip55
+import eth.serotine.ui.components.MIN_PROMPT_TIME
 import eth.serotine.ui.components.NATIVE_DECIMALS
-import eth.serotine.ui.components.PROMPT_TIMED_OUT
-import eth.serotine.ui.components.PROMPT_TOO_LATE
 import eth.serotine.ui.components.QUOTE_MAX_AGE
 import eth.serotine.ui.components.STALE_QUOTE
 import eth.serotine.ui.components.SafeTxActionItem
 import eth.serotine.ui.components.ShareItem
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.epochSecondsNow
@@ -101,11 +103,14 @@ import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.forDecoding
+import eth.serotine.ui.components.forCustody
 import eth.serotine.ui.components.gasTermsItem
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.promptDeadline
+import eth.serotine.ui.components.promptTimedOut
+import eth.serotine.ui.components.promptTooLate
 import eth.serotine.ui.components.safeSwapItem
 import eth.serotine.ui.components.safeTxActionItem
 import eth.serotine.ui.components.safeTxRefusalText
@@ -286,6 +291,7 @@ class SafeTxViewModel(
         val options: Options,
         val tokens: List<DecodingToken>,
         val labels: Map<Address, String>,
+        val accounts: List<Account>,
     ) : Source {
         fun labelOf(address: Address): String = labels[address] ?: shortAddress(Eip55.format(address))
     }
@@ -300,6 +306,8 @@ class SafeTxViewModel(
         val executors: List<Address>,
         /** Why it cannot be executed now, or null. */
         val executeNote: String?,
+        val signNote: String? = null,
+        val approveNote: String? = null,
     )
 
     /** An approval or an execution under review. */
@@ -345,6 +353,7 @@ class SafeTxViewModel(
             /** While [signing], the Safe is still being checked on chain: nothing is signed yet. */
             val checking: Boolean = false,
             val lenient: Boolean = false,
+            val localBiometrics: Boolean = false,
         ) : Step
 
         /** Lenient mode: an approval or an execution ([kind]) being drafted from [account] at [level]. */
@@ -378,6 +387,7 @@ class SafeTxViewModel(
             val signing: Boolean = false,
             val notSent: NotSent? = null,
             val hidden: Boolean = false,
+            val localBiometrics: Boolean = false,
         ) : Step {
             val account: Address
                 get() = quote.call.from
@@ -535,10 +545,9 @@ class SafeTxViewModel(
         }
     }
 
+    // A Safe owner may use a local key held on another network; Ledger must be enrolled on this one.
     private val accounts: Flow<List<Account>> = observeAccounts()
-        // The Safe's network's accounts: what pays for an approval or an execution there, and what names
-        // its owners; an owner whose key is held on another network still signs ([ObserveSafe]).
-        .map { list -> (list as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network == network } }
+        .map { list -> (list as? AccountList.Loaded)?.accounts.orEmpty() }
 
     /** What the screen shows and acts on, or why there is no transaction to act on ([Queued]). */
     private val context: StateFlow<Source?> =
@@ -550,17 +559,19 @@ class SafeTxViewModel(
             observeKnownTokens(network),
         ) { queued, request, owners, accounts, tokens ->
             if (queued !is Queued.Found || request == null) return@combine queued
-            val held = accounts.filter { it.kind == AccountKind.EOA && it.custody == AccountCustody.InKeyStore }
+            val sameNetwork = accounts.filter { it.network == network }
+            val held = sameNetwork.filter { it.kind == AccountKind.EOA && it.custody.canSign }
             Context(
                 found = queued,
                 request = request,
                 owners = owners,
                 options = when (owners) {
-                    is SafeTxOwnersReading.LastVerified -> lenientOptions(queued.tx, owners, held)
+                    is SafeTxOwnersReading.LastVerified -> lenientOptions(queued.tx, owners, held, accounts)
                     else -> options(queued.tx, owners as? SafeTxOwnersReading.Read, held)
                 },
                 tokens = tokens.forDecoding(),
-                labels = accounts.associate { it.address to it.label },
+                labels = sameNetwork.associate { it.address to it.label },
+                accounts = accounts,
             )
         }.stateIn(
             viewModelScope,
@@ -755,14 +766,22 @@ class SafeTxViewModel(
         if (step.value != Step.Overview || job?.isActive == true) return
         val context = now ?: return
         val owner = context.options.signers.firstOrNull() ?: return
+        val custody = context.accounts.safeOwnerAccount(network, owner)?.custody ?: return
         view.update { it.copy(message = null, sharing = false, imported = false) }
         // Drafted on the Safe as last verified: the signature is held until its check.
-        step.value = Step.Signing(owner, UnlockStep(), lenient = context.owners is SafeTxOwnersReading.LastVerified)
+        step.value = Step.Signing(
+            owner,
+            UnlockStep().forCustody(custody),
+            lenient = context.owners is SafeTxOwnersReading.LastVerified,
+        )
         viewModelScope.launch {
             val biometrics = biometricsOffered()
             step.update { current ->
                 if (current is Step.Signing && !current.signing) {
-                    current.copy(unlock = current.unlock.copy(biometrics = biometrics))
+                    current.copy(
+                        unlock = current.unlock.copy(biometrics = biometrics && !current.unlock.ledger),
+                        localBiometrics = biometrics,
+                    )
                 } else {
                     current
                 }
@@ -773,9 +792,16 @@ class SafeTxViewModel(
     /** Signs as the owner at [address] (EIP-55) instead. */
     fun onSignerChange(address: String) {
         val owner = Address.parse(address) ?: return
+        val context = now ?: return
+        val custody = context.accounts.safeOwnerAccount(network, owner)?.custody ?: return
         step.update { current ->
-            if (current is Step.Signing && !current.signing && owner in now?.options?.signers.orEmpty()) {
-                current.copy(owner = owner, unlock = current.unlock.copy(error = null))
+            if (current is Step.Signing && !current.signing && owner in context.options.signers &&
+                (!current.lenient || custody == AccountCustody.InKeyStore)
+            ) {
+                current.copy(
+                    owner = owner,
+                    unlock = current.unlock.forCustody(custody, current.localBiometrics).copy(error = null),
+                )
             } else {
                 current
             }
@@ -816,7 +842,7 @@ class SafeTxViewModel(
             if (draft.signing || account == draft.account) return
             val options = now?.options ?: return
             val allowed = if (draft.kind == ReviewKind.APPROVAL) options.approvers else options.executors
-            if (account !in allowed) return
+            if (!lenientNow() || account !in allowed) return
             return redraft(draft, account, draft.level)
         }
         val review = step.value as? Step.Reviewing ?: return
@@ -849,9 +875,9 @@ class SafeTxViewModel(
     /** The password field now reads [text]. */
     fun onPasswordChange(text: String) = step.update { current ->
         when {
-            current is Step.Signing && !current.signing ->
+            current is Step.Signing && !current.signing && !current.unlock.ledger ->
                 current.copy(unlock = current.unlock.copy(password = WalletPassword(text), error = null))
-            current is Step.Reviewing && !current.signing && current.notSent == null ->
+            current is Step.Reviewing && !current.signing && current.notSent == null && !current.unlock.ledger ->
                 current.copy(unlock = current.unlock.copy(password = WalletPassword(text), error = null))
             current is Step.DraftReviewing && !current.signing ->
                 current.copy(unlock = current.unlock.copy(password = WalletPassword(text), error = null))
@@ -859,18 +885,26 @@ class SafeTxViewModel(
         }
     }
 
-    /** Signs with the typed wallet password: the hash in the signing step, the transaction in a review. */
+    /** Authorizes a Safe co-signature or a reviewed on-chain transaction with the selected account. */
     fun sign() {
         when (val current = step.value) {
             is Step.Signing -> {
-                val password = current.unlock.password
-                if (current.signing || password.text.isEmpty()) return
-                signHash(current, Unlock.WithPassword(password))
+                if (current.signing) return
+                val unlock = current.unlock.approval() ?: return
+                signHash(current, unlock)
             }
             is Step.Reviewing -> {
-                val password = current.unlock.password
-                if (!current.idle || password.text.isEmpty() || notNeeded(current) != null || requoted(current)) return
-                send(current, Unlock.WithPassword(password))
+                if (!current.idle || !current.unlock.canAuthorize || notNeeded(current) != null || requoted(current)) {
+                    return
+                }
+                val notAfter = if (current.unlock.ledger) {
+                    promptDeadline(current.quotedAt)
+                        ?: return requote(current, current.account, current.level, note = current.unlock.promptTooLate())
+                } else {
+                    null
+                }
+                val unlock = current.unlock.approval(notAfter) ?: return
+                send(current, unlock)
             }
             is Step.DraftReviewing -> {
                 val password = current.unlock.password
@@ -904,7 +938,7 @@ class SafeTxViewModel(
                 }
                 // The prompt gets what is left of the quote's age: past it, nothing is signed, and it is made again.
                 val notAfter = promptDeadline(current.quotedAt)
-                    ?: return requote(current, current.account, current.level, note = PROMPT_TOO_LATE)
+                    ?: return requote(current, current.account, current.level, note = current.unlock.promptTooLate())
                 val what = if (current.kind == ReviewKind.APPROVAL) "Approve on chain" else "Execute"
                 send(current, Unlock.WithBiometrics("$what Safe transaction $action", notAfter))
             }
@@ -1169,7 +1203,7 @@ class SafeTxViewModel(
     private fun queue(draft: Step.DraftReviewing, unlock: Unlock) {
         // Sign while syncing turned off, or the network, since the draft was made, or the light client
         // caught up: not signed, the strict path signs from here.
-        stillLenient()?.let { message ->
+        (stillLenient() ?: ledgerDraftReason(draft.account))?.let { message ->
             view.update { it.copy(message = message, simple = null) }
             step.value = Step.Overview
             return
@@ -1217,10 +1251,16 @@ class SafeTxViewModel(
         else -> null
     }
 
+    private fun ledgerDraftReason(account: Address): String? =
+        LEDGER_NEEDS_FRESH_HEAD.takeIf {
+            (now ?: lastContext)?.accounts?.safeOwnerAccount(network, account)?.custody is AccountCustody.Ledger
+        }
+
     private fun quoteForReview(kind: ReviewKind, account: Address, level: FeeLevel) {
         // Not while a removal runs: its outcome lands on the overview, and would be dropped.
         if (step.value != Step.Overview || job?.isActive == true) return
-        val request = now?.request ?: return
+        val context = now ?: return
+        val request = context.request
         view.update { it.copy(message = null, sharing = false, imported = false) }
         val quoting = Step.Quoting(kind, account, level)
         step.value = quoting
@@ -1240,8 +1280,11 @@ class SafeTxViewModel(
                     kind,
                     next.quote,
                     readFrom,
-                    UnlockStep(biometrics = biometrics),
+                    UnlockStep(biometrics = biometrics).forCustody(
+                        (now ?: context).accounts.safeOwnerAccount(network, account)?.custody,
+                    ),
                     hidden = hiddenWhileQuoting,
+                    localBiometrics = biometrics,
                 )
                 is Quoted.Refused -> {
                     val simple = next.simple?.let { SimpleText(next.message, it) }
@@ -1257,7 +1300,8 @@ class SafeTxViewModel(
     private fun requote(review: Step.Reviewing, account: Address, level: FeeLevel, note: String?) {
         // The reading may have been let go while the screen was not shown (a longer hide): the
         // transaction as last shown is what is quoted again, and the quote checks the chain anew.
-        val request = (now ?: lastContext)?.request ?: return
+        val context = now ?: lastContext ?: return
+        val request = context.request
         step.value = review.copy(refreshing = true, hidden = false, unlock = review.unlock.copy(error = null))
         if (review.kind == ReviewKind.EXECUTION) (now ?: lastContext)?.let { trace(it.found.tx, again = true) }
         job = viewModelScope.launch {
@@ -1271,7 +1315,10 @@ class SafeTxViewModel(
                     quote = next.quote,
                     quotedAt = readFrom,
                     refreshing = false,
-                    unlock = latest.unlock.copy(error = note),
+                    unlock = latest.unlock.forCustody(
+                        (now ?: context).accounts.safeOwnerAccount(network, account)?.custody,
+                        latest.localBiometrics,
+                    ).copy(error = note),
                 )
                 // Nothing to sign any more: the overview says why.
                 is Quoted.Refused -> {
@@ -1332,7 +1379,12 @@ class SafeTxViewModel(
             // The Safe is checked first, which leaving the screen cancels ([onHidden]): no key is
             // asked for, and no prompt shown, until it has passed.
             val checked = try {
-                signSafeTx.check(request, signing.owner)
+                if (unlock is Unlock.WithLedger) {
+                    val budget = -(unlock.notAfter - MIN_PROMPT_TIME).elapsedNow()
+                    signSafeTx.check(request, signing.owner, budget = budget)
+                } else {
+                    signSafeTx.check(request, signing.owner)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1379,7 +1431,11 @@ class SafeTxViewModel(
                 is SafeTxSigning.NotSigned -> step.value = latest.copy(
                     signing = false,
                     unlock = latest.unlock.copy(
-                        error = notSignedText(result.signing, SIGN_FAILED),
+                        error = if (result.signing == Signing.TimedOut && latest.unlock.ledger) {
+                            "Ledger approval expired. Nothing was signed. Review the transaction and approve again."
+                        } else {
+                            notSignedText(result.signing, SIGN_FAILED)
+                        },
                         biometrics = latest.unlock.biometrics && biometricsStillOffered(result.signing),
                     ),
                 )
@@ -1402,7 +1458,7 @@ class SafeTxViewModel(
     private fun holdHash(signing: Step.Signing, unlock: Unlock) {
         val context = now ?: lastContext ?: return
         val request = context.request
-        stillLenient()?.let { message ->
+        (stillLenient() ?: ledgerDraftReason(signing.owner))?.let { message ->
             view.update { it.copy(message = message, simple = null) }
             step.value = Step.Overview
             return
@@ -1487,7 +1543,7 @@ class SafeTxViewModel(
             val timedOut = (sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut
             val latest = step.value as? Step.Reviewing
             if (timedOut && latest != null && latest.idle) {
-                requote(latest, latest.account, latest.level, note = PROMPT_TIMED_OUT)
+                requote(latest, latest.account, latest.level, note = review.unlock.promptTimedOut())
             }
             // Hidden while it ran and nothing was sent: the quote is from before, so it is made again.
             requoteIfHidden()
@@ -1723,7 +1779,9 @@ class SafeTxViewModel(
                 nonce = nonce,
                 hash = hashText,
                 // The owner chosen stays offered while the step is, whatever the owners read since.
-                owners = (listOf(step.owner) + options.signers).distinct().map { choice(shown, it) },
+                owners = (listOf(step.owner) + options.signers.filter {
+                    !step.lenient || shown.accounts.safeOwnerAccount(this.network, it)?.custody == AccountCustody.InKeyStore
+                }).distinct().map { choice(shown, it) },
                 owner = Eip55.format(step.owner),
                 unlock = step.unlock,
                 signing = step.signing,
@@ -1750,6 +1808,8 @@ class SafeTxViewModel(
                     ?.let { safeTxRefusalText(it, this.network) },
                 canSign = options.signers.isNotEmpty(),
                 canApprove = options.approvers.isNotEmpty(),
+                signNote = options.signNote,
+                approveNote = options.approveNote,
                 // A swap past its deadline never runs: Execute is shown greyed out, saying so.
                 canExecute = options.executors.isNotEmpty() && !expired,
                 executeNote = if (expired) SWAP_EXPIRED else options.executeNote,
@@ -1939,12 +1999,17 @@ class SafeTxViewModel(
         tx: DecodedSafeTx,
         read: SafeTxOwnersReading.LastVerified,
         held: List<Account>,
+        accounts: List<Account>,
     ): Options {
         if (tx.refusal != null || read.refusal != null) return Options(emptyList(), emptyList(), emptyList(), null)
-        val unconfirmed = read.owners.filter { it.held && it.confirmation != OwnerConfirmation.Signed }.map { it.owner }
+        val waiting = read.owners.filter { it.confirmation != OwnerConfirmation.Signed }
+        fun ledger(owner: Address) = accounts.safeOwnerAccount(network, owner)?.custody is AccountCustody.Ledger
+        val unconfirmed = waiting.filter { it.held && !ledger(it.owner) }.map { it.owner }
+        val ledgerUnconfirmed = waiting.any { ledger(it.owner) }
         val short = read.signatures < read.threshold
-        val heldOwners = read.owners.filter { it.held }.map { it.owner }
-        val candidates = heldOwners + held.map { it.address }.filter { it !in heldOwners }
+        val heldOwners = read.owners.filter { it.held && !ledger(it.owner) }.map { it.owner }
+        val candidates = heldOwners + held.filter { it.custody == AccountCustody.InKeyStore }
+            .map { it.address }.filter { it !in heldOwners }
         val nonce = tx.request.nonce
         val executors = if (nonce == read.safeNonce) {
             candidates.filter { read.confirmationsExecutedBy(it) >= read.threshold }
@@ -1952,12 +2017,15 @@ class SafeTxViewModel(
             emptyList()
         }
         val best = candidates.maxOfOrNull { read.confirmationsExecutedBy(it) } ?: read.signatures
+        val ledgerCouldExecute = nonce == read.safeNonce &&
+            held.any { it.custody is AccountCustody.Ledger && read.confirmationsExecutedBy(it.address) >= read.threshold }
         val executeNote = when {
             executors.isNotEmpty() -> null
             nonce > read.safeNonce -> "Executed only once ${before(nonce - read.safeNonce)}: only the Safe's next " +
                 "transaction can be executed."
             nonce < read.safeNonce -> "The Safe was at nonce ${read.safeNonce} already when last verified: this " +
                 "one ran, or another transaction used its nonce."
+            ledgerCouldExecute -> LEDGER_NEEDS_FRESH_HEAD
             candidates.isEmpty() -> "No account of this wallet holds a key to send its execution."
             else -> "$best of the ${read.threshold} confirmations it needs here. Approvals on chain are read once " +
                 "${network.displayName} has caught up."
@@ -1967,6 +2035,8 @@ class SafeTxViewModel(
             approvers = if (short) unconfirmed else emptyList(),
             executors = executors,
             executeNote = executeNote,
+            signNote = LEDGER_NEEDS_FRESH_HEAD.takeIf { unconfirmed.isEmpty() && ledgerUnconfirmed },
+            approveNote = LEDGER_NEEDS_FRESH_HEAD.takeIf { short && unconfirmed.isEmpty() && ledgerUnconfirmed },
         )
     }
 
@@ -2012,6 +2082,7 @@ class SafeTxViewModel(
                     state,
                     detail,
                     simpleDetail = simpleDetail?.takeIf { it != detail },
+                    ledger = context.accounts.safeOwnerAccount(network, owner.owner)?.custody is AccountCustody.Ledger,
                 )
             },
             threshold = "${owners.threshold} of ${owners.owners.size} owners must confirm",
@@ -2027,7 +2098,14 @@ class SafeTxViewModel(
                     OwnerState.UNKNOWN to "No signature here; whether it approved on chain is read once " +
                         "${network.displayName} has caught up"
                 }
-                OwnerStateRow(Eip55.format(owner.owner), context.labels[owner.owner], owner.held, state, detail)
+                OwnerStateRow(
+                    Eip55.format(owner.owner),
+                    context.labels[owner.owner],
+                    owner.held,
+                    state,
+                    detail,
+                    ledger = context.accounts.safeOwnerAccount(network, owner.owner)?.custody is AccountCustody.Ledger,
+                )
             },
             threshold = "${owners.threshold} of ${owners.owners.size} owners must confirm, as last verified",
             confirmations = "${owners.signatures} of ${owners.threshold} confirmations here",
@@ -2123,7 +2201,9 @@ class SafeTxViewModel(
         val at = clock()
         fun age(asOf: Long?) = asOf?.let { "as of ${agoText(it, at)}" } ?: "as last verified"
         val allowed = if (step.kind == ReviewKind.APPROVAL) options.approvers else options.executors
-        val accounts = (listOf(step.account) + allowed).distinct()
+        val accounts = (listOf(step.account) + allowed.filter {
+            context.accounts.safeOwnerAccount(network, it)?.custody == AccountCustody.InKeyStore
+        }).distinct()
         val oldest = basis.oldestAsOf?.let { agoText(it, at) } ?: "an earlier block"
         return SafeTxUiState.DraftReview(
             network = network.displayName,
@@ -2228,6 +2308,8 @@ class SafeTxViewModel(
     }
 
     private companion object {
+        const val LEDGER_NEEDS_FRESH_HEAD =
+            "Ledger signing waits for the light client to catch up and check this transaction on chain."
         const val GWEI_DECIMALS = 9
         const val HELD_DISCARDED = "Discarded: your signature was deleted, and it was never shown to anyone."
         const val HELD_NOT_DISCARDED = "The outbox cannot be saved right now: the signature was not discarded."

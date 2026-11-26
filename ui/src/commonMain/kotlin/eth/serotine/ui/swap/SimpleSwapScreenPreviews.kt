@@ -248,6 +248,11 @@ private fun SimpleSwapCowBuyPreview() = SimpleSwapPreview(
 @Composable
 private fun SimpleSwapApprovalPreview() = SimpleSwapPreview(approval)
 
+/** A Ledger signs the same exact approval without a wallet password. */
+@Preview
+@Composable
+private fun SimpleSwapLedgerApprovalPreview() = SimpleSwapPreview(approval.copy(unlock = UnlockStep(ledger = true)))
+
 @Preview
 @Composable
 private fun SimpleSwapApprovalDarkPreview() = SimpleSwapPreview(approval, darkTheme = true)
@@ -322,6 +327,7 @@ internal val simpleSwapScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("compose-dark") { SimpleSwapComposeDarkPreview() },
     ScreenPreview("compose-buy") { SimpleSwapComposeBuyPreview() },
     ScreenPreview("approval") { SimpleSwapApprovalPreview() },
+    ScreenPreview("approval-ledger") { SimpleSwapLedgerApprovalPreview() },
     ScreenPreview("approval-dark") { SimpleSwapApprovalDarkPreview() },
     ScreenPreview("pending") { SimpleSwapPendingPreview() },
     ScreenPreview("step-two") { SimpleSwapStepTwoPreview() },

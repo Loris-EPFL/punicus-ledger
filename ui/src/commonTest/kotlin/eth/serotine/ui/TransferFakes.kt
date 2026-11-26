@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SwapKind
@@ -174,6 +175,13 @@ internal class FakeSigner(private val recovery: FakeRecovery? = null) : Signer {
     var pending: CompletableDeferred<Signing>? = null
     val asked = mutableListOf<Pair<Address, Unlock>>()
     val passwords = mutableListOf<String>()
+    var signLedgerTransaction: (suspend (AccountId, Eip1559Transaction, Unlock.WithLedger) -> Signing)? = null
+
+    override suspend fun signTransaction(account: AccountId, transaction: Eip1559Transaction, unlock: Unlock): Signing {
+        val ledger = signLedgerTransaction
+        if (ledger != null && unlock is Unlock.WithLedger) return ledger(account, transaction, unlock)
+        return super.signTransaction(account, transaction, unlock)
+    }
 
     override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing {
         asked += account to unlock

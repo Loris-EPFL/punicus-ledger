@@ -151,5 +151,8 @@ internal fun ledgerProblemText(problem: LedgerProblem): String = when (problem) 
     LedgerProblem.INVALID_RESPONSE -> "The Ledger returned an invalid response. Reconnect it and try again."
     LedgerProblem.WRONG_ACCOUNT -> "The Ledger did not return the expected account. Connect the Ledger for this address."
     LedgerProblem.UNSUPPORTED_TRANSACTION ->
-        "Ledger signing here supports only plain ETH transfers on Ethereum or Sepolia."
+        "The Ledger Ethereum app could not sign this request. Check that the app is up to date."
+    LedgerProblem.BLIND_SIGNING_DISABLED ->
+        "The Ledger requires blind signing for this request. If you accept that the device cannot show " +
+            "the full details, enable Blind signing in the Ethereum app on the Ledger, then review again."
 }

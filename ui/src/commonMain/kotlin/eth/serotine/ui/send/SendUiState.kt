@@ -75,17 +75,15 @@ sealed interface SendUiState {
         val refreshing: Boolean = false,
         val signing: Boolean = false,
         val notSent: NotSentItem? = null,
-        /** Signs on the connected Ledger instead of unlocking a key in the software vault. */
-        val ledger: Boolean = false,
     ) : SendUiState {
 
         /** The review is ready for the Ledger, or has the password needed to unlock a local key. */
         val canSign: Boolean
-            get() = idle && (ledger || unlock.password.text.isNotEmpty()) && !recipient.warning.blocks
+            get() = idle && unlock.canAuthorize && !recipient.warning.blocks
 
         /** The biometric prompt may be offered now. */
         val canSignWithBiometrics: Boolean
-            get() = idle && !ledger && unlock.biometrics && !recipient.warning.blocks
+            get() = idle && !unlock.ledger && unlock.biometrics && !recipient.warning.blocks
 
         /** Neither a refresh nor a signature runs, and nothing was signed yet. */
         val idle: Boolean

@@ -54,6 +54,12 @@ private fun LedgerSepoliaPreview() = LedgerPreview(
 
 @Preview
 @Composable
+private fun LedgerGnosisPreview() = LedgerPreview(
+    confirmed.copy(network = Network.GNOSIS, enabledNetworks = ledgerNetworks),
+)
+
+@Preview
+@Composable
 private fun LedgerNetworkOffPreview() = LedgerPreview(confirmed.copy(enabledNetworks = emptyList()))
 
 @Preview
@@ -76,6 +82,7 @@ internal val ledgerAccountScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("rejected") { LedgerRejectedPreview() },
     ScreenPreview("confirmed") { LedgerConfirmedPreview() },
     ScreenPreview("sepolia-dark") { LedgerSepoliaPreview() },
+    ScreenPreview("gnosis") { LedgerGnosisPreview() },
     ScreenPreview("network-off") { LedgerNetworkOffPreview() },
     ScreenPreview("enabling") { LedgerEnablingPreview() },
     ScreenPreview("saving") { LedgerSavingPreview() },

@@ -2,9 +2,11 @@ package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Eip1559Transaction
+import eth.serotine.domain.model.Erc20
 import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Signature
@@ -18,6 +20,8 @@ import eth.serotine.domain.repository.LedgerDevice
 import eth.serotine.domain.repository.LedgerProblem
 import eth.serotine.domain.repository.LedgerResult
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.Signing
+import eth.serotine.domain.repository.Unlock
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -26,11 +30,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
-import kotlin.time.TimeMark
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 
 class LedgerAccountsTest {
@@ -44,8 +43,9 @@ class LedgerAccountsTest {
     private val sent = MemorySentTransfers()
     private val time = TestTimeSource()
     private val device = Device()
+    private val signer = FakeSigner(recovery)
     private val enroll = EnrollLedgerAccount(device, accounts, WalletChanges())
-    private val send = SendLedgerTransfer(device, recovery, broadcaster, sent, accounts) { 123 }
+    private val send = SendTransfer(signer, broadcaster, sent) { 123 }
 
     @Test
     fun acceptsOnlyEthereumPathsWithThreeToFiveUint31Components() {
@@ -58,7 +58,7 @@ class LedgerAccountsTest {
     }
 
     @Test
-    fun anAddressIsAddedOnlyOnSupportedNetworksAndNeverReplacesEntries() = runTest {
+    fun anAddressCanBeAddedOnEveryNetworkAndNeverReplacesEntries() = runTest {
         val watched = account.copy(custody = AccountCustody.Watched)
         val keyed = account.copy(network = Network.SEPOLIA, custody = AccountCustody.InKeyStore)
         accounts.accounts.value = listOf(watched, keyed)
@@ -66,10 +66,14 @@ class LedgerAccountsTest {
         val confirmed = assertIs<LedgerResult.Ok<ConfirmedLedgerAccount>>(enroll.confirm(path)).value
         assertEquals(sender, confirmed.address)
         assertEquals(path, confirmed.path)
-        assertEquals(AccountAdd.NotSaved, enroll.add(Network.GNOSIS, confirmed))
+        val gnosis = account.copy(network = Network.GNOSIS)
+        assertEquals(AccountAdd.Added, enroll.add(Network.GNOSIS, confirmed))
         assertEquals(AccountAdd.AlreadyPresent, enroll.add(Network.ETHEREUM, confirmed))
         assertEquals(AccountAdd.AlreadyPresent, enroll.add(Network.SEPOLIA, confirmed))
-        assertEquals(listOf(watched, keyed), accounts.accounts.value)
+        assertEquals(listOf(watched.id, keyed.id, gnosis.id), accounts.accounts.value.map { it.id })
+        assertEquals(watched, accounts.accounts.value.first())
+        assertEquals(keyed, accounts.accounts.value[1])
+        assertEquals(gnosis.custody, accounts.accounts.value.last().custody)
 
         accounts.remove(keyed.id)
         assertEquals(AccountAdd.Added, enroll.add(Network.SEPOLIA, confirmed))
@@ -85,102 +89,56 @@ class LedgerAccountsTest {
     }
 
     @Test
-    fun mismatchUnsupportedNetworkTokenOrCalldataIsRefusedBeforeContactingTheDevice() = runTest {
-        val token = Token(recipient, "TKN", "Token", 18, icon = null)
-        val unsupported = listOf(
-            quote(chainId = Network.SEPOLIA.chainId),
-            quote(network = Network.GNOSIS),
-            quote(asset = TransferAsset.Erc20Token(token)),
-            quote(data = byteArrayOf(1)),
-        )
-        for (quote in unsupported) {
-            assertEquals(LedgerResult.Failed(LedgerProblem.UNSUPPORTED_TRANSACTION), send(quote, path, deadline()))
-        }
-        assertEquals(0, device.signCalls)
+    fun aLedgerEnrolledOnOneChainCanBeAddedOnTheOthersWithTheSamePath() = runTest {
+        val add = AddOnNetworks(accounts, WalletChanges())
+        assertEquals(NetworksAdd.Added(listOf(Network.GNOSIS, Network.SEPOLIA)), add(account.id, Network.entries))
+        assertEquals(Network.entries.toSet(), accounts.accounts.value.map { it.network }.toSet())
+        assertTrue(accounts.accounts.value.all { it.custody == AccountCustody.Ledger(path) })
+    }
+
+    @Test
+    fun aMismatchedChainIsRefusedBeforeContactingSigner() = runTest {
+        val failure = Signing.LedgerFailed(LedgerProblem.UNSUPPORTED_TRANSACTION)
+        assertEquals(TransferSending.NotSigned(failure), send(quote(chainId = Network.SEPOLIA.chainId), approval()))
+        assertTrue(signer.ledgerTransactions.isEmpty())
         assertNothingSent()
     }
 
     @Test
-    fun aWatchedAccountCannotUseLedgerAndALedgerCannotBeOfferedToADapp() = runTest {
-        assertEquals(DappOffer.NO_KEY, dappOffer(account, setOf(account.network)))
-        accounts.accounts.value = listOf(account.copy(custody = AccountCustody.Watched))
-        assertEquals(LedgerResult.Failed(LedgerProblem.WRONG_ACCOUNT), send(quote(), path, deadline()))
-        assertEquals(0, device.signCalls)
-        assertNothingSent()
+    fun anEnrolledLedgerMayBeOfferedToADappButAWatchedAccountMayNot() {
+        val enabled = setOf(account.network)
+        assertEquals(DappOffer.OFFERED, dappOffer(account, enabled))
+        assertEquals(DappOffer.NO_KEY, dappOffer(account.copy(custody = AccountCustody.Watched), enabled))
     }
 
     @Test
-    fun aSignatureFromTheWrongSenderNeverReachesBroadcast() = runTest {
-        device.sign = { LedgerResult.Ok(recovery.sign(recipient, it.signingDigest())) }
-        assertEquals(LedgerResult.Failed(LedgerProblem.WRONG_ACCOUNT), send(quote(), path, deadline()))
-        assertEquals(1, device.signCalls)
-        assertNothingSent()
-    }
-
-    @Test
-    fun aDeviceRejectionNeverReachesBroadcast() = runTest {
-        device.sign = { LedgerResult.Failed(LedgerProblem.REJECTED) }
-        assertEquals(LedgerResult.Failed(LedgerProblem.REJECTED), send(quote(), path, deadline()))
-        assertEquals(1, device.signCalls)
+    fun aDeviceRejectionNeverReachesBroadcastOrFallsBackToTheLocalSigner() = runTest {
+        val refused = Signing.LedgerFailed(LedgerProblem.REJECTED)
+        signer.answer = refused
+        val quote = quote()
+        assertEquals(TransferSending.NotSigned(refused), send(quote, approval()))
+        assertEquals(listOf(account.id to quote.transaction), signer.ledgerTransactions)
+        assertTrue(signer.asked.isEmpty())
         assertNothingSent()
     }
 
     @Test
     fun aSignatureReturnedAfterTheQuoteDeadlineNeverReachesBroadcast() = runTest {
-        device.sign = {
-            time += 2.seconds
-            LedgerResult.Ok(recovery.sign(sender, it.signingDigest()))
-        }
-        assertEquals(LedgerResult.Failed(LedgerProblem.TIMED_OUT), send(quote(), path, deadline()))
-        assertNothingSent()
-    }
-
-    @Test
-    fun theQuoteDeadlineCancelsAnOutstandingDeviceApproval() = runTest {
-        var cancelled = false
-        device.sign = {
-            try {
-                awaitCancellation()
-            } finally {
-                cancelled = true
-            }
-        }
-        assertEquals(LedgerResult.Failed(LedgerProblem.TIMED_OUT), send(quote(), path, deadline()))
-        assertTrue(cancelled)
-        assertNothingSent()
-    }
-
-    @Test
-    fun removingTheEnrollmentDuringDeviceApprovalPreventsBroadcast() = runTest {
-        device.sign = {
-            accounts.remove(account.id)
-            LedgerResult.Ok(recovery.sign(sender, it.signingDigest()))
-        }
-        assertEquals(LedgerResult.Failed(LedgerProblem.WRONG_ACCOUNT), send(quote(), path, deadline()))
-        assertNothingSent()
-    }
-
-    @Test
-    fun cancellationEvenWithADeviceResponsePreventsBroadcast() = runTest {
-        device.sign = {
-            currentCoroutineContext().cancel()
-            LedgerResult.Ok(recovery.sign(sender, it.signingDigest()))
-        }
-        val job = launch { send(quote(), path, deadline()) }
-        job.join()
-        assertTrue(job.isCancelled)
+        signer.beforeLedgerReply = { time += 2.seconds }
+        assertEquals(TransferSending.NotSigned(Signing.TimedOut), send(quote(), approval()))
         assertNothingSent()
     }
 
     @Test
     fun sendsTheExactApprovedTransactionAndKeepsAnUnansweredBroadcastForRetry() = runTest {
-        val quote = quote()
+        val token = Token(Address.of("0x" + "cc".repeat(20)), "TKN", "Token", 18, icon = null)
+        val quote = quote(network = Network.GNOSIS, asset = TransferAsset.Erc20Token(token))
         val signature = recovery.sign(sender, quote.transaction.signingDigest())
-        device.sign = { LedgerResult.Ok(signature) }
         broadcaster.answer = Broadcast.Unavailable("no peer answered")
 
-        val result = assertIs<LedgerResult.Ok<TransferSending>>(send(quote, path, deadline())).value
-        val notSent = assertIs<TransferSending.NotSent>(result)
+        val notSent = assertIs<TransferSending.NotSent>(send(quote, approval()))
+        assertEquals(listOf(AccountId(Network.GNOSIS, sender) to quote.transaction), signer.ledgerTransactions)
+        assertTrue(signer.asked.isEmpty())
         assertContentEquals(quote.transaction.encodeSigned(signature), broadcaster.sent.single())
         assertEquals(notSent.transfer, sent.transfers.value.single())
         assertTrue(notSent.transfer.maybeSent)
@@ -188,7 +146,7 @@ class LedgerAccountsTest {
         assertEquals(SentAction.Transfer(quote.to, quote.asset, quote.amount), notSent.transfer.action)
     }
 
-    private fun deadline(): TimeMark = time.markNow() + 1.seconds
+    private fun approval(): Unlock.WithLedger = Unlock.WithLedger(time.markNow() + 1.seconds)
 
     private fun assertNothingSent() {
         assertTrue(broadcaster.sent.isEmpty())
@@ -199,9 +157,14 @@ class LedgerAccountsTest {
         network: Network = account.network,
         chainId: Long = network.chainId,
         asset: TransferAsset = TransferAsset.Native,
-        data: ByteArray = ByteArray(0),
     ): TransferQuote {
         val amount = UInt256.of(1_000L)
+        val token = (asset as? TransferAsset.Erc20Token)?.token
+        val transaction = Eip1559Transaction(
+            chainId, 7, UInt256.of(1L), UInt256.of(2L), 80_000, token?.address ?: recipient,
+            if (token == null) amount else UInt256.ZERO,
+            if (token == null) ByteArray(0) else Erc20.transferData(recipient, amount),
+        )
         return TransferQuote(
             network = network,
             from = sender,
@@ -209,10 +172,10 @@ class LedgerAccountsTest {
             asset = asset,
             amount = amount,
             level = FeeLevel.NORMAL,
-            transaction = Eip1559Transaction(chainId, 7, UInt256.of(1L), UInt256.of(2L), 21_000, recipient, amount, data),
-            maxFee = UInt256.of(42_000L),
-            nativeBefore = UInt256.of(100_000L),
-            nativeAfterAtLeast = UInt256.of(57_000L),
+            transaction = transaction,
+            maxFee = UInt256.of(160_000L),
+            nativeBefore = UInt256.of(500_000L),
+            nativeAfterAtLeast = UInt256.of(if (token == null) 339_000L else 340_000L),
             pendingCost = UInt256.ZERO,
             tokenBefore = null,
             pendingTokenAmount = null,
@@ -227,8 +190,6 @@ class LedgerAccountsTest {
 
     private inner class Device : LedgerDevice {
         var confirm: LedgerResult<Address> = LedgerResult.Failed(LedgerProblem.NOT_CONNECTED)
-        var sign: suspend (Eip1559Transaction) -> LedgerResult<Signature> = { error("unexpected Ledger signing") }
-        var signCalls = 0
 
         override suspend fun confirmAddress(path: LedgerPath): LedgerResult<Address> = confirm
 
@@ -236,11 +197,6 @@ class LedgerAccountsTest {
             path: LedgerPath,
             expectedAddress: Address,
             transaction: Eip1559Transaction,
-        ): LedgerResult<Signature> {
-            assertEquals(this@LedgerAccountsTest.path, path)
-            assertEquals(sender, expectedAddress)
-            signCalls++
-            return sign(transaction)
-        }
+        ): LedgerResult<Signature> = error("enrollment must not sign a transaction")
     }
 }

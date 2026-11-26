@@ -8,18 +8,15 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.DisplayCurrency
-import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.TransferAsset
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.WalletPassword
-import eth.serotine.domain.model.supportsLedger
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.FeeLevel
-import eth.serotine.domain.repository.LedgerProblem
-import eth.serotine.domain.repository.LedgerResult
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentTransfer
 import eth.serotine.domain.repository.Signing
@@ -39,7 +36,6 @@ import eth.serotine.domain.usecase.ObserveRecipientCheck
 import eth.serotine.domain.usecase.RecipientCheck
 import eth.serotine.domain.usecase.RecipientLookup
 import eth.serotine.domain.usecase.ResolveRecipient
-import eth.serotine.domain.usecase.SendLedgerTransfer
 import eth.serotine.domain.usecase.SendTransfer
 import eth.serotine.domain.usecase.TransferDraft
 import eth.serotine.domain.usecase.TransferDrafting
@@ -68,17 +64,21 @@ import eth.serotine.ui.components.addressFieldLabel
 import eth.serotine.ui.components.agoText
 import eth.serotine.ui.components.amountHint
 import eth.serotine.ui.components.assetOptions
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
 import eth.serotine.ui.components.epochSecondsNow
 import eth.serotine.ui.components.exactAmount
 import eth.serotine.ui.components.feeDetail
 import eth.serotine.ui.components.figureText
+import eth.serotine.ui.components.forCustody
 import eth.serotine.ui.components.grouped
 import eth.serotine.ui.components.levelName
 import eth.serotine.ui.components.notSentItem
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.promptDeadline
+import eth.serotine.ui.components.promptTimedOut
+import eth.serotine.ui.components.promptTooLate
 import eth.serotine.ui.components.recipientHint
 import eth.serotine.ui.components.recipientItem
 import eth.serotine.ui.components.recipientNote
@@ -90,7 +90,6 @@ import eth.serotine.ui.components.resolveAgain
 import eth.serotine.ui.components.retryLookupWaits
 import eth.serotine.ui.components.typedAmount
 import eth.serotine.ui.components.verifiedAt
-import eth.serotine.ui.ledger.ledgerProblemText
 import eth.serotine.ui.outbox.OPEN_QUEUED
 import eth.serotine.ui.outbox.QUEUED_FIRST
 import kotlin.time.TimeMark
@@ -171,7 +170,7 @@ class SendViewModel(
     fill: SendFill? = null,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     private val now: () -> Long = ::epochSecondsNow,
-    private val sendLedgerTransfer: SendLedgerTransfer? = null,
+    private val offersLedgerSigning: Boolean = false,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
     private val from: Address = account.address
@@ -528,7 +527,8 @@ class SendViewModel(
                         sender = next.sender,
                         accounts = next.accounts,
                         refreshing = false,
-                        unlock = latest.unlock.copy(error = note),
+                        unlock = (latest.unlock.takeIf { it.ledger == next.unlock.ledger } ?: next.unlock)
+                            .copy(error = note),
                     )
                     else -> next
                 }
@@ -542,7 +542,7 @@ class SendViewModel(
     fun onPasswordChange(text: String) = step.update { current ->
         when {
             current is Step.Reviewing && !current.signing && current.notSent == null &&
-                ledgerPath(current.accounts) == null ->
+                !current.unlock.ledger ->
                 current.copy(unlock = current.unlock.copy(password = WalletPassword(text), error = null))
             current is Step.Drafting && !current.signing ->
                 current.copy(unlock = current.unlock.copy(password = WalletPassword(text), error = null))
@@ -561,14 +561,15 @@ class SendViewModel(
             return queue(draft, Unlock.WithPassword(password))
         }
         val current = step.value as? Step.Reviewing ?: return
-        if (!current.idle || !cleared(current.request.to.address)) return
-        if (ledgerPath(current.accounts) != null) {
-            if (!requoted(current)) sign(current)
-            return
+        if (!current.idle || !current.unlock.canAuthorize || !cleared(current.request.to.address) ||
+            requoted(current)
+        ) return
+        val notAfter = if (current.unlock.ledger) {
+            promptDeadline(current.quotedAt) ?: return refresh(note = current.unlock.promptTooLate())
+        } else {
+            null
         }
-        val password = current.unlock.password
-        if (password.text.isEmpty() || requoted(current)) return
-        sign(current, Unlock.WithPassword(password))
+        current.unlock.approval(notAfter)?.let { sign(current, it) }
     }
 
     /**
@@ -585,7 +586,7 @@ class SendViewModel(
             return queue(draft, Unlock.WithBiometrics(reason, notAfter = null))
         }
         val current = step.value as? Step.Reviewing ?: return
-        if (ledgerPath(current.accounts) != null || !current.idle || !current.unlock.biometrics ||
+        if (current.unlock.ledger || !current.idle || !current.unlock.biometrics ||
             !cleared(current.request.to.address) || requoted(current)
         ) return
         // The prompt gets what is left of the quote's age: past it, nothing is signed, and it is made again.
@@ -669,30 +670,14 @@ class SendViewModel(
         onHidden()
     }
 
-    private fun sign(review: Step.Reviewing, unlock: Unlock? = null) {
-        val path = ledgerPath(review.accounts)
-        val hardware = sendLedgerTransfer
-        val deadline = if (path != null) {
-            promptDeadline(review.quotedAt) ?: return refresh(note = LEDGER_TOO_LATE)
-        } else {
-            null
-        }
-        if ((path == null && unlock == null) || (path != null && hardware == null)) return
+    private fun sign(review: Step.Reviewing, unlock: Unlock) {
         // The password leaves the state now: it is in the unlock, which the signer zeroes after use.
         val unlocked = review.unlock.copy(password = WalletPassword.EMPTY, error = null)
         step.value = review.copy(signing = true, unlock = unlocked)
         job = viewModelScope.launch {
-            var ledgerProblem: LedgerProblem? = null
-            val sending = if (path != null && hardware != null && deadline != null) {
-                when (val result = hardware(review.quote, path, deadline)) {
-                    is LedgerResult.Ok -> result.value
-                    is LedgerResult.Failed -> {
-                        ledgerProblem = result.problem
-                        null
-                    }
-                }
+            val sending = if (unlock is Unlock.WithLedger) {
+                sendTransfer(review.quote, unlock)
             } else {
-                checkNotNull(unlock)
                 safely { sendTransfer(review.quote, unlock) }
             }
             step.update { latest ->
@@ -714,15 +699,13 @@ class SendViewModel(
                     )
                     null -> latest.copy(
                         signing = false,
-                        unlock = latest.unlock.copy(error = ledgerProblem?.let(::ledgerProblemText) ?: SEND_FAILED),
+                        unlock = latest.unlock.copy(error = SEND_FAILED),
                     )
                 }
             }
             // The prompt outlived the quote's age: nothing was signed, and the quote is made again.
-            if (ledgerProblem == LedgerProblem.TIMED_OUT ||
-                (sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut
-            ) {
-                refresh(note = if (path == null) PROMPT_TIMED_OUT else ledgerProblemText(LedgerProblem.TIMED_OUT))
+            if ((sending as? TransferSending.NotSigned)?.signing == Signing.TimedOut) {
+                refresh(note = review.unlock.promptTimedOut())
             }
             // Hidden while it ran and nothing was sent: the quote is from before, so it is made again.
             requoteIfHidden()
@@ -778,9 +761,6 @@ class SendViewModel(
         }
     }
 
-    private fun ledgerPath(accounts: List<Account>): LedgerPath? =
-        (accounts.firstOrNull { it.id == account }?.custody as? AccountCustody.Ledger)?.path
-
     /**
      * The review of [request], quoted now, with [unlock] (a new one when null), or the compose
      * step saying why there is none. A name is resolved again first: what is signed is the
@@ -788,10 +768,8 @@ class SendViewModel(
      * refused as still syncing is drafted instead ([drafted]).
      */
     private suspend fun quoted(request: Request, unlock: UnlockStep?, sender: SendFrom, accounts: List<Account>): Step {
-        val ledger = ledgerPath(accounts) != null
-        if (ledger && request.option.asset != TransferAsset.Native) {
-            return Step.Composing(error = LEDGER_ETH_ONLY)
-        }
+        val custody = accounts.firstOrNull { it.id == account }?.custody
+        val ledger = custody is AccountCustody.Ledger
         val to = when (val again = resolveAgain(request.to, ::lookUp)) {
             is ResolvedAgain.Same -> again.found // its block is this resolution's
             is ResolvedAgain.Changed -> {
@@ -818,7 +796,7 @@ class SendViewModel(
             request.copy(to = to),
             quoting.quote,
             readFrom,
-            unlock ?: UnlockStep(biometrics = !ledger && biometricsOffered()),
+            (unlock ?: UnlockStep(biometrics = !ledger && biometricsOffered())).forCustody(custody),
             sender,
             accounts,
         )
@@ -933,27 +911,23 @@ class SendViewModel(
                 when {
                     account == null -> Sender.Cannot(NOT_IN_WALLET)
                     account.kind == AccountKind.SAFE -> Sender.Cannot(SAFE)
-                    account.custody is AccountCustody.Ledger -> when {
-                        sendLedgerTransfer == null || !network.supportsLedger -> Sender.Cannot(LEDGER_NOT_AVAILABLE)
-                        inputs.asset != null -> Sender.Cannot(LEDGER_ETH_ONLY)
-                        else -> Sender.From(account)
-                    }
-                    account.custody != AccountCustody.InKeyStore -> Sender.Cannot(WATCH_ONLY)
+                    account.custody is AccountCustody.Ledger && !offersLedgerSigning ->
+                        Sender.Cannot(LEDGER_NOT_AVAILABLE)
+                    !account.custody.canSign -> Sender.Cannot(WATCH_ONLY)
                     else -> Sender.From(account)
                 }
             }
         }
         // Lenient: a balance last verified is offered too, labelled, for a draft.
-        val ledger = ledgerPath(accounts) != null
-        val canDraft = lenient && !ledger
-        val options = assetOptions(value, inputs.asset, network, lastKnown = canDraft, nativeOnly = ledger)
+        val canDraft = lenient && (sender as? Sender.From)?.account?.custody !is AccountCustody.Ledger
+        val options = assetOptions(value, inputs.asset, network, lastKnown = canDraft)
         return Model(
             sender = sender,
             accounts = accounts,
             currency = value.currency,
             options = options,
             selected = options.firstOrNull { it.contract == inputs.asset },
-            tokensRead = ledger || value.tokensRead,
+            tokensRead = value.tokensRead,
             inputs = inputs,
             lookup = lookup,
             lenient = canDraft,
@@ -1071,7 +1045,6 @@ class SendViewModel(
             notSent = step.notSent?.let {
                 notSentItem(it.broadcast, it.unverified, what = "transfer", maybeSent = it.transfer.maybeSent)
             },
-            ledger = ledgerPath(step.accounts) != null,
         )
     }
 
@@ -1305,9 +1278,6 @@ class SendViewModel(
             "Sending from a Safe takes a Safe transaction its owners sign: Send on the Safe's own screen proposes one."
         const val WATCH_ONLY =
             "This account is watch-only: its key is not on this device, so nothing can be sent from it."
-        const val LEDGER_ETH_ONLY = "This Ledger account can send ETH, but cannot sign token transfers in Punicus."
-        const val LEDGER_NOT_AVAILABLE = "Ledger signing is available only on desktop, on Ethereum and Sepolia."
-        const val LEDGER_TOO_LATE =
-            "Too little time was left to approve on the Ledger. Check the refreshed quote, then sign."
+        const val LEDGER_NOT_AVAILABLE = "Ledger signing is available only on desktop."
     }
 }

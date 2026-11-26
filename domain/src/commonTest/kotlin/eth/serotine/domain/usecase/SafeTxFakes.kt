@@ -6,6 +6,8 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.Eip1559Transaction
+import eth.serotine.domain.model.Eip712Hashes
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SafeSignature
 import eth.serotine.domain.model.SafeTx
@@ -145,11 +147,31 @@ internal class FakeSigner(private val recovery: FakeRecovery) : Signer {
     var answer: Signing? = null
     var signAs: Address? = null
     val asked = mutableListOf<Pair<Address, Digest>>()
+    val ledgerTransactions = mutableListOf<Pair<AccountId, Eip1559Transaction>>()
+    val ledgerTypedData = mutableListOf<Pair<AccountId, Eip712Hashes>>()
+    var beforeLedgerReply: () -> Unit = {}
 
     override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing {
         asked += account to digest
-        return answer ?: Signing.Signed(recovery.sign(signAs ?: account, digest))
+        return signature(account, digest)
     }
+
+    override suspend fun signTransaction(account: AccountId, transaction: Eip1559Transaction, unlock: Unlock): Signing {
+        if (unlock !is Unlock.WithLedger) return super<Signer>.signTransaction(account, transaction, unlock)
+        ledgerTransactions += account to transaction
+        beforeLedgerReply()
+        return signature(account.address, transaction.signingDigest())
+    }
+
+    override suspend fun signTypedData(account: AccountId, hashes: Eip712Hashes, unlock: Unlock): Signing {
+        if (unlock !is Unlock.WithLedger) return super<Signer>.signTypedData(account, hashes, unlock)
+        ledgerTypedData += account to hashes
+        beforeLedgerReply()
+        return signature(account.address, hashes.digest)
+    }
+
+    private fun signature(account: Address, digest: Digest): Signing =
+        answer ?: Signing.Signed(recovery.sign(signAs ?: account, digest))
 }
 
 internal class FakeBroadcaster : Broadcaster {

@@ -35,6 +35,7 @@ import eth.serotine.data.nfts.FileAddedNfts
 import eth.serotine.data.nfts.FileSeenEnsNames
 import eth.serotine.data.outbox.desktopOutbox
 import eth.serotine.data.safe.FileSafeTxQueue
+import eth.serotine.data.ledger.LedgerSigner
 import eth.serotine.data.ledger.UsbLedgerDevice
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
@@ -519,6 +520,7 @@ private fun openWallet(dataDir: File) {
                 withoutHardware = desktopPasswordOnlyProtection(),
                 biometricKey = desktopBiometricKey(keys.path),
             )
+            val ledger = UsbLedgerDevice()
             AppGraph(
                 accounts = accounts,
                 keys = keyStore,
@@ -543,8 +545,8 @@ private fun openWallet(dataDir: File) {
                 // A computer hands no payment link to another wallet (#255): Send from another wallet is left out.
                 walletHandoff = NoWalletHandoff,
                 names = node.names,
-                signer = keyStore,
-                ledgerDevice = UsbLedgerDevice(),
+                signer = LedgerSigner(keyStore, ledger, accounts, signatureRecovery),
+                ledgerDevice = ledger,
                 sentTransfers = sentTransfers,
                 transactionHistory = transactionHistory,
                 historyStarts = historyStarts,

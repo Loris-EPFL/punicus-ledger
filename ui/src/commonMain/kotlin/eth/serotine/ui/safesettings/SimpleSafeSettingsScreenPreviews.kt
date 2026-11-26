@@ -135,6 +135,11 @@ private fun SimpleSafeSettingsGnosisPayPreview() = SimpleSafeSettingsPreview(
 @Composable
 private fun SimpleSafeSettingsReviewPreview() = SimpleSafeSettingsPreview(review)
 
+@Preview
+@Composable
+private fun SimpleSafeSettingsReviewLedgerPreview() =
+    SimpleSafeSettingsPreview(review.copy(unlock = UnlockStep(ledger = true)))
+
 /** A change the Safe reverts on, refused on the form: checked on chain, its block behind Details. */
 @Preview
 @Composable
@@ -166,5 +171,6 @@ internal val simpleSafeSettingsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("gnosis-pay") { SimpleSafeSettingsGnosisPayPreview() },
     ScreenPreview("refused") { SimpleSafeSettingsRefusedPreview() },
     ScreenPreview("review") { SimpleSafeSettingsReviewPreview() },
+    ScreenPreview("review-ledger") { SimpleSafeSettingsReviewLedgerPreview() },
     ScreenPreview("review-refused") { SimpleSafeSettingsReviewRefusedPreview() },
 )

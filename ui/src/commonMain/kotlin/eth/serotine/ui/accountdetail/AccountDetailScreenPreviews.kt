@@ -585,6 +585,14 @@ private fun AccountDetailSafeOwnersPreview() = AccountDetailPreview(treasury.cop
 
 @Preview
 @Composable
+private fun AccountDetailSafeLedgerOwnerPreview() {
+    val safe = treasury.safe as SafeDetails.Shown
+    val owners = safe.owners.map { it.copy(ledger = it.heldHere) }
+    AccountDetailPreview(treasury.copy(segment = DetailSegment.OWNERS, safe = safe.copy(owners = owners)))
+}
+
+@Preview
+@Composable
 private fun AccountDetailGnosisPayOwnersPreview() = AccountDetailPreview(gnosisPayCard)
 
 /**
@@ -1387,6 +1395,7 @@ internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("by-name-with-impostor") { AccountDetailByNameWithImpostorPreview() },
     ScreenPreview("safe-assets") { AccountDetailSafeAssetsPreview() },
     ScreenPreview("safe-owners") { AccountDetailSafeOwnersPreview() },
+    ScreenPreview("safe-owners-ledger") { AccountDetailSafeLedgerOwnerPreview() },
     ScreenPreview("safe-queue") { AccountDetailSafeQueuePreview() },
     ScreenPreview("safe-queue-dark") { AccountDetailSafeQueueDarkPreview() },
     ScreenPreview("safe-queue-empty") { AccountDetailSafeQueueEmptyPreview() },

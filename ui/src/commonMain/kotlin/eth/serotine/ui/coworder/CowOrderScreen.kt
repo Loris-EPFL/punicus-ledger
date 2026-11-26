@@ -372,7 +372,7 @@ private fun CancelFooter(
         UnlockFields(
             unlock = state.unlock,
             signing = state.signing,
-            canSign = state.idle && state.unlock.password.text.isNotEmpty(),
+            canSign = state.idle && state.unlock.canAuthorize,
             canSignWithBiometrics = state.idle && state.unlock.biometrics,
             signLabel = "Sign and cancel on chain",
             signingLabel = "Signing and sending…",

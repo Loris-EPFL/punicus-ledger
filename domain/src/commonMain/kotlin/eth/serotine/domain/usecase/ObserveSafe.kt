@@ -5,6 +5,8 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressKind
@@ -31,16 +33,16 @@ class ObserveSafe(
                 is KindReading.Unavailable -> SafeReading.Unavailable(reading.reason)
                 is KindReading.Verified -> when (val kind = reading.kind) {
                     is AddressKind.Safe -> {
-                        // Owners held or watched anywhere in the wallet: an address is an owner on any chain,
-                        // and its key, held here on one network, signs on every one. One entry per owner:
-                        // the one held in the key store where there is one.
+                        // Keep one entry per owner. Local keys can sign on any network; Ledger needs enrollment here.
                         val inWallet = (list as? AccountList.Loaded)?.accounts.orEmpty()
                             .filter { it.address in kind.state.owners }
                             .groupBy { it.address }
-                            .map { (_, entries) ->
-                                entries.firstOrNull { it.custody == AccountCustody.InKeyStore } ?: entries.first()
+                            .map { (owner, entries) ->
+                                entries.safeOwnerAccount(safe.network, owner)
+                                    ?: entries.firstOrNull { it.network == safe.network }
+                                    ?: entries.first()
                             }
-                        SafeReading.Verified(kind.state, reading.blockNumber, inWallet)
+                        SafeReading.Verified(kind.state, reading.blockNumber, inWallet, safe.network)
                     }
                     else -> SafeReading.NotASafe
                 }
@@ -76,12 +78,17 @@ sealed interface SafeReading {
 
     /**
      * [state], verified at block [blockNumber]; [ownersInWallet], the wallet's accounts that are
-     * among its owners, watched or held.
+     * among its owners, watched or held. Ledger eligibility is evaluated on [network].
      */
-    data class Verified(val state: SafeState, val blockNumber: Long, val ownersInWallet: List<Account>) : SafeReading {
+    data class Verified(
+        val state: SafeState,
+        val blockNumber: Long,
+        val ownersInWallet: List<Account>,
+        val network: Network,
+    ) : SafeReading {
         /** The owners whose keys the wallet holds, in the Safe's order. */
         val ownersHeld: List<Address>
-            get() = state.ownersHeld(ownersInWallet)
+            get() = state.ownersHeld(ownersInWallet, network)
 
         /** What the user can do with the Safe, holding [ownersHeld]. */
         val control: SafeControl
@@ -107,11 +114,20 @@ enum class SafeControl {
     WATCH_ONLY,
 }
 
-/** The owners of this Safe whose keys the wallet holds: the accounts among [accounts] held in its key store. */
-fun SafeState.ownersHeld(accounts: List<Account>): List<Address> {
-    val held = accounts.filter { it.custody == AccountCustody.InKeyStore }.mapTo(HashSet()) { it.address }
-    return owners.filter { it in held }
+/** Selects a signable EOA for [owner]: an entry on [network] first, otherwise a key-store key on another network. */
+fun List<Account>.safeOwnerAccount(network: Network, owner: Address): Account? {
+    var local: Account? = null
+    for (account in this) {
+        if (account.address != owner || account.kind != AccountKind.EOA) continue
+        if (account.network == network && account.custody.canSign) return account
+        if (local == null && account.custody == AccountCustody.InKeyStore) local = account
+    }
+    return local
 }
+
+/** The Safe's owners, in contract order, with a signing account for [network] in [accounts]. */
+fun SafeState.ownersHeld(accounts: List<Account>, network: Network): List<Address> =
+    owners.filter { accounts.safeOwnerAccount(network, it) != null }
 
 /** What the user can do with this Safe, holding [held] of its owners' keys. */
 fun SafeState.control(held: Int): SafeControl = when {

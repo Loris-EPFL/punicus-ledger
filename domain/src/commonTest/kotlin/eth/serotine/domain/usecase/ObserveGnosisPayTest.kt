@@ -6,6 +6,7 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressKind
 import eth.serotine.domain.repository.AddressKinds
@@ -125,6 +126,21 @@ class ObserveGnosisPayTest {
         )
         // A key held here is a key: its kind is never read.
         assertEquals(emptyList(), kindsAsked)
+    }
+
+    @Test
+    fun ledgerEnrollmentSuppliesControllerAndSkipAuthorityOnGnosisOnly() = runTest {
+        val ledger = eoa(Network.GNOSIS, AccountCustody.Ledger(LedgerPath.DEFAULT))
+        val abroad = ledger.copy(network = Network.ETHEREUM)
+        val here = observe(abroad, ledger)(gnosisPay).settled() as GnosisPayReading.Found
+        assertEquals(listOf(HeldController(ledger, via = emptyList())), here.controllersHeld)
+        assertEquals(listOf(ledger), here.keysHere)
+        assertEquals(GnosisPaySending.AVAILABLE, here.sending)
+
+        val there = observe(abroad)(gnosisPay).settled() as GnosisPayReading.Found
+        assertTrue(there.controllersHeld.isEmpty())
+        assertTrue(there.keysHere.isEmpty())
+        assertEquals(listOf(abroad), there.keysHeldElsewhere)
     }
 
     @Test

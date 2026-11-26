@@ -14,6 +14,7 @@ import eth.serotine.domain.repository.CowOrders
 import eth.serotine.domain.repository.DraftBasis
 import eth.serotine.domain.repository.FeeLevel
 import eth.serotine.domain.repository.KeptTransactionInputs
+import eth.serotine.domain.repository.LedgerProblem
 import eth.serotine.domain.repository.NativeBalances
 import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.OutboxList
@@ -348,6 +349,9 @@ class QueueTransfer(
 ) {
     /** Signs [draft] and queues it. */
     suspend operator fun invoke(draft: TransferDraft, unlock: Unlock): TransferQueuing {
+        if (unlock is Unlock.WithLedger) {
+            return TransferQueuing.NotSigned(Signing.LedgerFailed(LedgerProblem.UNSUPPORTED_TRANSACTION))
+        }
         busy(draft)?.let { return TransferQueuing.AccountBusy(it.id) }
         val transaction = draft.transaction
         val signature = when (val signed = signer.sign(draft.from, transaction.signingDigest(), unlock)) {

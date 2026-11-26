@@ -60,6 +60,25 @@ class SafeTx(
     val dataSize: Int
         get() = callData.size
 
+    /** The EIP-712 hashes of this transaction for a Safe 1.3.0 or newer at [safe] on [chainId]. */
+    internal fun hashes(chainId: Long, safe: Address): Eip712Hashes {
+        val domain = keccak256(DOMAIN_TYPEHASH + word(chainId) + word(safe))
+        val struct = keccak256(
+            SAFE_TX_TYPEHASH +
+                word(to) +
+                value.toBytes32() +
+                keccak256(callData) +
+                word(operation.code.toLong()) +
+                safeTxGas.toBytes32() +
+                baseGas.toBytes32() +
+                gasPrice.toBytes32() +
+                word(gasToken) +
+                word(refundReceiver) +
+                word(nonce),
+        )
+        return Eip712Hashes.fromBytes(domain, struct)
+    }
+
     /**
      * The hash the Safe at [safe] on the chain [chainId] checks its owners' signatures against
      * (its `getTransactionHash`): EIP-712's `keccak256(0x19 ‖ 0x01 ‖ domainSeparator ‖
@@ -79,23 +98,7 @@ class SafeTx(
      * ([eth.serotine.domain.usecase.SafeTxRefusal.TooOldToSign], checked against its verified
      * [eth.serotine.domain.repository.SafeState.version] before this is ever called).
      */
-    fun hash(chainId: Long, safe: Address): Digest {
-        val domain = keccak256(DOMAIN_TYPEHASH + word(chainId) + word(safe))
-        val struct = keccak256(
-            SAFE_TX_TYPEHASH +
-                word(to) +
-                value.toBytes32() +
-                keccak256(callData) +
-                word(operation.code.toLong()) +
-                safeTxGas.toBytes32() +
-                baseGas.toBytes32() +
-                gasPrice.toBytes32() +
-                word(gasToken) +
-                word(refundReceiver) +
-                word(nonce),
-        )
-        return Digest.of(keccak256(EIP712_PREFIX + domain + struct).toHex())
-    }
+    fun hash(chainId: Long, safe: Address): Digest = hashes(chainId, safe).digest
 
     override fun equals(other: Any?): Boolean =
         other is SafeTx &&
@@ -140,8 +143,6 @@ class SafeTx(
                     "uint256 gasPrice,address gasToken,address refundReceiver,uint256 nonce)"
                 ).encodeToByteArray(),
         )
-
-        private val EIP712_PREFIX = byteArrayOf(0x19, 0x01)
 
         /**
          * A plain call the Safe makes with no refund terms, at [nonce]: what this wallet proposes

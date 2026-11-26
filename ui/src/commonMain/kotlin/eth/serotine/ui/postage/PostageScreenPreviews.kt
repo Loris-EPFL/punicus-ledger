@@ -163,6 +163,11 @@ private fun PostageApprovalPreview() = PostagePreview(buy.copy(step = approval))
 
 @Preview
 @Composable
+private fun PostageLedgerApprovalPreview() =
+    PostagePreview(buy.copy(step = approval.copy(unlock = UnlockStep(ledger = true))))
+
+@Preview
+@Composable
 private fun PostageAwaitingPreview() = PostagePreview(
     buy.copy(step = PostageStep.Awaiting("0x" + "ab".repeat(32), PostageTexts.AWAITING)),
 )
@@ -197,6 +202,7 @@ internal val postageScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("top-up") { PostageTopUpPreview() },
     ScreenPreview("dilute") { PostageDilutePreview() },
     ScreenPreview("approval") { PostageApprovalPreview() },
+    ScreenPreview("approval-ledger") { PostageLedgerApprovalPreview() },
     ScreenPreview("awaiting") { PostageAwaitingPreview() },
     ScreenPreview("purchase") { PostagePurchasePreview() },
     ScreenPreview("dilution") { PostageDilutionPreview() },

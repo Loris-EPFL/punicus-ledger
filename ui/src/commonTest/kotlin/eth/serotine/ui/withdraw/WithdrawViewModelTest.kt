@@ -6,6 +6,7 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Chequebook
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SwarmDeployment
 import eth.serotine.domain.model.Token
@@ -18,8 +19,10 @@ import eth.serotine.domain.repository.ChequebookReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.PostageReading
 import eth.serotine.domain.repository.SentAction
+import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.SwarmContracts
 import eth.serotine.domain.repository.SwarmReading
+import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveAccount
 import eth.serotine.domain.usecase.ObserveChequebook
@@ -154,6 +157,36 @@ class WithdrawViewModelTest {
         val withdrawn = assertIs<SentAction.ChequebookWithdrawal>(sent.transfers.value.single().action)
         assertEquals(UInt256.of(10_000_000_000_000_000), withdrawn.amount)
         assertEquals(sent.transfers.value.single().hash, viewModel.sent.value)
+    }
+
+    @Test
+    fun theNodesLedgerDoesNotSignUntilAnExpiredQuoteHasBeenReviewedAgain() = runTest {
+        node = node.copy(custody = AccountCustody.Ledger(checkNotNull(LedgerPath.parse("m/44'/60'/0'/0/0"))))
+        val requests = mutableListOf<Unlock.WithLedger>()
+        signer.signLedgerTransaction = { account, _, unlock ->
+            assertEquals(node.id, account)
+            requests += unlock
+            Signing.Signed(FakeSigner.SIGNATURE)
+        }
+        val viewModel = viewModel()
+        runCurrent()
+        viewModel.onAmount("1")
+        viewModel.review()
+        runCurrent()
+        assertTrue(assertIs<WithdrawStep.Review>(viewModel.ready.step).unlock.ledger)
+
+        clock += 61.seconds
+        viewModel.sign()
+        runCurrent()
+        assertTrue(requests.isEmpty())
+        assertEquals(STALE_QUOTE, assertIs<WithdrawStep.Review>(viewModel.ready.step).note)
+
+        clock += 1.seconds
+        viewModel.sign()
+        runCurrent()
+        assertEquals(59.seconds, -requests.single().notAfter.elapsedNow())
+        assertIs<SentAction.ChequebookWithdrawal>(sent.transfers.value.single().action)
+        assertTrue(signer.asked.isEmpty())
     }
 
     @Test

@@ -20,6 +20,50 @@ value class Digest private constructor(val hex: String) {
 
         /** [parse], throwing on bad input. */
         fun of(hex: String): Digest = requireNotNull(parse(hex)) { "not a 32-byte digest: '$hex'" }
+
+        internal fun fromBytes(bytes: ByteArray): Digest {
+            require(bytes.size == 32) { "a digest is 32 bytes" }
+            return Digest(bytes.toHex())
+        }
+    }
+}
+
+/** The two 32-byte EIP-712 hashes the device binds into one signature, not a caller-supplied digest. */
+class Eip712Hashes private constructor(
+    val domainSeparator: Digest,
+    val structHash: Digest,
+    /** `keccak256(0x19 ‖ 0x01 ‖ domainSeparator ‖ structHash)`. */
+    val digest: Digest,
+) {
+    constructor(domainSeparator: Digest, structHash: Digest) : this(
+        domainSeparator,
+        structHash,
+        signedDigest(domainSeparator.hex.hexToBytes(), structHash.hex.hexToBytes()),
+    )
+
+    override fun equals(other: Any?): Boolean =
+        other is Eip712Hashes && domainSeparator == other.domainSeparator && structHash == other.structHash
+
+    override fun hashCode(): Int = 31 * domainSeparator.hashCode() + structHash.hashCode()
+
+    override fun toString(): String = "Eip712Hashes(domainSeparator=$domainSeparator, structHash=$structHash)"
+
+    companion object {
+        internal fun fromBytes(domainSeparator: ByteArray, structHash: ByteArray): Eip712Hashes =
+            Eip712Hashes(
+                Digest.fromBytes(domainSeparator),
+                Digest.fromBytes(structHash),
+                signedDigest(domainSeparator, structHash),
+            )
+
+        private fun signedDigest(domainSeparator: ByteArray, structHash: ByteArray): Digest {
+            val preimage = ByteArray(66)
+            preimage[0] = 0x19
+            preimage[1] = 0x01
+            domainSeparator.copyInto(preimage, destinationOffset = 2)
+            structHash.copyInto(preimage, destinationOffset = 34)
+            return Digest.fromBytes(keccak256(preimage))
+        }
     }
 }
 

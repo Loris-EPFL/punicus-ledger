@@ -9,6 +9,7 @@ import eth.serotine.ui.components.TraceText
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.usecase.DappSignRefusal
 import eth.serotine.ui.components.NotSentItem
+import eth.serotine.ui.components.UnlockStep
 import eth.serotine.ui.dapprequest.DappRequestViewModel
 import eth.serotine.ui.dapprequest.SignInField
 import eth.serotine.ui.ScreenPreview
@@ -277,6 +278,19 @@ private fun DappTransactionPaymentPreview() = DappTransactionPreview(payment)
 @Composable
 private fun DappTransactionPaymentDarkPreview() = DappTransactionPreview(payment, darkTheme = true)
 
+@Preview
+@Composable
+private fun DappTransactionLedgerCallPreview() = DappTransactionPreview(
+    tokenTransfer.copy(accountName = "Ledger", unlock = UnlockStep(ledger = true)),
+)
+
+@Preview
+@Composable
+private fun DappTransactionLedgerSafePreview() = DappTransactionPreview(
+    fromSafe.copy(unlock = UnlockStep(ledger = true)),
+    darkTheme = true,
+)
+
 // A payment on Gnosis Chain, in a connection holding real funds: xDAI, no testnet mark.
 private val onGnosis = payment.copy(
     network = DappRequestViewModel.onLine(eth.serotine.domain.model.Network.GNOSIS),
@@ -453,6 +467,8 @@ private fun DappTransactionLoadingPreview() = DappTransactionPreview(DappTransac
 internal val dappTransactionScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("payment") { DappTransactionPaymentPreview() },
     ScreenPreview("payment-dark") { DappTransactionPaymentDarkPreview() },
+    ScreenPreview("ledger-call") { DappTransactionLedgerCallPreview() },
+    ScreenPreview("ledger-safe-dark") { DappTransactionLedgerSafePreview() },
     ScreenPreview("token-transfer") { DappTransactionTokenTransferPreview() },
     ScreenPreview("approval") { DappTransactionApprovalPreview() },
     ScreenPreview("not-decoded") { DappTransactionNotDecodedPreview() },

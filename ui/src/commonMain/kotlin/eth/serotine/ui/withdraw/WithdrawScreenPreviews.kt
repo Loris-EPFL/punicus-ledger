@@ -66,6 +66,11 @@ private fun WithdrawQuotingPreview() = WithdrawPreview(ready.copy(step = form.co
 @Composable
 private fun WithdrawReviewPreview() = WithdrawPreview(ready.copy(step = review))
 
+@Preview
+@Composable
+private fun WithdrawReviewLedgerPreview() =
+    WithdrawPreview(ready.copy(step = review.copy(unlock = UnlockStep(ledger = true))))
+
 /** The chequebook changed since the quote: made again, saying so. */
 @Preview
 @Composable
@@ -123,6 +128,7 @@ internal val withdrawScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("refused") { WithdrawRefusedPreview() },
     ScreenPreview("quoting") { WithdrawQuotingPreview() },
     ScreenPreview("review") { WithdrawReviewPreview() },
+    ScreenPreview("review-ledger") { WithdrawReviewLedgerPreview() },
     ScreenPreview("requoted") { WithdrawRequotedPreview() },
     ScreenPreview("not-sent") { WithdrawNotSentPreview() },
     ScreenPreview("wrong-password") { WithdrawWrongPasswordPreview() },

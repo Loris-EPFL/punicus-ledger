@@ -6,7 +6,6 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.model.supportsLedger
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
@@ -43,7 +42,6 @@ class EnrollLedgerAccount(
 
     /** Adds the confirmed address on a supported network, without changing an existing entry. */
     suspend fun add(network: Network, confirmed: ConfirmedLedgerAccount): AccountAdd {
-        if (!network.supportsLedger) return AccountAdd.NotSaved
         return changes.serialized(keys = false) {
             val listed = accounts.observeAccounts().first() as? AccountList.Loaded
                 ?: return@serialized AccountAdd.NotSaved

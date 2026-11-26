@@ -48,12 +48,11 @@ class AddOnNetworksTest {
     }
 
     @Test
-    fun aLedgerAccountMayBeAddedOnTheOtherEthereumNetworkButNotGnosisChain() = runTest {
+    fun aLedgerAccountKeepsItsEnrollmentWhenAddedOnOtherNetworks() = runTest {
         val ledger = main.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
         accounts.accounts.value = listOf(ledger)
-        assertEquals(NetworksAdd.NotSaved(emptyList()), add(ledger.id, listOf(Network.ETHEREUM, Network.GNOSIS)))
-        assertEquals(listOf(ledger), accounts.accounts.value)
-        assertEquals(NetworksAdd.Added(listOf(Network.ETHEREUM)), add(ledger.id, listOf(Network.ETHEREUM)))
-        assertEquals(listOf(ledger, ledger.copy(network = Network.ETHEREUM)), accounts.accounts.value)
+        val networks = listOf(Network.ETHEREUM, Network.GNOSIS)
+        assertEquals(NetworksAdd.Added(networks), add(ledger.id, networks))
+        assertEquals(listOf(ledger) + networks.map { ledger.copy(network = it) }, accounts.accounts.value)
     }
 }

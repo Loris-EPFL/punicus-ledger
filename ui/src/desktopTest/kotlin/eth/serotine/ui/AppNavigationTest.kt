@@ -1640,8 +1640,7 @@ class AppNavigationTest {
         rule.onNodeWithContentDescription("Add account").performClick()
         rule.onNodeWithText("Create Safe").performClick()
         rule.onNodeWithTag(UNAVAILABLE_REASON_TAG).assertTextEquals(
-            "Creating a Safe needs an account whose key is on this device, to pay for its deployment. Import or " +
-                "create an account, and fund it, first.",
+            "Creating a Safe needs a signing account to pay for its deployment. Add and fund an account first.",
         )
         assertEquals(listOf("accounts"), screens(), "nothing opened")
 

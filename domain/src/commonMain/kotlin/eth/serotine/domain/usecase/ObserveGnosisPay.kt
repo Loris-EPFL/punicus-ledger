@@ -6,6 +6,7 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.AddressKind
@@ -122,7 +123,7 @@ class ObserveGnosisPay(
             val controlKey: ControlKey = ControlKey(
                 delay.members,
                 (list as? AccountList.Loaded)?.accounts.orEmpty()
-                    .filter { it.custody == AccountCustody.InKeyStore && it.kind == AccountKind.EOA }
+                    .filter { it.kind == AccountKind.EOA && it.custody.canSign }
                     .mapTo(HashSet()) { it.address },
             )
         }
@@ -174,7 +175,7 @@ class ObserveGnosisPay(
         val alone = controllers.filter { it.alone }
         val aloneKeys = alone.mapTo(HashSet()) { it.key }
         val held = loaded?.accounts.orEmpty().filter {
-            it.custody == AccountCustody.InKeyStore && it.kind == AccountKind.EOA
+            it.kind == AccountKind.EOA && it.custody.canSign
         }
         // The shortest way first: a key that is a member itself sends straight to the Delay.
         val here = alone.sortedBy { it.via.size }.mapNotNull { controller ->

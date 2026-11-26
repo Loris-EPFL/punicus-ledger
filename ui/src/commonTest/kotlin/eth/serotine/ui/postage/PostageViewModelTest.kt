@@ -6,6 +6,7 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.BatchId
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PostageBatch
 import eth.serotine.domain.model.PostageState
@@ -19,6 +20,7 @@ import eth.serotine.domain.repository.BatchFinding
 import eth.serotine.domain.repository.PostageReading
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.SwarmCandidate
 import eth.serotine.domain.repository.SwarmCandidateChange
 import eth.serotine.domain.repository.SwarmCandidateList
@@ -47,6 +49,7 @@ import eth.serotine.ui.FakeTransactionInputs
 import eth.serotine.ui.MemoryCowOrders
 import eth.serotine.ui.MemoryOutbox
 import eth.serotine.ui.MemorySentTransfers
+import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.STALE_QUOTE
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -178,9 +181,11 @@ class PostageViewModelTest {
             )
     }
 
-    private fun TestScope.viewModel(action: PostageAction, vararg accounts: Account): PostageViewModel {
+    private fun TestScope.viewModel(action: PostageAction, vararg accounts: Account): PostageViewModel =
+        viewModel(action, FakeAccounts(*accounts))
+
+    private fun TestScope.viewModel(action: PostageAction, held: FakeAccounts): PostageViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val held = FakeAccounts(*accounts)
         val viewModel = PostageViewModel(
             node.id,
             action,
@@ -253,6 +258,66 @@ class PostageViewModelTest {
         assertIs<SentAction.BatchPurchase>(bought.action)
         assertEquals(bought.hash, viewModel.sent.value)
         assertIs<SwarmCandidate.Batch>(candidates.added.single())
+    }
+
+    @Test
+    fun theSelectedLedgerPayerApprovesBothTheAllowanceAndThePurchase() = runTest {
+        node = node.copy(custody = AccountCustody.InKeyStore)
+        val ledger = payer.copy(custody = AccountCustody.Ledger(checkNotNull(LedgerPath.parse("m/44'/60'/0'/0/0"))))
+        val requests = mutableListOf<AccountId>()
+        signer.signLedgerTransaction = { account, _, _ ->
+            requests += account
+            Signing.Signed(FakeSigner.SIGNATURE)
+        }
+        val viewModel = viewModel(PostageAction.BUY, node, ledger)
+        runCurrent()
+        assertEquals(Eip55.format(node.address), assertIs<PostageStep.Compose>(viewModel.ready.step).payer)
+        viewModel.onPayer(Eip55.format(ledger.address))
+        viewModel.review()
+        runCurrent()
+        val approval = assertIs<PostageStep.Review>(viewModel.ready.step)
+        assertEquals(PostageTexts.APPROVAL_TITLE, approval.title)
+        assertTrue(approval.unlock.ledger)
+
+        viewModel.sign()
+        runCurrent()
+        assertIs<PostageStep.Awaiting>(viewModel.ready.step)
+        val approved = sent.transfers.value.single()
+        assertEquals(ledger.id, approved.accountId)
+        allowance = assertIs<SentAction.TokenApproval>(approved.action).amount
+        inputs.nonce = 8
+        inputs.mined = 8
+        advanceTimeBy(6.seconds)
+        runCurrent()
+        assertTrue(assertIs<PostageStep.Review>(viewModel.ready.step).unlock.ledger)
+
+        viewModel.sign()
+        runCurrent()
+        val bought = sent.transfers.value.last()
+        assertIs<SentAction.BatchPurchase>(bought.action)
+        assertEquals(ledger.id, bought.accountId)
+        assertEquals(listOf(ledger.id, ledger.id), requests)
+        assertTrue(signer.asked.isEmpty())
+    }
+
+    @Test
+    fun aPayerThatStopsBeingAbleToSignIsNotReplacedByAnotherAccount() = runTest {
+        node = node.copy(custody = AccountCustody.InKeyStore)
+        val ledger = payer.copy(custody = AccountCustody.Ledger(checkNotNull(LedgerPath.parse("m/44'/60'/0'/0/0"))))
+        val accounts = FakeAccounts(node, ledger)
+        val viewModel = viewModel(PostageAction.BUY, accounts)
+        runCurrent()
+        viewModel.onPayer(Eip55.format(ledger.address))
+        runCurrent()
+        assertEquals(Eip55.format(ledger.address), assertIs<PostageStep.Compose>(viewModel.ready.step).payer)
+
+        accounts.setCustody(ledger.id, AccountCustody.Watched)
+        viewModel.review()
+        runCurrent()
+        val form = assertIs<PostageStep.Compose>(viewModel.ready.step)
+        assertNull(form.payer)
+        assertEquals(PostageTexts.PAYER_UNAVAILABLE, form.error)
+        assertTrue(signer.asked.isEmpty())
     }
 
     @Test

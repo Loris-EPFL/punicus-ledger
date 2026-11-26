@@ -11,6 +11,7 @@ import eth.serotine.domain.model.WalletPassword
 import eth.serotine.domain.repository.DappAnswer
 import eth.serotine.domain.repository.DappRequestId
 import eth.serotine.domain.repository.DappSessionId
+import eth.serotine.domain.repository.LedgerProblem
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.DappMessageReview
@@ -28,10 +29,13 @@ import eth.serotine.ui.components.ClearSignedSection
 import eth.serotine.ui.components.ClearSignedText
 import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.UnlockStep
+import eth.serotine.ui.components.approval
 import eth.serotine.ui.components.biometricsOn
 import eth.serotine.ui.components.biometricsStillOffered
+import eth.serotine.ui.components.forCustody
 import eth.serotine.ui.components.notSignedText
 import eth.serotine.ui.components.epochSecondsNow
+import eth.serotine.ui.ledger.ledgerProblemText
 import eth.serotine.ui.platform.formatDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -46,10 +50,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /** One field of a sign-in, display-ready. */
 data class SignInField(val label: String, val value: String)
@@ -129,10 +136,10 @@ data class DappRequestUiState(
 }
 
 /**
- * The request-to-sign's ViewModel (D4 and D5): signs the message or the typed data with the wallet
- * password or a fingerprint or face, or refuses it. The password typed is held in the state while the
- * field is shown, handed to the signer in an [Unlock], never logged, and dropped once used and whenever
- * the screen is not shown (CLAUDE.md, *Trust*).
+ * The request-to-sign's ViewModel (D4 and D5): approves on the Ledger enrolled for the account, or signs
+ * with the wallet password or a fingerprint or face, or refuses. The password remains in state only while
+ * the field is shown, goes to the signer in an [Unlock], is never logged, and is dropped once used or hidden
+ * (CLAUDE.md, *Trust*).
  */
 class DappRequestViewModel(
     /** The request, as its route names it: `topic/id`. */
@@ -155,6 +162,8 @@ class DappRequestViewModel(
 
     private data class Local(
         val unlock: UnlockStep = UnlockStep(),
+        val biometricsOffered: Boolean = false,
+        val expiresAt: Long? = null,
         val busy: Boolean = false,
         val notice: String? = null,
         val explaining: RequestExplanation? = null,
@@ -214,7 +223,7 @@ class DappRequestViewModel(
             } catch (_: Exception) {
                 false // the use case promises not to throw; the backstop: the password still works
             }
-            local.update { it.copy(unlock = it.unlock.copy(biometrics = offered)) }
+            local.update { it.copy(biometricsOffered = offered) }
         }
     }
 
@@ -226,6 +235,13 @@ class DappRequestViewModel(
                 ?.let { review -> review to shown(review) }
         }
         .distinctUntilChanged()
+        .onEach { shown ->
+            val review = shown?.first
+            val expiry = review?.let { minOf(it.request.expiresAtSeconds, it.signIn?.expiresAtSeconds ?: Long.MAX_VALUE) }
+            local.update {
+                it.copy(unlock = it.unlock.forCustody(review?.account?.custody), expiresAt = expiry)
+            }
+        }
 
     private val described = combine(description, describing) { result, busy -> result to busy }
 
@@ -240,7 +256,7 @@ class DappRequestViewModel(
         val base = withDescription(plain, review, described.first, described.second)
         base.copy(
             waits = waitsLine(review.request.expiresAtSeconds - clock()),
-            unlock = local.unlock,
+            unlock = local.unlock.copy(biometrics = !local.unlock.ledger && local.biometricsOffered),
             busy = local.busy,
             notice = local.notice,
             explaining = local.explaining,
@@ -341,22 +357,30 @@ class DappRequestViewModel(
 
     /** The password field now reads [text]. */
     fun onPasswordChange(text: String) = local.update {
-        if (it.busy) it else it.copy(unlock = it.unlock.copy(password = WalletPassword(text), error = null))
+        if (it.busy || it.unlock.ledger) it
+        else it.copy(unlock = it.unlock.copy(password = WalletPassword(text), error = null))
     }
 
-    /** Signs with the typed wallet password. */
+    /** Asks for Ledger approval or signs with the typed wallet password, as shown in the review. */
     fun sign() {
         if (explainRefusal()) return
-        val password = local.value.unlock.password
-        if (local.value.busy || password.text.isEmpty()) return
-        sign(Unlock.WithPassword(password))
+        val current = local.value
+        val expiresAt = current.expiresAt ?: return
+        if (current.busy || current.done || current.unlock.ledger != uiState.value.unlock.ledger) return
+        val deadline = if (current.unlock.ledger) {
+            TimeSource.Monotonic.markNow() + (expiresAt - clock()).coerceIn(0L, 60L).seconds
+        } else {
+            null
+        }
+        sign(current.unlock.approval(deadline) ?: return)
     }
 
     /** Signs with a fingerprint or face. */
     fun signWithBiometrics() {
         if (explainRefusal()) return
         val state = uiState.value
-        if (local.value.busy || !local.value.unlock.biometrics) return
+        val current = local.value
+        if (current.busy || current.done || current.unlock.ledger || !state.unlock.biometrics) return
         // What is signed, said in the prompt: the last thing read before the key signs. Nothing the dApp
         // states goes in it, since the system's prompt would show the dApp's words as the app's own.
         sign(Unlock.WithBiometrics("${state.promptSubject} with ${state.accountAddress}"))
@@ -405,18 +429,22 @@ class DappRequestViewModel(
             } catch (_: Exception) {
                 null // the use case promises not to throw; the backstop: nothing is said to be signed
             }
-            local.update { after(it, signing) }
+            local.update { after(it, signing, unlock) }
         }
     }
 
-    private fun after(local: Local, signing: DappMessageSigning?): Local = when (signing) {
+    private fun after(local: Local, signing: DappMessageSigning?, unlock: Unlock): Local = when (signing) {
         is DappMessageSigning.Signed -> local.copy(busy = false, done = true)
         is DappMessageSigning.NotSigned -> local.copy(
             busy = false,
             unlock = local.unlock.copy(
-                error = notSignedText(signing.signing, SIGN_FAILED),
-                biometrics = local.unlock.biometrics && biometricsStillOffered(signing.signing),
+                error = if (unlock is Unlock.WithLedger && signing.signing == Signing.TimedOut) {
+                    ledgerProblemText(LedgerProblem.TIMED_OUT)
+                } else {
+                    notSignedText(signing.signing, SIGN_FAILED)
+                },
             ),
+            biometricsOffered = local.biometricsOffered && biometricsStillOffered(signing.signing),
         )
         is DappMessageSigning.Refused ->
             local.copy(busy = false, explaining = RequestExplanation("Cannot be signed", refusalLine(signing.refusal)))

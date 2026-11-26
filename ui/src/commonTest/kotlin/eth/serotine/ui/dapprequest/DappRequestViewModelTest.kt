@@ -11,6 +11,7 @@ import eth.serotine.domain.model.FieldFormat
 import eth.serotine.domain.model.Visibility
 import kotlin.test.assertNotNull
 import eth.serotine.domain.model.Account
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AppHost
 import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.AppIsolation
@@ -26,9 +27,11 @@ import eth.serotine.domain.model.TypedField
 import eth.serotine.domain.model.TypedData
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.Eip712
+import eth.serotine.domain.model.Eip712Hashes
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PersonalMessage
@@ -49,6 +52,7 @@ import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
 import eth.serotine.domain.repository.NewMnemonic
+import eth.serotine.domain.repository.Signer
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.DescribeKeyStore
@@ -70,6 +74,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlin.test.assertIs
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -100,6 +105,21 @@ class DappRequestViewModelTest {
     private val networks = MemoryNetworkSettings(setOf(Network.SEPOLIA))
     private val requests = FakeDappRequests()
     private val signer = FakeSigner()
+    private val ledgerMessages = mutableListOf<Pair<AccountId, PersonalMessage>>()
+    private val ledgerTyped = mutableListOf<Pair<AccountId, Eip712Hashes>>()
+    private val signing = object : Signer by signer {
+        override suspend fun signPersonalMessage(account: AccountId, message: PersonalMessage, unlock: Unlock): Signing {
+            if (unlock !is Unlock.WithLedger) return signer.signPersonalMessage(account, message, unlock)
+            ledgerMessages += account to message
+            return Signing.Signed(FakeSigner.SIGNATURE)
+        }
+
+        override suspend fun signTypedData(account: AccountId, hashes: Eip712Hashes, unlock: Unlock): Signing {
+            if (unlock !is Unlock.WithLedger) return signer.signTypedData(account, hashes, unlock)
+            ledgerTyped += account to hashes
+            return Signing.Signed(FakeSigner.SIGNATURE)
+        }
+    }
     private var biometrics: BiometricUnlock = BiometricUnlock.NotOnThisDevice
     private val keys = object : KeyStore {
         override suspend fun describe() = KeyStoreDescription.Ready(true, KeyProtection.HARDWARE, biometrics)
@@ -371,7 +391,7 @@ class DappRequestViewModelTest {
                 throwing -> eth.serotine.ui.dapptransaction.describingThat(IllegalStateException("engine"))
                 else -> eth.serotine.ui.dapptransaction.describing(tokens, *deployments, onRead = onRead, unproven = { unproven })
             },
-            SignDappMessage(requests, accounts, networks, signer, clock = { now }),
+            SignDappMessage(requests, accounts, networks, signing, clock = { now }),
             RefuseDappRequest(requests, accounts, networks, clock = { now }),
             DescribeKeyStore(keys),
             clock = { clock },
@@ -411,6 +431,62 @@ class DappRequestViewModelTest {
         assertEquals(listOf("correct horse"), signer.passwords)
         assertEquals(request(1).id, requests.signatures.single().first)
         assertTrue(vm.uiState.value.done)
+    }
+
+    @Test
+    fun aLedgerPersonalMessageUsesExactNetworkAndBytesOnlyAfterTheUserTapsApprove() = runTest {
+        biometrics = BiometricUnlock.On
+        val message = assertNotNull(PersonalMessage.of(byteArrayOf(0, -128, 127)))
+        val asked = request(1).copy(ask = DappAsk.PersonalSign(held.address, message))
+        requests.waiting.value = listOf(asked)
+        val vm = viewModel()
+        vm.onPasswordChange("not for the Ledger")
+        accounts.accounts.value = listOf(
+            held.copy(network = Network.ETHEREUM),
+            held.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT)),
+        )
+        runCurrent()
+        assertTrue(vm.uiState.value.unlock.ledger)
+        assertFalse(vm.uiState.value.unlock.biometrics)
+        assertTrue(vm.uiState.value.unlock.password.text.isEmpty())
+        vm.onShown()
+        vm.signWithBiometrics()
+        runCurrent()
+        assertTrue(signer.asked.isEmpty())
+        assertTrue(ledgerMessages.isEmpty())
+        vm.sign()
+        runCurrent()
+        assertEquals(listOf(held.id to message), ledgerMessages)
+        assertEquals(asked.id, requests.signatures.single().first)
+    }
+
+    @Test
+    fun aLedgerTypedRequestUsesTheReviewedPairOfHashes() = runTest {
+        accounts.accounts.value = listOf(held.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT)))
+        val asked = permit(1)
+        val typed = assertIs<DappAsk.SignTypedData>(asked.ask).typed
+        requests.waiting.value = listOf(asked)
+        val vm = viewModel()
+        assertTrue(vm.uiState.value.unlock.ledger)
+        assertTrue(ledgerTyped.isEmpty())
+        vm.sign()
+        runCurrent()
+        assertEquals(listOf(held.id to typed.hashes), ledgerTyped)
+        assertTrue(signer.asked.isEmpty())
+        assertEquals(asked.id, requests.signatures.single().first)
+    }
+
+    @Test
+    fun ethSignCannotOpenALedgerApproval() = runTest {
+        accounts.accounts.value = listOf(held.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT)))
+        requests.waiting.value = listOf(request(1).copy(ask = DappAsk.NotAnsweredYet("eth_sign")))
+        val vm = viewModel()
+        assertTrue(vm.uiState.value.gone)
+        vm.sign()
+        runCurrent()
+        assertTrue(signer.asked.isEmpty())
+        assertTrue(ledgerMessages.isEmpty())
+        assertTrue(ledgerTyped.isEmpty())
     }
 
     @Test

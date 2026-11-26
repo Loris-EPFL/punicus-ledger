@@ -74,10 +74,12 @@ rule in code.
   every data source.
 - On the desktop, `UsbLedgerDevice` implements `LedgerDevice` over the
   system's native HIDAPI and the Ledger Ethereum app's USB protocol.
-  `EnrollLedgerAccount` stores the public address and path;
-  `SendLedgerTransfer` recovers the signer of the reviewed EIP-1559
-  transaction before reusing Myotis's broadcast path. Only the desktop
-  composition root wires the adapter. It supplies no chain data.
+  `EnrollLedgerAccount` stores the public address and path. `LedgerSigner`
+  rechecks enrollment, chain, and approval lifetime, and recovers the signer
+  of the exact EIP-1559 transaction, personal message or EIP-712 digest.
+  Shared use cases keep their verified reviews and Myotis broadcast path.
+  Only the desktop composition root wires the adapter. It supplies no chain
+  data and does not sign bare digests.
 - **Native code of our own lives in this repository** (owner ruling,
   2026-11-11, docs/privacy-pools.md D9): the Privacy Pools library in Rust
   (Poseidon, the Lean IMT, the witness and the Groth16 prover), under

@@ -1,13 +1,13 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Account
-import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AppHost
 import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.DappApproval
@@ -107,7 +107,7 @@ data class DappOverview(
 fun dappOffer(account: Account, enabled: Set<Network>): DappOffer = when {
     account.network !in enabled -> DappOffer.NETWORK_OFF
     // A watched Safe is offered: its owners sign for it, here or elsewhere.
-    account.kind == AccountKind.EOA && account.custody != AccountCustody.InKeyStore -> DappOffer.NO_KEY
+    account.kind == AccountKind.EOA && !account.custody.canSign -> DappOffer.NO_KEY
     else -> DappOffer.OFFERED
 }
 

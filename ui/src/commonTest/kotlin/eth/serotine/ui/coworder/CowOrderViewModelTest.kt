@@ -5,11 +5,15 @@ import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
+import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.CowTrade
+import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.GPv2Settlement
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
@@ -27,6 +31,9 @@ import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.Simulation
+import eth.serotine.domain.repository.Signer
+import eth.serotine.domain.repository.Signing
+import eth.serotine.domain.repository.Unlock
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveAccounts
 import eth.serotine.domain.usecase.ObserveCowOrder
@@ -49,6 +56,7 @@ import eth.serotine.ui.MemorySentTransfers
 import eth.serotine.ui.MemorySyncPolicy
 import kotlin.test.assertFalse
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -135,7 +143,10 @@ class CowOrderViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
-    private fun TestScope.viewModel(): CowOrderViewModel {
+    private fun TestScope.viewModel(
+        signing: Signer = signer,
+        timeSource: TestTimeSource = TestTimeSource(),
+    ): CowOrderViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = CowOrderViewModel(
             record.uid,
@@ -144,10 +155,11 @@ class CowOrderViewModelTest {
             ObserveAccounts(accounts),
             DescribeKeyStore(FakeKeys()),
             QuoteCowCancellation(inputs, balances, sent, cowChain, light, Network.SEPOLIA, Outbox.None) { now },
-            SendCowCancellation(signer, broadcaster, sent) { now },
+            SendCowCancellation(signing, broadcaster, sent) { now },
             RebroadcastTransfer(broadcaster, sent, FakeReceipts()),
             Network.SEPOLIA,
             ObserveSyncPolicy(policy),
+            timeSource = timeSource,
             clock = { now },
             formatTime = { "at $it" },
         )
@@ -235,6 +247,46 @@ class CowOrderViewModelTest {
         val action = assertIs<SentAction.CowCancellation>(sent.transfers.value.single().action)
         assertEquals(record.uid, action.uid)
         assertEquals(listOf("made-up test password"), signer.passwords)
+    }
+
+    @Test
+    fun cancellationUsesTheLedgerOnTheOrdersNetworkAndRequotesBeforeApprovalWhenTimeIsShort() = runTest {
+        accounts.accounts.value = listOf(
+            daily.copy(network = Network.ETHEREUM, custody = AccountCustody.Watched),
+            daily.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT)),
+        )
+        val clock = TestTimeSource()
+        val approvals = mutableListOf<Unlock.WithLedger>()
+        val ledgerSigner = object : Signer {
+            override suspend fun sign(account: Address, digest: Digest, unlock: Unlock): Signing =
+                error("Ledger requests must not use a raw digest")
+
+            override suspend fun signTransaction(
+                account: AccountId,
+                transaction: Eip1559Transaction,
+                unlock: Unlock,
+            ): Signing {
+                assertEquals(daily.id, account)
+                approvals += assertIs<Unlock.WithLedger>(unlock)
+                return Signing.Signed(FakeSigner.SIGNATURE)
+            }
+        }
+        val viewModel = viewModel(ledgerSigner, clock)
+        assertNull(viewModel.shown.cancelReason)
+        viewModel.cancel()
+        runCurrent()
+        assertTrue(assertIs<CowOrderUiState.CancelReview>(viewModel.uiState.value).unlock.ledger)
+
+        clock += 46.seconds
+        viewModel.sign()
+        runCurrent()
+        assertTrue(approvals.isEmpty())
+        assertNotNull(assertIs<CowOrderUiState.CancelReview>(viewModel.uiState.value).unlock.error)
+
+        viewModel.sign()
+        runCurrent()
+        assertIs<CowOrderUiState.CancelSent>(viewModel.uiState.value)
+        assertEquals((-60).seconds, approvals.single().notAfter.elapsedNow())
     }
 
     @Test

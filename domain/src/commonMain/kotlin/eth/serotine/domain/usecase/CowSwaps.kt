@@ -7,6 +7,7 @@ import eth.serotine.domain.model.CowMinimum
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.Eip712Hashes
 import eth.serotine.domain.model.GPv2Settlement
 import eth.serotine.domain.model.GPv2Signing
 import eth.serotine.domain.model.Network
@@ -76,7 +77,7 @@ const val QUOTE_MAX_AGE_SECONDS: Long = 60
  * - [headTimestamp] is the verified head's time the order's `validTo` counts from, and
  *   [rangeStart] the block finalized then, from which its end is proven.
  *
- * Only [QuoteCowSwap] makes one, and nothing copies it: what [PlaceCowOrder] signs is [digest].
+ * Only [QuoteCowSwap] makes one; the review's [digest] and the signing request share [hashes].
  */
 @ConsistentCopyVisibility
 data class CowSwapQuote internal constructor(
@@ -89,7 +90,7 @@ data class CowSwapQuote internal constructor(
     val deployment: CowDeployment,
     val order: CowOrder,
     val kind: SwapKind,
-    val digest: Digest,
+    internal val hashes: Eip712Hashes,
     val uid: CowOrderUid,
     val estimate: UInt256,
     val cowFee: UInt256,
@@ -100,6 +101,9 @@ data class CowSwapQuote internal constructor(
     val headTimestamp: Long,
     val rangeStart: Long,
 ) {
+    /** The EIP-712 digest of the exact quoted order. */
+    val digest: Digest get() = hashes.digest
+
     /** The least the order buys, as signed: of a buy, exactly what it buys. */
     val minimumOut: UInt256
         get() = order.buyAmount
@@ -279,7 +283,7 @@ class QuoteCowSwap(
             validTo = validTo,
             kind = kind,
         )
-        val digest = order.digest(network.chainId, deployment.settlement)
+        val hashes = order.hashes(network.chainId, deployment.settlement)
         CowSwapQuoting.Quoted(
             CowSwapQuote(
                 from = from,
@@ -291,8 +295,8 @@ class QuoteCowSwap(
                 deployment = deployment,
                 order = order,
                 kind = kind,
-                digest = digest,
-                uid = CowOrderUid.of(digest, from, validTo),
+                hashes = hashes,
+                uid = CowOrderUid.of(hashes.digest, from, validTo),
                 estimate = estimate,
                 cowFee = quoted.feeAmount,
                 sellBefore = sellBefore,
@@ -474,7 +478,8 @@ class PlaceCowOrder(
                 ?.let { return CowOrderPlacing.EarlierOrderLive(it.uid) }
             CowOrderList.Unreadable -> return CowOrderPlacing.OrdersUnreadable
         }
-        val signature = when (val signed = signer.sign(quote.from, quote.digest, unlock)) {
+        val signed = signer.signTypedData(AccountId(quote.network, quote.from), quote.hashes, unlock)
+        val signature = when (signed) {
             is Signing.Signed -> signed.signature
             else -> return CowOrderPlacing.NotSigned(signed)
         }

@@ -15,6 +15,9 @@ class PersonalMessage private constructor(private val bytes: ByteArray) {
     /** The message as lower-case hex, two digits per byte, no prefix. */
     val hex: String get() = bytes.toHex()
 
+    /** A copy of the exact bytes supplied by the dApp, with no EIP-191 prefix. */
+    fun encode(): ByteArray = bytes.copyOf()
+
     /**
      * The message as text, or null when it is not text to show as such: bytes that are not UTF-8,
      * or that hold a control character other than a line break or a tab, a formatting character

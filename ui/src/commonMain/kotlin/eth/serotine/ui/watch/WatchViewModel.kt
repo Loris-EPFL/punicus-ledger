@@ -466,10 +466,11 @@ class WatchViewModel(
     ): Detection {
         // In the wallet on this network: the same address on another network is another account.
         val accounts = (list as? AccountList.Loaded)?.accounts.orEmpty().filter { it.network == network }
-        return detectionOf(address, list, accounts.firstOrNull { it.address == address }, reading, accounts)
+        return detectionOf(network, address, list, accounts.firstOrNull { it.address == address }, reading, accounts)
     }
 
     private fun detectionOf(
+        network: Network,
         address: Address,
         list: AccountList,
         inWallet: Account?,
@@ -510,7 +511,7 @@ class WatchViewModel(
                     Eip55.format(kind.delegate),
                     CHECKED_ON_CHAIN,
                 )
-                is AddressKind.Safe -> safeCard(address, kind.state, accounts, verified)
+                is AddressKind.Safe -> safeCard(network, address, kind.state, accounts, verified)
                 AddressKind.Contract -> Detection.Contract(CONTRACT)
             }
         }
@@ -518,7 +519,13 @@ class WatchViewModel(
 
     private fun checkedAt(reading: KindReading.Verified) = "Checked at block ${grouped(reading.blockNumber)}"
 
-    private fun safeCard(address: Address, state: SafeState, accounts: List<Account>, verified: KindReading.Verified) =
+    private fun safeCard(
+        network: Network,
+        address: Address,
+        state: SafeState,
+        accounts: List<Account>,
+        verified: KindReading.Verified,
+    ) =
         Detection.Safe(
             address = Eip55.format(address),
             title = "Safe ${state.version}" + if (state.l2) " (L2)" else "",
@@ -527,7 +534,7 @@ class WatchViewModel(
             modules = state.modules.map(Eip55::format),
             guard = state.guard?.let(Eip55::format),
             checkedAt = checkedAt(verified),
-            control = Control.of(state.control(state.ownersHeld(accounts).size)),
+            control = Control.of(state.control(state.ownersHeld(accounts, network).size)),
             moduleGuard = state.moduleGuard?.let(Eip55::format),
             threshold = "${state.threshold}/${state.owners.size}",
             simpleCheckedAt = CHECKED_ON_CHAIN,

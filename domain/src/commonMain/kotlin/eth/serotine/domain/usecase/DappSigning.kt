@@ -13,13 +13,13 @@ import eth.serotine.domain.model.TypedDataMeaning
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.EncodedTypedData
 import eth.serotine.domain.model.Digest
-import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PersonalMessage
 import eth.serotine.domain.model.SignInMessage
+import eth.serotine.domain.model.canSign
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
 import eth.serotine.domain.repository.DappAnswer
@@ -308,7 +308,7 @@ private fun accountRefusal(
         account.kind == AccountKind.SAFE && transaction ->
             if (network in enabled) null else DappSignRefusal.NETWORK_OFF
         account.kind == AccountKind.SAFE -> DappSignRefusal.SAFE
-        account.custody != AccountCustody.InKeyStore -> DappSignRefusal.NO_KEY
+        !account.custody.canSign -> DappSignRefusal.NO_KEY
         network !in enabled -> DappSignRefusal.NETWORK_OFF
         else -> null
     }
@@ -432,7 +432,7 @@ sealed interface DappMessageSigning {
      */
     data class Signed(val delivered: Boolean) : DappMessageSigning
 
-    /** Not signed, for the reason [signing] gives: nothing left the key store. */
+    /** Not signed, for the reason [signing] gives: nothing was answered to the dApp. */
     data class NotSigned(val signing: Signing) : DappMessageSigning
 
     /** Not signed: [refusal]. */
@@ -451,8 +451,8 @@ sealed interface DappMessageSigning {
 /**
  * Signs a dApp's request to sign (screens D4 and D5) and answers it with the signature. The request
  * is reviewed again first, now ([reviewDappMessage]): one that cannot be signed is refused, and one
- * the dApp stopped waiting for is not signed at all. The digest is computed here, EIP-191's for a
- * message and EIP-712's for typed data; the signer signs it under [unlock] as given
+ * the dApp stopped waiting for is not signed at all. The signer gets the literal message for
+ * EIP-191, or the EIP-712 hashes computed here, with the unlock as given
  * (docs/walletconnect.md, *Signing in* and *Typed data*).
  */
 class SignDappMessage(
@@ -468,12 +468,27 @@ class SignDappMessage(
         val review = reviewDappMessage(request, list, networks.observe().first(), clock())
             ?: return DappMessageSigning.Gone
         review.refusal?.let { return DappMessageSigning.Refused(it) }
-        // A transaction is quoted and sent as one (SendDappTransaction), never signed as a message.
-        val digest = review.digest ?: return DappMessageSigning.Gone
+        if (review.content is DappSignContent.Transaction) return DappMessageSigning.Gone
         if (request.expiresAtSeconds <= clock()) return DappMessageSigning.Expired
-        val signature = when (val signing = signer.sign(review.address, digest, unlock)) {
+        val account = review.account?.id ?: return DappMessageSigning.Gone
+        val signing = when (val content = review.content) {
+            is DappSignContent.Message -> signer.signPersonalMessage(account, content.message, unlock)
+            is DappSignContent.Typed -> signer.signTypedData(account, content.typed.hashes, unlock)
+            is DappSignContent.Transaction -> return DappMessageSigning.Gone
+        }
+        val signature = when (signing) {
             is Signing.Signed -> signing.signature
             else -> return DappMessageSigning.NotSigned(signing)
+        }
+        if (unlock is Unlock.WithLedger) {
+            val current = requests.observe().first().firstOrNull { it.id == id }
+            val now = clock()
+            if (request.expiresAtSeconds <= now) return DappMessageSigning.Expired
+            if (current != request) return DappMessageSigning.Gone
+            if (review.signIn?.expiresAtSeconds?.let { it <= now } == true) {
+                return DappMessageSigning.Refused(DappSignRefusal.SIGN_IN_EXPIRED)
+            }
+            if (unlock.notAfter.hasPassedNow()) return DappMessageSigning.NotSigned(Signing.TimedOut)
         }
         return when (requests.answerSignature(id, signature)) {
             DappAnswer.DELIVERED -> DappMessageSigning.Signed(delivered = true)

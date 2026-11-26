@@ -1,5 +1,6 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexCursor
 import eth.serotine.domain.model.AddressIndexEntry
@@ -50,7 +51,10 @@ internal class FakeAddressIndexHistory(
 
     private val answered = MutableStateFlow(true)
 
-    /** Whether [hasReader] answers yet: false holds it, as an engine whose Ethereum light client does not run. */
+    /**
+     * Whether [hasReader] answers yet: false holds it, as an engine none of whose light clients serving the index
+     * runs.
+     */
     var readerAnswered: Boolean
         get() = answered.value
         set(value) {
@@ -93,22 +97,26 @@ internal class MemoryAddressIndexSetting : AddressIndexSetting {
 
     override fun observe(): Flow<AddressIndexChoice> = choice
 
-    override suspend fun trust(importer: Address?): Boolean {
+    override suspend fun trust(importers: Set<Address>?): Boolean {
         if (failSaves || choice.value is AddressIndexChoice.Unreadable) return false
-        choice.value = AddressIndexChoice.Chosen(importer)
+        choice.value = AddressIndexChoice.Chosen(importers)
         return true
     }
 }
 
 /** An [AddressIndexReaderSettings] that records what it was told. */
 internal class RecordingReaderSettings : AddressIndexReaderSettings {
-    val applied = mutableListOf<Address?>()
+    val applied = mutableListOf<AddressIndexImporters>()
 
-    override suspend fun apply(importer: Address?): Boolean {
-        applied += importer
+    override suspend fun apply(importers: AddressIndexImporters): Boolean {
+        applied += importers
         return true
     }
 }
+
+/** [key] pinned for every network, as the release pinned one key before 2026-11-25; none for a null [key]. */
+internal fun pinnedEverywhere(key: Address?): AddressIndexImporters =
+    key?.let { k -> AddressIndexImporters(Network.entries.associateWith { k }) } ?: AddressIndexImporters.NONE
 
 /** An [AddressIndexArchive] in memory, as the port's contract says one behaves; [failWrites] makes every write fail. */
 internal class MemoryAddressIndexArchive : AddressIndexArchive {

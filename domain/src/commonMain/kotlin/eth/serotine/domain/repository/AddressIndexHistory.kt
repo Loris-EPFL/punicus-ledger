@@ -149,6 +149,13 @@ sealed interface AddressIndexRefusal {
     data class NetworkNotServed(val network: Network) : AddressIndexRefusal
 
     /**
+     * No importer key is pinned for [network] in this release (`eth.serotine.domain.model.AddressIndexImporters`): no
+     * index of that network may be read, so its accounts' Activity is the log index's alone. The use cases refuse with
+     * it before asking the engine; an adapter never does.
+     */
+    data class NoKeyPinned(val network: Network) : AddressIndexRefusal
+
+    /**
      * The engine raised its checkpoint table's alarm: the table and the beacon chain disagree, so every read
      * resting on the table is refused (`.claude/rules/trust.md`, *The addr1 history*), and the app shows the alarm.
      * [text] is the engine's words. An adapter refuses with it for the engine's refusal whose message starts with

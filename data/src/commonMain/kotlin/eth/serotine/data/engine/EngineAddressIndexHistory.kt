@@ -66,8 +66,10 @@ internal interface AddressHistoryChain {
  * [AddressIndexHistory] over the Myotis engine's address history (issue #334; `.claude/rules/data-sources.md`, *The
  * history may also take the addr1 index from Swarm*): the engine reads the addr1 index through its own Swarm light
  * node, checks every chunk, and checks each entry against verified chain data. This adapter adds no Swarm client, no
- * gateway and no HTTP. It serves [served] alone (the index is mainnet's); another network is refused
- * ([AddressIndexRefusal.NetworkNotServed]).
+ * gateway and no HTTP. It serves the networks of [chains], each through its own light client's handle (Ethereum's
+ * and Gnosis Chain's, each with its own importer's index, owner's decisions of 2026-11-25); another network is
+ * refused ([AddressIndexRefusal.NetworkNotServed]), and one whose handle is null has no engine on this device
+ * ([AddressIndexRefusal.NoEngine]).
  *
  * The engine's answers are read strictly, every one of them mapped to the port's terms or refused, never thrown:
  * - **A refusal** is the engine's `{"error","code":-32602}` (lasting) or an `{"error"}` without that code
@@ -93,8 +95,8 @@ internal interface AddressHistoryChain {
  * that every later ask is answered at once, whatever the light client does meanwhile.
  */
 class EngineAddressIndexHistory internal constructor(
-    private val served: Network,
-    private val chain: AddressHistoryChain?,
+    /** Each network served, by its light client's handle; null: no engine runs for it on this device. */
+    private val chains: Map<Network, AddressHistoryChain?>,
     private val dispatcher: CoroutineDispatcher,
     private val readerPoll: Duration,
 ) : AddressIndexHistory {
@@ -103,30 +105,39 @@ class EngineAddressIndexHistory internal constructor(
     @Volatile
     private var reader: Boolean? = null
 
+    /**
+     * The engine's reader is the engine's, not a network's (Myotis's `address_history_supported`, which takes no
+     * chain): the first running light client of any network served answers for all of them.
+     */
     override suspend fun hasReader(): Boolean {
         reader?.let { return it }
-        val chain = chain ?: return false
+        val running = chains.values.filterNotNull()
+        if (running.isEmpty()) return false
         while (true) {
-            val known = withContext(dispatcher) {
-                try {
-                    chain.supportsAddressHistory()
-                } catch (e: Throwable) {
-                    // Throwable: the call crosses JNA. A failed call is no answer: asked again at the next poll.
-                    null
+            for (chain in running) {
+                val known = withContext(dispatcher) {
+                    try {
+                        chain.supportsAddressHistory()
+                    } catch (e: Throwable) {
+                        // Throwable: the call crosses JNA. A failed call is no answer: asked again at the next poll.
+                        null
+                    }
+                }
+                if (known != null) {
+                    reader = known
+                    return known
                 }
             }
-            if (known != null) {
-                reader = known
-                return known
-            }
-            if (snapshotOf(chain) == EngineSnapshot.Down) return false
+            // No engine on this device is engine-wide (its library did not load): one handle that says so is enough,
+            // whether the other network was asked to run or not.
+            if (running.any { snapshotOf(it) == EngineSnapshot.Down }) return false
             delay(readerPoll)
         }
     }
 
     override suspend fun page(network: Network, address: Address, query: AddressIndexQuery): AddressIndexReading {
-        if (network != served) return AddressIndexReading.Refused(AddressIndexRefusal.NetworkNotServed(network))
-        val chain = chain ?: return AddressIndexReading.Refused(AddressIndexRefusal.NoEngine)
+        if (network !in chains) return AddressIndexReading.Refused(AddressIndexRefusal.NetworkNotServed(network))
+        val chain = chains[network] ?: return AddressIndexReading.Refused(AddressIndexRefusal.NoEngine)
         stateRefusal(snapshotOf(chain))?.let { return AddressIndexReading.Refused(it) }
         val answer = withContext(dispatcher) {
             try {
@@ -149,8 +160,8 @@ class EngineAddressIndexHistory internal constructor(
         require(entries.size in 1..AddressIndexHistory.MAX_CHECKED) {
             "1 to ${AddressIndexHistory.MAX_CHECKED} entries"
         }
-        if (network != served) return AddressIndexCheck.Refused(AddressIndexRefusal.NetworkNotServed(network))
-        val chain = chain ?: return AddressIndexCheck.Refused(AddressIndexRefusal.NoEngine)
+        if (network !in chains) return AddressIndexCheck.Refused(AddressIndexRefusal.NetworkNotServed(network))
+        val chain = chains[network] ?: return AddressIndexCheck.Refused(AddressIndexRefusal.NoEngine)
         stateRefusal(snapshotOf(chain))?.let { return AddressIndexCheck.Refused(it) }
         val answer = withContext(dispatcher) {
             try {

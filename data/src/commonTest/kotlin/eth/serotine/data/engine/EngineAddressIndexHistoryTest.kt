@@ -1,5 +1,6 @@
 package eth.serotine.data.engine
 
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexCursor
 import eth.serotine.domain.model.AddressIndexEntry
@@ -67,7 +68,7 @@ class EngineAddressIndexHistoryTest {
     private val chain = FakeChain()
 
     private fun TestScope.history(of: AddressHistoryChain? = chain) =
-        EngineAddressIndexHistory(Network.ETHEREUM, of, StandardTestDispatcher(testScheduler), 1.seconds)
+        EngineAddressIndexHistory(mapOf(Network.ETHEREUM to of), StandardTestDispatcher(testScheduler), 1.seconds)
 
     private val entry = AddressIndexEntry(26_300_000, 3, setOf(AddressIndexRole.FROM, AddressIndexRole.TRACE))
 
@@ -434,19 +435,74 @@ class EngineAddressIndexHistoryTest {
     }
 
     @Test
+    fun anyNetworksLightClientAnswersForTheEnginesReader() = runTest {
+        val gnosis = FakeChain()
+        chain.supports = null
+        gnosis.supports = true
+        val history = EngineAddressIndexHistory(
+            mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis),
+            StandardTestDispatcher(testScheduler),
+            1.seconds,
+        )
+
+        assertTrue(history.hasReader(), "Gnosis Chain's answer is the engine's")
+    }
+
+    @Test
+    fun oneHandleWithNoEngineAnswersNoReaderWhateverTheOtherNetworkDoes() = runTest {
+        val gnosis = FakeChain()
+        chain.supports = null
+        chain.snapshot = EngineSnapshot.Down
+        gnosis.supports = null
+        gnosis.snapshot = EngineSnapshot.Stopped(off = false)
+        val history = EngineAddressIndexHistory(
+            mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis),
+            StandardTestDispatcher(testScheduler),
+            1.seconds,
+        )
+
+        assertFalse(history.hasReader(), "no engine on this device: never waits for ever")
+    }
+
+    @Test
+    fun eachNetworkIsReadThroughItsOwnLightClientAndOneNotServedIsRefused() = runTest {
+        val gnosis = FakeChain()
+        val history = EngineAddressIndexHistory(
+            mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis),
+            StandardTestDispatcher(testScheduler),
+            1.seconds,
+        )
+
+        history.page(Network.GNOSIS, alice, AddressIndexQuery())
+
+        assertTrue(chain.pagesAsked.isEmpty(), "nothing asked of Ethereum's light client")
+        assertEquals(1, gnosis.pagesAsked.size)
+        assertEquals(
+            AddressIndexReading.Refused(AddressIndexRefusal.NetworkNotServed(Network.SEPOLIA)),
+            history.page(Network.SEPOLIA, alice, AddressIndexQuery()),
+        )
+    }
+
+    @Test
     fun aCheckOfNoEntriesIsTheCallersError() = runTest {
         assertFailsWith<IllegalArgumentException> { history().verify(Network.ETHEREUM, alice, emptyList()) }
     }
 
     @Test
-    fun theSettingsNameThePinnedKeyOrNoneAndTheSwarmNetwork() {
+    fun theSettingsNameEachNetworksPinnedKeyByChainIdOrNoneAndTheSwarmNetwork() {
+        val gnosisImporter = Address.of("0x" + "9e".repeat(20))
+        val pinned = AddressIndexImporters(mapOf(Network.GNOSIS to gnosisImporter, Network.ETHEREUM to fixtureImporter))
         assertEquals(
-            """{"importer":"${fixtureImporter.hex}","swarm":{"network":"mainnet"}}""",
-            addressHistoryConfigJson(fixtureImporter, AddressIndexSwarm.Mainnet),
+            """{"importers":{"1":"${fixtureImporter.hex}","100":"${gnosisImporter.hex}"},""" +
+                """"swarm":{"network":"mainnet"}}""",
+            addressHistoryConfigJson(pinned, AddressIndexSwarm.Mainnet),
         )
         assertEquals(
             """{"importer":null,"swarm":{"network":"dev","networkId":7,"bootnodes":["/ip4/192.0.2.1/tcp/1634"]}}""",
-            addressHistoryConfigJson(null, AddressIndexSwarm.Dev(7, listOf("/ip4/192.0.2.1/tcp/1634"))),
+            addressHistoryConfigJson(
+                AddressIndexImporters.NONE,
+                AddressIndexSwarm.Dev(7, listOf("/ip4/192.0.2.1/tcp/1634")),
+            ),
         )
     }
 

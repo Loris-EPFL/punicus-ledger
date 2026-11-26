@@ -232,3 +232,28 @@ sealed interface AddressIndexVerdict {
      */
     data class Unavailable(override val entry: AddressIndexEntry, val reason: String) : AddressIndexVerdict
 }
+
+/**
+ * The importer keys pinned in the release, one per network at most: the one key whose addr1 index a network's
+ * accounts may rest on (owner's decision, 2026-11-21, on #335: pinned in the release, never typed by the user). Which
+ * key is pinned for which network is the owner's choice, named in the PR that pins it: Ethereum's `0xb11B…7241`
+ * (owner's choice, 2026-11-24, #359) and Gnosis Chain's `0xE779…9335` (owner's choice, 2026-11-25). A network with no
+ * key here reads no index ([of] null). Each index names its chain, so a key is checked against its own network's.
+ */
+data class AddressIndexImporters(val keys: Map<Network, Address>) {
+
+    /** The key pinned for [network], or null: none is. */
+    fun of(network: Network): Address? = keys[network]
+
+    /** Whether no key is pinned for any network: the setting has none to name. */
+    fun isEmpty(): Boolean = keys.isEmpty()
+
+    /** Every key pinned, whatever its network. */
+    val all: Set<Address>
+        get() = keys.values.toSet()
+
+    companion object {
+        /** No key pinned for any network. */
+        val NONE = AddressIndexImporters(emptyMap())
+    }
+}

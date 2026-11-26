@@ -1,5 +1,6 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexCoverage
@@ -57,7 +58,7 @@ class AddressIndexHistoriesTest {
         retryPause: Duration = 2.seconds,
         budget: Duration = 5.minutes,
         checkBudget: Duration = 2.minutes,
-    ) = LoadAddressIndexPage(index, importer, attempts, retryPause, budget, checkBudget)
+    ) = LoadAddressIndexPage(index, pinnedEverywhere(importer), attempts, retryPause, budget, checkBudget)
 
     private fun entry(block: Long, slot: Int, vararg roles: AddressIndexRole) =
         AddressIndexEntry(block, slot, roles.toSet())
@@ -82,6 +83,34 @@ class AddressIndexHistoriesTest {
 
     private fun verifyingAll() {
         index.check = { entries, _ -> AddressIndexCheck.Verdicts(entries.map(::verified)) }
+    }
+
+    @Test
+    fun eachNetworkRestsOnItsOwnKeyAndOneWithNoneReadsNothing() = runTest {
+        val gnosisKey = Address.of("0x" + "9e".repeat(20))
+        val pinned = AddressIndexImporters(mapOf(Network.ETHEREUM to importer, Network.GNOSIS to gnosisKey))
+        val index = FakeAddressIndexHistory(served = setOf(Network.ETHEREUM, Network.GNOSIS))
+        val load = LoadAddressIndexPage(index, pinned)
+        val onGnosis = AccountId(Network.GNOSIS, alice)
+
+        // Gnosis Chain's page signed by Gnosis Chain's key: read.
+        index.pages[null] = page(emptyList(), signedBy = gnosisKey)
+        assertIs<AddressIndexLoad.Loaded>(load(onGnosis).last())
+
+        // Signed by Ethereum's key: no list of Gnosis Chain rests on it.
+        index.pages[null] = page(emptyList(), signedBy = importer)
+        assertEquals(
+            AddressIndexLoad.Refused(AddressIndexRefusal.WrongImporter(gnosisKey, importer)),
+            load(onGnosis).last(),
+        )
+
+        // Sepolia has no key: refused before anything is asked of the engine.
+        val asked = index.queries.size
+        assertEquals(
+            AddressIndexLoad.Refused(AddressIndexRefusal.NoKeyPinned(Network.SEPOLIA)),
+            load(AccountId(Network.SEPOLIA, alice)).last(),
+        )
+        assertEquals(asked, index.queries.size, "nothing read on a network with no key pinned")
     }
 
     @Test

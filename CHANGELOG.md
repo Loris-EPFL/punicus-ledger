@@ -10,6 +10,15 @@ and issues of this repository.
 
 ## [Unreleased]
 
+### Added
+
+- Account history from the addr1 index on Gnosis Chain too: the release
+  pins an importer key per network, Ethereum's and Gnosis Chain's, and an
+  account's list rests on its own network's key. The experimental setting
+  stays one switch, naming each network's key; turned on before a key was
+  pinned, it is on by default for the new one, and an off stays off.
+  Sepolia reads no index.
+
 ## [0.6.0] - 2026-11-25
 
 ### Added

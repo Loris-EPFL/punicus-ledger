@@ -47,16 +47,16 @@ class FileAddressIndexSettingTest {
     fun noChoiceUntilOneIsMadeAndBothAKeyAndAnOffSurviveARestart() = runTest {
         assertEquals(AddressIndexChoice.NotChosen, setting().observe().first(), "no file: no choice, on by default")
 
-        assertTrue(setting().trust(fixtureImporter))
-        assertEquals(AddressIndexChoice.Chosen(fixtureImporter), setting().observe().first())
+        assertTrue(setting().trust(setOf(fixtureImporter)))
+        assertEquals(AddressIndexChoice.Chosen(setOf(fixtureImporter)), setting().observe().first())
 
         assertTrue(setting().trust(null))
-        assertEquals(AddressIndexChoice.Chosen(importer = null), setting().observe().first())
+        assertEquals(AddressIndexChoice.Chosen(importers = null), setting().observe().first())
     }
 
     @Test
     fun aNewerFormatIsUnreadableAndCannotBeOverwritten() = runTest {
-        write("""{"version":2,"importer":null}""")
+        write("""{"version":3,"importers":null}""")
         val setting = setting()
 
         assertEquals(AddressIndexChoice.Unreadable, setting.observe().first())
@@ -64,29 +64,53 @@ class FileAddressIndexSettingTest {
     }
 
     @Test
+    fun anOffOfFormat1StaysAnOff() = runTest {
+        write("""{"version":1,"importer":null}""")
+
+        assertEquals(AddressIndexChoice.Chosen(importers = null), setting().observe().first(), "not set aside")
+    }
+
+    @Test
+    fun aChoiceOfFormat1NamesItsOneKeyAndIsWrittenBackAsFormat2() = runTest {
+        val key = Address.of("0x" + "1e".repeat(20))
+        val gnosisKey = Address.of("0x" + "9e".repeat(20))
+        write("""{"version":1,"importer":"${key.hex}"}""")
+        val setting = setting()
+
+        assertEquals(AddressIndexChoice.Chosen(setOf(key)), setting.observe().first())
+
+        assertTrue(setting.trust(setOf(key, gnosisKey)))
+        assertEquals(AddressIndexChoice.Chosen(setOf(key, gnosisKey)), setting().observe().first(), "after a restart")
+    }
+
+    @Test
     fun aKeyThatIsNoAddressIsSetAsideAsOffAndSaidUntilAnotherChoiceIsMade() = runTest {
         write("""{"version":1,"importer":"0x1234"}""")
         val setting = setting()
 
-        assertEquals(AddressIndexChoice.Chosen(importer = null, setAside = true), setting.observe().first())
+        assertEquals(AddressIndexChoice.Chosen(importers = null, setAside = true), setting.observe().first())
         assertTrue(setting.trust(null))
-        assertEquals(AddressIndexChoice.Chosen(importer = null), setting.observe().first())
+        assertEquals(AddressIndexChoice.Chosen(importers = null), setting.observe().first())
     }
 
     @Test
     fun aDamagedChoiceIsWrittenAsOffSoThatARestartReadsOffNotTheDefault() = runTest {
         write("""{"version":1,"importer":"0x1234"}""")
         val first = setting()
-        assertEquals(AddressIndexChoice.Chosen(importer = null, setAside = true), first.observe().first())
+        assertEquals(AddressIndexChoice.Chosen(importers = null, setAside = true), first.observe().first())
         // The off is written as the damaged choice is read.
         testScheduler.advanceUntilIdle()
 
         assertEquals(
-            AddressIndexChoice.Chosen(importer = null, setAside = true),
+            AddressIndexChoice.Chosen(importers = null, setAside = true),
             setting().observe().first(),
             "after a restart: off, never the default, and still said",
         )
         assertTrue(setting().trust(null))
-        assertEquals(AddressIndexChoice.Chosen(importer = null), setting().observe().first(), "a choice made: not said")
+        assertEquals(
+            AddressIndexChoice.Chosen(importers = null),
+            setting().observe().first(),
+            "a choice made: not said",
+        )
     }
 }

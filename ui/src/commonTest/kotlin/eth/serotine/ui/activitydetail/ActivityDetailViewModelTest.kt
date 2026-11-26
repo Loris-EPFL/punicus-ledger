@@ -1,5 +1,6 @@
 package eth.serotine.ui.activitydetail
 
+import eth.serotine.ui.pinnedEverywhere
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
@@ -428,7 +429,7 @@ class ActivityDetailViewModelTest {
     private val addressIndexOn = MemoryAddressIndexSetting(on = FIXTURE_IMPORTER)
 
     /** The detail's check, with the setting on for the fixture's key. */
-    private val checkOn = CheckAddressIndexEntry(addressIndex, addressIndexOn, FIXTURE_IMPORTER)
+    private val checkOn = CheckAddressIndexEntry(addressIndex, addressIndexOn, pinnedEverywhere(FIXTURE_IMPORTER))
 
     private fun indexKey(row: AddressIndexRow) = ActivityKey(
         row.transaction?.hash.orEmpty(),
@@ -580,7 +581,8 @@ class ActivityDetailViewModelTest {
         addressIndex.verifiedRows[row.entry] = row
         val off = MemoryAddressIndexSetting().apply { choice.value = AddressIndexChoice.Chosen(null) }
 
-        val state = viewModel(indexKey(row), check = CheckAddressIndexEntry(addressIndex, off, FIXTURE_IMPORTER))
+        val check = CheckAddressIndexEntry(addressIndex, off, pinnedEverywhere(FIXTURE_IMPORTER))
+        val state = viewModel(indexKey(row), check = check)
 
         val refused = assertIs<ActivityDetailUiState.Unavailable>(state.uiState.value)
         assertTrue(refused.message.contains("experimental setting is off"), refused.message)

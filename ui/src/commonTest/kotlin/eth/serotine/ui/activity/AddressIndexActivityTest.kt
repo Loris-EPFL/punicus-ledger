@@ -1,5 +1,7 @@
 package eth.serotine.ui.activity
 
+import eth.serotine.domain.model.AddressIndexImporters
+import eth.serotine.ui.pinnedEverywhere
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
@@ -100,6 +102,9 @@ class AddressIndexActivityTest {
     private fun TestScope.activity(
         pinned: Address? = FIXTURE_IMPORTER,
         archive: AddressIndexArchive? = null,
+        // The keys by network: [pinned] on every network, unless given.
+        keys: AddressIndexImporters? = null,
+        network: Network = Network.ETHEREUM,
     ): StateFlow<ActivityUiState> =
         AccountActivity(
             ObserveAccountHistory(history),
@@ -111,16 +116,16 @@ class AddressIndexActivityTest {
             ObserveAccountCowOrders(MemoryCowOrders()),
             ObserveWaitingSwaps(MemoryWaitingSwaps()),
             ObserveOutbox(MemoryOutbox()),
-            addressIndex = pinned?.let {
+            addressIndex = (keys ?: pinned?.let(::pinnedEverywhere))?.let { pinnedKeys ->
                 AddressIndexActivity(
-                    ObserveAddressIndexStatus(index, setting, it),
-                    LoadAddressIndexPage(index, it),
-                    keep = archive?.let { kept -> KeepAddressIndex(kept, accounts, WalletChanges(), it) },
+                    ObserveAddressIndexStatus(index, setting, pinnedKeys),
+                    LoadAddressIndexPage(index, pinnedKeys),
+                    keep = archive?.let { kept -> KeepAddressIndex(kept, accounts, WalletChanges(), pinnedKeys) },
                 )
             },
             now = { 600 },
         ) { "at $it" }
-            .of(AccountId(Network.ETHEREUM, alice.address), flowOf(false), more)
+            .of(AccountId(network, alice.address), flowOf(false), more)
             .stateIn(
                 backgroundScope + UnconfinedTestDispatcher(testScheduler),
                 SharingStarted.Eagerly,
@@ -298,12 +303,32 @@ class AddressIndexActivityTest {
 
     @Test
     fun offItAddsNothingAndReadsNothing() = runTest {
-        setting.choice.value = AddressIndexChoice.Chosen(importer = null)
+        setting.choice.value = AddressIndexChoice.Chosen(importers = null)
 
         val shown = shown(activity())
 
         assertNull(shown.index)
         assertTrue(index.asked.isEmpty(), "nothing read while it is off")
+    }
+
+    @Test
+    fun eachNetworksListNamesItsOwnKeyAndANetworkWithNoneAsksNothing() = runTest {
+        val gnosisKey = Address.of("0x" + "9e".repeat(20))
+        val keys = AddressIndexImporters(mapOf(Network.ETHEREUM to FIXTURE_IMPORTER, Network.GNOSIS to gnosisKey))
+        accounts.accounts.value =
+            listOf(alice, alice.copy(network = Network.GNOSIS), alice.copy(network = Network.SEPOLIA))
+        index.page(null, listOf(indexRow(9_300_000, 3, alice.address, bob)), next = null, importer = gnosisKey)
+
+        val onGnosis = checkNotNull(shown(activity(keys = keys, network = Network.GNOSIS)).index)
+
+        assertTrue(onGnosis.lines.first().contains(Eip55.format(gnosisKey)), "Gnosis Chain's key named in full")
+        assertFalse(onGnosis.lines.any { it.contains(Eip55.format(FIXTURE_IMPORTER)) }, "not Ethereum's")
+        assertEquals(listOf(Network.GNOSIS), index.networksAsked)
+
+        val onSepolia = shown(activity(keys = keys, network = Network.SEPOLIA))
+
+        assertNull(onSepolia.index, "Sepolia has no key pinned: its Activity is the log index's alone")
+        assertEquals(listOf(Network.GNOSIS), index.networksAsked, "nothing asked for Sepolia")
     }
 
     @Test

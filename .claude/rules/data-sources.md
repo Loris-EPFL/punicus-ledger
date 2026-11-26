@@ -274,6 +274,14 @@ contradicted entries and what others learn.)
 - **The importer key is pinned in the release** (owner's decision,
   2026-11-21, on #335). The user does not type one in. Which key is pinned is
   the owner's choice, named in the PR that pins it.
+- **One key per network** (owner's decisions, 2026-11-25): Ethereum's
+  `0xb11B…7241` (owner's choice, 2026-11-24, #359) and Gnosis Chain's
+  `0xE779…9335`, the key of the one-year Gnosis Chain index (owner's choice,
+  2026-11-25). An account's list rests on its own network's key, and a
+  network with none (Sepolia) reads no index. One switch for every network,
+  naming each network's key. Gnosis Chain's entries are verified through the
+  Gnosis checkpoint table Myotis bundles under its rule D1, extended to
+  Gnosis Chain (owner's decision there, 2026-11-25).
 - **A new key starts from the default** (owner's decision, 2026-11-22, #334).
   When a release pins another key, only an explicit off carries over: a
   choice to turn the setting on, made for the key pinned before, does not,

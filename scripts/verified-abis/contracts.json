@@ -20,182 +20,208 @@
       "chainId": 1,
       "address": "0x38869bf66a61cf6bdb996a6ae40d5853fd43b526",
       "label": "MultiSend 1.4.1",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x0e4f7fc66550a322d1e7688e181b75e217e662a4f3f4d6a29b22bc61217c4b77"
     },
     {
       "network": "ETHEREUM",
       "chainId": 1,
       "address": "0x9641d764fc13c8b624c04430c7356c1c7c8102e2",
       "label": "MultiSendCallOnly 1.4.1",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0xecd5bd14a08c5d2122379900b2f272bdf107a7e92423c10dd5fe3254386c9939"
     },
     {
       "network": "ETHEREUM",
       "chainId": 1,
       "address": "0xd53cd0ab83d845ac265be939c57f53ad838012c9",
       "label": "SignMessageLib 1.4.1",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x525c754a46b79e05543a59bb61e8de3c9eee0d955a59352409cbe67ea1077528"
     },
     {
       "network": "ETHEREUM",
       "chainId": 1,
       "address": "0x9b35af71d77eaf8d7e40252370304687390a1a52",
       "label": "CreateCall 1.4.1",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x2b3060c55fcb8275653e99ad511a71f67ba76934ed66a7d74d6e68b52afff889"
     },
     {
       "network": "ETHEREUM",
       "chainId": 1,
       "address": "0xa238cbeb142c10ef7ad8442c6d1f9e89e07e7761",
       "label": "MultiSend 1.3.0",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x0208282bd262360d0320862c5ac70f375f5ed3b9d89a83a615b4d398415bdc83"
     },
     {
       "network": "ETHEREUM",
       "chainId": 1,
       "address": "0x40a2accbd92bca938b02010e17a5b8929b49130d",
       "label": "MultiSendCallOnly 1.3.0",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0xa9865ac2d9c7a1591619b188c4d88167b50df6cc0c5327fcbd1c8c75f7c066ad"
     },
     {
       "network": "ETHEREUM",
       "chainId": 1,
       "address": "0xa65387f16b013cf2af4605ad8aa5ec25a2cba3a2",
       "label": "SignMessageLib 1.3.0",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x3ac65dea3cc9dd0d7b7b800f834e3d73415b4e944bb94555c3e4a08fb137e918"
     },
     {
       "network": "ETHEREUM",
       "chainId": 1,
       "address": "0x7cbb62eaa69f79e6873cd1ecb2392971036cfaa4",
       "label": "CreateCall 1.3.0",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x8155d988823a4f6f1bcbc76a64af8e510c4ce68819290d43cf24956bd24dee82"
     },
     {
       "network": "GNOSIS",
       "chainId": 100,
       "address": "0x38869bf66a61cf6bdb996a6ae40d5853fd43b526",
       "label": "MultiSend 1.4.1",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x0e4f7fc66550a322d1e7688e181b75e217e662a4f3f4d6a29b22bc61217c4b77"
     },
     {
       "network": "GNOSIS",
       "chainId": 100,
       "address": "0x9641d764fc13c8b624c04430c7356c1c7c8102e2",
       "label": "MultiSendCallOnly 1.4.1",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0xecd5bd14a08c5d2122379900b2f272bdf107a7e92423c10dd5fe3254386c9939"
     },
     {
       "network": "GNOSIS",
       "chainId": 100,
       "address": "0xd53cd0ab83d845ac265be939c57f53ad838012c9",
       "label": "SignMessageLib 1.4.1",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x525c754a46b79e05543a59bb61e8de3c9eee0d955a59352409cbe67ea1077528"
     },
     {
       "network": "GNOSIS",
       "chainId": 100,
       "address": "0x9b35af71d77eaf8d7e40252370304687390a1a52",
       "label": "CreateCall 1.4.1",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x2b3060c55fcb8275653e99ad511a71f67ba76934ed66a7d74d6e68b52afff889"
     },
     {
       "network": "GNOSIS",
       "chainId": 100,
       "address": "0xa238cbeb142c10ef7ad8442c6d1f9e89e07e7761",
       "label": "MultiSend 1.3.0",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x0208282bd262360d0320862c5ac70f375f5ed3b9d89a83a615b4d398415bdc83"
     },
     {
       "network": "GNOSIS",
       "chainId": 100,
       "address": "0x40a2accbd92bca938b02010e17a5b8929b49130d",
       "label": "MultiSendCallOnly 1.3.0",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0xa9865ac2d9c7a1591619b188c4d88167b50df6cc0c5327fcbd1c8c75f7c066ad"
     },
     {
       "network": "GNOSIS",
       "chainId": 100,
       "address": "0xa65387f16b013cf2af4605ad8aa5ec25a2cba3a2",
       "label": "SignMessageLib 1.3.0",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x3ac65dea3cc9dd0d7b7b800f834e3d73415b4e944bb94555c3e4a08fb137e918"
     },
     {
       "network": "GNOSIS",
       "chainId": 100,
       "address": "0x7cbb62eaa69f79e6873cd1ecb2392971036cfaa4",
       "label": "CreateCall 1.3.0",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x8155d988823a4f6f1bcbc76a64af8e510c4ce68819290d43cf24956bd24dee82"
     },
     {
       "network": "SEPOLIA",
       "chainId": 11155111,
       "address": "0x38869bf66a61cf6bdb996a6ae40d5853fd43b526",
       "label": "MultiSend 1.4.1",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x0e4f7fc66550a322d1e7688e181b75e217e662a4f3f4d6a29b22bc61217c4b77"
     },
     {
       "network": "SEPOLIA",
       "chainId": 11155111,
       "address": "0x9641d764fc13c8b624c04430c7356c1c7c8102e2",
       "label": "MultiSendCallOnly 1.4.1",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0xecd5bd14a08c5d2122379900b2f272bdf107a7e92423c10dd5fe3254386c9939"
     },
     {
       "network": "SEPOLIA",
       "chainId": 11155111,
       "address": "0xd53cd0ab83d845ac265be939c57f53ad838012c9",
       "label": "SignMessageLib 1.4.1",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x525c754a46b79e05543a59bb61e8de3c9eee0d955a59352409cbe67ea1077528"
     },
     {
       "network": "SEPOLIA",
       "chainId": 11155111,
       "address": "0x9b35af71d77eaf8d7e40252370304687390a1a52",
       "label": "CreateCall 1.4.1",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x2b3060c55fcb8275653e99ad511a71f67ba76934ed66a7d74d6e68b52afff889"
     },
     {
       "network": "SEPOLIA",
       "chainId": 11155111,
       "address": "0xa238cbeb142c10ef7ad8442c6d1f9e89e07e7761",
       "label": "MultiSend 1.3.0",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x0208282bd262360d0320862c5ac70f375f5ed3b9d89a83a615b4d398415bdc83"
     },
     {
       "network": "SEPOLIA",
       "chainId": 11155111,
       "address": "0x40a2accbd92bca938b02010e17a5b8929b49130d",
       "label": "MultiSendCallOnly 1.3.0",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0xa9865ac2d9c7a1591619b188c4d88167b50df6cc0c5327fcbd1c8c75f7c066ad"
     },
     {
       "network": "SEPOLIA",
       "chainId": 11155111,
       "address": "0xa65387f16b013cf2af4605ad8aa5ec25a2cba3a2",
       "label": "SignMessageLib 1.3.0",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x3ac65dea3cc9dd0d7b7b800f834e3d73415b4e944bb94555c3e4a08fb137e918"
     },
     {
       "network": "SEPOLIA",
       "chainId": 11155111,
       "address": "0x7cbb62eaa69f79e6873cd1ecb2392971036cfaa4",
       "label": "CreateCall 1.3.0",
-      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5)."
+      "why": "A Safe library the app's Safes reach by delegate call: named on the delegate call shown and refused (decision 5).",
+      "codeHash": "0x8155d988823a4f6f1bcbc76a64af8e510c4ce68819290d43cf24956bd24dee82"
     },
     {
       "network": "ETHEREUM",
       "chainId": 1,
       "address": "0x9008d19f58aabd9ed0d60971565aa8510560ab41",
       "label": "CoW Protocol settlement",
-      "why": "CoW swaps settle here; no descriptor covers it. On Gnosis Chain Sourcify's match is partial: not pinned (decision 4)."
+      "why": "CoW swaps settle here; no descriptor covers it. On Gnosis Chain Sourcify's match is partial: not pinned (decision 4).",
+      "codeHash": "0x744d58584e38d214eb190629f131d5cf8b8703bd68e04452f9692177c37c4bc9"
     },
     {
       "network": "SEPOLIA",
       "chainId": 11155111,
       "address": "0x9008d19f58aabd9ed0d60971565aa8510560ab41",
       "label": "CoW Protocol settlement",
-      "why": "CoW swaps settle here; no descriptor covers it. On Gnosis Chain Sourcify's match is partial: not pinned (decision 4)."
+      "why": "CoW swaps settle here; no descriptor covers it. On Gnosis Chain Sourcify's match is partial: not pinned (decision 4).",
+      "codeHash": "0x9fbace363dc778e25fecb202c12981d916faea80c9aab8167aeeedcaed84df53"
     },
     {
       "network": "GNOSIS",
@@ -203,7 +229,8 @@
       "address": "0x22d903fd45f441f51bcad198d14eba8a75ea1ef0",
       "label": "Gnosis Pay Delay mastercopy (current)",
       "why": "The current Delay mastercopy (docs/gnosis-pay.md); each account's Delay is an EIP-1167 proxy to it.",
-      "eip1167Proxies": true
+      "eip1167Proxies": true,
+      "codeHash": "0xc9aa4bfd4e95109c807c572d9a2e154d721e215cf76a267f59dc8cdc0923157d"
     },
     {
       "network": "GNOSIS",
@@ -211,7 +238,8 @@
       "address": "0x4a97e65188a950dd4b0f21f9b5434daee0bbf9f5",
       "label": "Gnosis Pay Delay mastercopy (retired)",
       "why": "The retired Delay mastercopy (docs/gnosis-pay.md); older accounts' Delays proxy to it.",
-      "eip1167Proxies": true
+      "eip1167Proxies": true,
+      "codeHash": "0x20a9ecd6ca32aa6dd49e911b486ffe2220a3e1ae3435514368514631314edd1c"
     },
     {
       "network": "GNOSIS",
@@ -219,7 +247,8 @@
       "address": "0x3b6a7f0bdb6663007f95dbd7fddef815f7596715",
       "label": "Swarm chequebook master copy",
       "why": "Swarm's chequebook master copy (data/.../SwarmDeployments.kt); each chequebook is an EIP-1167 proxy to it.",
-      "eip1167Proxies": true
+      "eip1167Proxies": true,
+      "codeHash": "0x3e3e840e87dc578cf44143cc2924f91886cecc0b71a58e6f368b6029b7c17960"
     }
   ]
 }

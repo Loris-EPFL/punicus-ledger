@@ -2,8 +2,8 @@
 // Recompiles every contract scripts/verified-abis/vendor/ holds, and writes what the recompile alone vouches
 // for (docs/clear-signing.md, *Phase C*):
 //
-//     cd scripts/verified-abis && npm ci && node verify.mjs            # writes verified.json
-//     cd scripts/verified-abis && npm ci && node verify.mjs --check    # fails if verified.json differs
+//     cd scripts/verified-abis && npm ci --ignore-scripts && node verify.mjs            # writes verified.json
+//     cd scripts/verified-abis && npm ci --ignore-scripts && node verify.mjs --check    # fails if it differs
 //
 // Each vendored file is read by its sha256 and checked against it. Each compiler is the linux-amd64 build
 // vendor/solc.json pins, fetched from binaries.soliditylang.org into $SOLC_CACHE (default .solc/) and checked
@@ -27,6 +27,15 @@ const check = process.argv.includes('--check');
 setLibSourcifyLoggerLevel(0);
 
 const sha256 = (data) => createHash('sha256').update(data).digest('hex');
+
+// Nothing but the pinned compilers is fetched: lib-sourcify would fetch a source it finds missing from IPFS or
+// GitHub, and that must fail, never pass on a file the reviewer did not read.
+const realFetch = globalThis.fetch;
+globalThis.fetch = (url, ...rest) => {
+  const host = new URL(typeof url === 'string' ? url : url.url).host;
+  if (host !== 'binaries.soliditylang.org') throw new Error(`refused: a fetch from ${host}; only the compilers are fetched`);
+  return realFetch(url, ...rest);
+};
 
 /** The vendored file [digest] names, refused unless it hashes to it. */
 function blob(digest) {
@@ -78,13 +87,31 @@ function parameter(input) {
   return out;
 }
 
+// The list, and each contract's code hash as check_code_hashes.py pinned it from the chain.
+const listedPins = new Map(
+  JSON.parse(fs.readFileSync(path.join(here, 'contracts.json'), 'utf8')).contracts
+    .map((c) => [`${c.chainId}-${c.address.toLowerCase()}`, c.codeHash]),
+);
 const verified = [];
 for (const manifestFile of fs.readdirSync(path.join(vendor, 'contracts')).sort()) {
   const manifest = JSON.parse(fs.readFileSync(path.join(vendor, 'contracts', manifestFile), 'utf8'));
   const metadata = JSON.parse(blob(manifest.metadata).toString('utf8'));
   const sources = Object.entries(manifest.sources).map(([p, digest]) => ({ path: p, content: blob(digest).toString('utf8') }));
   const runtime = blob(manifest.runtime).toString('ascii');
-  const compilation = await new SolidityMetadataContract(metadata, sources).createCompilation(solc);
+  // Exactly the metadata's sources, each the one it names by its keccak256, before anything is compiled.
+  const paths = Object.keys(metadata.sources).sort();
+  if (JSON.stringify(paths) !== JSON.stringify(Object.keys(manifest.sources).sort())) {
+    throw new Error(`${manifestFile}: the vendored sources are not exactly the metadata's`);
+  }
+  const contract = new SolidityMetadataContract(metadata, sources);
+  if (Object.keys(contract.missingSources).length || Object.keys(contract.invalidSources).length ||
+      contract.unusedSourceFiles.length) {
+    throw new Error(`${manifestFile}: a source is missing, invalid or unused`);
+  }
+  for (const [p, entry] of Object.entries(metadata.sources)) {
+    if (entry.content !== undefined) throw new Error(`${manifestFile}: ${p} is inline in the metadata, not vendored`);
+  }
+  const compilation = await contract.createCompilation(solc);
   // No provider: the chain's code is the vendored one, and nothing else is asked of it.
   const chain = new SourcifyChain({ name: 'vendored', chainId: manifest.chainId, rpcs: [], supported: false });
   chain.getBytecode = async () => runtime;
@@ -93,7 +120,16 @@ for (const manifestFile of fs.readdirSync(path.join(vendor, 'contracts')).sort()
   if (verification.status.runtimeMatch !== 'perfect') {
     throw new Error(`${manifest.chainId}-${manifest.address}: ${verification.status.runtimeMatch}, not an exact match`);
   }
-  const abi = compilation.contractCompilerOutput.abi;
+  // What matched: lib-sourcify may swap in a recompile of source variations to find the matched metadata.
+  const matched = verification.compilation;
+  if (!listedPins.has(`${manifest.chainId}-${manifest.address}`)) {
+    throw new Error(`${manifestFile}: not on contracts.json`);
+  }
+  const pinned = listedPins.get(`${manifest.chainId}-${manifest.address}`);
+  if (pinned !== keccak256(runtime)) {
+    throw new Error(`${manifestFile}: the code hashes to ${keccak256(runtime)}, not to the pinned ${pinned}`);
+  }
+  const abi = matched.contractCompilerOutput.abi;
   const iface = new Interface(abi);
   const functions = [];
   iface.forEachFunction((fragment) => {
@@ -101,17 +137,19 @@ for (const manifestFile of fs.readdirSync(path.join(vendor, 'contracts')).sort()
       e.inputs.map(canonical).join(',') === fragment.inputs.map((i) => i.format('sighash')).join(','));
     functions.push({ selector: fragment.selector, name: fragment.name, inputs: entry.inputs.map(parameter) });
   });
-  functions.sort((a, b) => a.selector.localeCompare(b.selector));
+  functions.sort((a, b) => (a.selector < b.selector ? -1 : a.selector > b.selector ? 1 : 0));
   verified.push({
     chainId: manifest.chainId,
     address: manifest.address,
-    name: compilation.compilationTarget.name,
+    name: matched.compilationTarget.name,
     codeHash: keccak256(runtime),
     functions,
   });
   console.error(`${manifest.chainId} ${manifest.address} ${compilation.compilationTarget.name}: exact match`);
 }
 
+const seen = new Set(verified.map((v) => `${v.chainId}-${v.address}`));
+for (const key of listedPins.keys()) if (!seen.has(key)) throw new Error(`${key}: on contracts.json, not vendored`);
 const out = JSON.stringify(verified, null, 2) + '\n';
 const target = path.join(here, 'verified.json');
 if (check) {

@@ -19,6 +19,9 @@ import shutil
 import sys
 import urllib.request
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "clear-signing"))
+from keccak import keccak256  # noqa: E402
+
 HERE = pathlib.Path(__file__).resolve().parent
 CONTRACTS = HERE / "contracts.json"
 VENDOR = HERE / "vendor"
@@ -59,12 +62,22 @@ def main() -> int:
         metadata = answer["metadata"]
         version = answer["compilation"]["compilerVersion"]
         versions.add(version)
+        # Exactly the metadata's sources, and only they: what is vendored is what is compiled. A source the
+        # metadata carries inline (`useLiteralContent`) is taken out of it, so that the vendored file is the one
+        # compiled, held to the metadata's keccak256 as any other.
+        sources = {}
+        for path, source in sorted(metadata["sources"].items()):
+            given = answer["sources"].get(path, {}).get("content")
+            content = source.pop("content", None) or given
+            if content is None or ("0x" + keccak256(content.encode("utf-8")).hex()) != source["keccak256"]:
+                raise SystemExit(f"refused: {entry['label']} on {chain}: no source of {path} that hashes to the metadata's")
+            sources[path] = blob(content.encode("utf-8"))
         manifest = {
             "chainId": chain,
             "address": address,
             "compilerVersion": version,
             "metadata": blob(json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode("utf-8")),
-            "sources": {path: blob(source["content"].encode("utf-8")) for path, source in sorted(answer["sources"].items())},
+            "sources": sources,
             "runtime": blob(answer["runtimeBytecode"]["onchainBytecode"].lower().encode("ascii")),
         }
         target = VENDOR / "contracts" / f"{chain}-{address}.json"

@@ -59,9 +59,11 @@ def build(verified: list, listed: dict) -> dict:
                 "implementation": entry["address"],
                 "implementationCodeHash": entry["codeHash"],
             })
-    missing = proxied - {(e["chainId"], e["address"]) for e in verified}
-    if missing:
-        raise SystemExit(f"refused: listed with proxies but not recompiled: {sorted(missing)}")
+    listed_set = {(e["chainId"], e["address"].lower()) for e in listed["contracts"]}
+    verified_set = {(e["chainId"], e["address"]) for e in verified}
+    if listed_set != verified_set:
+        raise SystemExit(f"refused: the list and the recompile differ: listed only {sorted(listed_set - verified_set)}, "
+                         f"recompiled only {sorted(verified_set - listed_set)}")
     return {"contracts": contracts, "proxies": proxies}
 
 

@@ -36,7 +36,10 @@ sealed interface ClearSignedField {
      * A value: [shown] as the descriptor formats it, [raw] as decoded. [unlisted] is a token (of a
      * `tokenAmount`) or an NFT collection (of an `nftName`) that is not a built-in one: shown by its address,
      * never by the name its own contract gives it. [addressType] is set when an `addressName`'s address is
-     * not of the kind the descriptor expects.
+     * not of the kind the descriptor expects. [token] is the token or the NFT collection the value names (a
+     * `tokenAmount` other than of the network's currency, a `tokenTicker`, an `nftName`), and [recipient] the
+     * address an `addressName` shows (the sender's own where it stands for the sender): what a verified trace
+     * is held against (docs/clear-signing.md, *Phase B*).
      */
     data class Value(
         override val label: String,
@@ -45,6 +48,8 @@ sealed interface ClearSignedField {
         val unlisted: Address? = null,
         override val group: String? = null,
         val addressType: AddressTypeMismatch? = null,
+        val token: Address? = null,
+        val recipient: Address? = null,
     ) : ClearSignedField
 
     /**
@@ -335,8 +340,13 @@ object ClearSignFormatter {
         suspend fun value(label: String, format: FieldFormat, at: Reached, path: ClearSigningPath, group: String?): ClearSignedField {
             val value = at.value
             val raw = raw(value)
-            fun shown(text: String, unlisted: Address? = null, mismatch: AddressTypeMismatch? = null) =
-                ClearSignedField.Value(label, text, raw, unlisted, group, mismatch)
+            fun shown(
+                text: String,
+                unlisted: Address? = null,
+                mismatch: AddressTypeMismatch? = null,
+                token: Address? = null,
+                recipient: Address? = null,
+            ) = ClearSignedField.Value(label, text, raw, unlisted, group, mismatch, token, recipient)
             // A parameter's path that walks the same array as the field is read at the field's item (ERC-7730,
             // *Array references in parameters*).
             fun parameter(parameter: ClearSigningPath): AbiValue = single(aligned(parameter, path, at.location))
@@ -348,16 +358,19 @@ object ClearSignFormatter {
                     // A token the descriptor names; one that names none is no amount this app can read.
                     val token = format.tokenPath?.let { address(parameter(it)) } ?: format.token
                         ?: throw Refusal(NotCoveredReason.NotDecodable)
-                    val known = if (token in format.nativeCurrency) ClearSigningToken(network.nativeSymbol, NATIVE_DECIMALS)
-                    else lookups.token(network, token)
-                    if (known == null) return shown("${amount.toDecimal()} (raw units) of ${checksummed(token)}", unlisted = token)
+                    val native = token in format.nativeCurrency
+                    val known = if (native) ClearSigningToken(network.nativeSymbol, NATIVE_DECIMALS) else lookups.token(network, token)
+                    val named = token.takeUnless { native }
+                    if (known == null) {
+                        return shown("${amount.toDecimal()} (raw units) of ${checksummed(token)}", unlisted = token, token = named)
+                    }
                     val threshold = format.threshold
                     val text = if (threshold != null && amount >= threshold) format.message ?: "Unlimited" else amount.formatUnits(known.decimals)
-                    shown("$text ${known.symbol}")
+                    shown("$text ${known.symbol}", token = named)
                 }
                 is FieldFormat.AddressName -> {
                     val address = address(value)
-                    if (address in format.senderAddress) return shown(SENDER)
+                    if (address in format.senderAddress) return shown(SENDER, recipient = from)
                     val checksum = checksummed(address)
                     val name = if (format.sources.isEmpty() || "local" in format.sources) lookups.addressName(network, address) else null
                     val mismatch = if (format.types.isEmpty()) {
@@ -367,7 +380,7 @@ object ClearSignFormatter {
                         val kind = lookups.addressKind(network, address) ?: KIND_NOT_VERIFIED
                         kind.takeUnless { kindMatches(it, format.types) }?.let { AddressTypeMismatch(format.types, it) }
                     }
-                    shown(name?.let { "$it ($checksum)" } ?: checksum, mismatch = mismatch)
+                    shown(name?.let { "$it ($checksum)" } ?: checksum, mismatch = mismatch, recipient = address)
                 }
                 is FieldFormat.Date -> shown(
                     if (format.blockHeight) "block ${uint(value).toDecimal()}"
@@ -402,12 +415,13 @@ object ClearSignFormatter {
                     val collection = address(parameter(format.collectionPath))
                     val id = uint(value).toDecimal()
                     val name = lookups.builtInCollectionName(network, collection)
-                    if (name == null) shown("#$id of ${checksummed(collection)}", unlisted = collection) else shown("$name #$id")
+                    if (name == null) shown("#$id of ${checksummed(collection)}", unlisted = collection, token = collection)
+                    else shown("$name #$id", token = collection)
                 }
                 FieldFormat.TokenTicker -> {
                     val token = address(value)
                     val known = lookups.token(network, token)
-                    if (known == null) shown(checksummed(token), unlisted = token) else shown(known.symbol)
+                    if (known == null) shown(checksummed(token), unlisted = token, token = token) else shown(known.symbol, token = token)
                 }
             }
         }

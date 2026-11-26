@@ -53,10 +53,12 @@ data class SafeTxActionItem(
     fun withDescription(result: eth.serotine.domain.model.ClearSignResult?, busy: Boolean): SafeTxActionItem = when (result) {
         is eth.serotine.domain.model.ClearSignResult.ClearSigned -> copy(
             title = result.interpolatedIntent ?: result.intent,
-            notes = notes.filterNot { it == NOT_DECODED_HERE } +
-                listOfNotNull(APPROVAL.takeIf { result.grantsApproval }),
-            warning = listOfNotNull(warning, ClearSignedText.PARTLY_NOT_DECODED.takeIf { ClearSignedText.partlyNotDecoded(result) })
-                .takeIf { it.isNotEmpty() }?.joinToString(" "),
+            notes = notes.filterNot { it == NOT_DECODED_HERE },
+            warning = listOfNotNull(
+                warning,
+                APPROVAL.takeIf { result.grantsApproval && warning?.contains(APPROVAL) != true },
+                PARTLY_NOT_DECODED.takeIf { ClearSignedText.partlyNotDecoded(result) },
+            ).takeIf { it.isNotEmpty() }?.joinToString(" "),
             described = ClearSignedText.describedSection(result),
             describing = busy,
         )
@@ -69,9 +71,14 @@ data class SafeTxActionItem(
         /** What a contract call not decoded here says of itself. */
         const val NOT_DECODED_HERE = "Not decoded here: what it does is up to the contract's code."
 
-        /** A described call, or one inside it, that grants an approval. */
+        /** A call, or one inside it, that grants an approval: flagged by its selector, described or not. */
         const val APPROVAL = "It grants an approval: it moves nothing on its own, but the spender may then take " +
             "the Safe's tokens without asking again."
+
+        /** A Safe transaction with a call inside it that is not decoded: no dApp to trust here, its proposer to ask. */
+        const val PARTLY_NOT_DECODED = "Part of this transaction is not decoded: a call inside it is shown raw, and " +
+            "Punicus cannot tell what that part does. Sign it only if you know what that call does, or ask whoever " +
+            "proposed it."
     }
 }
 
@@ -200,6 +207,10 @@ internal fun safeTxActionItem(
         ),
     )
     is SafeTxAction.ContractCall -> SafeTxActionItem(
+        // An approval is flagged by what the call is, before and without any description (docs/clear-signing.md, A3).
+        warning = SafeTxActionItem.APPROVAL.takeIf {
+            action.selector?.let { "0x$it" } in eth.serotine.domain.model.ClearSignFormatter.APPROVAL_SELECTORS
+        },
         title = "Call a contract",
         addresses = listOf(ActionAddress("Contract", Eip55.format(action.to))),
         notes = listOfNotNull(

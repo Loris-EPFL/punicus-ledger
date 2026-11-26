@@ -1,6 +1,7 @@
 package eth.serotine.ui.safetx
 
 import eth.serotine.domain.model.ClearSignResult
+import eth.serotine.domain.model.ClearSignedField
 import eth.serotine.domain.model.NotCoveredReason
 import eth.serotine.domain.usecase.DescribeClearSigning
 import androidx.lifecycle.ViewModel
@@ -646,7 +647,8 @@ class SafeTxViewModel(
     /** Reads where the owners stand again: an approval mined since, a signature imported elsewhere. */
     fun checkAgain() {
         readAgain.update { it + 1 }
-        now?.let { describe(it.found.tx, again = true) }
+        // After a longer hide the reading is gone until it is made again: the transaction last shown is the same.
+        (now ?: lastContext)?.let { describe(it.found.tx, again = true) }
     }
 
     /** [state] with what the built-in descriptors say of its call, on whichever screen of it is shown. */
@@ -1484,29 +1486,10 @@ class SafeTxViewModel(
      * password with it. One signing goes on, and lands on the transaction as last shown; so does a
      * review whose broadcast no peer took, until the Safe's nonce has passed the transaction.
      */
-    /**
-     * Asks the built-in descriptors what [tx]'s call does, when it is a contract call not decoded here: when the
-     * transaction is first shown, again while the last answer is that the code could not be checked, and again
-     * with each *Check again* (a contract can be upgraded while the transaction waits for its signatures). The
-     * last answer stays meanwhile; one that fails leaves the call not decoded, with no reason claimed.
-     */
-    private fun describe(tx: DecodedSafeTx, again: Boolean = false) {
-        if (tx.action !is SafeTxAction.ContractCall || describeJob?.isActive == true) return
-        val last = description.value
-        if (!again && last != null && (last as? ClearSignResult.NotCovered)?.reason != NotCoveredReason.CodeNotProven) return
-        val call = tx.request.tx
-        describeJob = viewModelScope.launch {
-            describing.value = true
-            description.value = try {
-                describeClearSigning.call(network, safe, call.to, call.value, call.data)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                null
-            } finally {
-                describing.value = false
-            }
-        }
+    /** Whether [result], or a call inside it, is not described because its code could not be checked. */
+    private fun unchecked(result: ClearSignResult): Boolean = when (result) {
+        is ClearSignResult.NotCovered -> result.reason == NotCoveredReason.CodeNotProven
+        is ClearSignResult.ClearSigned -> result.fields.any { (it as? ClearSignedField.Nested)?.result?.let(::unchecked) == true }
     }
 
     private fun follow(source: Source?) {
@@ -1539,6 +1522,31 @@ class SafeTxViewModel(
                 }
             }
             else -> Unit
+        }
+    }
+
+    /**
+     * Asks the built-in descriptors what [tx]'s call does, when it is a contract call not decoded here: when the
+     * transaction is first shown, again while the last answer is that the code could not be checked, and again
+     * with each *Check again* (a contract can be upgraded while the transaction waits for its signatures). The
+     * last answer stays meanwhile; one that fails leaves the call not decoded, with no reason claimed.
+     */
+    private fun describe(tx: DecodedSafeTx, again: Boolean = false) {
+        if (tx.action !is SafeTxAction.ContractCall || describeJob?.isActive == true) return
+        val last = description.value
+        if (!again && last != null && !unchecked(last)) return
+        val call = tx.request.tx
+        describeJob = viewModelScope.launch {
+            describing.value = true
+            description.value = try {
+                describeClearSigning.call(network, safe, call.to, call.value, call.data)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } finally {
+                describing.value = false
+            }
         }
     }
 

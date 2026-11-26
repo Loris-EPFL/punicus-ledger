@@ -203,3 +203,32 @@ jobs:
                         | grep -v -e /testsv2/ -e /sigs/ | sort)
           /tmp/erc7730/bin/check-jsonschema --schemafile specs/erc7730-v2.schema.json $descriptors
           /tmp/erc7730/bin/erc7730 lint $(echo "$descriptors" | grep -v /common-)
+
+  # Phase C's verified ABIs (docs/clear-signing.md, *Phase C*): every vendored contract recompiled with
+  # lib-sourcify (pinned by version and hash in scripts/verified-abis/package-lock.json) and matched exactly
+  # against its vendored on-chain code, no RPC asked; verified.json and the generated catalog checked to be
+  # what the recompile and generate.py give. The compilers are fetched from binaries.soliditylang.org and
+  # checked against their pinned sha256 before they run. The app never runs Node; this is CI only. Its own
+  # job, so that an outage there does not hold up Build and Test, which is the required check.
+  verified-abis:
+    name: Verified ABIs (recompile)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      # lib-sourcify asks for Node 26; the runner's own moves.
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+      - name: Recompile and check
+        working-directory: scripts/verified-abis
+        run: |
+          npm ci --ignore-scripts
+          node verify.mjs --check
+          python3 -I generate.py --check
+          python3 -I test_generate.py

@@ -1,0 +1,10 @@
+{
+  "address": "0x38869bf66a61cf6bdb996a6ae40d5853fd43b526",
+  "chainId": 1,
+  "compilerVersion": "0.7.6+commit.7338295f",
+  "metadata": "90fe4553f5198e2fbaa7925a08b7a1a054fb98a6f089098228a73c503231506e",
+  "runtime": "a2375c36b73eea335105ca696d7de1d7fc7281c3a118a8ab560295822395adb1",
+  "sources": {
+    "contracts/libraries/MultiSend.sol": "4faca0e0ddc6276f81661a077f7ef1bc34f05f9568855f4a59fb40835dbbadf5"
+  }
+}

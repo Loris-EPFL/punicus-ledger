@@ -1,0 +1,25 @@
+{
+  "address": "0x9008d19f58aabd9ed0d60971565aa8510560ab41",
+  "chainId": 11155111,
+  "compilerVersion": "0.7.6+commit.7338295f",
+  "metadata": "9850849ba07d2d854528001f9c7db9a043253d54c4bc1af1dfac807a62a83379",
+  "runtime": "d9f3e3b6bcad89995af2e71111df7b2db73691653947322e280fc03d399d3623",
+  "sources": {
+    "src/contracts/GPv2Settlement.sol": "2878f0c7cf57b91a5ee6170eac15045c8c415993e676e2a23ac792a07607da63",
+    "src/contracts/GPv2VaultRelayer.sol": "18904a8807db246f2dbbb94d1d376c73aed3150ab53a9c07a3e378095be598cc",
+    "src/contracts/interfaces/GPv2Authentication.sol": "f4278cb9688dd720ceca6bf5ed83d8793c05ca439352542c4e3a3fe7aa6dc335",
+    "src/contracts/interfaces/GPv2EIP1271.sol": "0205c5d6dbaac3d08da135e7dede23130767899a588fa29dda61da0cfaca4c48",
+    "src/contracts/interfaces/IERC20.sol": "4383de120427ca057b6f4460f0bd4efd1af61a2426c8de61df7d4222b6fe9875",
+    "src/contracts/interfaces/IVault.sol": "c744eef52eb3e530be251525275ba414b4796f473e98addc857882c91f1ca469",
+    "src/contracts/libraries/GPv2Interaction.sol": "571eec47e6ba6fc30d45b9551e9118e85c71a27027dfe747ab40736b21d0de40",
+    "src/contracts/libraries/GPv2Order.sol": "3a981f33f50f0ac34f8aacd04d038ab16e33aa5402d97788022f2d64a25de089",
+    "src/contracts/libraries/GPv2SafeERC20.sol": "cc9b9d515302b2a20e2a9c9509f1c07c27ef2ffcdf44a951bc35c391a36e627d",
+    "src/contracts/libraries/GPv2Trade.sol": "8c6412cbe6427027471057737c332c7be93192f93a473498ce82ba87318502dc",
+    "src/contracts/libraries/GPv2Transfer.sol": "1966e9687ba560f590bfbe2b10812f8ba874058ac446cfaf2065d85e61a9fac6",
+    "src/contracts/libraries/SafeCast.sol": "dcd4a0cdbae1d30111d4ab7461ad40f39cff1976bd670f5c09f3f4acc044af71",
+    "src/contracts/libraries/SafeMath.sol": "8d285c35596387260983618bb1d85d6c4421cca3a5bcf14fd5d70ec5e6b2a0b9",
+    "src/contracts/mixins/GPv2Signing.sol": "dc678895f9eb4cef3910f88621d99496da0daa5d14866e23a16b7cbb4e847a19",
+    "src/contracts/mixins/ReentrancyGuard.sol": "c78e860bcacb5cbd1243c08fb7a2f5a89e26aa82e6418d78d13fde3704d22409",
+    "src/contracts/mixins/StorageAccessible.sol": "b5addb6d45ce3f8761a6ed313d6fc19d70e16ee90842cf4b4e0cbc892cf575ea"
+  }
+}

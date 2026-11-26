@@ -1,5 +1,7 @@
 package eth.serotine.ui.safetx
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import eth.serotine.ui.components.TraceText
 import eth.serotine.ui.components.TraceSection
 import eth.serotine.domain.usecase.TraceOutcome
@@ -226,6 +228,8 @@ class SafeTxViewModel(
     private val describeClearSigning: DescribeClearSigning,
     /** The verified trace of the transaction's call at the head, as the Safe's own (docs/clear-signing.md, *Phase B*). */
     private val traceCall: TraceCall,
+    /** Where a trace is put in words: its size is the call's to choose, so never on the main thread. */
+    private val formatOn: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
     /** The account this screen is about: its address, on its network. */
     private val safe: Address = account.address
@@ -709,7 +713,8 @@ class SafeTxViewModel(
                 val claims = if (action is SafeTxAction.ContractCall) description.value?.let(TraceClaims::of)
                 else TraceClaims.ofSafeAction(action, safe)
                 val outcome = traceCall.trace(network, safe, call.to, call.value, call.data, claims)
-                TraceText.section(outcome, safe, network, tracedAt = clock()).copy(note = TraceText.SAFE_CALL_NOTE)
+                val tracedAt = clock()
+                withContext(formatOn) { TraceText.section(outcome, safe, network, tracedAt).copy(note = TraceText.SAFE_CALL_NOTE) }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {

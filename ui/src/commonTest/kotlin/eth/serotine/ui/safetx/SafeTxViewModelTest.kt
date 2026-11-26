@@ -221,6 +221,7 @@ class SafeTxViewModelTest {
                 backgroundScope,
                 traced,
             ) { traceAnswer },
+            formatOn = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         if (collect) backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()

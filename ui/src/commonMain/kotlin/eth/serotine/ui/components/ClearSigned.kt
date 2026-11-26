@@ -56,10 +56,11 @@ object ClearSignedText {
         NotCoveredReason.CodeNotProven -> CODE_NOT_CHECKED
         is NotCoveredReason.ValueOutsideDescriptor, is NotCoveredReason.UnknownEnumValue, NotCoveredReason.NotDecodable,
         is NotCoveredReason.PathNotFound, is NotCoveredReason.UnequalArrays, NotCoveredReason.TooDeep,
-        NotCoveredReason.DomainWithoutChainId, NotCoveredReason.DomainWithoutVerifyingContract, NotCoveredReason.OtherChain,
+        NotCoveredReason.DomainWithoutChainId, NotCoveredReason.OtherChain,
         -> NOT_AS_DESCRIBED
+        // No contract to bind to is nothing more to say than "not decoded", as no descriptor is.
         NotCoveredReason.NoDescriptor, is NotCoveredReason.NoFormat, NotCoveredReason.ClaimedByAppDecoder,
-        NotCoveredReason.TooShort,
+        NotCoveredReason.TooShort, NotCoveredReason.DomainWithoutVerifyingContract,
         -> null
     }
 

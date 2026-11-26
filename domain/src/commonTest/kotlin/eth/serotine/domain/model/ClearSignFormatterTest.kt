@@ -541,6 +541,34 @@ class ClearSignFormatterTest {
     }
 
     @Test
+    fun aTokenAmountThatNamesNoTokenIsNotCovered() = runTest {
+        val noToken = swapRouter.copy(
+            formats = listOf(
+                exactInputSingle.copy(
+                    interpolatedIntent = null,
+                    fields = listOf(field("params.amountIn", "Send", FieldFormat.TokenAmount(null, null, emptySet(), null, null))),
+                ),
+            ),
+        )
+        assertEquals(
+            ClearSignResult.NotCovered(NotCoveredReason.NotDecodable),
+            ClearSignFormatter.formatCall(noToken, Network.ETHEREUM, sender, weth, UInt256.ZERO, swapData, listed),
+        )
+    }
+
+    @Test
+    fun aPlaceholderForSeveralValuesLeavesThePlainIntent() = runTest {
+        val batch = permit2.copy(
+            formats = listOf(permitBatch.copy(interpolatedIntent = "Allow {details.[].amount}")),
+        )
+        val lookups = Lookups(mapOf(usdc to ClearSigningToken("USDC", 6), weth to ClearSigningToken("WETH", 18)))
+        val signed = assertIs<ClearSignResult.ClearSigned>(
+            ClearSignFormatter.formatTypedData(batch, Network.ETHEREUM, sender, batch(listOf(usdc.hex to "1", weth.hex to "2")), lookups),
+        )
+        assertNull(signed.interpolatedIntent)
+    }
+
+    @Test
     fun anyMessagePermit2VerifiesGrantsAnApproval() {
         val witness = permitData("1").copy(primaryType = "PermitWitnessTransferFrom")
         assertTrue(ClearSignFormatter.grantsApproval(witness))

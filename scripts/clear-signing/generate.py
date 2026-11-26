@@ -525,6 +525,8 @@ def check_field(field: dict, descriptor: dict, where: str, root) -> None:
             refuse(where, f"{fmt} needs {sorted(missing)}")
         if fmt == "tokenAmount" and {"token", "tokenPath"} <= params.keys():
             refuse(where, "a tokenAmount names its token by token or by tokenPath, not both")
+        if fmt == "tokenAmount" and not {"token", "tokenPath"} & params.keys():
+            refuse(where, "a tokenAmount names its token, by token or by tokenPath: none is guessed")
     elif "params" in field:
         refuse(where, "params without a format")
     for i, sub in enumerate(field.get("fields", [])):

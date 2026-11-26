@@ -250,7 +250,7 @@ object ClearSignFormatter {
         val delegatesToItself: Boolean,
     ) {
         val fields = mutableListOf<ClearSignedField>()
-        val shownAt = mutableMapOf<String, String>()
+        val shownAt = mutableMapOf<String, String?>()
         val covered = mutableSetOf<String>()
         var approval = false
 
@@ -325,7 +325,10 @@ object ClearSignFormatter {
             val label = field.label ?: throw Refusal(NotCoveredReason.NotDecodable)
             val shownField = value(label, field.format ?: FieldFormat.Raw, at, path, group)
             fields += shownField
-            if (shownField is ClearSignedField.Value && path.toString() !in shownAt) shownAt[path.toString()] = shownField.shown
+            if (shownField is ClearSignedField.Value) {
+                // A placeholder stands for one value: a path shown more than once (an array's items) fills none.
+                shownAt[path.toString()] = if (path.toString() in shownAt) null else shownField.shown
+            }
             covered += at.location
         }
 
@@ -342,7 +345,9 @@ object ClearSignFormatter {
                 FieldFormat.Amount -> shown("${uint(value).formatUnits(NATIVE_DECIMALS)} ${network.nativeSymbol}")
                 is FieldFormat.TokenAmount -> {
                     val amount = uint(value)
-                    val token = format.tokenPath?.let { address(parameter(it)) } ?: format.token ?: to
+                    // A token the descriptor names; one that names none is no amount this app can read.
+                    val token = format.tokenPath?.let { address(parameter(it)) } ?: format.token
+                        ?: throw Refusal(NotCoveredReason.NotDecodable)
                     val known = if (token in format.nativeCurrency) ClearSigningToken(network.nativeSymbol, NATIVE_DECIMALS)
                     else lookups.token(network, token)
                     if (known == null) return shown("${amount.toDecimal()} (raw units) of ${checksummed(token)}", unlisted = token)
@@ -387,6 +392,8 @@ object ClearSignFormatter {
                     // same sender and value. Any other is the contract calling out, its value not in these bytes.
                     val self = delegatesToItself && callee == to
                     val nested = lookups.nested(network, if (self) from else to, callee, if (self) callValue else null, data, depth + 1)
+                    // Past the depth limit nothing is said of the whole call, up to the request's own.
+                    if ((nested as? ClearSignResult.NotCovered)?.reason == NotCoveredReason.TooDeep) throw Refusal(NotCoveredReason.TooDeep)
                     val grants = grantsApproval(data) || (nested as? ClearSignResult.ClearSigned)?.grantsApproval == true
                     if (grants) approval = true
                     ClearSignedField.Nested(label, callee, raw, nested, grants, group)

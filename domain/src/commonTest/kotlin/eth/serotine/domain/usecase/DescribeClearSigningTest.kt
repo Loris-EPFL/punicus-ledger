@@ -165,6 +165,16 @@ class DescribeClearSigningTest {
     }
 
     @Test
+    fun callsNestedPastTheLimitLeaveTheWholeRequestNotCovered() = runTest {
+        var data = supplyData(usdc)
+        repeat(4) { data = supplyData(usdc, then = data) }
+        assertEquals(
+            ClearSignResult.NotCovered(NotCoveredReason.TooDeep),
+            describe.call(Network.ETHEREUM, user, pool, UInt256.ZERO, data),
+        )
+    }
+
+    @Test
     fun aClaimedSelectorStaysClaimedWhenNested() = runTest {
         val signed = assertIs<ClearSignResult.ClearSigned>(
             describe.call(Network.ETHEREUM, user, pool, UInt256.ZERO, supplyData(usdc, then = Erc20.approveData(other, UInt256.MAX))),
@@ -230,15 +240,11 @@ class DescribeClearSigningTest {
         )
         codeHashes[pool] = CodeReading.Read(ClearSigningCodeReads("0x" + "22".repeat(32), null, null))
         assertEquals(
-            ClearSignResult.NotCovered(NotCoveredReason.ContractChanged),
-            describe.typedData(Network.ETHEREUM, user, typed("Mail", pool.hex)),
-        )
-        codeHashes.remove(pool)
-        assertEquals(
             ClearSignResult.NotCovered(NotCoveredReason.NoFormat(null)),
             describe.typedData(Network.ETHEREUM, user, typed("Mail", pool.hex)),
-            "the pool's one descriptor is a calldata one",
+            "the pool's one descriptor is a calldata one: no format, so its code is never read",
         )
+        assertEquals(emptyList(), reads)
     }
 
     @Test

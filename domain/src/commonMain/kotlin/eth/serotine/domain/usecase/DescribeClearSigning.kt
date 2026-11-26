@@ -69,11 +69,13 @@ class DescribeClearSigning(
         }
         val verifier = (typed.domain["verifyingContract"] as? eth.serotine.domain.model.TypedValue.Text)?.text
             ?.let(Address::parse) ?: return ClearSignResult.NotCovered(NotCoveredReason.DomainWithoutVerifyingContract)
-        val deployment = Bindings().bound(network, verifier) { return it }
+        // As for a call: the format first, from the built-in catalog, so no code is read for a type no descriptor covers.
+        val pinned = catalog.deployment(network, verifier) ?: return ClearSignResult.NotCovered(NotCoveredReason.NoDescriptor)
         val typeHash = "0x" + keccak256(Eip712.encodeType(typed.types, typed.primaryType).encodeToByteArray()).toHex()
-        val descriptor = deployment.descriptors.firstOrNull {
+        val descriptor = pinned.descriptors.firstOrNull {
             it.kind == ClearSigningDescriptor.Kind.EIP712 && it.formatForTypeHash(typeHash) != null
         } ?: return ClearSignResult.NotCovered(NotCoveredReason.NoFormat(null))
+        Bindings().bound(network, verifier) { return it }
         return ClearSignFormatter.formatTypedData(descriptor, network, signer, typed, lookups(network))
     }
 

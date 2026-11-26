@@ -196,6 +196,11 @@ class DappRequestViewModelTest {
     }
 
     @Test
+    fun typedDataWithoutAVerifyingContractClaimsNoReason() {
+        assertNull(ClearSignedText.notDescribedLine(eth.serotine.domain.model.NotCoveredReason.DomainWithoutVerifyingContract))
+    }
+
+    @Test
     fun typedDataNoDescriptorCoversStaysNotDecoded() = runTest {
         requests.waiting.value = listOf(mail(1))
         val state = viewModel().uiState.value

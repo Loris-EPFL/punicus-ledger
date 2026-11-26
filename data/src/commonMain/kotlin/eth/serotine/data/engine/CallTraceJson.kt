@@ -23,6 +23,8 @@ internal object CallTraceJson {
 
     /** The trace [json] spells, or null when it is not a `callTracer` answer this reads exactly. */
     fun parse(json: String): TraceFrame? {
+        // A trace's size is the called contract's to choose (each frame carries its calldata): past this, no answer.
+        if (json.length > MAX_JSON_CHARS) return null
         val root = try {
             Json.parseToJsonElement(json)
         } catch (e: IllegalArgumentException) {
@@ -46,6 +48,8 @@ internal object CallTraceJson {
             else -> quantity((raw as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null) ?: return null
         }
         val error = obj.optionalText("error") ?: return null
+        // A creation with no address is one that failed, and says so.
+        if (to == null && error.value == null) return null
         val revertReason = obj.optionalText("revertReason") ?: return null
         val logs = (obj.array("logs") ?: return null).map { log(it) ?: return null }
         val calls = (obj.array("calls") ?: return null).map { frame(it, depth + 1) ?: return null }
@@ -68,7 +72,7 @@ internal object CallTraceJson {
             val text = (topic as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
             hex(text)?.takeIf { it.length == WORD_HEX } ?: return null
         }
-        val data = hex(obj.text("data") ?: "0x") ?: return null
+        val data = hex((obj.optionalText("data") ?: return null).value ?: "0x") ?: return null
         return TraceLog(address, topics, data)
     }
 
@@ -107,6 +111,9 @@ internal object CallTraceJson {
     }
 
     private const val WORD_HEX = 64
+
+    /** 16 Mi characters: far more than an ordinary call's trace, far less than the device's memory. */
+    private const val MAX_JSON_CHARS = 16 shl 20
 
     /** The EVM's call depth limit, and a margin: no real trace is deeper. */
     private const val MAX_DEPTH = 1_100

@@ -102,8 +102,8 @@ internal class LoggedChain(
         { "from=${from.hex}, to=${to.hex}, value=$valueWei wei, data=${data.hex()}, block=$block" },
         { answer ->
             when (answer) {
-                is TraceAnswer.Traced -> null
-                is TraceAnswer.Infeasible -> "infeasible: ${answer.detail}"
+                // An infeasible trace is an answer, as an infeasible estimate is.
+                is TraceAnswer.Traced, is TraceAnswer.Infeasible -> null
                 is TraceAnswer.Refused -> "refused: ${answer.detail}"
                 TraceAnswer.NoTracer -> "this engine traces no calls"
                 is TraceAnswer.Unavailable -> answer.detail ?: ""

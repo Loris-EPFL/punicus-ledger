@@ -29,11 +29,15 @@ class EngineCallTraces internal constructor(
             val head = (verified.snapshot() as? EngineSnapshot.Running)?.readableHead
                 ?: return@askVerified CallTraceReading.Unavailable(ReadUnavailable.UNPROVEN)
             when (val answer = verified.traceCall(from, to, value.toDecimal(), data, head)) {
-                is TraceAnswer.Traced -> CallTraceJson.parse(answer.json)?.let { CallTraceReading.Traced(it, head) }
+                // The root frame echoes what was asked: one that runs anything else is no answer.
+                is TraceAnswer.Traced -> CallTraceJson.parse(answer.json)
+                    ?.takeIf { it.from == from && it.to == to && (it.value ?: UInt256.ZERO) == value }
+                    ?.let { CallTraceReading.Traced(it, head) }
                     ?: CallTraceReading.Unavailable(ReadUnavailable.UNPROVEN)
                 is TraceAnswer.Infeasible -> CallTraceReading.Infeasible(answer.detail)
-                // A request the engine refuses (a block it will not trace at, for one) is no answer this time.
-                is TraceAnswer.Refused -> CallTraceReading.Unavailable(ReadUnavailable.REFUSED)
+                // A request the engine refuses (a block it will not trace at, for one, the head having moved) is no
+                // answer this time, as a refused call at a named block is (OneBlockCalls); "never" is NoTracer's.
+                is TraceAnswer.Refused -> CallTraceReading.Unavailable(ReadUnavailable.UNPROVEN)
                 TraceAnswer.NoTracer -> CallTraceReading.NotTraced
                 is TraceAnswer.Unavailable -> CallTraceReading.Unavailable(ReadUnavailable.UNPROVEN)
             }

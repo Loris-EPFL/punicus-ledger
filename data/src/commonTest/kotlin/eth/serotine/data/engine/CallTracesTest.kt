@@ -57,7 +57,12 @@ class CallTracesTest {
         assertNull(CallTraceJson.parse(json.replace("\"value\":\"0x10\",", "")))
         // Only a creation may have no recipient.
         assertNull(CallTraceJson.parse("""{"type":"CALL","from":"${user.hex}"}"""))
-        assertNull(CallTraceJson.parse(json.replace("\"calls\":[", "\"calls\":{\"a\":[").replace("]}\n", "]}}\n")))
+        assertNull(CallTraceJson.parse(json.replace("\"calls\":[", "\"calls\":{\"a\":[") + "}"))
+        assertNull(CallTraceJson.parse(json.replace(user.hex, "0x1234")))
+        assertNull(CallTraceJson.parse(json.replace("\"data\":\"0x01\"", "\"data\":7")))
+        // A creation with no address that does not say it failed.
+        assertNull(CallTraceJson.parse(json.replace(",\"error\":\"execution reverted\",\"revertReason\":\"no\"", "")))
+        assertNull(CallTraceJson.parse(" ".repeat((16 shl 20) + 1)))
     }
 
     private val chain = FakeTransactingChain()
@@ -83,7 +88,10 @@ class CallTracesTest {
         chain.trace = TraceAnswer.Infeasible("insufficient funds")
         assertEquals(CallTraceReading.Infeasible("insufficient funds"), trace())
         chain.trace = TraceAnswer.Refused("block out of range")
-        assertEquals(CallTraceReading.Unavailable(ReadUnavailable.REFUSED), trace())
+        assertEquals(CallTraceReading.Unavailable(ReadUnavailable.UNPROVEN), trace())
+        // A trace of another call than the one asked for is no answer.
+        chain.trace = TraceAnswer.Traced(json.replace("\"value\":\"0x10\"", "\"value\":\"0x11\""))
+        assertEquals(CallTraceReading.Unavailable(ReadUnavailable.UNPROVEN), trace())
         chain.trace = TraceAnswer.Unavailable("no peer")
         assertEquals(CallTraceReading.Unavailable(ReadUnavailable.UNPROVEN), trace())
         chain.trace = TraceAnswer.Traced("{}")

@@ -38,6 +38,16 @@ class LoggedChainTest {
     }
 
     @Test
+    fun aTraceIsForwardedToTheEngineAndAnInfeasibleOneIsAnAnswer() = runTest {
+        engine.transacting.trace = TraceAnswer.Infeasible("insufficient funds")
+
+        assertEquals(TraceAnswer.Infeasible("insufficient funds"), chain.traceCall(account, account, "0", ByteArray(0), 7))
+
+        assertEquals(listOf(7L), engine.transacting.tracedAt)
+        assertEquals(listOf("traceCall: ok, 0 ms"), records().map { it.message })
+    }
+
+    @Test
     fun atDebugTheParametersAndTheResponseComeFirst() = runTest {
         log.setLevel(LogLevel.DEBUG)
         engine.base.proofs[account] = ProvenBalance("1000", 9_412_118)

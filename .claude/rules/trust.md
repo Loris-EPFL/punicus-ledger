@@ -442,23 +442,25 @@ docs/clear-signing.md, *Phase B*.)
 
 - **Run by the engine on verified state.** A dApp's transaction (D6), and a
   Safe transaction's call (screen 17, as the Safe's own call), is traced with
-  the engine's `debug_traceCall` at the verified head: the contracts it
-  reaches, the value each frame moves, its logs, its revert. No other source
-  traces it.
-- **Proven at the head, never at inclusion.** Every effect is labelled as
-  what the call does now, at its block; the transaction runs later, on other
-  state.
-- **What a log says is its contract's report.** Token movements and rights
-  are read from the logs of frames that did not revert. A token outside the
-  built-in list is named by its address, its amount raw.
-- **A delegate call into code that is not a pinned deployment's is flagged.**
-- **A description and a trace that disagree are warned about loudly**: a
-  token or the network's currency the description does not name leaving the
-  account, the account's tokens going to an address the description does not
-  show, a right granted the call is not flagged for. The call stays signable
-  (owner's decision, 2026-11-26).
-- **Not traced is said so**, never guessed: no tracing engine, no fresh head,
-  or past the deadline.
+  the engine's `debug_traceCall` at the verified head, and its effects shown
+  beside the description and the simulation. No other source traces it.
+- **Proven at the head, never at inclusion**, and labelled so.
+- **Token movements and rights come from the trace's logs**, the network's
+  currency from the call tree; exact balance changes (`diffMode`) come later.
+- **A description and a trace that disagree are warned about loudly; the call
+  stays signable.**
+- How it is applied, not part of the decisions (the owner's to approve on
+  #240):
+  - A frame counts only when neither it nor a frame above it failed; a
+    delegate call moves no value of its own.
+  - What a contract does not log is not seen: a clean trace proves nothing
+    more than what was logged.
+  - A token outside the built-in list is named by its address, its amount
+    raw, as for a description.
+  - The disagreements checked, and how a right granted is told from an
+    allowance spent: docs/clear-signing.md, *Phase B*.
+  - Not traced is said so, never guessed: no tracing engine (iOS for now), no
+    fresh head, or past the wallet's 30-second wait.
 
 ## Send from another wallet signs nothing here
 

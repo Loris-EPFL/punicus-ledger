@@ -556,12 +556,14 @@ held: docs/keys-and-signing.md, *Per-app addresses*.
   - a simulation: the verified `call` and `estimateGasDetailed` at the
     verified head. A call that would revert is shown so and not sent;
   - what the call does now: its verified trace at the head (the engine's
-    `debug_traceCall`), the account's currency and tokens sent and received,
-    the rights it grants, the contracts it reaches, a delegate call into
-    unknown code flagged, each labelled as proven at that block and not at
-    inclusion; where a description says otherwise, a loud warning, the call
-    still signable (owner's decisions, 2026-11-26, #240; docs/clear-signing.md,
-    *Phase B*);
+    `debug_traceCall`; a Safe's transaction traced as the Safe's own call),
+    the account's currency and tokens sent and received, the rights it
+    grants, the contracts it reaches, a delegate call into code the wallet
+    cannot name marked, its revert, each labelled as proven at that block and
+    not at inclusion; where a description says otherwise, a loud warning,
+    the call still signable (owner's decisions, 2026-11-26, #240;
+    docs/clear-signing.md, *Phase B*, which also says how tokens are named
+    there);
   - a token's symbol and decimals as the built-in list pins them, or as the
     contract states them in a verified call, marked as its claim;
   - the fee, as Send works it out: the verified nonce, `feeHistory`, the

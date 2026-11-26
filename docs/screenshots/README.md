@@ -26,6 +26,7 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 | [dApp transaction](#dapp-transaction) | `dapp-transaction/` | 30 |
 | [Debug](#debug) | `debug/` | 6 |
 | [Add account from the same phrase](#derive-account) | `derive-account/` | 10 |
+| [First start (dialog)](#first-run-dialog) | `first-run-dialog/` | 2 |
 | [Gnosis Pay account](#gnosis-pay) | `gnosis-pay/` | 36 |
 | [Send from another wallet](#handoff) | `handoff/` | 18 |
 | [Import phrase or key](#mnemonic-import) | `mnemonic-import/` | 15 |
@@ -481,6 +482,14 @@ If the folder grows too much, there are two levers, both the owner's. Deleting t
 <a href="derive-account/added-dark.png"><img src="derive-account/added-dark.png" width="206" alt="added-dark"></a>
 <a href="derive-account/unavailable.png"><img src="derive-account/unavailable.png" width="206" alt="unavailable"></a>
 <a href="derive-account/loading.png"><img src="derive-account/loading.png" width="206" alt="loading"></a>
+
+<a name="first-run-dialog"></a>
+## First start (dialog)
+
+`first-run-dialog/`, 2 states: `notice`, `notice-dark`
+
+<a href="first-run-dialog/notice.png"><img src="first-run-dialog/notice.png" width="206" alt="notice"></a>
+<a href="first-run-dialog/notice-dark.png"><img src="first-run-dialog/notice-dark.png" width="206" alt="notice-dark"></a>
 
 <a name="gnosis-pay"></a>
 ## Gnosis Pay account

@@ -1,5 +1,6 @@
 package eth.serotine.ui
 
+import eth.serotine.ui.firstrun.firstRunDialogPreviews
 import eth.serotine.ui.accountdetail.accountDetailScreenPreviews
 import eth.serotine.ui.accountdetail.simpleAccountDetailScreenPreviews
 import eth.serotine.ui.accounts.accountsScreenPreviews
@@ -98,6 +99,7 @@ internal object Screens {
     val perApp = Screen("per-app", "Per-app addresses", perAppScreenPreviews)
     val receive = Screen("receive", "Receive", receiveScreenPreviews)
     val removeAccountDialog = Screen("remove-account-dialog", "Remove account (dialog)", removeAccountDialogPreviews)
+    val firstRunDialog = Screen("first-run-dialog", "First start (dialog)", firstRunDialogPreviews)
     val renameAccountDialog = Screen("rename-account-dialog", "Rename account (dialog)", renameAccountDialogPreviews)
     val safeImport = Screen("safe-import", "Import Safe", safeImportScreenPreviews)
     val safePropose = Screen("safe-propose", "Propose Safe transaction", safeProposeScreenPreviews)
@@ -158,6 +160,7 @@ internal object Screens {
         dappTransaction,
         debug,
         deriveAccount,
+        firstRunDialog,
         gnosisPay,
         handoff,
         mnemonicImport,

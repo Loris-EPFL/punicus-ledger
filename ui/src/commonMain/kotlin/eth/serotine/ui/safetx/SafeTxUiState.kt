@@ -137,6 +137,8 @@ sealed interface SafeTxUiState {
         val feeDetail: String,
         val balance: BalanceChange,
         val simulation: String,
+        /** The block the run reviewed ran at, which a trace is held against; null where it does not say. */
+        val runBlock: Long? = null,
         val unlock: UnlockStep,
         val confirmations: String? = null,
         val pending: String? = null,

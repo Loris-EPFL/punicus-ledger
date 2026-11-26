@@ -38,8 +38,10 @@ data class TraceSection(
     val provenAt: String? = null,
     /** The block it was proven at, which a screen holds against its own run's. */
     val block: Long? = null,
-    /** [provenAt] in simple mode's block-free words: when it was traced in place of the block. */
+    /** [provenAt] in simple mode's block-free words: how long ago it was traced in place of the block. */
     val simpleProvenAt: String? = null,
+    /** When it was traced, in unix seconds: what [simpleProvenAt] is dated from. */
+    val tracedAt: Long? = null,
     /** What the run leaves out, where the screen says so (a Safe's call: [TraceText.SAFE_CALL_NOTE]). */
     val note: String? = null,
     /** The account's currency and tokens sent and received, each with its counterparty. */
@@ -84,6 +86,10 @@ object TraceText {
     /** The trace reverts at the very block its run did not: not the head moving, and Punicus cannot tell why. */
     const val REVERTS_AT_THE_RUNS_BLOCK = "The trace reverts at the block the verified run below did not: Punicus " +
         "cannot tell why. Do not send it unless you know why."
+
+    /** Simple mode's [TraceSection.provenAt]: the trace's age at [now], both in unix seconds, in place of its block. */
+    fun simpleProvenAt(tracedAt: Long, now: Long): String =
+        "Proven at the verified head, traced ${agoText(tracedAt, now)}: what it does now, not when it is mined."
 
     /** At most this many lines of each kind are shown; how many more there are is said. */
     const val MAX_LINES = 40
@@ -135,9 +141,8 @@ object TraceText {
                 // The reason is the called contract's own text: escaped, cut, and said to be its words.
                 revert.reason?.let { "It reverts. The contract's reason: \"${shown(it)}\"" } ?: "It reverts (${shown(revert.error)})."
             },
-            simpleProvenAt = tracedAt?.let {
-                "Proven at the verified head, traced ${ClearSignFormatter.utc(it)}: what it does now, not when it is mined."
-            },
+            tracedAt = tracedAt,
+            simpleProvenAt = tracedAt?.let { simpleProvenAt(it, it) },
             unread = effects.unreadLogs.takeIf { it > 0 }?.let {
                 "$it of its logs look like token events but are not their exact encoding, so they are not read."
             },

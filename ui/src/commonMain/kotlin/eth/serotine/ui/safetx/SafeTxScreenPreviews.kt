@@ -54,7 +54,8 @@ private val usdcTransfer = SafeTxActionItem(
 private val tracedTransfer = usdcTransfer.copy(
     trace = TraceSection(
         provenAt = "Proven at block 7,412,903, at the verified head: what it does now, not when it is mined.",
-        simpleProvenAt = "Proven at the verified head, traced 2026-11-26 14:05:03Z: what it does now, not when it is mined.",
+        simpleProvenAt = "Proven at the verified head, traced 12 s ago: what it does now, not when it is mined.",
+        note = TraceText.SAFE_CALL_NOTE,
         moves = listOf("Sends 40 USDC to $FRIEND"),
         contracts = listOf("USDC ($USDC)"),
         canRetry = true,
@@ -773,6 +774,8 @@ internal val safeTxScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("tracing") { SafeTxTracingPreview() },
     ScreenPreview("not-traced-here") { SafeTxNotTracedHerePreview() },
     ScreenPreview("review-trace-disagrees") { SafeTxReviewTraceDisagreesPreview() },
+    ScreenPreview("traced-again") { SafeTxTracedAgainPreview() },
+    ScreenPreview("not-traced-try-again") { SafeTxNotTracedTryAgainPreview() },
     ScreenPreview("share") { SafeTxSharePreview() },
     ScreenPreview("share-as-text") { SafeTxShareAsTextPreview() },
     ScreenPreview("signed") { SafeTxSignedPreview() },
@@ -846,3 +849,16 @@ private fun SafeTxNotTracedHerePreview() =
 @Preview
 @Composable
 private fun SafeTxReviewTraceDisagreesPreview() = SafeTxPreview(review.copy(action = tracedTransferDisagrees))
+
+@Preview
+@Composable
+private fun SafeTxTracedAgainPreview() =
+    SafeTxPreview(overview.copy(action = tracedTransferDisagrees.copy(trace = tracedTransferDisagrees.trace!!.copy(tracing = true))))
+
+@Preview
+@Composable
+private fun SafeTxNotTracedTryAgainPreview() = SafeTxPreview(
+    overview.copy(
+        action = usdcTransfer.copy(trace = TraceSection(notTraced = "Not traced: the light client is still syncing.", canRetry = true)),
+    ),
+)

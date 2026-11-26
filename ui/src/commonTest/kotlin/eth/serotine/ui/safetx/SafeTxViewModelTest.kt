@@ -131,6 +131,8 @@ class SafeTxViewModelTest {
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
     private val traced = mutableListOf<Triple<Address, Address, UInt256>>()
+    private var traceWaits: suspend () -> Unit = {}
+    private var unproven = false
     private var traceAnswer: eth.serotine.domain.repository.CallTraceReading = eth.serotine.domain.repository.CallTraceReading.NotTraced
 
     private fun TestScope.viewModel(
@@ -213,6 +215,7 @@ class SafeTxViewModelTest {
                 },
                 *deployments,
                 onRead = { reads++ },
+                unproven = { unproven },
             ),
             traceCall = eth.serotine.ui.dapptransaction.tracing(
                 object : eth.serotine.domain.repository.TokenCatalog {
@@ -220,7 +223,10 @@ class SafeTxViewModelTest {
                 },
                 backgroundScope,
                 traced,
-            ) { traceAnswer },
+            ) {
+                traceWaits()
+                traceAnswer
+            },
             formatOn = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         if (collect) backgroundScope.launch { viewModel.uiState.collect {} }
@@ -812,6 +818,71 @@ class SafeTxViewModelTest {
         assertEquals(recorded.hash, sent.hash)
         assertEquals(SentAction.SafeApproval(request), recorded.action)
         assertEquals(world.alice.address, recorded.account)
+    }
+
+    private fun reverting(block: Long) = eth.serotine.domain.repository.CallTraceReading.Traced(
+        eth.serotine.domain.model.TraceFrame(
+            eth.serotine.domain.model.TraceFrame.Type.CALL, world.safe, world.recipient, UInt256.ZERO, error = "execution reverted",
+        ),
+        block,
+    )
+
+    @Test
+    fun aTraceThatRevertsIsNotWarnedAboutBesideAnApproval() = runTest {
+        funded()
+        traceAnswer = reverting(1)
+        val viewModel = viewModel(queued(world.request(world.ether(4))))
+        viewModel.startApproval()
+        runCurrent()
+        // approveHash runs, not the call: its run says nothing of the call's revert.
+        assertEquals(emptyList(), viewModel.review.action.trace!!.warnings)
+    }
+
+    @Test
+    fun aTraceThatRevertsIsWarnedAboutBesideAnExecution() = runTest {
+        funded()
+        world.inputs.simulation = executed
+        traceAnswer = reverting(1)
+        val viewModel = viewModel(queued(world.request(world.ether(4), world.carol)))
+        viewModel.startExecution()
+        runCurrent()
+        assertEquals(listOf(TraceText.REVERTS_UNLIKE_RUN), viewModel.review.action.trace!!.warnings)
+    }
+
+    @Test
+    fun aDescriptionThatComesLaterIsWhatTheTraceIsHeldAgainst() = runTest {
+        deployments = arrayOf(wrapping)
+        unproven = true
+        val thief = Address.of("0x" + "99".repeat(20))
+        // The wrap, its WETH sent on to a thief: a disagreement only against its description.
+        traceAnswer = eth.serotine.domain.repository.CallTraceReading.Traced(
+            eth.serotine.domain.model.TraceFrame(
+                eth.serotine.domain.model.TraceFrame.Type.CALL, world.safe, weth, UInt256.ZERO,
+                logs = listOf(
+                    eth.serotine.domain.model.TraceLog(
+                        weth,
+                        listOf(
+                            "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                            "0".repeat(24) + world.safe.hex.removePrefix("0x"),
+                            "0".repeat(24) + thief.hex.removePrefix("0x"),
+                        ),
+                        "0".repeat(63) + "5",
+                    ),
+                ),
+            ),
+            77,
+        )
+        val engine = kotlinx.coroutines.CompletableDeferred<Unit>()
+        traceWaits = { engine.await() }
+        val viewModel = viewModel(queued(world.request(deposit(weth))))
+        // The code could not be checked at first: no claims. Then it can, while the trace still runs.
+        unproven = false
+        viewModel.checkAgain()
+        runCurrent()
+        engine.complete(Unit)
+        runCurrent()
+        assertEquals("Wrap", viewModel.overview.action.title)
+        assertEquals(2, viewModel.overview.action.trace!!.warnings.size)
     }
 
     @Test

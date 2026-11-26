@@ -31,7 +31,7 @@ fun SimpleSafeTxScreen(
     onCopy = onCopy,
     onShareText = onShareText,
     modifier = modifier,
-    details = state.details(),
+    details = state.details() + state.traceBlock(),
     syncLine = syncLine,
 )
 
@@ -99,6 +99,19 @@ private fun SafeTxUiState.details(): List<String> = when (this) {
     )
     is SafeTxUiState.Held -> listOf(safeVerifiedAt)
     else -> emptyList()
+}
+
+/** The trace's block, which simple mode says as an age: kept under *Details*. */
+private fun SafeTxUiState.traceBlock(): List<String> {
+    val action = when (this) {
+        is SafeTxUiState.Overview -> action
+        is SafeTxUiState.Signing -> action
+        is SafeTxUiState.Review -> action
+        is SafeTxUiState.DraftReview -> action
+        is SafeTxUiState.Held -> action
+        else -> null
+    }
+    return listOfNotNull(action?.trace?.takeIf { it.simpleProvenAt != null }?.provenAt)
 }
 
 /** The lines of a swap's stand that simple mode says without their block. */

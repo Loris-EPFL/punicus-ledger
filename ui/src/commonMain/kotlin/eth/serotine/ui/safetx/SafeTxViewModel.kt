@@ -635,7 +635,7 @@ class SafeTxViewModel(
         combine(context.onEach(::follow), view, step, swapCheck, heldInputs, ::Inputs)
             // The ages of what lenient mode drafts on, and a held signature's, are dated anew every second.
             .redatedWhile { inputs ->
-                inputs.held.held != null || inputs.step is Step.DraftReviewing ||
+                inputs.held.held != null || inputs.step is Step.DraftReviewing || traced.value?.tracedAt != null ||
                     (inputs.source as? Context)?.owners is SafeTxOwnersReading.LastVerified
             }
             .map { render(it.source, it.view, it.step, it.swapCheck, it.held) }
@@ -674,19 +674,29 @@ class SafeTxViewModel(
     }
 
     /** [state] with its call's verified trace, on whichever screen of it is shown. */
-    private fun withTrace(state: SafeTxUiState, trace: TraceSection?): SafeTxUiState = when (state) {
-        is SafeTxUiState.Overview -> state.copy(action = state.action.copy(trace = trace))
-        is SafeTxUiState.Signing -> state.copy(action = state.action.copy(trace = trace))
-        // A revert the trace shows while the run reviewed did not: the chain moved between the two.
-        is SafeTxUiState.Review -> state.copy(
-            action = state.action.copy(
-                trace = trace?.takeIf { it.revert != null && TraceText.REVERTS_UNLIKE_RUN !in it.warnings }
-                    ?.let { it.copy(warnings = it.warnings + TraceText.REVERTS_UNLIKE_RUN) } ?: trace,
-            ),
-        )
-        is SafeTxUiState.DraftReview -> state.copy(action = state.action.copy(trace = trace))
-        is SafeTxUiState.Held -> state.copy(action = state.action.copy(trace = trace))
-        else -> state
+    private fun withTrace(state: SafeTxUiState, section: TraceSection?): SafeTxUiState {
+        // Its age in simple mode, dated anew as the screen is (redatedWhile).
+        val trace = section?.let { s -> s.tracedAt?.let { s.copy(simpleProvenAt = TraceText.simpleProvenAt(it, clock())) } ?: s }
+        return when (state) {
+            is SafeTxUiState.Overview -> state.copy(action = state.action.copy(trace = trace))
+            is SafeTxUiState.Signing -> state.copy(action = state.action.copy(trace = trace))
+            is SafeTxUiState.Review -> state.copy(action = state.action.copy(trace = trace?.let { withRun(it, state) }))
+            is SafeTxUiState.DraftReview -> state.copy(action = state.action.copy(trace = trace))
+            is SafeTxUiState.Held -> state.copy(action = state.action.copy(trace = trace))
+            else -> state
+        }
+    }
+
+    /**
+     * [trace] beside the execution reviewed, which runs the call itself: a revert the trace shows while the run did
+     * not is warned about, as the chain having moved where their blocks differ, and as not known where they are the
+     * same. An approval's run is `approveHash`, not the call, and says nothing of it: no warning there.
+     */
+    private fun withRun(trace: TraceSection, review: SafeTxUiState.Review): TraceSection {
+        if (trace.revert == null || review.kind != ReviewKind.EXECUTION) return trace
+        val warning = if (review.runBlock != null && review.runBlock == trace.block) TraceText.REVERTS_AT_THE_RUNS_BLOCK
+        else TraceText.REVERTS_UNLIKE_RUN
+        return trace.copy(warnings = trace.warnings + warning)
     }
 
     /**
@@ -1212,6 +1222,8 @@ class SafeTxViewModel(
         view.update { it.copy(message = null, sharing = false, imported = false) }
         val quoting = Step.Quoting(kind, account, level)
         step.value = quoting
+        // An execution runs the call itself: its trace is made anew with its quote, as D6's is.
+        if (kind == ReviewKind.EXECUTION) now?.found?.tx?.let { trace(it, again = true) }
         hiddenWhileQuoting = false
         job = viewModelScope.launch {
             // Its age runs from its first read, not from its answer: the figures are as old as that.
@@ -1245,6 +1257,7 @@ class SafeTxViewModel(
         // transaction as last shown is what is quoted again, and the quote checks the chain anew.
         val request = (now ?: lastContext)?.request ?: return
         step.value = review.copy(refreshing = true, hidden = false, unlock = review.unlock.copy(error = null))
+        if (review.kind == ReviewKind.EXECUTION) (now ?: lastContext)?.let { trace(it.found.tx, again = true) }
         job = viewModelScope.launch {
             var readFrom = timeSource.markNow()
             val next = quoted(review.kind, request, account, level) { readFrom = timeSource.markNow() }
@@ -1575,6 +1588,10 @@ class SafeTxViewModel(
                 lastContext = source
                 describe(source.found.tx)
                 trace(source.found.tx)
+                // A trace not had for now (the light client catching up) is asked again as the screen is read again.
+                if (traced.value?.let { it.notTraced != null && it.canRetry && !it.tracing } == true && traceJob?.isActive != true) {
+                    trace(source.found.tx, again = true)
+                }
             }
             Queued.Unreadable, is Queued.Missing -> step.update { current ->
                 // Bytes a peer may have taken stay to be sent again (as back() keeps them) until the
@@ -1628,8 +1645,9 @@ class SafeTxViewModel(
             val changed = answer != description.value
             description.value = answer
             // A description that comes, or changes, after the call was traced is what the trace is held to now.
-            // A trace still waiting for this description reads it when it runs.
-            if (changed && tracedTx != null && traceJob?.isActive != true) trace(tx, again = true)
+            // Held against the description as it is now: a trace still running is asked again (the use case waits
+            // for the engine's run already going), one waiting for this lookup reads it.
+            if (changed && tracedTx != null) trace(tx, again = true)
         }
     }
 
@@ -2040,6 +2058,7 @@ class SafeTxViewModel(
             action = action,
             nonce = nonce,
             kind = step.kind,
+            runBlock = call.simulationBlock,
             accounts = accounts.map { choice(context, it) },
             account = Eip55.format(step.account),
             fee = call.level,

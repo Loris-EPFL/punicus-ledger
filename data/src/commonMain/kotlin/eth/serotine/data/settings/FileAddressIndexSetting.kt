@@ -39,7 +39,8 @@ class FileAddressIndexSetting(
         decode = { version, text ->
             val stored = JSON.decodeFromString(StoredChoice.serializer(), text)
             // A key that is not an address is damage, set aside: never read as "off" silently, nor as some key.
-            val keys = if (version < FORMAT_VERSION) listOfNotNull(stored.importer) else stored.importers
+            // Format 1's one key, or its off (null).
+            val keys = if (version < FORMAT_VERSION) stored.importer?.let(::listOf) else stored.importers
             val importers = keys?.mapTo(LinkedHashSet()) { requireNotNull(Address.parse(it)) }
             // On names one key at least; only an off is ever written for a damaged choice.
             require(importers == null || importers.isNotEmpty()) { "on for no key" }
@@ -85,7 +86,8 @@ class FileAddressIndexSetting(
         }
 
     override suspend fun trust(importers: Set<Address>?): Boolean {
-        require(importers == null || importers.isNotEmpty()) { "on for one key at least, or off" }
+        // On for no key is no choice the port knows: not saved, never thrown (the port's contract).
+        if (importers?.isEmpty() == true) return false
         return file.change(notSaved = false) { _ -> Decision(true, next = Saved(chosen = true, importers = importers)) }
     }
 

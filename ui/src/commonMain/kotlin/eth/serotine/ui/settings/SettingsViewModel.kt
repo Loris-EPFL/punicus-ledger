@@ -442,7 +442,8 @@ class SettingsViewModel(
                 AddressIndexMissing.NO_READER -> "This build's engine has no Swarm reader, so the index cannot be " +
                     "read here. The history stays the light client's log index."
                 AddressIndexMissing.READER_NOT_KNOWN -> "The engine says whether this build reads Swarm once " +
-                    "Ethereum's light client runs: while Ethereum is on in Networks and one of your accounts is on it."
+                    "Ethereum's or Gnosis Chain's light client runs: while one of them is on in Networks and one of " +
+                    "your accounts is on it."
                 AddressIndexMissing.CHOICE_UNREADABLE -> "Your saved choice cannot be read, so it is taken as off. " +
                     "Punicus keeps trying to read it, and the switch works again once it can."
             }

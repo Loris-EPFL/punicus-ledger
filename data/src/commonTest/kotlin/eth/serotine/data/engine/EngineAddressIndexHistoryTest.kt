@@ -68,7 +68,7 @@ class EngineAddressIndexHistoryTest {
     private val chain = FakeChain()
 
     private fun TestScope.history(of: AddressHistoryChain? = chain) =
-        EngineAddressIndexHistory(Network.ETHEREUM, of, StandardTestDispatcher(testScheduler), 1.seconds)
+        EngineAddressIndexHistory(mapOf(Network.ETHEREUM to of), StandardTestDispatcher(testScheduler), 1.seconds)
 
     private val entry = AddressIndexEntry(26_300_000, 3, setOf(AddressIndexRole.FROM, AddressIndexRole.TRACE))
 
@@ -431,6 +431,25 @@ class EngineAddressIndexHistoryTest {
                 AddressIndexRefusal.CheckpointAlarm("checkpoint table alarm: the table and the beacon chain disagree"),
             ),
             history().verify(Network.ETHEREUM, alice, listOf(entry)),
+        )
+    }
+
+    @Test
+    fun eachNetworkIsReadThroughItsOwnLightClientAndOneNotServedIsRefused() = runTest {
+        val gnosis = FakeChain()
+        val history = EngineAddressIndexHistory(
+            mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis),
+            StandardTestDispatcher(testScheduler),
+            1.seconds,
+        )
+
+        history.page(Network.GNOSIS, alice, AddressIndexQuery())
+
+        assertTrue(chain.pagesAsked.isEmpty(), "nothing asked of Ethereum's light client")
+        assertEquals(1, gnosis.pagesAsked.size)
+        assertEquals(
+            AddressIndexReading.Refused(AddressIndexRefusal.NetworkNotServed(Network.SEPOLIA)),
+            history.page(Network.SEPOLIA, alice, AddressIndexQuery()),
         )
     }
 

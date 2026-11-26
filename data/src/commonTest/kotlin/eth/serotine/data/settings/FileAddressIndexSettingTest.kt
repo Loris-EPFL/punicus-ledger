@@ -64,6 +64,13 @@ class FileAddressIndexSettingTest {
     }
 
     @Test
+    fun anOffOfFormat1StaysAnOff() = runTest {
+        write("""{"version":1,"importer":null}""")
+
+        assertEquals(AddressIndexChoice.Chosen(importers = null), setting().observe().first(), "not set aside")
+    }
+
+    @Test
     fun aChoiceOfFormat1NamesItsOneKeyAndIsWrittenBackAsFormat2() = runTest {
         val key = Address.of("0x" + "1e".repeat(20))
         val gnosisKey = Address.of("0x" + "9e".repeat(20))

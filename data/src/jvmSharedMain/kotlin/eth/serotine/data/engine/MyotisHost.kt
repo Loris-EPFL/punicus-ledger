@@ -223,12 +223,12 @@ class MyotisHost private constructor(
     val ensNfts: EnsNfts = routed.ensNfts
 
     /**
-     * An address's history from the addr1 index on Swarm, which the engine reads and checks (issue #334): mainnet's
-     * index, so Ethereum's light client alone serves it.
+     * An address's history from the addr1 index on Swarm, which the engine reads and checks (issue #334): Ethereum's
+     * and Gnosis Chain's, each served by its own light client, each with its own importer's index (owner's decisions,
+     * 2026-11-25). Sepolia has no index pinned, and is not served.
      */
     val addressIndex: AddressIndexHistory = EngineAddressIndexHistory(
-        Network.ETHEREUM,
-        nodes.getValue(Network.ETHEREUM).addressChain,
+        listOf(Network.ETHEREUM, Network.GNOSIS).associateWith { nodes.getValue(it).addressChain },
         Dispatchers.IO,
         POLL_INTERVAL,
     )
@@ -486,9 +486,9 @@ class MyotisHost private constructor(
         }
 
         /**
-         * The handle's address history (Ethereum's alone is asked), each page and check written to [apiLog] when there
-         * is one: they are the heaviest requests the app makes (Swarm, archive peers, a check up to about 90 s). Its
-         * status reads are [chain]'s, shared and logged once, not a call and a log line of their own each time the
+         * The handle's address history (Ethereum's and Gnosis Chain's are asked), each page and check written to
+         * [apiLog] when there is one: they are the heaviest requests the app makes (Swarm, archive peers, a check up
+         * to about 90 s). Its status reads are [chain]'s, shared and logged once, not a call and a log line of their own each time the
          * adapter waits for the engine's word on its reader.
          */
         val addressChain: AddressHistoryChain = object : AddressHistoryChain by (

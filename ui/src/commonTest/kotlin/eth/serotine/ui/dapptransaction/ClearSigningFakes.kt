@@ -78,4 +78,6 @@ internal fun tracing(
     },
     wrappedNative = { null },
     scope = scope,
+    // Read where it is asked, so that the tests' virtual time sees it.
+    readOn = kotlinx.coroutines.Dispatchers.Unconfined,
 )

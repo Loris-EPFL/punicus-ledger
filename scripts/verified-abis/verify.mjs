@@ -137,6 +137,10 @@ for (const manifestFile of fs.readdirSync(path.join(vendor, 'contracts')).sort()
       e.inputs.map(canonical).join(',') === fragment.inputs.map((i) => i.format('sighash')).join(','));
     functions.push({ selector: fragment.selector, name: fragment.name, inputs: entry.inputs.map(parameter) });
   });
+  // ethers skips a fragment it cannot read, and a repeated signature, without an error: nothing may drop out.
+  if (functions.length !== abi.filter((e) => e.type === 'function').length) {
+    throw new Error(`${manifestFile}: ${abi.filter((e) => e.type === 'function').length} functions compiled, ${functions.length} read`);
+  }
   functions.sort((a, b) => (a.selector < b.selector ? -1 : a.selector > b.selector ? 1 : 0));
   verified.push({
     chainId: manifest.chainId,

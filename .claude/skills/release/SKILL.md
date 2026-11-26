@@ -87,14 +87,13 @@ descriptors are unchanged".
    exact Sourcify match: move such a contract to `notPinned` in
    `contracts.json`, saying why, and run it again. Move a contract of
    `notPinned` whose match has become exact onto the list.
-2. Steps 3 before this one where the list moved. Then `cd
-   scripts/verified-abis && npm ci --ignore-scripts && node verify.mjs`:
-   every contract recompiled, an exact match each. Read the diff of
-   `verified.json`: a moved code hash or function is a contract changed.
-3. With a `myotis-rpcd` per network, `python3 -I
+2. With a `myotis-rpcd` per network, `python3 -I
    scripts/verified-abis/check_code_hashes.py --write ETHEREUM=… GNOSIS=…
-   SEPOLIA=…` pins each contract's code hash from the chain in
-   `contracts.json`, which `node verify.mjs` then holds the vendored code to.
+   SEPOLIA=…`: each contract's code hash pinned from the chain in
+   `contracts.json`. A moved hash is a contract changed: say which.
+3. `cd scripts/verified-abis && npm ci --ignore-scripts && node verify.mjs`:
+   every contract recompiled, an exact match each, held to its pinned hash.
+   Read the diff of `verified.json`: a moved function is a contract changed.
 4. `python3 -I scripts/verified-abis/generate.py`, then commit what it
    writes.
 

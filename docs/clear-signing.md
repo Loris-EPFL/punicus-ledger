@@ -652,10 +652,16 @@ its parameters, from the contract's own verified source.
   which bytes are a call. So A3's flag "at every depth" does not reach
   there: the Delay module's `execTransactionFromModule(to, value, data,
   operation)` carrying an `approve` is named, not described, and its trace
-  is clean (the call is only queued). As applied: a `bytes` parameter that
-  starts with an approval's selector (A3's list) is flagged as one, loudly;
-  any other is shown as hex. Whether such calls are read further, or wait
-  for descriptors of our own, is the owner's.
+  is clean (the call is only queued). As applied, warnings only, nothing
+  described and nothing unlocked: a `bytes` value that starts with an
+  approval's selector (A3's list) is flagged as one, loudly; a MultiSend
+  batch (the call itself, or a `bytes` value that is one) has its packed
+  entries read for an approval and for a delegate call (operation 1), and
+  one not read exactly counts as holding both; a parameter its verified
+  source names `operation` set to anything but 0 is flagged as a delegate
+  call (the author's word, used only to warn). Any other value is shown as
+  hex. Whether such calls are read further, or wait for descriptors of our
+  own, is the owner's.
 - **No claims to hold a trace against.** A name is no description: the trace
   of a call decoded this way shows its effects alone, as for a call not
   decoded (*Phase B*, *What the trace is held against*). A parameter named
@@ -725,6 +731,8 @@ entry its network, address, name and why it is there):
 - **Decoded exactly or not at all**: the data must be the canonical ABI
   encoding of the function's parameters (A3's decoder); anything else is not
   decoded.
+- **Through a proxy**: where the call reaches its contract through an
+  EIP-1167 proxy, the screen says so, and which implementation runs.
 - **Shown**: "Calls `name` on Name (address)", then each parameter by its
   name and type with its value raw (an address checksummed and named where
   the wallet names it, bytes as hex, a nested call not decoded further),

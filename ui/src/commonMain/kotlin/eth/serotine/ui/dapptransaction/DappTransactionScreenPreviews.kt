@@ -62,6 +62,127 @@ private val notDecoded = payment.copy(
     warnings = listOf(DappTransactionViewModel.NOT_DECODED),
 )
 
+private const val POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
+private const val WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+private const val DESCRIBED_BY = "Described by Aave DAO, ${DappTransactionViewModel.DESCRIBED_BY}"
+
+/** A call the app does not decode, described by the Aave v3 Pool's built-in descriptor. */
+private val described = notDecoded.copy(
+    to = POOL,
+    value = "0 ETH",
+    network = "On Ethereum, real funds",
+    meaningFields = emptyList(),
+    warnings = emptyList(),
+    quote = listOf(
+        SignInField("Fee, at most", "0.00412 ETH"),
+        SignInField("Left in the account, at least", "2.31877 ETH"),
+        SignInField("Verified run", "Runs without reverting at block 26,494,404"),
+        SignInField("Gas limit", "260000"),
+        SignInField("Nonce", "41"),
+    ),
+    dataHex = "617ba037000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2" +
+        "00000000000000000000000000000000000000000000000014d1120d7b160000" +
+        "0000000000000000000000005aaeb6053f3e94c9b9a09f33669435e7ef1beaed" +
+        "0000000000000000000000000000000000000000000000000000000000000000",
+    dataSize = "132 bytes",
+    described = ClearSignedSection(
+        intent = "Supply",
+        describedBy = DESCRIBED_BY,
+        rows = listOf(
+            ClearSignedRow(0, "Amount to supply", "1.5 WETH", raw = "1500000000000000000", note = null),
+            ClearSignedRow(0, "Collateral recipient", ACCOUNT, raw = null, note = null),
+        ),
+        otherParameters = listOf(
+            SignInField("asset", WETH),
+            SignInField("referralCode", "0"),
+        ),
+    ),
+)
+
+private val describedNested = described.copy(
+    described = ClearSignedSection(
+        intent = "Multicall",
+        describedBy = DESCRIBED_BY,
+        rows = listOf(
+            ClearSignedRow(0, "Call", "Supply, described by Aave DAO", raw = "0x617ba037…0000", note = null),
+            ClearSignedRow(1, "Amount to supply", "1.5 WETH", raw = "1500000000000000000", note = null),
+            ClearSignedRow(1, "Collateral recipient", ACCOUNT, raw = null, note = null),
+            ClearSignedRow(1, "Other parameter · asset", WETH, raw = null, note = null),
+            ClearSignedRow(1, "Other parameter · referralCode", "0", raw = null, note = null),
+            ClearSignedRow(
+                0, "Call", "Borrow, described by Aave DAO", raw = "0xa415bcad…0000",
+                note = null,
+            ),
+            ClearSignedRow(1, "Amount to borrow", "500 USDC", raw = "500000000", note = null),
+            ClearSignedRow(1, "Interest rate mode", "variable", raw = "2", note = null),
+        ),
+        otherParameters = emptyList(),
+    ),
+)
+
+private val describedPartly = describedNested.copy(
+    warnings = listOf(DappTransactionViewModel.PARTLY_NOT_DECODED),
+    described = describedNested.described!!.copy(
+        rows = describedNested.described!!.rows.take(5) + ClearSignedRow(
+            0, "Call", "A call to $POOL, not decoded", raw = "0xab9c4b5d…0000",
+            note = DappTransactionViewModel.NESTED_NOT_DECODED,
+        ),
+        partly = true,
+    ),
+)
+
+private val describedApproval = described.copy(
+    to = "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    warnings = listOf(DappTransactionViewModel.APPROVAL_NOTE),
+    described = ClearSignedSection(
+        intent = "Approve",
+        describedBy = "Described by Uniswap, ${DappTransactionViewModel.DESCRIBED_BY}",
+        rows = listOf(
+            ClearSignedRow(0, "Spender", RECIPIENT, raw = null, note = null),
+            ClearSignedRow(0, "Amount", "Unlimited WETH", raw = "1461501637330902918203684832716283019655932542975", note = null),
+            ClearSignedRow(0, "Expiration", "2026-12-31 00:00:00Z", raw = "1798675200", note = null),
+        ),
+        otherParameters = listOf(SignInField("token", WETH)),
+    ),
+)
+
+private val describedUnlisted = described.copy(
+    described = described.described!!.copy(
+        rows = listOf(
+            ClearSignedRow(
+                0, "Amount to supply", "1500000 (raw units) of 0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD",
+                raw = "1500000",
+                note = "Not a built-in one: shown by its address, never by the name it gives itself.",
+            ),
+            ClearSignedRow(0, "Collateral recipient", ACCOUNT, raw = null, note = null),
+        ),
+        otherParameters = listOf(SignInField("asset", "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD"), SignInField("referralCode", "0")),
+    ),
+)
+
+private val describing = described.copy(described = null, warnings = listOf(DappTransactionViewModel.NOT_DECODED), describing = true)
+
+private val codeNotChecked = described.copy(
+    described = null,
+    warnings = listOf(DappTransactionViewModel.NOT_DECODED),
+    meaningFields = listOf(SignInField("Function", "0x617ba037")),
+    notDescribed = DappTransactionViewModel.CODE_NOT_CHECKED,
+)
+
+private val notAsDescribed = described.copy(
+    described = null,
+    warnings = listOf(DappTransactionViewModel.NOT_DECODED),
+    meaningFields = listOf(SignInField("Function", "0x617ba037")),
+    notDescribed = DappTransactionViewModel.NOT_AS_DESCRIBED,
+)
+
+private val contractChanged = described.copy(
+    described = null,
+    warnings = listOf(DappTransactionViewModel.NOT_DECODED),
+    meaningFields = listOf(SignInField("Function", "0x617ba037")),
+    notDescribed = DappTransactionViewModel.CONTRACT_CHANGED,
+)
+
 private const val SAFE = "0x7a3B9c1E5d2F4a6B8c0D1e2F3a4B5c6D7e8F9a0B"
 private const val OWNER = "0x2B5AD5c4795c026514f8317c7a215E218DcCD6cF"
 
@@ -146,6 +267,46 @@ private fun DappTransactionApprovalPreview() = DappTransactionPreview(
 @Preview
 @Composable
 private fun DappTransactionNotDecodedPreview() = DappTransactionPreview(notDecoded)
+
+@Preview
+@Composable
+private fun DappTransactionDescribedPreview() = DappTransactionPreview(described)
+
+@Preview
+@Composable
+private fun DappTransactionDescribedDarkPreview() = DappTransactionPreview(described, darkTheme = true)
+
+@Preview
+@Composable
+private fun DappTransactionDescribedNestedPreview() = DappTransactionPreview(describedNested)
+
+@Preview
+@Composable
+private fun DappTransactionDescribedPartlyPreview() = DappTransactionPreview(describedPartly)
+
+@Preview
+@Composable
+private fun DappTransactionDescribedApprovalPreview() = DappTransactionPreview(describedApproval)
+
+@Preview
+@Composable
+private fun DappTransactionDescribedUnlistedPreview() = DappTransactionPreview(describedUnlisted)
+
+@Preview
+@Composable
+private fun DappTransactionDescribingPreview() = DappTransactionPreview(describing)
+
+@Preview
+@Composable
+private fun DappTransactionContractChangedPreview() = DappTransactionPreview(contractChanged)
+
+@Preview
+@Composable
+private fun DappTransactionCodeNotCheckedPreview() = DappTransactionPreview(codeNotChecked)
+
+@Preview
+@Composable
+private fun DappTransactionNotAsDescribedPreview() = DappTransactionPreview(notAsDescribed)
 
 @Preview
 @Composable
@@ -242,6 +403,16 @@ internal val dappTransactionScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("token-transfer") { DappTransactionTokenTransferPreview() },
     ScreenPreview("approval") { DappTransactionApprovalPreview() },
     ScreenPreview("not-decoded") { DappTransactionNotDecodedPreview() },
+    ScreenPreview("described") { DappTransactionDescribedPreview() },
+    ScreenPreview("described-dark") { DappTransactionDescribedDarkPreview() },
+    ScreenPreview("described-nested") { DappTransactionDescribedNestedPreview() },
+    ScreenPreview("described-partly") { DappTransactionDescribedPartlyPreview() },
+    ScreenPreview("described-approval") { DappTransactionDescribedApprovalPreview() },
+    ScreenPreview("described-unlisted") { DappTransactionDescribedUnlistedPreview() },
+    ScreenPreview("describing") { DappTransactionDescribingPreview() },
+    ScreenPreview("contract-changed") { DappTransactionContractChangedPreview() },
+    ScreenPreview("code-not-checked") { DappTransactionCodeNotCheckedPreview() },
+    ScreenPreview("not-as-described") { DappTransactionNotAsDescribedPreview() },
     ScreenPreview("quoting") { DappTransactionQuotingPreview() },
     ScreenPreview("not-quoted") { DappTransactionNotQuotedPreview() },
     ScreenPreview("refused") { DappTransactionRefusedPreview() },

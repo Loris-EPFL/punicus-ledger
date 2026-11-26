@@ -86,6 +86,7 @@ class DappSafeTransactionViewModelTest {
         val vm = DappTransactionViewModel(
             "t/$id",
             ObserveDappMessages(requests, world.accounts, networks, world.catalog, MemoryAliases(), clock = { now }),
+            describing(world.catalog),
             QuoteDappTransaction(
                 requests, world.accounts, networks, world.catalog, world.balances, world.inputs, world.sent, history,
                 outbox = Outbox.None,
@@ -132,6 +133,7 @@ class DappSafeTransactionViewModelTest {
         val vm = DappTransactionViewModel(
             "t/1",
             ObserveDappMessages(requests, gnosis.accounts, on, gnosis.catalog, MemoryAliases(), clock = { now }),
+            describing(gnosis.catalog),
             QuoteDappTransaction(
                 requests, gnosis.accounts, on, gnosis.catalog, gnosis.balances, gnosis.inputs, gnosis.sent, history,
                 outbox = Outbox.None,

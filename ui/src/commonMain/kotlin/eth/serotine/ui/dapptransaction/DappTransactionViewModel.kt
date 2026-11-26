@@ -4,7 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
+import eth.serotine.domain.model.ClearSignFormatter
+import eth.serotine.domain.model.ClearSignResult
+import eth.serotine.domain.model.ClearSignedField
 import eth.serotine.domain.model.DappCallMeaning
+import eth.serotine.domain.model.NotCoveredReason
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SyncPolicy
 import eth.serotine.domain.model.Token
@@ -33,6 +37,7 @@ import eth.serotine.domain.usecase.DappSignRefusal
 import eth.serotine.domain.usecase.DappTransactionQuote
 import eth.serotine.domain.usecase.DappTransactionQuoting
 import eth.serotine.domain.usecase.DappTransactionSending
+import eth.serotine.domain.usecase.DescribeClearSigning
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveDappMessages
 import eth.serotine.domain.usecase.QuoteDappTransaction
@@ -75,6 +80,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -84,6 +90,26 @@ import kotlin.time.TimeSource
 
 /** What a tap on a greyed-out item says. */
 data class TransactionExplanation(val title: String, val reason: String)
+
+/** A call described by a built-in descriptor, display-ready (docs/clear-signing.md, A5). */
+data class ClearSignedSection(
+    /** What it does, in the descriptor's words, its placeholders filled in where they could be. */
+    val intent: String,
+    /** Whose words these are, as the descriptor states it, and what that does and does not prove. */
+    val describedBy: String,
+    /** What it shows, in the descriptor's order; a nested call's rows (its other parameters among them) indented. */
+    val rows: List<ClearSignedRow>,
+    /** Every parameter no row shows, raw: a descriptor orders and labels, it hides nothing. */
+    val otherParameters: List<SignInField>,
+    /** Whether a call inside it is not decoded: its call data is then only partly described. */
+    val partly: Boolean = false,
+)
+
+/**
+ * One row of a [ClearSignedSection] at its nesting [level]: the descriptor's [label] and [value], the decoded
+ * [raw] value where it differs from what is shown, and a [note] where something about it needs saying.
+ */
+data class ClearSignedRow(val level: Int, val label: String, val value: String, val raw: String?, val note: String?)
 
 /**
  * A dApp's transaction (docs/walletconnect.md, screen D6) as display-ready values: who asks (the
@@ -121,6 +147,15 @@ data class DappTransactionUiState(
     /** What the call does, in a sentence; null when it is not decoded. */
     val meaning: String? = null,
     val meaningFields: List<SignInField> = emptyList(),
+    /**
+     * A call the app does not decode, described by a built-in ERC-7730 descriptor bound to its verified code
+     * (docs/clear-signing.md, A5); null when none describes it.
+     */
+    val described: ClearSignedSection? = null,
+    /** Being looked up in the built-in descriptors, its code being checked. */
+    val describing: Boolean = false,
+    /** Why a built-in descriptor that covers the contract does not describe this call, where that says more. */
+    val notDescribed: String? = null,
     /** The call data as hex, when there is some, with its size. */
     val dataHex: String? = null,
     val dataSize: String = "",
@@ -168,6 +203,8 @@ class DappTransactionViewModel(
     /** The request, as its route names it: `topic/id`. */
     requestKey: String,
     private val observeDappMessages: ObserveDappMessages,
+    /** The built-in descriptors, for a call the app does not decode itself (docs/clear-signing.md). */
+    private val describeClearSigning: DescribeClearSigning,
     private val quoteDappTransaction: QuoteDappTransaction,
     private val sendDappTransaction: SendDappTransaction,
     private val proposeDappSafeTx: ProposeDappSafeTx,
@@ -229,6 +266,43 @@ class DappTransactionViewModel(
 
     private val local = MutableStateFlow(Local())
 
+    /** What the built-in descriptors say of the call, once asked; null before. Asked once per screen. */
+    private val description = MutableStateFlow<ClearSignResult?>(null)
+    private val describing = MutableStateFlow(false)
+
+    // Asked first by the quote the screen opens with (requote, below), then again with each new one.
+    private var describeJob: Job? = null
+
+    /**
+     * Asks the built-in descriptors what the call does, for a call the app does not decode itself: at opening,
+     * and again with each quote (a contract can be upgraded while the request waits, and a check that could not
+     * be made a moment ago may be made now). The last answer stays on screen while the next is read; one that
+     * fails leaves the call not decoded, with no reason claimed.
+     */
+    private fun describe() {
+        if (describeJob?.isActive == true) return
+        describeJob = viewModelScope.launch {
+            val review = observeDappMessages()
+                .mapNotNull { reviews -> reviews.find { it.request.id == id && it.content is DappSignContent.Transaction } }
+                .first()
+            val transaction = (review.content as DappSignContent.Transaction).transaction
+            val network = review.request.network ?: return@launch
+            if (transaction.meaning !is DappCallMeaning.NotDecoded) return@launch
+            describing.value = true
+            description.value = try {
+                describeClearSigning.call(network, review.address, transaction.to, transaction.value, transaction.data)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } finally {
+                describing.value = false
+            }
+        }
+    }
+
+    private val described = combine(description, describing) { result, busy -> result to busy }
+
     private val shownReview = observeDappMessages()
         .map { reviews ->
             reviews.find { it.request.id == id && it.content is DappSignContent.Transaction }
@@ -236,13 +310,14 @@ class DappTransactionViewModel(
         }
         .distinctUntilChanged()
 
-    val uiState: StateFlow<DappTransactionUiState> = combine(shownReview, local, ticks) { shown, local, _ ->
-        val (review, base) = shown
+    val uiState: StateFlow<DappTransactionUiState> = combine(shownReview, local, ticks, described) { shown, local, _, described ->
+        val (review, plain) = shown
             ?: return@combine if (local.notice != null && !local.done) {
                 DappTransactionUiState(loading = false, ended = true, notice = local.notice)
             } else {
                 DappTransactionUiState(loading = false, gone = true, done = local.done)
             }
+        val base = withDescription(plain, described.first, described.second)
         base.copy(
             quoting = local.quoting,
             quote = local.quote?.let { quoteLines(it, review.request.network) }
@@ -278,6 +353,7 @@ class DappTransactionViewModel(
     fun requote(note: String? = null) {
         val request = id ?: return
         if (local.value.busy || local.value.quoting) return
+        describe()
         local.update {
             it.copy(quoting = true, notQuoted = null, gasTooLow = false, unlock = it.unlock.copy(error = note))
         }
@@ -677,12 +753,39 @@ class DappTransactionViewModel(
             dataSize = DappRequestViewModel.bytesLine(transaction.dataSize),
             warnings = buildList {
                 if (transaction.meaning is DappCallMeaning.NotDecoded) add(NOT_DECODED)
-                if (transaction.meaning is DappCallMeaning.TokenApproval) add(APPROVAL_NOTE)
+                // An approval is flagged by what the call is, whatever any description says or whether one does.
+                if (transaction.meaning is DappCallMeaning.TokenApproval || ClearSignFormatter.grantsApproval(transaction.data)) {
+                    add(APPROVAL_NOTE)
+                }
             },
             refusal = review.refusal?.let { refusalLine(it) },
             fromSafe = review.account?.kind == AccountKind.SAFE,
         )
     }
+
+    /**
+     * [state] with what the built-in descriptors say of its call: a description replaces "not decoded"; an
+     * approval it finds is flagged loudly whatever the description says; a reason worth saying is said.
+     */
+    private fun withDescription(state: DappTransactionUiState, result: ClearSignResult?, busy: Boolean): DappTransactionUiState =
+        when (result) {
+            is ClearSignResult.ClearSigned -> {
+                val partly = partlyNotDecoded(result)
+                state.copy(
+                    described = describedSection(result),
+                    describing = busy,
+                    // The selector row says nothing the description does not; the call data stays below.
+                    meaningFields = emptyList(),
+                    warnings = state.warnings.filterNot { it == NOT_DECODED } +
+                        listOfNotNull(
+                            PARTLY_NOT_DECODED.takeIf { partly },
+                            APPROVAL_NOTE.takeIf { result.grantsApproval && APPROVAL_NOTE !in state.warnings },
+                        ),
+                )
+            }
+            is ClearSignResult.NotCovered -> state.copy(describing = busy, notDescribed = notDescribedLine(result.reason))
+            null -> state.copy(describing = busy)
+        }
 
     /** The network request [id] is on, as the latest review has it: Sepolia, a test network's, if it cannot be read. */
     private suspend fun requestNetwork(): Network =
@@ -750,6 +853,89 @@ class DappTransactionViewModel(
             "shown as it is. Send it only if you trust this dApp."
         const val APPROVAL_NOTE = "An approval moves nothing itself, but the spender may then take the tokens " +
             "without asking you again."
+        const val PARTLY_NOT_DECODED = "Part of this call is not decoded: a call inside it is shown raw below, and " +
+            "Punicus cannot tell what that part does. Send it only if you trust this dApp."
+        const val NESTED_NOT_DECODED = "Not decoded: Punicus cannot tell what this part does."
+        const val CONTRACT_CHANGED = "This contract changed after this release was built; its description no " +
+            "longer applies, so the call is not decoded."
+        const val CODE_NOT_CHECKED = "This contract's code could not be checked at a verified head right now, so its " +
+            "description is not used: the call is not decoded."
+        const val NOT_AS_DESCRIBED = "This call does not match its contract's description exactly, so it is not " +
+            "described: the call is not decoded."
+        const val DESCRIBED_BY = "as the descriptor states (ERC-7730 registry, reviewed for this release). Its " +
+            "words are its author's; the values are decoded here from what you sign."
+
+        /** Why a descriptor does not describe a call, where that says more than "not decoded"; null otherwise. */
+        fun notDescribedLine(reason: NotCoveredReason): String? = when (reason) {
+            NotCoveredReason.ContractChanged -> CONTRACT_CHANGED
+            NotCoveredReason.CodeNotProven -> CODE_NOT_CHECKED
+            is NotCoveredReason.ValueOutsideDescriptor, is NotCoveredReason.UnknownEnumValue, NotCoveredReason.NotDecodable,
+            is NotCoveredReason.PathNotFound, is NotCoveredReason.UnequalArrays, NotCoveredReason.TooDeep,
+            NotCoveredReason.DomainWithoutChainId, NotCoveredReason.DomainWithoutVerifyingContract, NotCoveredReason.OtherChain,
+            -> NOT_AS_DESCRIBED
+            NotCoveredReason.NoDescriptor, is NotCoveredReason.NoFormat, NotCoveredReason.ClaimedByAppDecoder,
+            NotCoveredReason.TooShort,
+            -> null
+        }
+
+        /** Whether a call inside [result], at any depth, is not decoded. */
+        fun partlyNotDecoded(result: ClearSignResult.ClearSigned): Boolean = result.fields.any { field ->
+            field is ClearSignedField.Nested && when (val nested = field.result) {
+                is ClearSignResult.NotCovered -> true
+                is ClearSignResult.ClearSigned -> partlyNotDecoded(nested)
+            }
+        }
+
+        /** [result] as the screen shows it: each value with its raw form where that differs, nested calls indented. */
+        fun describedSection(result: ClearSignResult.ClearSigned): ClearSignedSection = ClearSignedSection(
+            intent = result.interpolatedIntent ?: result.intent,
+            describedBy = "Described by ${result.owner}, $DESCRIBED_BY",
+            rows = rows(result, level = 0),
+            otherParameters = result.otherParameters.map { SignInField(it.location, it.raw) },
+            partly = partlyNotDecoded(result),
+        )
+
+        private fun rows(result: ClearSignResult.ClearSigned, level: Int): List<ClearSignedRow> = result.fields.flatMap { field ->
+            when (field) {
+                is ClearSignedField.Value -> listOf(
+                    ClearSignedRow(
+                        level = level,
+                        label = listOfNotNull(field.group, field.label).joinToString(" · "),
+                        value = field.shown,
+                        raw = field.raw.takeIf { it != field.shown },
+                        note = when {
+                            field.unlisted != null -> "Not a built-in one: shown by its address, never by the name it gives itself."
+                            field.addressType != null -> "The description expects ${field.addressType!!.expected.sorted().joinToString(" or ")}; " +
+                                "this address is ${field.addressType!!.actual}."
+                            else -> null
+                        },
+                    ),
+                )
+                is ClearSignedField.Nested -> {
+                    val nested = field.result
+                    val head = ClearSignedRow(
+                        level = level,
+                        label = listOfNotNull(field.group, field.label).joinToString(" · "),
+                        value = when (nested) {
+                            is ClearSignResult.ClearSigned -> "${nested.interpolatedIntent ?: nested.intent}, described by ${nested.owner}"
+                            is ClearSignResult.NotCovered -> "A call to ${Eip55.format(field.callee)}, not decoded"
+                        },
+                        raw = field.data,
+                        note = listOfNotNull(
+                            "Grants an approval.".takeIf { field.grantsApproval },
+                            (nested as? ClearSignResult.NotCovered)?.reason?.let { notDescribedLine(it) ?: NESTED_NOT_DECODED },
+                        ).joinToString(" ").ifEmpty { null },
+                    )
+                    // A nested call hides nothing either: its own other parameters, raw, under it.
+                    val inner = (nested as? ClearSignResult.ClearSigned)?.let { described ->
+                        rows(described, level + 1) + described.otherParameters.map {
+                            ClearSignedRow(level + 1, "Other parameter · ${it.location}", it.raw, raw = null, note = null)
+                        }
+                    } ?: emptyList()
+                    listOf(head) + inner
+                }
+            }
+        }
 
         /**
          * [wei] in [network]'s native currency, a testnet's marked so (Sepolia's, and one that cannot be named,

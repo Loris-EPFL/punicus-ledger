@@ -19,6 +19,8 @@ internal fun describing(
     tokens: TokenCatalog,
     vararg deployments: ClearSigningDeployment,
     onRead: () -> Unit = {},
+    /** Whether the code reads are refused for now, as while the light client catches up. */
+    unproven: () -> Boolean = { false },
 ): DescribeClearSigning =
     DescribeClearSigning(
         catalog = object : ClearSigningCatalog {
@@ -28,6 +30,7 @@ internal fun describing(
         codes = object : ContractCodes {
             override suspend fun read(network: Network, address: Address, pin: CodePin): CodeReading {
                 onRead()
+                if (unproven()) return CodeReading.Unavailable(ReadUnavailable.UNPROVEN)
                 val deployment = deployments.firstOrNull { it.network == network && it.address == address }
                     ?: return CodeReading.Unavailable(ReadUnavailable.NO_ENGINE)
                 return CodeReading.Read(eth.serotine.domain.model.ClearSigningCodeReads(deployment.codeHash, null, null))

@@ -1259,6 +1259,7 @@ class AppGraph(
     fun dappRequestViewModel(requestKey: String): DappRequestViewModel = DappRequestViewModel(
         requestKey,
         observeDappMessages(),
+        describeClearSigning(),
         SignDappMessage(dappRequests, accounts, networkSettings, signer),
         RefuseDappRequest(dappRequests, accounts, networkSettings),
         DescribeKeyStore(keys),

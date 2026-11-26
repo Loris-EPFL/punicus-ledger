@@ -1,5 +1,9 @@
 package eth.serotine.ui.dapptransaction
 
+import eth.serotine.ui.components.ClearSignedParameter
+import eth.serotine.ui.components.ClearSignedRow
+import eth.serotine.ui.components.ClearSignedSection
+import eth.serotine.ui.components.ClearSignedText
 import androidx.compose.runtime.Composable
 import eth.serotine.domain.usecase.DappSignRefusal
 import eth.serotine.ui.components.NotSentItem
@@ -64,7 +68,7 @@ private val notDecoded = payment.copy(
 
 private const val POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
 private const val WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
-private const val DESCRIBED_BY = "Described by Aave DAO, ${DappTransactionViewModel.DESCRIBED_BY}"
+private const val DESCRIBED_BY = "Described by Aave DAO, ${ClearSignedText.DESCRIBED_BY}"
 
 /** A call the app does not decode, described by the Aave v3 Pool's built-in descriptor. */
 private val described = notDecoded.copy(
@@ -93,8 +97,8 @@ private val described = notDecoded.copy(
             ClearSignedRow(0, "Collateral recipient", ACCOUNT, raw = null, note = null),
         ),
         otherParameters = listOf(
-            SignInField("asset", WETH),
-            SignInField("referralCode", "0"),
+            ClearSignedParameter("asset", WETH),
+            ClearSignedParameter("referralCode", "0"),
         ),
     ),
 )
@@ -121,11 +125,11 @@ private val describedNested = described.copy(
 )
 
 private val describedPartly = describedNested.copy(
-    warnings = listOf(DappTransactionViewModel.PARTLY_NOT_DECODED),
+    warnings = listOf(ClearSignedText.PARTLY_NOT_DECODED),
     described = describedNested.described!!.copy(
         rows = describedNested.described!!.rows.take(5) + ClearSignedRow(
             0, "Call", "A call to $POOL, not decoded", raw = "0xab9c4b5d…0000",
-            note = DappTransactionViewModel.NESTED_NOT_DECODED,
+            note = ClearSignedText.NESTED_NOT_DECODED,
         ),
         partly = true,
     ),
@@ -136,13 +140,13 @@ private val describedApproval = described.copy(
     warnings = listOf(DappTransactionViewModel.APPROVAL_NOTE),
     described = ClearSignedSection(
         intent = "Approve",
-        describedBy = "Described by Uniswap, ${DappTransactionViewModel.DESCRIBED_BY}",
+        describedBy = "Described by Uniswap, ${ClearSignedText.DESCRIBED_BY}",
         rows = listOf(
             ClearSignedRow(0, "Spender", RECIPIENT, raw = null, note = null),
             ClearSignedRow(0, "Amount", "Unlimited WETH", raw = "1461501637330902918203684832716283019655932542975", note = null),
             ClearSignedRow(0, "Expiration", "2026-12-31 00:00:00Z", raw = "1798675200", note = null),
         ),
-        otherParameters = listOf(SignInField("token", WETH)),
+        otherParameters = listOf(ClearSignedParameter("token", WETH)),
     ),
 )
 
@@ -156,7 +160,7 @@ private val describedUnlisted = described.copy(
             ),
             ClearSignedRow(0, "Collateral recipient", ACCOUNT, raw = null, note = null),
         ),
-        otherParameters = listOf(SignInField("asset", "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD"), SignInField("referralCode", "0")),
+        otherParameters = listOf(ClearSignedParameter("asset", "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD"), ClearSignedParameter("referralCode", "0")),
     ),
 )
 
@@ -166,21 +170,21 @@ private val codeNotChecked = described.copy(
     described = null,
     warnings = listOf(DappTransactionViewModel.NOT_DECODED),
     meaningFields = listOf(SignInField("Function", "0x617ba037")),
-    notDescribed = DappTransactionViewModel.CODE_NOT_CHECKED,
+    notDescribed = ClearSignedText.CODE_NOT_CHECKED,
 )
 
 private val notAsDescribed = described.copy(
     described = null,
     warnings = listOf(DappTransactionViewModel.NOT_DECODED),
     meaningFields = listOf(SignInField("Function", "0x617ba037")),
-    notDescribed = DappTransactionViewModel.NOT_AS_DESCRIBED,
+    notDescribed = ClearSignedText.NOT_AS_DESCRIBED,
 )
 
 private val contractChanged = described.copy(
     described = null,
     warnings = listOf(DappTransactionViewModel.NOT_DECODED),
     meaningFields = listOf(SignInField("Function", "0x617ba037")),
-    notDescribed = DappTransactionViewModel.CONTRACT_CHANGED,
+    notDescribed = ClearSignedText.CONTRACT_CHANGED,
 )
 
 private const val SAFE = "0x7a3B9c1E5d2F4a6B8c0D1e2F3a4B5c6D7e8F9a0B"

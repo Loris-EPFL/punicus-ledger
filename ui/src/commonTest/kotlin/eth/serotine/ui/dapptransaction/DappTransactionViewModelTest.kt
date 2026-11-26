@@ -1,5 +1,9 @@
 package eth.serotine.ui.dapptransaction
 
+import eth.serotine.ui.components.ClearSignedParameter
+import eth.serotine.ui.components.ClearSignedRow
+import eth.serotine.ui.components.ClearSignedSection
+import eth.serotine.ui.components.ClearSignedText
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
@@ -267,8 +271,8 @@ class DappTransactionViewModelTest {
         val state = viewModel().uiState.value
         val described = assertNotNull(state.described)
         assertTrue(described.partly)
-        assertTrue(DappTransactionViewModel.PARTLY_NOT_DECODED in state.warnings)
-        assertEquals(DappTransactionViewModel.NESTED_NOT_DECODED, described.rows.single().note)
+        assertTrue(ClearSignedText.PARTLY_NOT_DECODED in state.warnings)
+        assertEquals(ClearSignedText.NESTED_NOT_DECODED, described.rows.single().note)
     }
 
     @Test
@@ -304,21 +308,21 @@ class DappTransactionViewModelTest {
             emptyList(),
             grantsApproval = true,
         )
-        val rows = DappTransactionViewModel.describedSection(outer).rows
+        val rows = ClearSignedText.describedSection(outer).rows
         assertEquals(
             listOf("Call", "Amount", "Other parameter · referralCode", "Call"),
             rows.map { it.label },
         )
         assertEquals(listOf(0, 1, 1, 0), rows.map { it.level })
-        assertEquals("Grants an approval. ${DappTransactionViewModel.CONTRACT_CHANGED}", rows.last().note)
+        assertEquals("Grants an approval. ${ClearSignedText.CONTRACT_CHANGED}", rows.last().note)
         assertEquals("0x095ea7b3", rows.last().raw)
     }
 
     @Test
     fun aContractChangedSinceTheReleaseSaysSo() {
-        assertEquals(DappTransactionViewModel.CONTRACT_CHANGED, DappTransactionViewModel.notDescribedLine(NotCoveredReason.ContractChanged))
-        assertEquals(DappTransactionViewModel.CODE_NOT_CHECKED, DappTransactionViewModel.notDescribedLine(NotCoveredReason.CodeNotProven))
-        assertNull(DappTransactionViewModel.notDescribedLine(NotCoveredReason.NoDescriptor))
+        assertEquals(ClearSignedText.CONTRACT_CHANGED, ClearSignedText.notDescribedLine(NotCoveredReason.ContractChanged))
+        assertEquals(ClearSignedText.CODE_NOT_CHECKED, ClearSignedText.notDescribedLine(NotCoveredReason.CodeNotProven))
+        assertNull(ClearSignedText.notDescribedLine(NotCoveredReason.NoDescriptor))
     }
 
     @Test

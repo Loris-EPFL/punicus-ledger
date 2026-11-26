@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.AccountId
 import eth.serotine.ui.components.Blockie
+import eth.serotine.ui.components.ClearSignedDescription
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
@@ -192,7 +193,7 @@ fun DappTransactionScreen(
                     Text("Looking it up in the built-in descriptions and checking the contract's code…")
                 }
             }
-            state.described?.let { Described(it) }
+            state.described?.let { ClearSignedDescription(it) }
             state.notDescribed?.let {
                 Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.error)
             }
@@ -302,55 +303,6 @@ fun DappTransactionScreen(
                         "Refuse",
                         color = if (state.refuseUnavailable) Unavailable.contentColor() else Color.Unspecified,
                     )
-                }
-            }
-        }
-    }
-}
-
-/**
- * A call in a built-in descriptor's words (docs/clear-signing.md, A5): its intent, whose words they are, each
- * value with its raw form where that differs, nested calls indented, and every other parameter, raw.
- */
-@Composable
-private fun Described(section: ClearSignedSection) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Text(section.intent, style = MaterialTheme.typography.titleMedium)
-        Text(
-            section.describedBy,
-            Modifier.padding(top = 2.dp, bottom = 4.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-    section.rows.forEach { row ->
-        Column(Modifier.padding(start = 16.dp + 16.dp * row.level, end = 16.dp, top = 4.dp, bottom = 4.dp)) {
-            Text(row.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SelectionContainer { Text(row.value) }
-            row.raw?.let {
-                SelectionContainer {
-                    Text(
-                        "Raw: $it",
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            row.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-        }
-    }
-    if (section.otherParameters.isNotEmpty()) {
-        Text(
-            "Other parameters, which the description does not show",
-            Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 2.dp),
-            style = MaterialTheme.typography.labelMedium,
-        )
-        section.otherParameters.forEach { parameter ->
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
-                Text(parameter.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                SelectionContainer {
-                    Text(parameter.value, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

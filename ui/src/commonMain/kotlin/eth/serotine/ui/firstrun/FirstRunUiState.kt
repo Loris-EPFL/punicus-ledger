@@ -23,13 +23,13 @@ data class FirstRunNoticeText(val title: String, val points: List<Pair<String, S
             title = "Your first start",
             points = listOf(
                 "Give it a few minutes" to "Punicus talks to the network directly, with no company in between. On " +
-                    "its first start it has to find computers of the network to talk to. It remembers them, so " +
-                    "the next start is quicker.",
+                    "its first start it has to find computers of the network to talk to: keep it open meanwhile. It " +
+                    "remembers them, so the next start is quicker.",
                 "Until a network is checked, wait" to "Punicus checks each network before it relies on it. Until " +
                     "then balances are not confirmed, names cannot be looked up and sending waits. The home screen " +
                     "says so in red; another screen may only say that something cannot be read yet.",
-                "Try again often helps" to "Punicus keeps working in the background. If something does not load, " +
-                    "tap Try again, or pull down to refresh, a little later.",
+                "Try again often helps" to "Punicus keeps trying on its own while it is open. If something does " +
+                    "not load, tap Try again, or pull down to refresh, a little later.",
             ),
         )
     }

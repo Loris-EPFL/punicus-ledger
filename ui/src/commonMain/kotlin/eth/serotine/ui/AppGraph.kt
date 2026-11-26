@@ -1,7 +1,5 @@
 package eth.serotine.ui
 
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.Flow
 import eth.serotine.ui.firstrun.FirstRunViewModel
 import eth.serotine.domain.usecase.DismissFirstRunNotice
 import eth.serotine.domain.usecase.ObserveFirstRunNotice
@@ -527,11 +525,8 @@ class AppGraph(
      * reads the index from its newest page.
      */
     private val addressIndexArchive: AddressIndexArchive? = null,
-    /**
-     * Whether the user dismissed the first start's notice (owner's request, 2026-11-26); null on a host that shows
-     * none, as a test's.
-     */
-    private val firstRunNotice: FirstRunNotice? = null,
+    /** Whether the user dismissed the first start's notice (owner's request, 2026-11-26). */
+    private val firstRunNotice: FirstRunNotice,
 ) {
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
@@ -1198,18 +1193,9 @@ class AppGraph(
     /** Whether the bottom bar shows the Debug tab: one for the app, in the host's scope. */
     fun debugTabViewModel(): DebugTabViewModel = DebugTabViewModel(ObserveDebugTab(debugScreen, interfaceMode))
 
-    /** The first start's notice (owner's request, 2026-11-26): never shown on a host that keeps no answer for it. */
-    fun firstRunViewModel(): FirstRunViewModel {
-        val notice = firstRunNotice ?: NoFirstRunNotice
-        return FirstRunViewModel(ObserveFirstRunNotice(notice, accounts), DismissFirstRunNotice(notice))
-    }
-
-    /** No notice to show: one dismissed already. */
-    private object NoFirstRunNotice : FirstRunNotice {
-        override fun observe(): Flow<Boolean> = flowOf(true)
-
-        override suspend fun dismiss(): Boolean = true
-    }
+    /** The first start's notice (owner's request, 2026-11-26). */
+    fun firstRunViewModel(): FirstRunViewModel =
+        FirstRunViewModel(ObserveFirstRunNotice(firstRunNotice, accounts), DismissFirstRunNotice(firstRunNotice))
 
     /** The view the screens are drawn in: one for the app, in the host's scope. */
     fun interfaceModeViewModel(): InterfaceModeViewModel = InterfaceModeViewModel(ObserveInterfaceMode(interfaceMode))

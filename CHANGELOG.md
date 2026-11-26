@@ -15,7 +15,7 @@ and issues of this repository.
 - The first start says what to expect: a note, shown once until OK, that
   the first start takes a few minutes while Punicus finds computers of the
   network to talk to, that nothing works until a network is checked, and
-  that Try again often helps since Punicus keeps working in the background.
+  that Try again often helps since Punicus keeps trying while it is open.
   The website's guide says the same under *When you run Punicus for the
   first time*, and the downloads point to it.
 - Clear signing of dApp transactions, and of Permit2's batch permits among

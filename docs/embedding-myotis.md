@@ -442,6 +442,21 @@ verified read.
     17433 when probed), so Punicus adds no floor of its own.
   - The simulation is `callDetailed` from the sender at the head, the transfer
     as it will run.
+- **`EngineCallTraces`** (`CallTraces`; docs/clear-signing.md, *Phase B*):
+  `traceCall` (`debug_traceCall`) with the `callTracer` and its logs
+  (`{"tracer":"callTracer","tracerConfig":{"withLog":true}}`), for D6 and
+  screen 17.
+  - The transaction carries its sender, recipient, value and data, and no
+    gas limit or fee.
+  - It is asked at the snapshot's readable head by its number, which the
+    engine applies or refuses. `TraceResult` names no block, so this is how
+    the effects know the block they are proven at.
+  - An engine whose `supportsCallTracing()` is false traces nothing (said
+    so). So does iOS: `myotis-engine-ios` 0.1.24 has the call in its native
+    library but not on its chain handle. Asking Myotis to expose it is the
+    owner's.
+  - A trace this cannot read exactly (`CallTraceJson`) is no answer, never a
+    trace with a frame left out.
 - **`EngineBroadcaster`** (`Broadcaster`): `sendRawTransactionDetailed`. The
   engine judges a send on verified state before it gossips it, and its verdict
   (sent, rejected with geth's reason, refused, unavailable) is passed on.

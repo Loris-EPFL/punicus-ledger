@@ -3,6 +3,8 @@ package eth.serotine.data.engine
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CodePin
 import eth.serotine.domain.repository.CodeReading
+import eth.serotine.domain.repository.CallTraceReading
+import eth.serotine.domain.repository.CallTraces
 import eth.serotine.domain.repository.ContractCodes
 import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.Digest
@@ -254,6 +256,11 @@ class NetworkRoutedPorts(private val byNetwork: Map<Network, ChainPorts>) {
             of(network)?.contractCodes?.read(network, address, pin) ?: CodeReading.Unavailable(ReadUnavailable.NO_ENGINE)
     }
 
+    val callTraces: CallTraces = object : CallTraces {
+        override suspend fun trace(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray): CallTraceReading =
+            of(network)?.callTraces?.trace(network, from, to, value, data) ?: CallTraceReading.Unavailable(ReadUnavailable.NO_ENGINE)
+    }
+
     val uniswap: UniswapV3Chain = object : UniswapV3Chain {
         override suspend fun venue(network: Network): VenueReading =
             of(network)?.uniswap?.venue(network) ?: VenueReading.Unavailable(ReadUnavailable.NO_ENGINE)
@@ -329,4 +336,5 @@ class ChainPorts(
     val nfts: NftContracts,
     val ensNfts: EnsNfts,
     val contractCodes: ContractCodes,
+    val callTraces: CallTraces,
 )

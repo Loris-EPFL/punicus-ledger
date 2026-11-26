@@ -574,6 +574,9 @@ rare and meant (docs/balance-reconciliation.md, D3).
   holds, for one) is said so.
 - **At a fresh verified head only**, as the simulation: while the light
   client catches up, nothing is traced.
+- **A trace too large to read** (over 16 Mi characters of the engine's
+  answer, a contract that calls with much data again and again) is not
+  traced, and said so.
 
 ## Later phases (open)
 

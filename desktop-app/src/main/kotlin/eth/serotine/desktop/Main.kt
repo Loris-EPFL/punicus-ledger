@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import eth.serotine.data.settings.FileFirstRunNotice
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.clearsigning.BuiltInClearSigningCatalog
 import eth.serotine.data.cow.FileCowOrders
@@ -585,6 +586,7 @@ private fun openWallet(dataDir: File) {
                 waitingSwaps = FileWaitingSwaps(dataDir.resolve("waiting-swaps.json").path),
                 debugLog = apiLog,
                 debugScreen = debugScreen,
+                firstRunNotice = FileFirstRunNotice(dataDir.resolve("first-run.json").path),
                 interfaceMode = interfaceMode,
                 amountsHidden = amountsHidden,
                 // The desktop keeps no window out of screen capture, so there is nothing to lift.

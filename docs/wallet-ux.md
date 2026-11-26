@@ -274,6 +274,31 @@ columns** (owner's request, 2026-11-25). Material's large window size class:
   open beside the account outlives a configuration change, not the end of
   the app's process.
 
+### The first start
+
+(Owner's request, 2026-11-26.) The first time the app opens, a dialog,
+*Your first start*, says what to expect while Punicus finds its first peers,
+in three points: give it a few minutes (it has to find computers of the
+network to talk to, so keep it open meanwhile, and it remembers them for the
+next start); until a network
+is checked, wait (balances are not confirmed, names cannot be looked up and
+sending waits; the home screen says so in red, while another screen, such as
+Watch address, may only say that something cannot be read yet); and Try
+again often helps (Punicus keeps trying on its own while it is open; a
+phone pauses it in the background). OK closes it for good; so does a tap outside it
+or Back. It is shown once, at a start when it was never dismissed and the
+wallet holds no account; an install that already holds accounts (an update
+from a release before it), or held some (a list found damaged and set
+aside), records it as dismissed without showing it. It is
+decided at the start, so it never comes up in the middle of a session, and
+never over the update screen. A file of its own, `first-run.json`, keeps that
+it was dismissed. A damaged one counts as dismissed and is replaced by one
+that says so; one that cannot be read counts as dismissed too, so a start
+never shows it on a guess. A dismissal that cannot be saved hides it for that
+run and asks again at the next start. The website's guide gives the same
+three points, under the same headings, in *When you run Punicus for the first
+time*.
+
 ## Screens
 
 ### Accounts tab

@@ -21,6 +21,7 @@ import eth.serotine.android.upgrade.UpgradeCheckJob
 import eth.serotine.android.widget.RateRefreshJob
 import eth.serotine.android.widget.RateWidget
 import eth.serotine.android.widget.RateWidgetPairs
+import eth.serotine.data.settings.FileFirstRunNotice
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.clearsigning.BuiltInClearSigningCatalog
 import eth.serotine.data.cow.FileCowOrders
@@ -522,6 +523,7 @@ class SerotineApplication : Application() {
             waitingSwaps = waitingSwaps,
             debugLog = debugLog,
             debugScreen = debugScreen,
+            firstRunNotice = FileFirstRunNotice(filesDir.resolve("first-run.json").path),
             interfaceMode = interfaceMode,
             amountsHidden = amountsHidden,
             // The debug app only: Settings may lift FLAG_SECURE for a screen recording, until the

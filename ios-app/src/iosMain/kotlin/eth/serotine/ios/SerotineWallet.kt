@@ -1,6 +1,7 @@
 package eth.serotine.ios
 
 import eth.serotine.data.swaps.WrappedCurrency
+import eth.serotine.data.settings.FileFirstRunNotice
 import eth.serotine.data.account.FileAccountRepository
 import eth.serotine.data.clearsigning.BuiltInClearSigningCatalog
 import eth.serotine.data.cow.FileCowOrders
@@ -349,6 +350,7 @@ class SerotineWallet {
             waitingSwaps = FileWaitingSwaps("$dataDir/waiting-swaps.json"),
             debugLog = debugLog,
             debugScreen = debugScreen,
+            firstRunNotice = FileFirstRunNotice("$dataDir/first-run.json"),
             interfaceMode = interfaceMode,
             amountsHidden = amountsHidden,
             // iOS blocks no capture, so there is nothing for a debug switch to lift.

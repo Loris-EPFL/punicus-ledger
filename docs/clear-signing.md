@@ -504,8 +504,9 @@ with its effects alone, under "not decoded".
   (sends to the zero address, as a lending pool's `withdraw` burns its
   shares) is not sent to anyone, and counts only where the account receives
   nothing of value in return (as above: an asset the claims name, a built-in
-  token, the currency or its wrapped token). The network's currency the transaction itself carries
-  (its value, shown on the screen already) is no disagreement.
+  token, the currency or its wrapped token). The network's currency the
+  transaction itself carries (its value, shown on the screen already) is no
+  disagreement.
 - **The user's tokens ending elsewhere**: an asset (each the account sends
   or receives, each the claims name, and the currency where the account
   moves it or the claims show an amount of it) ends up, more of it than it

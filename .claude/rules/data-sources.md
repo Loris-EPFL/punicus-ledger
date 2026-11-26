@@ -313,7 +313,7 @@ contradicted entries and what others learn.)
   #393):
   - One key per network that has an index, each list resting on its own
     network's key: Ethereum's `0xb11B…7241` and Gnosis Chain's
-    `0xE779…9335` (the key is the owner's choice, asked on #393). Sepolia
+    `0xE779…9335` (owner's choice, 2026-11-26, #393). Sepolia
     has none, and its Activity is the log index's alone.
   - One setting covers every key, on by default for each. An explicit off
     turns them all off. A choice saved as on for Ethereum's key reads as on

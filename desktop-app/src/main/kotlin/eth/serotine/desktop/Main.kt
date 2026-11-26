@@ -591,7 +591,7 @@ private fun openWallet(dataDir: File) {
                 // experimental setting (owner ruling, 2026-11-21, #334), read and checked by the engine. An engine
                 // without the Swarm reader refuses it as not in this build, and the setting is greyed out saying so.
                 // The key each network's index rests on is pinned in the release (Ethereum's `0xb11B…7241`, owner's
-                // choice, 2026-11-24, #359; Gnosis Chain's `0xE779…9335`, owner's request, 2026-11-26).
+                // choice, 2026-11-24, #359; Gnosis Chain's `0xE779…9335`, owner's choice, 2026-11-26, #393).
                 addressIndex = node.addressIndex,
                 addressIndexSetting = addressIndexSetting,
                 addressIndexImporters = PinnedAddressIndexImporter.KEYS,

@@ -108,7 +108,7 @@ data class AddressIndexStatus(
  * said, so that Settings draws the row greyed out meanwhile rather than none (owner ruling, 2026-10-18, #55);
  * [pinned], the importer keys pinned in the release, none when this release pins none (none was until 2026-11-24,
  * owner's decision of 2026-11-21; Ethereum's `0xb11B…7241` since, owner's choice of 2026-11-24, #359; Gnosis Chain's
- * `0xE779…9335` beside it since 2026-11-26).
+ * `0xE779…9335` beside it since 2026-11-26, owner's choice, #393).
  */
 class ObserveAddressIndexStatus(
     private val history: AddressIndexHistory,

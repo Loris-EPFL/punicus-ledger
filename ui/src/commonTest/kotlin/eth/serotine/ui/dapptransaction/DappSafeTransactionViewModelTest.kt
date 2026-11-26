@@ -87,6 +87,7 @@ class DappSafeTransactionViewModelTest {
             "t/$id",
             ObserveDappMessages(requests, world.accounts, networks, world.catalog, MemoryAliases(), clock = { now }),
             describing(world.catalog),
+            tracing(world.catalog, backgroundScope),
             QuoteDappTransaction(
                 requests, world.accounts, networks, world.catalog, world.balances, world.inputs, world.sent, history,
                 outbox = Outbox.None,
@@ -134,6 +135,7 @@ class DappSafeTransactionViewModelTest {
             "t/1",
             ObserveDappMessages(requests, gnosis.accounts, on, gnosis.catalog, MemoryAliases(), clock = { now }),
             describing(gnosis.catalog),
+            tracing(gnosis.catalog, backgroundScope),
             QuoteDappTransaction(
                 requests, gnosis.accounts, on, gnosis.catalog, gnosis.balances, gnosis.inputs, gnosis.sent, history,
                 outbox = Outbox.None,

@@ -42,6 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.AccountId
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.ClearSignedDescription
+import eth.serotine.ui.components.TracedEffects
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
@@ -97,6 +98,7 @@ fun DappTransactionRoute(
         onSendWithBiometrics = viewModel::sendWithBiometrics,
         onRetry = viewModel::retry,
         onRequote = { viewModel.requote() },
+        onRetrace = { viewModel.retrace() },
         onRefuse = viewModel::refuse,
         onDismissExplanation = viewModel::dismissExplanation,
         onOpenQueued = { state.queued?.let { open(it) } },
@@ -122,6 +124,7 @@ fun DappTransactionScreen(
     onSendWithBiometrics: () -> Unit,
     onRetry: () -> Unit,
     onRequote: () -> Unit,
+    onRetrace: () -> Unit = {},
     onRefuse: () -> Unit,
     onDismissExplanation: () -> Unit,
     onBack: () -> Unit,
@@ -197,6 +200,7 @@ fun DappTransactionScreen(
             state.notDescribed?.let {
                 Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.error)
             }
+            state.trace?.let { TracedEffects(it, onRetrace) }
             state.dataHex?.let { hex ->
                 Text(
                     "Call data (${state.dataSize})" + when {

@@ -11,7 +11,12 @@ import eth.serotine.domain.repository.ContractCodes
 import eth.serotine.domain.repository.KindReading
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.TokenCatalog
+import eth.serotine.domain.model.UInt256
+import eth.serotine.domain.repository.CallTraceReading
+import eth.serotine.domain.repository.CallTraces
 import eth.serotine.domain.usecase.DescribeClearSigning
+import eth.serotine.domain.usecase.TraceCall
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.flowOf
 
 /** A [DescribeClearSigning] over the [deployments] given (none by default), their code always the pinned one. */
@@ -56,4 +61,21 @@ internal fun describingThat(throws: Exception): DescribeClearSigning = DescribeC
     kinds = object : AddressKinds {
         override fun observeKind(network: Network, address: Address) = flowOf<KindReading>(KindReading.Syncing)
     },
+)
+
+/** A [TraceCall] whose engine answers [answer] (by default: it traces nothing), its runs in [scope]. */
+internal fun tracing(
+    tokens: TokenCatalog,
+    scope: CoroutineScope,
+    answer: suspend () -> CallTraceReading = { CallTraceReading.NotTraced },
+): TraceCall = TraceCall(
+    traces = object : CallTraces {
+        override suspend fun trace(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray) = answer()
+    },
+    tokens = tokens,
+    catalog = object : ClearSigningCatalog {
+        override fun deployment(network: Network, address: Address): ClearSigningDeployment? = null
+    },
+    wrappedNative = { null },
+    scope = scope,
 )

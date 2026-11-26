@@ -1,5 +1,7 @@
 package eth.serotine.ui
 
+import eth.serotine.domain.repository.CallTraces
+import eth.serotine.domain.repository.CallTraceReading
 import eth.serotine.domain.model.PrivateKey
 import eth.serotine.domain.repository.PrivateKeys
 import androidx.compose.foundation.layout.Box
@@ -444,6 +446,11 @@ class AppNavigationTest {
             override suspend fun read(network: Network, address: Address, pin: CodePin): CodeReading =
                 CodeReading.Unavailable(ReadUnavailable.NO_ENGINE)
         },
+        callTraces = object : CallTraces {
+            override suspend fun trace(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray) =
+                CallTraceReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        },
+        wrappedCurrency = { null },
         cowChain = object : CowChain {
             override suspend fun venue(network: Network): CowVenueReading = CowVenueReading.NotPinned
 

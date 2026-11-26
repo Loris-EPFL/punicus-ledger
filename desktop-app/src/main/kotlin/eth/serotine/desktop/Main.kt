@@ -1,5 +1,6 @@
 package eth.serotine.desktop
 
+import eth.serotine.data.swaps.WrappedCurrency
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.painter.BitmapPainter
@@ -556,6 +557,8 @@ private fun openWallet(dataDir: File) {
                 uniswap = node.uniswap,
                 clearSigningCatalog = BuiltInClearSigningCatalog(),
                 contractCodes = node.contractCodes,
+                callTraces = node.callTraces,
+                wrappedCurrency = WrappedCurrency::of,
                 // CoW Protocol: its pinned contracts proven by their code, and its order API, an
                 // off-chain service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*).
                 cowChain = node.cow,

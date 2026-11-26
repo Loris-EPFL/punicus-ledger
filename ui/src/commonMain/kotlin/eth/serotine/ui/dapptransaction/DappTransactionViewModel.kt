@@ -8,6 +8,7 @@ import eth.serotine.domain.model.ClearSignFormatter
 import eth.serotine.domain.model.ClearSignResult
 import eth.serotine.domain.model.ClearSignedField
 import eth.serotine.domain.model.DappCallMeaning
+import eth.serotine.domain.model.TraceClaims
 import eth.serotine.domain.model.NotCoveredReason
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.SyncPolicy
@@ -38,6 +39,8 @@ import eth.serotine.domain.usecase.DappTransactionQuote
 import eth.serotine.domain.usecase.DappTransactionQuoting
 import eth.serotine.domain.usecase.DappTransactionSending
 import eth.serotine.domain.usecase.DescribeClearSigning
+import eth.serotine.domain.usecase.TraceCall
+import eth.serotine.domain.usecase.TraceOutcome
 import eth.serotine.domain.usecase.DescribeKeyStore
 import eth.serotine.domain.usecase.ObserveDappMessages
 import eth.serotine.domain.usecase.QuoteDappTransaction
@@ -53,6 +56,8 @@ import eth.serotine.ui.components.Eip55
 import eth.serotine.ui.components.NotSentItem
 import eth.serotine.ui.components.CHECK_TOOK_THE_TIME
 import eth.serotine.ui.components.ClearSignedSection
+import eth.serotine.ui.components.TraceSection
+import eth.serotine.ui.components.TraceText
 import eth.serotine.ui.components.ClearSignedText
 import eth.serotine.ui.components.MIN_PROMPT_TIME
 import eth.serotine.ui.components.PROMPT_TIMED_OUT
@@ -135,6 +140,11 @@ data class DappTransactionUiState(
     val described: ClearSignedSection? = null,
     /** Being looked up in the built-in descriptors, its code being checked. */
     val describing: Boolean = false,
+    /**
+     * What it does when it runs at the verified head, its effects and where they disagree with what it claims
+     * (docs/clear-signing.md, *Phase B*); null before it is traced.
+     */
+    val trace: TraceSection? = null,
     /** Why a built-in descriptor that covers the contract does not describe this call, where that says more. */
     val notDescribed: String? = null,
     /** The call data as hex, when there is some, with its size. */
@@ -186,6 +196,8 @@ class DappTransactionViewModel(
     private val observeDappMessages: ObserveDappMessages,
     /** The built-in descriptors, for a call the app does not decode itself (docs/clear-signing.md). */
     private val describeClearSigning: DescribeClearSigning,
+    /** The verified trace at the head, beside the description and the run (docs/clear-signing.md, *Phase B*). */
+    private val traceCall: TraceCall,
     private val quoteDappTransaction: QuoteDappTransaction,
     private val sendDappTransaction: SendDappTransaction,
     private val proposeDappSafeTx: ProposeDappSafeTx,
@@ -282,7 +294,48 @@ class DappTransactionViewModel(
         }
     }
 
-    private val described = combine(description, describing) { result, busy -> result to busy }
+    /** The call's verified trace, once traced; null before. Traced anew with each quote, after the description. */
+    private val traced = MutableStateFlow<TraceOutcome?>(null)
+    private val tracing = MutableStateFlow(false)
+    private var traceJob: Job? = null
+
+    /**
+     * Traces the call at the verified head, a Safe's as the Safe's own call, and holds it against what the call
+     * claims: its hand-written decoder's meaning, or once looked up its description. A trace still running is
+     * not asked again (the use case waits for the engine's run, which goes on past the screen's wait).
+     */
+    fun retrace() {
+        if (traceJob?.isActive == true) return
+        traceJob = viewModelScope.launch {
+            val review = observeDappMessages().first().find { it.request.id == id } ?: return@launch
+            val transaction = (review.content as? DappSignContent.Transaction)?.transaction ?: return@launch
+            val network = review.request.network ?: return@launch
+            tracing.value = true
+            try {
+                // The claims of a call the app does not decode are its description's: wait for the lookup.
+                describeJob?.join()
+                val meaning = transaction.meaning
+                val claims = if (meaning is DappCallMeaning.NotDecoded) description.value?.let(TraceClaims::of)
+                else TraceClaims.ofMeaning(meaning, transaction.to)
+                traced.value = traceCall.trace(network, review.address, transaction.to, transaction.value, transaction.data, claims)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                traced.value = TraceOutcome.Unavailable(ReadUnavailable.UNPROVEN)
+            } finally {
+                tracing.value = false
+            }
+        }
+    }
+
+    private data class Reviews(
+        val description: ClearSignResult?,
+        val describing: Boolean,
+        val traced: TraceOutcome?,
+        val tracing: Boolean,
+    )
+
+    private val described = combine(description, describing, traced, tracing, ::Reviews)
 
     private val shownReview = observeDappMessages()
         .map { reviews ->
@@ -298,8 +351,21 @@ class DappTransactionViewModel(
             } else {
                 DappTransactionUiState(loading = false, gone = true, done = local.done)
             }
-        val base = withDescription(plain, described.first, described.second)
+        val base = withDescription(plain, described.description, described.describing)
+        val network = review.request.network
+        val trace = when {
+            described.tracing -> TraceSection(tracing = true)
+            network == null -> null
+            else -> described.traced?.let { outcome ->
+                val section = TraceText.section(outcome, review.address, network)
+                // A revert the trace shows while the run quoted did not: the chain moved between the two.
+                val ran = local.quote != null || local.proposal != null
+                if (section.revert != null && ran) section.copy(warnings = section.warnings + TraceText.REVERTS_UNLIKE_RUN)
+                else section
+            }
+        }
         base.copy(
+            trace = trace,
             quoting = local.quoting,
             quote = local.quote?.let { quoteLines(it, review.request.network) }
                 ?: local.proposal?.let { proposalLines(it, review.request.network) }.orEmpty(),
@@ -335,6 +401,7 @@ class DappTransactionViewModel(
         val request = id ?: return
         if (local.value.busy || local.value.quoting) return
         describe()
+        retrace()
         local.update {
             it.copy(quoting = true, notQuoted = null, gasTooLow = false, unlock = it.unlock.copy(error = note))
         }

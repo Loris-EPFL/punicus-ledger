@@ -1,5 +1,8 @@
 package eth.serotine.ui.safetx
 
+import androidx.compose.ui.text.font.FontWeight
+import eth.serotine.ui.components.SafeTxActionItem
+import eth.serotine.ui.components.TraceText
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -169,6 +172,7 @@ fun SafeTxRoute(
             onShare = viewModel::onShare,
             onShareClosed = viewModel::onShareClosed,
             onCheckAgain = viewModel::checkAgain,
+            onRetrace = viewModel::retrace,
             onSign = viewModel::startSigning,
             onApprove = viewModel::startApproval,
             onExecute = viewModel::startExecution,
@@ -241,6 +245,8 @@ class SafeTxActions(
     val onProposeAgain: () -> Unit = {},
     val onDiscardHeld: () -> Unit = {},
     val onProposeHeldAgain: () -> Unit = {},
+    /** Traces the call again at the head: the trace's *Try again*. */
+    val onRetrace: () -> Unit = {},
 )
 
 /**
@@ -365,7 +371,7 @@ private fun OverviewContent(
     ) {
         state.draftNote?.let { PreparedOnLine(it) }
         SafeLine(state.safe)
-        SafeTxActionCard(state.action)
+        SafeTxActionCard(state.action, onRetrace = actions.onRetrace)
         // Not while Approve or Execute is quoted: the screen would be left mid-quote.
         state.swap?.let { SafeSwapBlock(it, onProposeAgain = actions.onProposeAgain.takeUnless { state.quoting }) }
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
@@ -395,6 +401,7 @@ private fun OverviewContent(
                 Text(message, Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
             }
         }
+        TraceDisagreesLine(state.action)
         HorizontalDivider()
         val share = state.share
         if (share != null) {
@@ -596,7 +603,7 @@ private fun SigningContent(state: SafeTxUiState.Signing, actions: SafeTxActions,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SafeLine(state.safe)
-        SafeTxActionCard(state.action)
+        SafeTxActionCard(state.action, onRetrace = actions.onRetrace)
         state.swap?.let { SafeSwapBlock(it) }
         if (details.isNotEmpty()) HiddenDetails(SAFE_TX_DETAILS_TAG) { details.forEach { Note(it) } }
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
@@ -605,6 +612,7 @@ private fun SigningContent(state: SafeTxUiState.Signing, actions: SafeTxActions,
         state.preparedOn?.let { PreparedOnLine(it) }
         Heading("Sign as")
         Choices(state.owners, state.owner, enabled = !state.signing, onChoose = actions.onSignerChange)
+        TraceDisagreesLine(state.action)
         HorizontalDivider()
         UnlockFields(
             unlock = state.unlock,
@@ -630,7 +638,7 @@ private fun ReviewContent(state: SafeTxUiState.Review, actions: SafeTxActions, d
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SafeLine(state.safe)
-        SafeTxActionCard(state.action)
+        SafeTxActionCard(state.action, onRetrace = actions.onRetrace)
         // Not while the approval or the execution is signed or sent.
         state.swap?.let { SafeSwapBlock(it, onProposeAgain = actions.onProposeAgain.takeIf { state.idle }) }
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
@@ -671,6 +679,7 @@ private fun ReviewContent(state: SafeTxUiState.Review, actions: SafeTxActions, d
             Spacer(Modifier.size(8.dp))
             Text("Refresh the quote")
         }
+        TraceDisagreesLine(state.action)
         HorizontalDivider()
         val notSent = state.notSent
         if (notSent != null) {
@@ -710,7 +719,7 @@ private fun DraftReviewContent(state: SafeTxUiState.DraftReview, actions: SafeTx
     ) {
         PreparedOnLine(state.preparedOn)
         SafeLine(state.safe)
-        SafeTxActionCard(state.action)
+        SafeTxActionCard(state.action, onRetrace = actions.onRetrace)
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
         Heading(if (state.kind == ReviewKind.APPROVAL) "Approve as" else "Send the execution from")
         Choices(state.accounts, state.account, enabled = !state.signing, onChoose = actions.onAccountChange)
@@ -747,6 +756,7 @@ private fun DraftReviewContent(state: SafeTxUiState.DraftReview, actions: SafeTx
         state.pending?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         if (details.isNotEmpty()) HiddenDetails(SAFE_TX_DETAILS_TAG) { details.forEach { Note(it) } }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        TraceDisagreesLine(state.action)
         HorizontalDivider()
         UnlockFields(
             unlock = state.unlock,
@@ -778,7 +788,7 @@ private fun HeldContent(state: SafeTxUiState.Held, actions: SafeTxActions, detai
     ) {
         PreparedOnLine(state.preparedOn)
         SafeLine(state.safe)
-        SafeTxActionCard(state.action)
+        SafeTxActionCard(state.action, onRetrace = actions.onRetrace)
         Text(state.nonce, style = MaterialTheme.typography.titleSmall)
         HashLine(state.hash)
         // Empty in simple mode, which keeps it behind Details.
@@ -786,6 +796,7 @@ private fun HeldContent(state: SafeTxUiState.Held, actions: SafeTxActions, detai
         HeldSteps(state.steps, state.shareNote)
         if (details.isNotEmpty()) HiddenDetails(SAFE_TX_DETAILS_TAG) { details.forEach { Note(it) } }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        TraceDisagreesLine(state.action)
         HorizontalDivider()
         if (state.again != null) {
             Button(
@@ -908,4 +919,11 @@ private fun Choices(choices: List<SignerChoice>, chosen: String, enabled: Boolea
             )
         }
     }
+}
+
+/** Beside what signs, while the call's trace disagrees with what it says: loud, the buttons as they are. */
+@Composable
+private fun TraceDisagreesLine(action: SafeTxActionItem) {
+    if (action.trace?.warnings.isNullOrEmpty()) return
+    Text(TraceText.DISAGREES_NEAR_SIGN, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
 }

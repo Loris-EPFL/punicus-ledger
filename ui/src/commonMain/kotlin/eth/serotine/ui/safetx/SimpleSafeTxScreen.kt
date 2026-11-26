@@ -1,5 +1,6 @@
 package eth.serotine.ui.safetx
 
+import eth.serotine.ui.components.SafeTxActionItem
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import eth.serotine.ui.components.LightClientItem
@@ -37,17 +38,20 @@ fun SimpleSafeTxScreen(
 /** [this] in simple mode's words: each block-naming text in its block-free form. */
 private fun SafeTxUiState.simple(): SafeTxUiState = when (this) {
     is SafeTxUiState.Overview -> copy(
+        action = action.simple(),
         owners = owners.simple(),
         swap = swap?.simple(),
         refusal = simpleRefusal ?: refusal,
         message = simpleMessage ?: message,
         draftNote = simpleDraftNote ?: draftNote,
     )
-    is SafeTxUiState.Signing -> copy(swap = swap?.simple())
+    is SafeTxUiState.Signing -> copy(action = action.simple(), swap = swap?.simple())
     // A draft says each figure's age; its blocks are behind Details.
-    is SafeTxUiState.DraftReview -> copy(feeDetail = "", txNonce = "", balance = balance.copy(verifiedAt = ""))
-    is SafeTxUiState.Held -> copy(safeVerifiedAt = "")
+    is SafeTxUiState.DraftReview ->
+        copy(action = action.simple(), feeDetail = "", txNonce = "", balance = balance.copy(verifiedAt = ""))
+    is SafeTxUiState.Held -> copy(action = action.simple(), safeVerifiedAt = "")
     is SafeTxUiState.Review -> copy(
+        action = action.simple(),
         feeDetail = "",
         balance = balance.copy(verifiedAt = ""),
         simulation = simpleSimulation ?: simulation,
@@ -66,6 +70,9 @@ private fun OwnersItem.simple(): OwnersItem = when (this) {
 }
 
 private fun SafeSwapItem.simple() = copy(lines = simpleLines ?: lines)
+
+/** The trace with when it was traced in place of its block (docs/clear-signing.md, *Where it shows*). */
+private fun SafeTxActionItem.simple() = copy(trace = trace?.let { it.copy(provenAt = it.simpleProvenAt ?: it.provenAt) })
 
 /** What each step keeps behind *Details* in simple mode: the blocks Detailed view names. */
 private fun SafeTxUiState.details(): List<String> = when (this) {

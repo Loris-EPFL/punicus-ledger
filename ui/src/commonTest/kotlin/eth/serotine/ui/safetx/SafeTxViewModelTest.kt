@@ -129,6 +129,8 @@ class SafeTxViewModelTest {
     @AfterTest
     fun resetMainDispatcher() = Dispatchers.resetMain()
 
+    private var traceAnswer: eth.serotine.domain.repository.CallTraceReading = eth.serotine.domain.repository.CallTraceReading.NotTraced
+
     private fun TestScope.viewModel(
         request: SigningRequest,
         collect: Boolean = true,
@@ -210,6 +212,12 @@ class SafeTxViewModelTest {
                 *deployments,
                 onRead = { reads++ },
             ),
+            traceCall = eth.serotine.ui.dapptransaction.tracing(
+                object : eth.serotine.domain.repository.TokenCatalog {
+                    override fun observeTokens(network: Network) = kotlinx.coroutines.flow.flowOf(emptyList<eth.serotine.domain.model.Token>())
+                },
+                backgroundScope,
+            ) { traceAnswer },
         )
         if (collect) backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -663,6 +671,47 @@ class SafeTxViewModelTest {
         viewModel.checkAgain()
         runCurrent()
         assertEquals(before + 1, reads)
+    }
+
+    @Test
+    fun aSafesCallIsTracedAsTheSafesOwnAndItsDisagreementWarnedAbout() = runTest {
+        deployments = arrayOf(wrapping)
+        val thief = Address.of("0x" + "99".repeat(20))
+        // The wrap described, while its trace sends the Safe's WETH on to a thief.
+        traceAnswer = eth.serotine.domain.repository.CallTraceReading.Traced(
+            eth.serotine.domain.model.TraceFrame(
+                eth.serotine.domain.model.TraceFrame.Type.CALL, world.safe, weth, UInt256.ZERO,
+                logs = listOf(
+                    eth.serotine.domain.model.TraceLog(
+                        weth,
+                        listOf(
+                            "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                            "0".repeat(24) + world.safe.hex.removePrefix("0x"),
+                            "0".repeat(24) + thief.hex.removePrefix("0x"),
+                        ),
+                        "0".repeat(63) + "5",
+                    ),
+                ),
+            ),
+            77,
+        )
+        val trace = viewModel(queued(world.request(deposit(weth)))).overview.action.trace!!
+        assertEquals("Proven at block 77, at the verified head: what it does now, not when it is mined.", trace.provenAt)
+        // The wrap's description names no token: the WETH it sends is one, and it ends with the thief.
+        assertEquals(2, trace.warnings.size)
+        assertTrue(trace.warnings.first().startsWith("It sends"))
+    }
+
+    @Test
+    fun aDelegateCallIsNotTraced() = runTest {
+        val delegate = deposit(weth).let {
+            SafeTx(
+                to = it.to, value = UInt256.ZERO, data = it.data, operation = SafeOperation.DELEGATECALL,
+                safeTxGas = UInt256.ZERO, baseGas = UInt256.ZERO, gasPrice = UInt256.ZERO,
+                gasToken = Address.ZERO, refundReceiver = Address.ZERO, nonce = 4,
+            )
+        }
+        assertNull(viewModel(queued(world.request(delegate))).overview.action.trace)
     }
 
     @Test

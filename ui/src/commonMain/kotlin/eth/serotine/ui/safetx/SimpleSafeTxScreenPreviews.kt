@@ -1,5 +1,6 @@
 package eth.serotine.ui.safetx
 
+import eth.serotine.ui.components.TraceSection
 import eth.serotine.ui.components.ClearSignedParameter
 import eth.serotine.ui.components.ClearSignedRow
 import eth.serotine.ui.components.ClearSignedSection
@@ -240,6 +241,7 @@ internal val simpleSafeTxScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("overview") { SimpleSafeTxOverviewPreview() },
     ScreenPreview("overview-dark") { SimpleSafeTxOverviewDarkPreview() },
     ScreenPreview("described") { SimpleSafeTxDescribedPreview() },
+    ScreenPreview("traced") { SimpleSafeTxTracedPreview() },
     ScreenPreview("review") { SimpleSafeTxReviewPreview() },
     ScreenPreview("swap") { SimpleSafeTxSwapPreview() },
     ScreenPreview("refused") { SimpleSafeTxRefusedPreview() },
@@ -253,4 +255,20 @@ internal val simpleSafeTxScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("held-conflict") { SimpleSafeTxHeldConflictPreview() },
     ScreenPreview("held-discarded") { SimpleSafeTxHeldDiscardedPreview() },
     ScreenPreview("draft-execution") { SimpleSafeTxDraftExecutionPreview() },
+)
+
+@Preview
+@Composable
+private fun SimpleSafeTxTracedPreview() = SimpleSafeTxPreview(
+    overview.copy(
+        action = usdcTransfer.copy(
+            trace = TraceSection(
+                provenAt = "Proven at block 7,412,903, at the verified head: what it does now, not when it is mined.",
+                simpleProvenAt = "Proven at the verified head, traced 2026-11-26 14:05:03Z: what it does now, not when it is mined.",
+                moves = listOf("Sends 40 USDC to $FRIEND"),
+                contracts = listOf("USDC ($USDC)"),
+                canRetry = true,
+            ),
+        ),
+    ),
 )

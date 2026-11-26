@@ -38,6 +38,8 @@ data class TraceSection(
     val provenAt: String? = null,
     /** The block it was proven at, which a screen holds against its own run's. */
     val block: Long? = null,
+    /** [provenAt] in simple mode's block-free words: when it was traced in place of the block. */
+    val simpleProvenAt: String? = null,
     /** The account's currency and tokens sent and received, each with its counterparty. */
     val moves: List<String> = emptyList(),
     /** The rights over the account's tokens it grants. */
@@ -86,8 +88,8 @@ object TraceText {
     const val MAX_REASON = 200
 
     /** [outcome] of [account]'s call on [network] as the screen shows it. */
-    fun section(outcome: TraceOutcome, account: Address, network: Network): TraceSection = when (outcome) {
-        is TraceOutcome.Traced -> traced(outcome, account, network)
+    fun section(outcome: TraceOutcome, account: Address, network: Network, tracedAt: Long? = null): TraceSection = when (outcome) {
+        is TraceOutcome.Traced -> traced(outcome, account, network, tracedAt)
         is TraceOutcome.Infeasible -> TraceSection(notTraced = "Not traced: it cannot run (${outcome.detail}).", canRetry = true)
         TraceOutcome.NotTraced -> TraceSection(notTraced = NOT_TRACED_HERE)
         TraceOutcome.NotInTime -> TraceSection(notTraced = NOT_IN_TIME, canRetry = true)
@@ -98,7 +100,7 @@ object TraceText {
         )
     }
 
-    private fun traced(outcome: TraceOutcome.Traced, account: Address, network: Network): TraceSection {
+    private fun traced(outcome: TraceOutcome.Traced, account: Address, network: Network, tracedAt: Long?): TraceSection {
         val effects = outcome.effects
         fun named(address: Address): String {
             val checksum = Eip55.format(address)
@@ -128,6 +130,9 @@ object TraceText {
             revert = effects.revert?.let { revert ->
                 // The reason is the called contract's own text: escaped, cut, and said to be its words.
                 revert.reason?.let { "It reverts. The contract's reason: \"${shown(it)}\"" } ?: "It reverts (${shown(revert.error)})."
+            },
+            simpleProvenAt = tracedAt?.let {
+                "Proven at the verified head, traced ${ClearSignFormatter.utc(it)}: what it does now, not when it is mined."
             },
             unread = effects.unreadLogs.takeIf { it > 0 }?.let {
                 "$it of its logs look like token events but are not their exact encoding, so they are not read."
@@ -203,8 +208,8 @@ object TraceText {
 
 /** A [TraceSection] under its heading: the effects, the warnings first and loud, or why it is not traced. */
 @Composable
-fun TracedEffects(section: TraceSection, onRetry: () -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+fun TracedEffects(section: TraceSection, onRetry: () -> Unit, modifier: Modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+    Column(modifier) {
         Text(
             TraceText.HEADING,
             Modifier.padding(top = 12.dp, bottom = 4.dp),

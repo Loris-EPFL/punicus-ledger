@@ -495,37 +495,42 @@ with its effects alone, under "not decoded".
 - **The addresses it shows**: every `addressName` (a recipient, a spender, a
   debtor, a seller alike: an address the user is shown), the sender's own
   where one stands for the sender; or the decoder's recipient or spender.
+  The contract the call is sent to is one too: the review names it, so what
+  it is paid and keeps (a name's price) is no disagreement.
 - **Whether it grants a right**: the approval flag (A3), or an `approve`.
 
 **The disagreements** (decision 2):
 
 - **A token the claims do not name**: the account sends a token, wrapped
   currency or an NFT that the claims do not name. A token the account burns
-  (sends to the zero address, as a lending pool's `withdraw` burns its
-  shares) is not sent to anyone, and counts only where the account receives
-  nothing of value in return (as above: an asset the claims name, a built-in
-  token, the currency or its wrapped token). The network's currency the
+  (sends to the zero address, as a lending pool's `withdraw` burns its shares,
+  or a repaid loan its debt token) is not sent to anyone. It counts only where
+  nothing of value comes to the account or an address the claims show (an
+  asset the claims name, a built-in token, the currency or its wrapped token),
+  and the account pays nothing the claims name. The network's currency the
   transaction itself carries (its value, shown on the screen already) is no
   disagreement.
-- **The user's tokens ending elsewhere**: an asset (each the account sends
-  or receives, each the claims name, and the currency where the account
-  moves it or the claims show an amount of it) ends up, more of it than it
-  started with, with an address that is none of: the account, an address the
-  claims show (claims that show none are held to the account alone), the
-  zero address (a burn), and, for an asset the account pays with (the
-  currency and its wrapped token counting as one), a counterparty that pays
-  on. A counterparty pays on when a chain of the trace's moves leads from it
-  to the account or a shown address, the last move of that chain an asset of
-  value (one the claims name, a built-in token, the currency or its wrapped
-  token: any contract can log a junk token's move) or a mint (its issuer
-  paying in its own shares, as a lending pool or a vault does for what it
-  takes). Moves further up the chain may be in any token, since a route's
-  middle token is often in no list. A contract that only takes is never a
-  counterparty, however much code it runs. What passes all the same, and the
-  trace cannot tell: a counterparty that pays back dust, a contract that
-  takes the tokens and mints its own shares for them, and a thief whose move
-  of a junk token into a real counterparty is logged. The trace proves where
-  tokens go, not that the price is fair.
+- **The user's tokens ending elsewhere**: an asset (each the account sends or
+  receives, each the claims name, and the currency where the account moves it
+  or the claims show an amount of it, the currency and its wrapped token held
+  as one) ends up, more of it than it started with, with an address that is
+  none of: the account, an address the claims show (claims that show none are
+  held to the account alone, and the contract called), the zero address or the
+  token's own contract (a burn, as wrapped currency is burnt when it is
+  unwrapped), and, for an asset the account pays with (the currency and its
+  wrapped token counting as one), a counterparty that pays on. A counterparty
+  pays on when a chain of the trace's moves leads from it to the account or a
+  shown address, the last move of that chain an asset of value (one the claims
+  name, a built-in token, the currency or its wrapped token: any contract can
+  log a junk token's move) or a mint (its issuer paying in its own shares, as
+  a lending pool or a vault does for what it takes). Moves further up the
+  chain may be in any token, since a route's middle token is often in no list.
+  A contract that only takes is never a counterparty, however much code it
+  runs. What passes all the same, and the trace cannot tell: a counterparty
+  that pays back dust, a contract that takes the tokens and mints its own
+  shares for them, and a thief whose move of a junk token into a real
+  counterparty is logged. The trace proves where tokens go, not that the price
+  is fair.
 - **A right the claims do not grant**: the trace grants a right (as above)
   that the claims do not: they grant none, or not over that token (for
   Permit2, the token it lets be taken), or not to that spender (an address
@@ -587,5 +592,11 @@ their code lands (#240):
   enabled (`execTransactionFromModule` back into the Safe, logging
   `EnabledModule` or `ChangedFallbackHandler`), which the effects above do
   not read. Raised by the review of part 1; the owner's.
+- Ordinary calls that still warn under the checks above, the logs alone
+  unable to tell them from a theft (raised by the review of part 2): Aave's
+  `repay`, whose asset stays with the reserve's aToken, which pays nothing
+  back; an allowance lowered (`decreaseAllowance`) or used up in the same
+  call (`supplyWithPermit`), read as a right granted. Whether to accept
+  these warnings or narrow the checks further is the owner's.
 - Phase C: where the build takes the sources from, and what a contract on no
   list shows (question 8).

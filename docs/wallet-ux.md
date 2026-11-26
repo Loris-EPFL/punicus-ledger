@@ -365,9 +365,12 @@ time*.
    out until a signing EOA is available: an EOA pays for the deployment. A
    tap on it then says so, with Import phrase or key and Create account
    as ways to get one (owner ruling, 2026-10-18, #55).
-   - Desktop also offers **Add Ledger account**. It asks for the network and
-     derivation path. After the user confirms the address on the device, the
-     screen shows the full address and asks explicitly before saving. The
+   - Desktop also offers **Add Ledger account**. It asks for the network
+     and starts at Ledger Live account 1. **Browse Ledger accounts** reads
+     five numbered public addresses at a time over USB; it does not check
+     their balances or add them. The user may page through them, pick one,
+     or enter a custom path under **Advanced**. The chosen address must
+     still be confirmed on the device and shown in full before saving. The
      account shows a **Ledger** badge. Send, Swap, Safe operations, and dApp
      reviews that use this account show **Approve on Ledger** instead of
      wallet password or biometrics. The review warns when the device may

@@ -22,6 +22,10 @@ import kotlinx.coroutines.withContext
 class UsbLedgerDevice internal constructor(private val open: () -> LedgerReports) : LedgerDevice {
     constructor() : this(HidApi::open)
 
+    override suspend fun readAddresses(paths: List<LedgerPath>): LedgerResult<List<Address>> = withDevice {
+        paths.map { LedgerEthereum.readAddress(this, it, display = false) }
+    }
+
     override suspend fun confirmAddress(path: LedgerPath): LedgerResult<Address> = withDevice {
         LedgerEthereum.readAddress(this, path, display = true)
     }

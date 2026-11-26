@@ -1142,13 +1142,20 @@ deception path, and nothing on a phone closes it completely.
 ## USB Ledger on desktop
 
 Connect one Ledger by USB, unlock it, and open **Ethereum** on the device.
-In Punicus, choose **Accounts → + → Add Ledger account**. Choose Ethereum,
-Gnosis Chain or Sepolia, and the account's derivation path (the first Ledger
-Live account is `m/44'/60'/0'/0/0`). Select **Confirm address on Ledger** and
-check the full address on the device before approving it. Compare it with
-the address Punicus shows and select **Add account**. An existing entry
-for the address and network is not overwritten. The wallet stores only the
-public address, path and ordinary account metadata.
+In Punicus, choose **Accounts → + → Add Ledger account** and select Ethereum,
+Gnosis Chain or Sepolia. **Browse Ledger accounts** reads five addresses at
+a time from the device. Pick the one that matches your account in Ledger
+Live; **Next accounts** shows the next five. The list shows addresses,
+not balances or whether Ledger Live has used an account. The first account
+(`m/44'/60'/0'/0/0`) is selected by default. For a different derivation
+scheme, choose **Advanced: custom derivation path**.
+
+Select **Confirm address on Ledger**, compare the full address, and approve
+it on the device. If you browsed first, the confirmed address must match
+the address you picked. Select **Add account** to save it. An existing
+entry for that address and network is not overwritten. Repeat to add another
+address from the same Ledger. Only the enrolled public address, path and
+ordinary account metadata are saved.
 
 - **Linux:** Install HIDAPI 0.13 or newer with its hidraw backend (e.g.
   `libhidapi-hidraw0` on Debian), and set up the

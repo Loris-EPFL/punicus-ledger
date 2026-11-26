@@ -1,5 +1,6 @@
 package eth.serotine.ui.ledger
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,11 +21,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.NetworkChips
@@ -48,6 +52,10 @@ import eth.serotine.ui.components.unavailable
 internal fun LedgerAccountScreen(
     state: LedgerAccountUiState,
     onPath: (String) -> Unit,
+    onCustomPath: (Boolean) -> Unit,
+    onBrowse: () -> Unit,
+    onPage: (Int) -> Unit,
+    onAccount: (Int) -> Unit,
     onNetwork: (Long) -> Unit,
     onTurnOn: (Long) -> Unit,
     onConfirm: () -> Unit,
@@ -61,9 +69,9 @@ internal fun LedgerAccountScreen(
         modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
-                title = { Text("Add Ledger account") },
+                title = { Text(if (state.accountPage == null) "Add Ledger account" else "Ledger Live accounts") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = if (state.accountPage == null) onBack else onCancel) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -71,6 +79,13 @@ internal fun LedgerAccountScreen(
         },
         bottomBar = {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                val page = state.accountPage
+                if (page != null) {
+                    OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (page.loading) "Cancel" else "Back to account")
+                    }
+                    return@Column
+                }
                 when (state.step) {
                     LedgerEnrollmentStep.Editing -> {
                         val title = "Confirm address on Ledger"
@@ -109,22 +124,43 @@ internal fun LedgerAccountScreen(
             Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            val page = state.accountPage
+            if (page != null) {
+                AccountPicker(page, onPage, onAccount)
+                state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                return@Column
+            }
             Text("Connect one Ledger by USB, unlock it, and open the Ethereum app.")
             NetworkChips(state.choices, action = "Add account on", onChoose = onNetwork, onTurnOn = onTurnOn)
             if (state.network.testnet) {
                 Text("Sepolia is a test network. Use test ETH only.", color = MaterialTheme.colorScheme.tertiary)
             }
-            OutlinedTextField(
-                value = state.path,
-                onValueChange = onPath,
-                modifier = Modifier.fillMaxWidth(),
-                readOnly = state.busy,
-                singleLine = true,
-                label = { Text("Derivation path") },
-                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
-                isError = state.pathError != null,
-                supportingText = state.pathError?.let { error -> { Text(error) } },
-            )
+            if (state.customPath) {
+                OutlinedTextField(
+                    value = state.path,
+                    onValueChange = onPath,
+                    modifier = Modifier.fillMaxWidth(),
+                    readOnly = state.busy,
+                    singleLine = true,
+                    label = { Text("Derivation path") },
+                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+                    isError = state.pathError != null,
+                    supportingText = state.pathError?.let { error -> { Text(error) } },
+                )
+                TextButton(onClick = { onCustomPath(false) }, enabled = !state.busy) {
+                    Text("Use Ledger Live accounts")
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Ledger Live · ${state.accountLabel}", style = MaterialTheme.typography.titleMedium)
+                    OutlinedButton(onClick = onBrowse, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+                        Text("Browse Ledger accounts")
+                    }
+                    TextButton(onClick = { onCustomPath(true) }, enabled = !state.busy) {
+                        Text("Advanced: custom derivation path")
+                    }
+                }
+            }
             when (val step = state.step) {
                 LedgerEnrollmentStep.Editing -> Unit
                 LedgerEnrollmentStep.Confirming -> Progress("Review and approve the address on your Ledger.")
@@ -138,6 +174,34 @@ internal fun LedgerAccountScreen(
             }
             state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
+    }
+}
+
+@Composable
+private fun AccountPicker(page: LedgerAccountPage, onPage: (Int) -> Unit, onAccount: (Int) -> Unit) {
+    val accounts = page.accounts
+    if (accounts == null) {
+        Progress("Reading public addresses from your Ledger…")
+        return
+    }
+    if (accounts.isEmpty()) {
+        OutlinedButton(onClick = { onPage(page.start) }) { Text("Try again") }
+    } else {
+        Text("Choose an address, then confirm it on your Ledger before adding it.")
+        Column {
+            for (account in accounts) {
+                ListItem(
+                    headlineContent = { Text(account.label) },
+                    supportingContent = { Text(account.displayAddress, fontFamily = FontFamily.Monospace) },
+                    leadingContent = { Blockie(account.displayAddress, size = 32.dp) },
+                    modifier = Modifier.clickable(role = Role.Button) { onAccount(account.index) },
+                )
+            }
+        }
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        page.previous?.let { previous -> TextButton(onClick = { onPage(previous) }) { Text("Previous accounts") } }
+        page.next?.let { next -> TextButton(onClick = { onPage(next) }) { Text("Next accounts") } }
     }
 }
 

@@ -9,6 +9,10 @@ import eth.serotine.domain.model.Signature
 
 /** A locally connected Ledger's Ethereum app, with no bare-digest signing operation. */
 interface LedgerDevice {
+    /** Reads public addresses in [paths] order, without prompting. This never confirms enrollment. */
+    suspend fun readAddresses(paths: List<LedgerPath>): LedgerResult<List<Address>> =
+        LedgerResult.Failed(LedgerProblem.UNAVAILABLE)
+
     /** Returns the address at [path] only after the user confirms it on the device. */
     suspend fun confirmAddress(path: LedgerPath): LedgerResult<Address>
 

@@ -17,6 +17,8 @@ and issues of this repository.
   Safe and CoW signatures, and supported dApp requests. Myotis still
   verifies chain state and broadcasts. Keys stay on the device. Requires
   system HIDAPI; some signatures require blind signing enabled on the Ledger.
+- The desktop Ledger account picker browses numbered Ledger Live addresses
+  over USB, with custom derivation paths still available under Advanced.
 
 - The first start says what to expect: a note, shown once until OK, that
   the first start takes a few minutes while Punicus finds computers of the

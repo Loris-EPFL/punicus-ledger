@@ -25,17 +25,26 @@ class EnrollLedgerAccount(
     private val accounts: AccountRepository,
     private val changes: WalletChanges,
 ) {
-    /** Gets the address from the device for this path, never from text the user entered. */
-    suspend fun confirm(path: LedgerPath): LedgerResult<ConfirmedLedgerAccount> {
+    /** Reads addresses to help the user choose a path. Only [confirm] can produce an enrollment. */
+    suspend fun browse(paths: List<LedgerPath>): LedgerResult<List<Address>> =
+        when (val result = ledger.readAddresses(paths)) {
+            is LedgerResult.Failed -> result
+            is LedgerResult.Ok -> if (result.value.size == paths.size && Address.ZERO !in result.value) result
+            else LedgerResult.Failed(LedgerProblem.INVALID_RESPONSE)
+        }
+
+    /** Confirms the address on-device; if it was browsed first, it must match [expectedAddress]. */
+    suspend fun confirm(path: LedgerPath, expectedAddress: Address? = null): LedgerResult<ConfirmedLedgerAccount> {
         currentCoroutineContext().ensureActive()
         val result = ledger.confirmAddress(path)
         currentCoroutineContext().ensureActive()
         return when (result) {
             is LedgerResult.Failed -> result
-            is LedgerResult.Ok -> if (result.value != Address.ZERO) {
-                LedgerResult.Ok(ConfirmedLedgerAccount(path, result.value))
-            } else {
-                LedgerResult.Failed(LedgerProblem.INVALID_RESPONSE)
+            is LedgerResult.Ok -> when {
+                result.value == Address.ZERO -> LedgerResult.Failed(LedgerProblem.INVALID_RESPONSE)
+                expectedAddress != null && result.value != expectedAddress ->
+                    LedgerResult.Failed(LedgerProblem.WRONG_ACCOUNT)
+                else -> LedgerResult.Ok(ConfirmedLedgerAccount(path, result.value))
             }
         }
     }

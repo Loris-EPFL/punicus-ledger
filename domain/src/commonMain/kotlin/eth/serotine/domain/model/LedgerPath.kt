@@ -11,7 +11,13 @@ value class LedgerPath private constructor(val value: String) {
         private const val ETHEREUM_PREFIX = "44'/60'/"
 
         /** The first account in Ledger Live's Ethereum derivation scheme. */
-        val DEFAULT = LedgerPath("m/44'/60'/0'/0/0")
+        val DEFAULT = ledgerLiveAccount(0)
+
+        /** Ledger Live's Ethereum path for a zero-based [index]. */
+        fun ledgerLiveAccount(index: Int): LedgerPath {
+            require(index >= 0)
+            return LedgerPath("m/$ETHEREUM_PREFIX$index'/0/0")
+        }
 
         /** Reads decimal uint31 indices with optional apostrophes for hardening, and normalizes the `m/` prefix. */
         fun parse(value: String): LedgerPath? {

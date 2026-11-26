@@ -39,8 +39,73 @@ class LedgerAccountViewModel(
         }
     }
 
+    internal fun browseAccounts() {
+        val current = state.value
+        if (current.busy || current.customPath || current.accountPage != null) return
+        confirmation = null
+        readPage((current.selectedAccount?.index ?: 0) / LEDGER_ACCOUNTS_PER_PAGE * LEDGER_ACCOUNTS_PER_PAGE)
+    }
+
+    internal fun browsePage(start: Int) {
+        val page = state.value.accountPage ?: return
+        if (page.loading || (start != page.start && start != page.previous && start != page.next)) return
+        readPage(start)
+    }
+
+    private fun readPage(start: Int) {
+        val last = (start.toLong() + LEDGER_ACCOUNTS_PER_PAGE - 1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        val paths = (start..last).map { LedgerPath.ledgerLiveAccount(it) }
+        val page = LedgerAccountPage(start)
+        state.update { it.copy(accountPage = page, step = LedgerEnrollmentStep.Editing, message = null) }
+        operation = viewModelScope.launch {
+            val result = enroll.browse(paths)
+            ensureActive()
+            state.update {
+                when (result) {
+                    is LedgerResult.Ok -> it.copy(
+                        accountPage = page.copy(accounts = result.value.mapIndexed { offset, address ->
+                            LedgerAddressChoice(start + offset, address)
+                        }),
+                    )
+                    is LedgerResult.Failed -> it.copy(
+                        accountPage = page.copy(accounts = emptyList()), message = ledgerProblemText(result.problem),
+                    )
+                }
+            }
+        }
+    }
+
+    internal fun chooseAccount(index: Int) {
+        val chosen = state.value.accountPage?.accounts?.firstOrNull { it.index == index } ?: return
+        state.update {
+            it.copy(
+                selectedAccount = chosen,
+                accountPage = null,
+                path = LedgerPath.ledgerLiveAccount(chosen.index).value,
+                message = null,
+            )
+        }
+    }
+
+    internal fun useCustomPath(custom: Boolean) {
+        val current = state.value
+        if (current.busy || current.accountPage != null || custom == current.customPath) return
+        confirmation = null
+        state.update {
+            it.copy(
+                customPath = custom,
+                selectedAccount = null,
+                path = if (custom) it.path else LedgerPath.DEFAULT.value,
+                pathError = null,
+                message = null,
+                step = LedgerEnrollmentStep.Editing,
+            )
+        }
+    }
+
     internal fun editPath(path: String) {
-        if (state.value.busy || path == state.value.path) return
+        val current = state.value
+        if (current.busy || !current.customPath || path == current.path) return
         confirmation = null
         state.update {
             it.copy(
@@ -55,7 +120,9 @@ class LedgerAccountViewModel(
     internal fun chooseNetwork(chainId: Long) {
         val network = ledgerNetworks.firstOrNull { it.chainId == chainId } ?: return
         val current = state.value
-        if (current.busy || network == current.network || current.enabledNetworks?.contains(network) != true) return
+        if (current.busy || current.accountPage != null || network == current.network ||
+            current.enabledNetworks?.contains(network) != true
+        ) return
         confirmation = null
         state.update { it.copy(network = network, message = null, step = LedgerEnrollmentStep.Editing) }
     }
@@ -63,7 +130,7 @@ class LedgerAccountViewModel(
     internal fun turnOnNetwork(chainId: Long) {
         val network = ledgerNetworks.firstOrNull { it.chainId == chainId } ?: return
         val current = state.value
-        if (current.busy || current.enabledNetworks?.contains(network) != false) return
+        if (current.busy || current.accountPage != null || current.enabledNetworks?.contains(network) != false) return
         state.update { it.copy(step = LedgerEnrollmentStep.Enabling, message = null) }
         operation = viewModelScope.launch {
             val enabled = setNetworkEnabled(network, on = true)
@@ -84,11 +151,11 @@ class LedgerAccountViewModel(
 
     internal fun confirm() {
         val current = state.value
-        if (current.step != LedgerEnrollmentStep.Editing) return
+        if (current.step != LedgerEnrollmentStep.Editing || current.accountPage != null) return
         val path = LedgerPath.parse(current.path) ?: return
         state.update { it.copy(path = path.value, message = null, step = LedgerEnrollmentStep.Confirming) }
         operation = viewModelScope.launch {
-            val result = enroll.confirm(path)
+            val result = enroll.confirm(path, current.selectedAccount?.address)
             ensureActive()
             when (result) {
                 is LedgerResult.Ok -> {
@@ -125,11 +192,12 @@ class LedgerAccountViewModel(
         }
     }
 
-    internal fun cancelConfirmation() {
-        if (state.value.step != LedgerEnrollmentStep.Confirming) return
+    internal fun cancel() {
+        val current = state.value
+        if (current.accountPage == null && current.step != LedgerEnrollmentStep.Confirming) return
         operation?.cancel()
         operation = null
-        state.update { it.copy(step = LedgerEnrollmentStep.Editing) }
+        state.update { it.copy(accountPage = null, step = LedgerEnrollmentStep.Editing, message = null) }
     }
 
     internal fun close() {

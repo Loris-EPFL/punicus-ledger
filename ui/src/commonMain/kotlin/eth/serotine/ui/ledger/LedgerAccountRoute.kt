@@ -22,10 +22,14 @@ fun LedgerAccountRoute(
     LedgerAccountScreen(
         state = state,
         onPath = viewModel::editPath,
+        onCustomPath = viewModel::useCustomPath,
+        onBrowse = viewModel::browseAccounts,
+        onPage = viewModel::browsePage,
+        onAccount = viewModel::chooseAccount,
         onNetwork = viewModel::chooseNetwork,
         onTurnOn = viewModel::turnOnNetwork,
         onConfirm = viewModel::confirm,
-        onCancel = viewModel::cancelConfirmation,
+        onCancel = viewModel::cancel,
         onAdd = viewModel::add,
         onBack = {
             viewModel.close()

@@ -12,11 +12,14 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 private val form = LedgerAccountUiState(enabledNetworks = listOf(Network.ETHEREUM))
 private val address = Eip55.format(Address.of("0x" + "12ab".repeat(10)))
 private val confirmed = form.copy(step = LedgerEnrollmentStep.Confirmed(address))
+private val choices = List(LEDGER_ACCOUNTS_PER_PAGE) { index ->
+    LedgerAddressChoice(index, Address.of("0x" + "12a$index".repeat(10)))
+}
 
 @Composable
 private fun LedgerPreview(state: LedgerAccountUiState, darkTheme: Boolean = false) {
     SerotineTheme(darkTheme = darkTheme) {
-        LedgerAccountScreen(state, {}, {}, {}, {}, {}, {}, {})
+        LedgerAccountScreen(state, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
     }
 }
 
@@ -26,7 +29,9 @@ private fun LedgerEditingPreview() = LedgerPreview(form)
 
 @Preview
 @Composable
-private fun LedgerInvalidPathPreview() = LedgerPreview(form.copy(path = "m/44'/1'", pathError = LEDGER_PATH_ERROR))
+private fun LedgerInvalidPathPreview() = LedgerPreview(
+    form.copy(customPath = true, path = "m/44'/1'", pathError = LEDGER_PATH_ERROR),
+)
 
 @Preview
 @Composable
@@ -74,8 +79,33 @@ private fun LedgerSavingPreview() = LedgerPreview(form.copy(step = LedgerEnrollm
 @Composable
 private fun LedgerAddedPreview() = LedgerPreview(form.copy(step = LedgerEnrollmentStep.Added))
 
+@Preview
+@Composable
+private fun LedgerAccountsPreview() = LedgerPreview(form.copy(accountPage = LedgerAccountPage(0, choices)), true)
+
+@Preview
+@Composable
+private fun LedgerReadingAccountsPreview() = LedgerPreview(form.copy(accountPage = LedgerAccountPage(0)))
+
+@Preview
+@Composable
+private fun LedgerAccountsUnavailablePreview() = LedgerPreview(
+    form.copy(
+        accountPage = LedgerAccountPage(0, emptyList()),
+        message = ledgerProblemText(LedgerProblem.NOT_CONNECTED),
+    ),
+)
+
+@Preview
+@Composable
+private fun LedgerCustomPathPreview() = LedgerPreview(form.copy(customPath = true))
+
 internal val ledgerAccountScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("editing") { LedgerEditingPreview() },
+    ScreenPreview("accounts-dark") { LedgerAccountsPreview() },
+    ScreenPreview("accounts-reading") { LedgerReadingAccountsPreview() },
+    ScreenPreview("accounts-unavailable") { LedgerAccountsUnavailablePreview() },
+    ScreenPreview("custom-path") { LedgerCustomPathPreview() },
     ScreenPreview("invalid-path") { LedgerInvalidPathPreview() },
     ScreenPreview("confirming") { LedgerConfirmingPreview() },
     ScreenPreview("disconnected") { LedgerDisconnectedPreview() },

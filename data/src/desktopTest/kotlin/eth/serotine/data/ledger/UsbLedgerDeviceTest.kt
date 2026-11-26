@@ -39,6 +39,20 @@ class UsbLedgerDeviceTest {
     }
 
     @Test
+    fun browsingReadsConsecutiveAccountsOnOneHandleWithoutAnApprovalPrompt() = runTest {
+        val reports = ReportScript({ replies(it, addressResponse) }, { replies(it, addressResponse) })
+        val device = UsbLedgerDevice { reports }
+        val paths = listOf(LedgerPath.DEFAULT, LedgerPath.ledgerLiveAccount(1))
+
+        assertEquals(LedgerResult.Ok(listOf(address, address)), device.readAddresses(paths))
+        val requests = sentApdus(reports.writes)
+        assertEquals(2, requests.size)
+        assertContentEquals("e002000015$DEFAULT_PATH".hexToByteArray(), requests[0])
+        assertContentEquals("e002000015058000002c8000003c800000010000000000000000".hexToByteArray(), requests[1])
+        assertTrue(reports.closed)
+    }
+
+    @Test
     fun signsTheEthereumAndSepoliaVectorsUsingTheSameHandleAsTheSenderCheck() = runTest {
         for ((network, unsigned, s) in vectors) {
             val signatureReply = signatureReply(s)

@@ -302,9 +302,10 @@ rulings to the screens.
 - *Activity* may also take the addr1 address index, which the engine reads
   from Swarm: verified rows only, on the desktop and Android (owner's
   decisions, 2026-11-24 and 2026-11-25), behind an experimental setting that
-  names the importer key pinned in the release, on by default and the user's
-  to turn off; an off survives a new key (owner's decisions, 2026-11-22,
-  #334). Its completeness rests on that importer, and the list says so; a contradicted entry warns against the key (owner ruling,
+  names the importer key pinned in the release (one per network with an
+  index: Ethereum and Gnosis Chain, owner's request, 2026-11-26), on by
+  default and the user's to turn off; an off survives a new key (owner's
+  decisions, 2026-11-22, #334). Its completeness rests on that importer, and the list says so; a contradicted entry warns against the key (owner ruling,
   2026-11-21, #334, and decisions on #335).
 - Swaps: Uniswap first, then CoW Protocol; the user chooses the venue (owner's
   directions, 2026-10-18 and 2026-10-22). CoW's order API is used only for a

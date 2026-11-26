@@ -1,7 +1,7 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.AccountId
-import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.AddressIndexCoverage
 import eth.serotine.domain.model.AddressIndexEntry
 import eth.serotine.domain.model.AddressIndexRow
@@ -23,8 +23,9 @@ import kotlinx.coroutines.flow.first
  *   with it.
  * - **Each entry by itself**, a row, left out for good, or waiting for its check, so that a later read neither checks
  *   nor counts it again ([AddressIndexResume.known]), and the ranges a read could not get, to be read again.
- * - **Only the pinned key's.** A list resting on any other key than [pinnedImporter] is never kept, and one kept
- *   under another key (a release that pins a new one) is never given back: the list starts again from the index.
+ * - **Only the pinned key's.** A list resting on any other key than the one [pinned] for its account's network is
+ *   never kept, and one kept under another key (a release that pins a new one) is never given back: the list starts
+ *   again from the index.
  * - **Only an account of the wallet's**, written under the app's [changes]: a page an Activity still finishes after
  *   the account's removal writes nothing back ([RemoveAccount] forgets it under the same [changes]).
  * - **Nothing is taken on the archive's word but what was verified here before**: a kept row was the engine's
@@ -36,13 +37,13 @@ class KeepAddressIndex(
     private val accounts: AccountRepository,
     /** The app's one [WalletChanges]: a list is never written between a removal's read and its end. */
     private val changes: WalletChanges,
-    /** The importer key pinned in the release: the one key whose list may be kept and given back. */
-    private val pinnedImporter: Address,
+    /** The importer keys pinned in the release: on each network, the one key whose list may be kept and given back. */
+    private val pinned: AddressIndexImporters,
 ) {
     /** What is kept of [account]'s history, under the pinned key; null when nothing is, or it can't be read. */
     suspend fun restore(account: AccountId): AddressIndexResume? {
         val kept = archive.read(account) ?: return null
-        if (kept.coverage.importer != pinnedImporter) return null
+        if (kept.coverage.importer != pinned.of(account.network)) return null
         return AddressIndexResume(kept, kept.next?.let { AddressIndexContinuation(account, it) })
     }
 
@@ -67,7 +68,7 @@ class KeepAddressIndex(
         next: AddressIndexContinuation?,
     ): Boolean {
         require(next == null || next.account == account) { "a continuation of another account's history" }
-        if (coverage.importer != pinnedImporter) return false
+        if (coverage.importer != pinned.of(account.network)) return false
         // Below every verdict that may still be undone, so that the index is read there again.
         val unsettled = (rows.filterNot { it.final }.map { it.entry.block } + notFinal.map { it.block }).minOrNull()
         val keptTop = unsettled?.let { minOf(top, it - 1) } ?: top

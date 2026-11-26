@@ -65,7 +65,8 @@ class AddressIndexActivity(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     internal fun of(account: AccountId, more: StateFlow<Int>): Flow<IndexPaging?> = status()
-        .map { if (it.on) it.pinned else null }
+        // The key of the account's own network: one without a key pinned has no addr1 history.
+        .map { it.readOn(account.network) }
         .distinctUntilChanged()
         .flatMapLatest { pinned -> if (pinned == null) flowOf(null) else pages(account, pinned, more) }
         .onStart { emit(null) }

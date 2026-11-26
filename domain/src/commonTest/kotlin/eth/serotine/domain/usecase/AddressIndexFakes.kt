@@ -1,6 +1,7 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.AddressIndexCursor
 import eth.serotine.domain.model.AddressIndexEntry
 import eth.serotine.domain.model.AddressIndexVerdict
@@ -102,13 +103,17 @@ internal class MemoryAddressIndexSetting : AddressIndexSetting {
 
 /** An [AddressIndexReaderSettings] that records what it was told. */
 internal class RecordingReaderSettings : AddressIndexReaderSettings {
-    val applied = mutableListOf<Address?>()
+    val applied = mutableListOf<AddressIndexImporters>()
 
-    override suspend fun apply(importer: Address?): Boolean {
-        applied += importer
+    override suspend fun apply(importers: AddressIndexImporters): Boolean {
+        applied += importers
         return true
     }
 }
+
+/** [key] pinned for Ethereum alone, or no key at all (null): the importers of a release with one index. */
+internal fun onEthereum(key: Address?): AddressIndexImporters =
+    key?.let { AddressIndexImporters(mapOf(Network.ETHEREUM to it)) } ?: AddressIndexImporters.NONE
 
 /** An [AddressIndexArchive] in memory, as the port's contract says one behaves; [failWrites] makes every write fail. */
 internal class MemoryAddressIndexArchive : AddressIndexArchive {

@@ -18,6 +18,13 @@ and issues of this repository.
   that Try again often helps since Punicus keeps trying while it is open.
   The website's guide says the same under *When you run Punicus for the
   first time*, and the downloads point to it.
+- The account history from the addr1 index now covers Gnosis Chain as well
+  as Ethereum: a Gnosis Chain account's Activity also lists the verified
+  entries of the one-year Gnosis Chain index on Swarm, signed by its own
+  importer key, `0xE779…9335`, pinned in this release. The experimental
+  setting names both keys; it is on by default for both, and turning it off
+  turns both off. Sepolia has no such index. Needs Myotis 0.1.25, which
+  reads each chain's index under its own key.
 - Clear signing of dApp transactions, and of Permit2's batch permits among
   typed data: a call, or such a message, that Punicus did not decode before is
   now put in words when a built-in ERC-7730 description covers its contract
@@ -41,6 +48,18 @@ and issues of this repository.
   signed. A Safe transaction is run as the Safe's own call, a delegate call
   not at all. On Android and the desktop; iOS says it cannot trace yet
   (#240).
+
+### Changed
+
+- The embedded Myotis engine is 0.1.25 (was 0.1.24). It reads each chain's
+  addr1 index under its own importer key (Myotis #933). It brings a bundled
+  checkpoint table for Gnosis Chain (Myotis #934): a Gnosis Chain block or
+  its receipts deeper than the light client's 512-block window now verifies
+  against it, as on Ethereum, which every older row of Gnosis Chain's addr1
+  index rests on. The table adds about 1.55 MB per processor type to the
+  apps. It also extends Ethereum's checkpoint table to block 26,497,669 and
+  moves the embedded checkpoints of Ethereum, Gnosis Chain and Sepolia to
+  2026-11-26.
 
 ## [0.6.0] - 2026-11-25
 

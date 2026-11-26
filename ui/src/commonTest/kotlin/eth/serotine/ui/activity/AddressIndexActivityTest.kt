@@ -1,5 +1,6 @@
 package eth.serotine.ui.activity
 
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
@@ -37,6 +38,7 @@ import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveWaitingSwaps
 import eth.serotine.ui.FIXTURE_IMPORTER
+import eth.serotine.ui.onEthereum
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeAddressIndexHistory
 import eth.serotine.ui.FakeLogIndex
@@ -100,6 +102,8 @@ class AddressIndexActivityTest {
     private fun TestScope.activity(
         pinned: Address? = FIXTURE_IMPORTER,
         archive: AddressIndexArchive? = null,
+        importers: AddressIndexImporters = onEthereum(pinned),
+        network: Network = Network.ETHEREUM,
     ): StateFlow<ActivityUiState> =
         AccountActivity(
             ObserveAccountHistory(history),
@@ -111,7 +115,7 @@ class AddressIndexActivityTest {
             ObserveAccountCowOrders(MemoryCowOrders()),
             ObserveWaitingSwaps(MemoryWaitingSwaps()),
             ObserveOutbox(MemoryOutbox()),
-            addressIndex = pinned?.let {
+            addressIndex = importers.takeUnless { it.none }?.let {
                 AddressIndexActivity(
                     ObserveAddressIndexStatus(index, setting, it),
                     LoadAddressIndexPage(index, it),
@@ -120,7 +124,7 @@ class AddressIndexActivityTest {
             },
             now = { 600 },
         ) { "at $it" }
-            .of(AccountId(Network.ETHEREUM, alice.address), flowOf(false), more)
+            .of(AccountId(network, alice.address), flowOf(false), more)
             .stateIn(
                 backgroundScope + UnconfinedTestDispatcher(testScheduler),
                 SharingStarted.Eagerly,
@@ -523,6 +527,45 @@ class AddressIndexActivityTest {
         )
         assertEquals(ActivityState.UNKNOWN, rows[0].state)
         assertEquals(IndexEntryKey(9_100_000, 1, setOf(AddressIndexRole.TOPIC)), rows[1].opens.index)
+    }
+
+    private val gnosisImporter = Address.of("0x" + "9e".repeat(20))
+    private val bothPinned =
+        AddressIndexImporters(mapOf(Network.ETHEREUM to FIXTURE_IMPORTER, Network.GNOSIS to gnosisImporter))
+
+    @Test
+    fun aGnosisChainAccountsListRestsOnGnosisChainsOwnKeyAndNamesIt() = runTest {
+        accounts.accounts.value = listOf(alice.copy(network = Network.GNOSIS))
+        index.page(null, listOf(indexRow(9_300_000, 3, alice.address, bob)), next = null, importer = gnosisImporter)
+
+        val shown = shown(activity(importers = bothPinned, network = Network.GNOSIS))
+
+        val section = checkNotNull(shown.index)
+        val first = section.lines.first()
+        assertTrue(first.contains(Eip55.format(gnosisImporter)), first)
+        assertFalse(first.contains(Eip55.format(FIXTURE_IMPORTER)), "never Ethereum's key for a Gnosis Chain list")
+        assertEquals(listOf("index:9300000:3"), shown.rows.map { it.key })
+    }
+
+    @Test
+    fun aListOnGnosisChainSignedByEthereumsKeyIsRefused() = runTest {
+        accounts.accounts.value = listOf(alice.copy(network = Network.GNOSIS))
+        index.page(null, listOf(indexRow(9_300_000, 3, alice.address, bob)), next = null, importer = FIXTURE_IMPORTER)
+
+        val shown = shown(activity(importers = bothPinned, network = Network.GNOSIS))
+
+        assertTrue(shown.rows.none { it.key.startsWith("index:") }, "no row of a list on another network's key")
+        assertTrue(index.checked.isEmpty())
+    }
+
+    @Test
+    fun aSepoliaAccountWithNoKeyPinnedForItReadsNothing() = runTest {
+        accounts.accounts.value = listOf(alice.copy(network = Network.SEPOLIA))
+
+        val shown = shown(activity(importers = bothPinned, network = Network.SEPOLIA))
+
+        assertNull(shown.index, "Sepolia has no addr1 history")
+        assertTrue(index.asked.isEmpty())
     }
 
     @Test

@@ -345,6 +345,10 @@ private fun SettingsMeteredSetAsidePreview() = SettingsPreview(
 /** A made-up importer key of the addr1 index: no release pins it. */
 private val sampleImporter = Eip55.format(Address.of("0x" + "1e".repeat(20)))
 
+/** Made-up importer keys of Ethereum's and Gnosis Chain's addr1 indexes, as the row names them: none is pinned. */
+private val sampleImporters =
+    "importers $sampleImporter on Ethereum, ${Eip55.format(Address.of("0x" + "9e".repeat(20)))} on Gnosis Chain"
+
 /** A release that pins no importer key, on an engine with no Swarm reader: what the desktop showed until #359. */
 private const val ADDRESS_INDEX_GREYED_TEXT =
     "Off: no importer key is pinned in this release yet · This build's engine has no Swarm reader"
@@ -380,7 +384,7 @@ private fun SettingsAddressIndexNoReaderPreview() = SettingsPreview(
     synced.copy(
         addressIndex = AddressIndexItem(
             on = false,
-            text = "Off: importer $sampleImporter, pinned in this release · This build's engine has no Swarm reader" +
+            text = "Off: $sampleImporters, pinned in this release · This build's engine has no Swarm reader" +
                 " · On by default once it can be read: Turn off keeps it off",
             turnOff = true,
             unavailableReason = "This build's engine has no Swarm reader, so the index cannot be read here. The " +
@@ -391,7 +395,7 @@ private fun SettingsAddressIndexNoReaderPreview() = SettingsPreview(
 )
 
 /**
- * A key pinned, and an engine that has not said yet whether it reads Swarm (Ethereum's light client not running):
+ * Keys pinned, and an engine that has not said yet whether it reads Swarm (no light client running yet):
  * greyed out for that, never left out (owner ruling, #55).
  */
 @Preview
@@ -400,24 +404,24 @@ private fun SettingsAddressIndexReaderNotKnownPreview() = SettingsPreview(
     synced.copy(
         addressIndex = AddressIndexItem(
             on = false,
-            text = "Off: importer $sampleImporter, pinned in this release · Waiting for the engine to say " +
+            text = "Off: $sampleImporters, pinned in this release · Waiting for the engine to say " +
                 "whether it reads Swarm · On by default once it can be read: Turn off keeps it off",
             turnOff = true,
-            unavailableReason = "The engine says whether this build reads Swarm once Ethereum's light client runs: " +
-                "while Ethereum is on in Networks and one of your accounts is on it.",
+            unavailableReason = "The engine says whether this build reads Swarm once one of its light clients " +
+                "runs: while a network is on in Networks and one of your accounts is on it.",
         ),
     ),
     atTheEnd = true,
 )
 
-/** On by default for the key pinned in the release, with an engine that reads Swarm: what a later release may offer. */
+/** On by default for the keys pinned in the release, with an engine that reads Swarm: what this release offers. */
 @Preview
 @Composable
 private fun SettingsAddressIndexOnPreview() = SettingsPreview(
     synced.copy(
         addressIndex = AddressIndexItem(
             on = true,
-            text = "On: importer $sampleImporter, pinned in this release · On by default: you can turn it off",
+            text = "On: $sampleImporters, pinned in this release · On by default: you can turn it off",
         ),
     ),
     atTheEnd = true,
@@ -452,7 +456,7 @@ private fun SettingsAddressIndexSetAsidePreview() = SettingsPreview(
     synced.copy(
         addressIndex = AddressIndexItem(
             on = false,
-            text = "Off: importer $sampleImporter, pinned in this release" +
+            text = "Off: $sampleImporters, pinned in this release" +
                 " (your saved choice was damaged and set aside)",
             turnOff = true,
         ),

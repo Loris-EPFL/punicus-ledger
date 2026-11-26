@@ -308,6 +308,19 @@ contradicted entries and what others learn.)
 - **The importer key is pinned in the release** (owner's decision,
   2026-11-21, on #335). The user does not type one in. Which key is pinned is
   the owner's choice, named in the PR that pins it.
+- **Gnosis Chain's index too, on by default** (owner's request, 2026-11-26:
+  "show addr1 results for Gnosis chain as well. The default should apply for
+  all chains that have an addr1 index"). Myotis 0.1.25 reads each chain's
+  index under its own key (Myotis #933).
+- How it is applied, not part of the request (the owner's to approve, on
+  #393):
+  - One key per network that has an index, each list resting on its own
+    network's key: Ethereum's `0xb11B…7241` and Gnosis Chain's
+    `0xE779…9335` (owner's choice, 2026-11-26, #393). Sepolia
+    has none, and its Activity is the log index's alone.
+  - One setting covers every key, on by default for each. An explicit off
+    turns them all off. A choice saved as on for Ethereum's key reads as on
+    for Gnosis Chain's too, since a key newly pinned starts from the default.
 - **A new key starts from the default** (owner's decision, 2026-11-22, #334).
   When a release pins another key, only an explicit off carries over: a
   choice to turn the setting on, made for the key pinned before, does not,

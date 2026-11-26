@@ -94,6 +94,7 @@ import eth.serotine.domain.usecase.SetTokenHidden
 import eth.serotine.domain.usecase.ToggleAmountsHidden
 import eth.serotine.domain.usecase.UnlinkPerAppAlias
 import eth.serotine.ui.FIXTURE_IMPORTER
+import eth.serotine.ui.onEvery
 import eth.serotine.ui.FakeCowChain
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeAddressIndexHistory
@@ -1576,8 +1577,8 @@ class AccountDetailViewModelTest {
         val viewModel = viewModel(
             activity = activity(
                 AddressIndexActivity(
-                    ObserveAddressIndexStatus(index, setting, FIXTURE_IMPORTER),
-                    LoadAddressIndexPage(index, FIXTURE_IMPORTER),
+                    ObserveAddressIndexStatus(index, setting, onEvery(FIXTURE_IMPORTER)),
+                    LoadAddressIndexPage(index, onEvery(FIXTURE_IMPORTER)),
                 ),
             ),
         )
@@ -1608,8 +1609,8 @@ class AccountDetailViewModelTest {
         val viewModel = viewModel(
             activity = activity(
                 AddressIndexActivity(
-                    ObserveAddressIndexStatus(index, setting, FIXTURE_IMPORTER),
-                    LoadAddressIndexPage(index, FIXTURE_IMPORTER),
+                    ObserveAddressIndexStatus(index, setting, onEvery(FIXTURE_IMPORTER)),
+                    LoadAddressIndexPage(index, onEvery(FIXTURE_IMPORTER)),
                 ),
             ),
         )

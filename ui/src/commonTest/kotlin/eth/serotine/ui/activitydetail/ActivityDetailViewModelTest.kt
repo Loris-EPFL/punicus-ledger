@@ -1,5 +1,6 @@
 package eth.serotine.ui.activitydetail
 
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
@@ -40,6 +41,7 @@ import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ToggleAmountsHidden
 import eth.serotine.ui.FIXTURE_IMPORTER
+import eth.serotine.ui.onEvery
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeAddressIndexHistory
 import eth.serotine.ui.FakeLogIndex
@@ -428,7 +430,7 @@ class ActivityDetailViewModelTest {
     private val addressIndexOn = MemoryAddressIndexSetting(on = FIXTURE_IMPORTER)
 
     /** The detail's check, with the setting on for the fixture's key. */
-    private val checkOn = CheckAddressIndexEntry(addressIndex, addressIndexOn, FIXTURE_IMPORTER)
+    private val checkOn = CheckAddressIndexEntry(addressIndex, addressIndexOn, onEvery(FIXTURE_IMPORTER))
 
     private fun indexKey(row: AddressIndexRow) = ActivityKey(
         row.transaction?.hash.orEmpty(),
@@ -466,6 +468,22 @@ class ActivityDetailViewModelTest {
         val note = checkNotNull(shown.note)
         assertTrue(note.contains(Eip55.format(FIXTURE_IMPORTER)), note)
         assertTrue(note.contains("finalized"), note)
+    }
+
+    @Test
+    fun theDetailNamesTheKeyOfTheAccountsOwnNetwork() = runTest {
+        val row = indexRow(9_300_000, 3, bob, alice.address, wei = "1000000000000000000")
+        addressIndex.verifiedRows[row.entry] = row
+        val otherKey = Address.of("0x" + "9e".repeat(20))
+        // The detail's account is on Sepolia here: its key is the fixture's, another network's is another key.
+        val keys = AddressIndexImporters(mapOf(Network.ETHEREUM to otherKey, Network.SEPOLIA to FIXTURE_IMPORTER))
+        val check = CheckAddressIndexEntry(addressIndex, addressIndexOn, keys)
+
+        val shown = assertIs<ActivityDetailUiState.Shown>(viewModel(indexKey(row), check = check).uiState.value)
+
+        val note = checkNotNull(shown.note)
+        assertTrue(note.contains(Eip55.format(FIXTURE_IMPORTER)), note)
+        assertFalse(note.contains(Eip55.format(otherKey)), "never another network's key")
     }
 
     @Test
@@ -580,7 +598,7 @@ class ActivityDetailViewModelTest {
         addressIndex.verifiedRows[row.entry] = row
         val off = MemoryAddressIndexSetting().apply { choice.value = AddressIndexChoice.Chosen(null) }
 
-        val state = viewModel(indexKey(row), check = CheckAddressIndexEntry(addressIndex, off, FIXTURE_IMPORTER))
+        val state = viewModel(indexKey(row), check = CheckAddressIndexEntry(addressIndex, off, onEvery(FIXTURE_IMPORTER)))
 
         val refused = assertIs<ActivityDetailUiState.Unavailable>(state.uiState.value)
         assertTrue(refused.message.contains("experimental setting is off"), refused.message)

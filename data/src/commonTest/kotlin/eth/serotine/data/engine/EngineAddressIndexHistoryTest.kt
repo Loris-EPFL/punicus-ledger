@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexCursor
 import eth.serotine.domain.model.AddressIndexEntry
 import eth.serotine.domain.model.AddressIndexHeadGap
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.AddressIndexRole
 import eth.serotine.domain.model.AddressIndexVerdict
 import eth.serotine.domain.model.Network
@@ -67,7 +68,14 @@ class EngineAddressIndexHistoryTest {
     private val chain = FakeChain()
 
     private fun TestScope.history(of: AddressHistoryChain? = chain) =
-        EngineAddressIndexHistory(Network.ETHEREUM, of, StandardTestDispatcher(testScheduler), 1.seconds)
+        history(of?.let { mapOf(Network.ETHEREUM to it) })
+
+    /** The keys the engine holds in a test: [fixtureImporter] for Ethereum, unless a test sets others. */
+    private var keys = AddressIndexImporters(mapOf(Network.ETHEREUM to fixtureImporter))
+
+    private fun TestScope.history(chains: Map<Network, AddressHistoryChain>?) =
+        EngineAddressIndexHistory(chains, { keys }, StandardTestDispatcher(testScheduler), 1.seconds)
+
 
     private val entry = AddressIndexEntry(26_300_000, 3, setOf(AddressIndexRole.FROM, AddressIndexRole.TRACE))
 
@@ -216,6 +224,11 @@ class EngineAddressIndexHistoryTest {
             "the address history is not available on mobile in this version" to AddressIndexRefusal.NotInThisBuild,
             "no importer key is set for the address history (an experimental setting)" to
                 AddressIndexRefusal.SettingOff,
+            // Myotis 0.1.25: keys set for other chains, none for this one.
+            "no importer key is set for the address history on chain 1 (an experimental setting)" to
+                AddressIndexRefusal.NetworkNotServed(Network.ETHEREUM),
+            "no importer key is set for the address history on this chain" to
+                AddressIndexRefusal.NetworkNotServed(Network.ETHEREUM),
             "the address history is not available while Tor routing is on: the Swarm reader does not route " +
                 "through Tor" to AddressIndexRefusal.TorRouting,
             "checkpoint table alarm: block 9 is not the table's" to
@@ -439,14 +452,65 @@ class EngineAddressIndexHistoryTest {
     }
 
     @Test
-    fun theSettingsNameThePinnedKeyOrNoneAndTheSwarmNetwork() {
+    fun theSettingsNameEachNetworksPinnedKeyOrNoneAndTheSwarmNetwork() {
+        val gnosisImporter = Address.of("0x" + "9e".repeat(20))
         assertEquals(
-            """{"importer":"${fixtureImporter.hex}","swarm":{"network":"mainnet"}}""",
-            addressHistoryConfigJson(fixtureImporter, AddressIndexSwarm.Mainnet),
+            """{"importers":{"1":"${fixtureImporter.hex}"},"swarm":{"network":"mainnet"}}""",
+            addressHistoryConfigJson(
+                AddressIndexImporters(mapOf(Network.ETHEREUM to fixtureImporter)),
+                AddressIndexSwarm.Mainnet,
+            ),
+        )
+        assertEquals(
+            """{"importers":{"1":"${fixtureImporter.hex}","100":"${gnosisImporter.hex}"},""" +
+                """"swarm":{"network":"mainnet"}}""",
+            addressHistoryConfigJson(
+                // In Network's order, whatever the map's.
+                AddressIndexImporters(mapOf(Network.GNOSIS to gnosisImporter, Network.ETHEREUM to fixtureImporter)),
+                AddressIndexSwarm.Mainnet,
+            ),
         )
         assertEquals(
             """{"importer":null,"swarm":{"network":"dev","networkId":7,"bootnodes":["/ip4/192.0.2.1/tcp/1634"]}}""",
-            addressHistoryConfigJson(null, AddressIndexSwarm.Dev(7, listOf("/ip4/192.0.2.1/tcp/1634"))),
+            addressHistoryConfigJson(
+                AddressIndexImporters.NONE,
+                AddressIndexSwarm.Dev(7, listOf("/ip4/192.0.2.1/tcp/1634")),
+            ),
+        )
+    }
+
+    @Test
+    fun eachNetworkIsReadThroughItsOwnLightClient() = runTest {
+        val gnosis = FakeChain()
+        keys = AddressIndexImporters(mapOf(Network.ETHEREUM to fixtureImporter, Network.GNOSIS to fixtureImporter))
+        val history = history(mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis))
+        gnosis.check = """[{"block":26300000,"slot":3,"roles":["from","trace"],"state":"unverified"}]"""
+
+        assertIs<AddressIndexCheck.Verdicts>(history.verify(Network.GNOSIS, alice, listOf(entry)))
+        assertEquals(1, gnosis.checksAsked.size, "Gnosis Chain's light client asked")
+        assertTrue(chain.checksAsked.isEmpty(), "never Ethereum's for a Gnosis Chain account")
+        assertEquals(
+            AddressIndexReading.Refused(AddressIndexRefusal.NetworkNotServed(Network.SEPOLIA)),
+            history.page(Network.SEPOLIA, alice, AddressIndexQuery()),
+        )
+    }
+
+    @Test
+    fun theReaderIsAskedOfAnyRunningLightClient() = runTest {
+        val gnosis = FakeChain()
+        chain.supports = null
+        chain.snapshot = EngineSnapshot.Stopped(off = true)
+        gnosis.supports = true
+
+        assertTrue(history(mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis)).hasReader(), "Gnosis Chain's")
+
+        // No engine on this device: the network that ran reads Down, the other never ran and reads Stopped.
+        gnosis.supports = null
+        gnosis.snapshot = EngineSnapshot.Down
+        chain.snapshot = EngineSnapshot.Stopped(off = true)
+        assertFalse(
+            history(mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis)).hasReader(),
+            "one light client down: the engine is, and no other will answer",
         )
     }
 
@@ -465,5 +529,37 @@ class EngineAddressIndexHistoryTest {
             wsBoundPeriods = 13,
             finalizedHeader = null,
         )
+    }
+
+    @Test
+    fun withEveryNetworkHandedOverOnlyTheNetworksWithAKeyAreAskedAndNoneWithTheSettingOff() = runTest {
+        // As MyotisHost wires it: every network's light client, the keys the engine was last told.
+        val gnosis = FakeChain()
+        val sepolia = FakeChain()
+        val history = history(mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis, Network.SEPOLIA to sepolia))
+        keys = AddressIndexImporters(mapOf(Network.ETHEREUM to fixtureImporter, Network.GNOSIS to fixtureImporter))
+
+        // The engine's check reads no settings (Myotis's verify_json): the adapter refuses it itself.
+        assertEquals(
+            AddressIndexCheck.Refused(AddressIndexRefusal.NetworkNotServed(Network.SEPOLIA)),
+            history.verify(Network.SEPOLIA, alice, listOf(entry)),
+        )
+        assertEquals(
+            AddressIndexReading.Refused(AddressIndexRefusal.NetworkNotServed(Network.SEPOLIA)),
+            history.page(Network.SEPOLIA, alice, AddressIndexQuery()),
+        )
+        assertTrue(sepolia.pagesAsked.isEmpty() && sepolia.checksAsked.isEmpty(), "nothing asked of Sepolia's")
+
+        // The setting off: the engine was told no key, and nothing is asked on any network.
+        keys = AddressIndexImporters.NONE
+        assertEquals(
+            AddressIndexCheck.Refused(AddressIndexRefusal.SettingOff),
+            history.verify(Network.ETHEREUM, alice, listOf(entry)),
+        )
+        assertEquals(
+            AddressIndexReading.Refused(AddressIndexRefusal.SettingOff),
+            history.page(Network.GNOSIS, alice, AddressIndexQuery()),
+        )
+        assertTrue(chain.checksAsked.isEmpty() && gnosis.pagesAsked.isEmpty(), "nothing asked while it is off")
     }
 }

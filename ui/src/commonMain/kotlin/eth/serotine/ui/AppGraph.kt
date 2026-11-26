@@ -9,6 +9,7 @@ import eth.serotine.domain.usecase.ObserveFirstRunNotice
 import eth.serotine.domain.repository.FirstRunNotice
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.BatchId
 import eth.serotine.domain.model.CowOrderUid
 import eth.serotine.domain.model.Digest
@@ -527,10 +528,11 @@ class AppGraph(
      */
     private val addressIndexSetting: AddressIndexSetting? = null,
     /**
-     * The importer key of the addr1 index pinned in the release, the one key its list may rest on; null while the
-     * release pins none, which greys the setting out (owner's decision, 2026-11-21).
+     * The importer keys of the addr1 index pinned in the release, one per network that has an index, the one key a
+     * list of that network may rest on; none while the release pins none, which greys the setting out (owner's
+     * decision, 2026-11-21). A network without a key has no addr1 history.
      */
-    private val addressIndexImporter: Address? = null,
+    private val addressIndexImporters: AddressIndexImporters = AddressIndexImporters.NONE,
     /**
      * Where each account's addr1 history is kept between runs (owner's request, 2026-11-25), so that its Activity
      * shows what was verified before at once and reads only what is newer; null: nothing is kept, and each opening
@@ -1084,16 +1086,17 @@ class AppGraph(
 
     /**
      * What an account's Activity reads of the addr1 index: only with its history, its setting and a key pinned in the
-     * release; none otherwise, and the Activity is the log index's alone.
+     * release; none otherwise, and the Activity is the log index's alone. An account of a network without a key reads
+     * none either.
      */
     private fun addressIndexActivity(): AddressIndexActivity? {
         val history = addressIndex ?: return null
         val setting = addressIndexSetting ?: return null
-        val importer = addressIndexImporter ?: return null
+        val importers = addressIndexImporters.takeUnless { it.none } ?: return null
         return AddressIndexActivity(
-            ObserveAddressIndexStatus(history, setting, importer),
-            LoadAddressIndexPage(history, importer),
-            keep = addressIndexArchive?.let { KeepAddressIndex(it, accounts, walletChanges, importer) },
+            ObserveAddressIndexStatus(history, setting, importers),
+            LoadAddressIndexPage(history, importers),
+            keep = addressIndexArchive?.let { KeepAddressIndex(it, accounts, walletChanges, importers) },
         )
     }
 
@@ -1119,7 +1122,8 @@ class AppGraph(
         // the check itself (NotInThisBuild), which the detail says.
         checkIndexEntry = addressIndex?.let { history ->
             addressIndexSetting?.let { setting ->
-                addressIndexImporter?.let { CheckAddressIndexEntry(history, setting, it, addressIndexArchive) }
+                addressIndexImporters.takeUnless { it.none }
+                    ?.let { CheckAddressIndexEntry(history, setting, it, addressIndexArchive) }
             }
         },
     )
@@ -1196,10 +1200,10 @@ class AppGraph(
             ObserveHeavyDownloads(connectionMeter, meteredDownloads),
             AllowHeavyDownloadsOnMetered(meteredDownloads),
             observeAddressIndex = addressIndex?.let { history ->
-                addressIndexSetting?.let { ObserveAddressIndexStatus(history, it, addressIndexImporter) }
+                addressIndexSetting?.let { ObserveAddressIndexStatus(history, it, addressIndexImporters) }
             },
             turnAddressIndex = addressIndex?.let { history ->
-                addressIndexSetting?.let { TurnAddressIndex(history, it, addressIndexImporter) }
+                addressIndexSetting?.let { TurnAddressIndex(history, it, addressIndexImporters) }
             },
         )
 

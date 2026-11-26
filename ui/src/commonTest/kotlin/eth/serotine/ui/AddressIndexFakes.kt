@@ -2,6 +2,7 @@ package eth.serotine.ui
 
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.AddressIndexCoverage
 import eth.serotine.domain.model.AddressIndexCursor
 import eth.serotine.domain.model.AddressIndexEntry
@@ -29,6 +30,14 @@ import kotlinx.coroutines.flow.first
 
 /** A made-up importer key of the addr1 index, a test fixture: no release pins it. */
 internal val FIXTURE_IMPORTER: Address = Address.of("0x" + "1e".repeat(20))
+
+/** [key] pinned for Ethereum alone, or no key at all (null): the importers of a release with one index. */
+internal fun onEthereum(key: Address?): AddressIndexImporters =
+    key?.let { AddressIndexImporters(mapOf(Network.ETHEREUM to it)) } ?: AddressIndexImporters.NONE
+
+/** [key] pinned for every network: for a test whose account is on any of them. */
+internal fun onEvery(key: Address): AddressIndexImporters =
+    AddressIndexImporters(Network.entries.associateWith { key })
 
 /**
  * An [AddressIndexHistory] as the port's contract says one behaves: [pages] by the cursor asked (null: the newest

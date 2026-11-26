@@ -329,7 +329,7 @@ class ActivityDetailViewModel(
                 )
             }
         }
-        val importer = checkIndexEntry?.importer?.let(Eip55::format)
+        val importer = checkIndexEntry?.importerOf(account.network)?.let(Eip55::format)
         val restsOn = "Checked by the light client against block ${grouped(entry.block)}'s verified header and " +
             "receipts. " + (if (indexed.final) "The beacon chain has finalized that block. " else "That block is " +
             "not final yet: a reorganisation may still replace it. ") + "A block older than the light client's " +

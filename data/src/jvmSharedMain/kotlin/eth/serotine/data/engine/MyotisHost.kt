@@ -10,6 +10,7 @@ import eth.serotine.data.safe.SafeDeployments
 import eth.serotine.data.swaps.UniswapDeployments
 import eth.serotine.data.tokens.BuiltInTokens
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressIndexHistory
 import eth.serotine.domain.repository.AddressIndexReaderSettings
@@ -230,29 +231,38 @@ class MyotisHost private constructor(
     val ensNfts: EnsNfts = routed.ensNfts
 
     /**
-     * An address's history from the addr1 index on Swarm, which the engine reads and checks (issue #334): mainnet's
-     * index, so Ethereum's light client alone serves it.
+     * An address's history from the addr1 index on Swarm, which the engine reads and checks (issue #334): each
+     * network's through its own light client, under the importer key [apply] set for that chain (Myotis #933, from
+     * 0.1.25 on). Every network's light client is handed over, and the adapter holds each page and check to the keys
+     * [apply] last set ([appliedImporters]): none refuses every read, and a network without a key is not served. Any
+     * running light client answers whether the engine reads Swarm, a property of its build.
      */
     val addressIndex: AddressIndexHistory = EngineAddressIndexHistory(
-        Network.ETHEREUM,
-        nodes.getValue(Network.ETHEREUM).addressChain,
+        nodes.mapValues { it.value.addressChain },
+        { appliedImporters },
         Dispatchers.IO,
         POLL_INTERVAL,
     )
+
+    /** The keys [apply] last set, none until then: what [addressIndex] reads under. */
+    @Volatile
+    private var appliedImporters: AddressIndexImporters = AddressIndexImporters.NONE
 
     /** The address history settings the engine is to hold: none until [apply], so its reader refuses every read. */
     @Volatile
     private var addressHistoryConfig: String? = null
 
     /**
-     * Lets the engine read the addr1 index of [importer] on the host's Swarm network, or nothing (null). Kept, and
+     * Lets the engine read, on each network of [importers], the addr1 index of that network's key on the host's Swarm
+     * network, or nothing ([AddressIndexImporters.NONE]). Kept, and
      * applied on the control thread: now if the engine exists, else as soon as the first start creates it. Waits until
      * the control thread got to it: true when the engine took it, or when it is kept for an engine not created yet;
      * false when the engine refused it, or the host shut down first.
      */
-    override suspend fun apply(importer: Address?): Boolean {
-        val config = addressHistoryConfigJson(importer, addressIndexSwarm)
+    override suspend fun apply(importers: AddressIndexImporters): Boolean {
+        val config = addressHistoryConfigJson(importers, addressIndexSwarm)
         addressHistoryConfig = config
+        appliedImporters = importers
         val applied = CompletableDeferred<Boolean>()
         try {
             control.execute {
@@ -492,10 +502,10 @@ class MyotisHost private constructor(
         }
 
         /**
-         * The handle's address history (Ethereum's alone is asked), each page and check written to [apiLog] when there
-         * is one: they are the heaviest requests the app makes (Swarm, archive peers, a check up to about 90 s). Its
-         * status reads are [chain]'s, shared and logged once, not a call and a log line of their own each time the
-         * adapter waits for the engine's word on its reader.
+         * The handle's address history (asked on a network the engine holds an importer key for), each page and
+         * check written to [apiLog] when there is one: they are the heaviest requests the app makes (Swarm, archive
+         * peers, a check up to about 90 s). Its status reads are [chain]'s, shared and logged once, not a call and a
+         * log line of their own each time the adapter waits for the engine's word on its reader.
          */
         val addressChain: AddressHistoryChain = object : AddressHistoryChain by (
             apiLog?.let { LoggedChain(handleChain, it, history = handleChain) } ?: handleChain

@@ -8,6 +8,7 @@ import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AppIsolation
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PerAppAccount
@@ -107,6 +108,17 @@ class AccountChangesTest {
 
         assertEquals(listOf(keyed), repository.accounts.value)
         assertEquals(emptyList(), keys.deleted, "a watched account has no key to delete")
+    }
+
+    @Test
+    fun removingALedgerEnrollmentDoesNotDeleteAnyLocallyStoredKey() = runTest {
+        val ledger = keyed.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        val repository = ListAccountRepository(ledger)
+
+        assertEquals(AccountRemoval.Removed, removeFrom(repository)(ledger.id))
+        assertEquals(emptyList(), repository.accounts.value)
+        assertEquals(emptyList(), keys.deleted)
+        assertEquals(setOf(keyed.address), keys.stored)
     }
 
     @Test

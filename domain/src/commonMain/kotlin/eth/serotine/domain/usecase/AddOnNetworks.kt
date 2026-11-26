@@ -1,8 +1,10 @@
 package eth.serotine.domain.usecase
 
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.supportsLedger
 import eth.serotine.domain.repository.AccountAdd
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.repository.AccountRepository
@@ -17,6 +19,7 @@ import kotlinx.coroutines.withContext
  * is sealed or signed; a Safe or another contract exists only where it was deployed and is never
  * added this way. The entry added has no ENS name to follow: a name was verified on its own
  * network only (docs/networks.md, *Names*).
+ * A Ledger account can only be added on another network that supports its signing path.
  *
  * It runs under the app's [WalletChanges], as a removal does: a key-store entry is never added
  * while the last one holding its key is being removed, which would leave it without its key.
@@ -37,6 +40,9 @@ class AddOnNetworks(
         }
         val account = listed.firstOrNull { it.id == id } ?: return NetworksAdd.NotFound
         if (account.kind != AccountKind.EOA) return NetworksAdd.NotAnEoa
+        if (account.custody is AccountCustody.Ledger && networks.any { !it.supportsLedger }) {
+            return NetworksAdd.NotSaved(emptyList())
+        }
         val added = mutableListOf<Network>()
         for (network in networks.distinct().filter { it != id.network }) {
             when (accounts.add(account.copy(network = network, ensName = null))) {
@@ -54,7 +60,7 @@ sealed interface NetworksAdd {
     /** The account is on each network chosen now; [networks] are those it was added on (not there before). */
     data class Added(val networks: List<Network>) : NetworksAdd
 
-    /** The list could not be stored, or cannot be read; it was added on [networks] before that. */
+    /** The change was not possible: the list could not be stored/read or a chosen network did not support the account. */
     data class NotSaved(val networks: List<Network>) : NetworksAdd
 
     /** The account is not in the wallet (any more). */

@@ -4,6 +4,7 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.SignedTransfer
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.repository.BalanceReading
@@ -399,15 +400,7 @@ private fun aboutFunds(detail: String): Boolean =
 
 /**
  * Signs [quote]'s transaction with its sender's key as [unlock] opens it ([Signer]) and hands it
- * to the network: what every transaction this wallet sends goes through. What is signed is
- * exactly what was quoted. Once a peer took it, it is recorded as doing [action] ([SentTransfers]):
- * what keeps its nonce from a later transaction after a restart, and what its status shows. One
- * whose broadcast no peer answered may have reached one all the same: it is recorded as maybe
- * sent ([SentTransfer.maybeSent]), which holds new transactions back until it is retried, mined
- * or past its lifetime. One the engine rejected or refused is not recorded, so it holds no nonce:
- * a later quote may take the same one, and only one of the two can ever be mined. The broadcast
- * and the record are one step a cancellation cannot cut in half; a record that cannot be saved
- * does not undo the send.
+ * to the network. What is signed is exactly what was quoted; [broadcastAndRecord] handles the outcome.
  */
 internal suspend fun signAndSend(
     signer: Signer,
@@ -424,21 +417,45 @@ internal suspend fun signAndSend(
         is Signing.Signed -> signed.signature
         else -> return TransferSending.NotSigned(signed)
     }
-    val transfer = SentTransfer(
-        network = network,
-        account = quote.from,
-        nonce = transaction.nonce,
-        signed = SignedTransfer(transaction.encodeSigned(signature)),
-        action = action,
-        maxCost = quote.maxCost,
-        sentAt = clock(), // restamped once a peer took it
+    return broadcastAndRecord(
+        broadcaster,
+        sentTransfers,
+        quote.signedTransfer(network, signature, action, clock),
+        clock,
     )
-    return withContext(NonCancellable) {
-        when (val broadcast = broadcaster.send(network, transfer.signed.raw)) {
-            is Broadcast.Sent -> sent(sentTransfers, transfer, clock)
-            is Broadcast.Unavailable -> maybeSent(sentTransfers, broadcast, transfer, clock)
-            else -> TransferSending.NotSent(broadcast, transfer)
-        }
+}
+
+/** The reviewed call and its signature, as the exact bytes and figures retained on broadcast. */
+internal fun CallQuote.signedTransfer(
+    network: Network,
+    signature: Signature,
+    action: SentAction,
+    clock: () -> Long,
+): SentTransfer = SentTransfer(
+    network = network,
+    account = from,
+    nonce = transaction.nonce,
+    signed = SignedTransfer(transaction.encodeSigned(signature)),
+    action = action,
+    maxCost = maxCost,
+    sentAt = clock(), // restamped once a peer took it
+)
+
+/**
+ * Hands the signed transfer to the network and records it once a peer took it or no peer answered.
+ * A rejection or refusal leaves no record. The broadcast and record are one step cancellation
+ * cannot cut in half; a record that cannot be saved does not undo the send.
+ */
+internal suspend fun broadcastAndRecord(
+    broadcaster: Broadcaster,
+    sentTransfers: SentTransfers,
+    transfer: SentTransfer,
+    clock: () -> Long,
+): TransferSending = withContext(NonCancellable) {
+    when (val broadcast = broadcaster.send(transfer.network, transfer.signed.raw)) {
+        is Broadcast.Sent -> sent(sentTransfers, transfer, clock)
+        is Broadcast.Unavailable -> maybeSent(sentTransfers, broadcast, transfer, clock)
+        else -> TransferSending.NotSent(broadcast, transfer)
     }
 }
 

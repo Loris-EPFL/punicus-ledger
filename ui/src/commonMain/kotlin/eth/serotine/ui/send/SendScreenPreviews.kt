@@ -443,6 +443,19 @@ private fun SendReviewSigningPreview() = SendPreview(review.copy(signing = true)
 
 @Preview
 @Composable
+private fun SendLedgerReviewPreview() = SendPreview(review.copy(ledger = true))
+
+@Preview
+@Composable
+private fun SendLedgerApprovePreview() = SendPreview(review.copy(ledger = true, signing = true))
+
+@Preview
+@Composable
+private fun SendLedgerRejectedPreview() =
+    SendPreview(review.copy(ledger = true, unlock = UnlockStep(error = "Rejected on the Ledger. Nothing was sent.")))
+
+@Preview
+@Composable
 private fun SendReviewRefreshingPreview() = SendPreview(
     review.copy(refreshing = true, unlock = UnlockStep(WalletPassword("made-up preview password"))),
 )
@@ -607,6 +620,9 @@ internal val sendScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("review-wrong-password") { SendReviewWrongPasswordPreview() },
     ScreenPreview("review-biometrics-cancelled") { SendReviewBiometricsCancelledPreview() },
     ScreenPreview("review-signing") { SendReviewSigningPreview() },
+    ScreenPreview("review-ledger") { SendLedgerReviewPreview() },
+    ScreenPreview("review-ledger-approve") { SendLedgerApprovePreview() },
+    ScreenPreview("review-ledger-rejected") { SendLedgerRejectedPreview() },
     ScreenPreview("review-refreshing") { SendReviewRefreshingPreview() },
     ScreenPreview("review-not-sent") { SendReviewNotSentPreview() },
     ScreenPreview("review-rejected") { SendReviewRejectedPreview() },

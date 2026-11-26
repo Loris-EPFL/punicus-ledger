@@ -108,6 +108,12 @@ private fun AccountsSample(state: AccountsUiState, fabExpanded: Boolean = false,
     )
 }
 
+@Preview
+@Composable
+private fun AccountsLedgerMenuPreview() = SerotineTheme {
+    AccountsScreen(withAccounts, {}, {}, {}, {}, {}, fabExpandedAtStart = true, onAddLedger = {})
+}
+
 /**
  * Daily, Savings and Treasury on Sepolia, [selected] beside them: the list of the tablet's layout
  * (AccountsTabletScreenPreviews.kt), in the theme it is drawn in. Daily's detail is the one
@@ -742,6 +748,7 @@ internal val accountsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("no-accounts-syncing-dark") { AccountsNoAccountsSyncingDarkPreview() },
     ScreenPreview("no-accounts-stale-anchor") { AccountsNoAccountsStaleAnchorPreview() },
     ScreenPreview("create-safe-greyed-out") { AccountsCreateSafeGreyedOutPreview() },
+    ScreenPreview("ledger-menu") { AccountsLedgerMenuPreview() },
     ScreenPreview("create-safe-reason") { AccountsCreateSafeReasonPreview() },
     ScreenPreview("send-reason") { AccountsSendReasonPreview() },
     ScreenPreview("derive-bare-key-reason") { AccountsDeriveBareKeyReasonPreview() },

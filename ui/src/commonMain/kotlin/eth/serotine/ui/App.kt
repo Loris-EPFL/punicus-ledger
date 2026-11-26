@@ -98,6 +98,7 @@ import eth.serotine.ui.gnosispay.GnosisPayRoute
 import eth.serotine.ui.gnosispay.GnosisPayStart
 import eth.serotine.ui.handoff.HandoffRoute
 import eth.serotine.ui.lightclient.LightClientViewModel
+import eth.serotine.ui.ledger.LedgerAccountRoute
 import eth.serotine.ui.mnemonicimport.MnemonicImportRoute
 import eth.serotine.ui.mode.LocalInterfaceMode
 import eth.serotine.ui.pairdapp.PairDappRoute
@@ -291,6 +292,7 @@ private fun AccountsPane(
             onAccountAction = { action -> navController.openFromPane(action, shown) },
             modifier = Modifier.fillMaxSize(),
             selected = shown?.let { SelectedAccount(it.network.chainId, it.address.hex) },
+            offersLedgerAccounts = graph.offersLedgerAccounts,
         )
     }
 }
@@ -314,6 +316,7 @@ private fun AccountsTabList(
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
     selected: SelectedAccount? = null,
+    offersLedgerAccounts: Boolean,
 ) {
     AccountsRoute(
         viewModel = viewModel,
@@ -324,6 +327,11 @@ private fun AccountsTabList(
         onAccountAction = onAccountAction,
         modifier = modifier,
         selected = selected,
+        onAddLedger = if (offersLedgerAccounts) {
+            { navController.navigate(Destination.ADD_LEDGER) { launchSingleTop = true } }
+        } else {
+            null
+        },
     )
 }
 
@@ -472,7 +480,12 @@ private fun Destinations(
                 if (wide.value) {
                     NoAccountOpenRoute(accounts)
                 } else {
-                    AccountsTabList(navController, accounts, onAccountAction = { action -> navController.open(action) })
+                    AccountsTabList(
+                        navController,
+                        accounts,
+                        onAccountAction = { action -> navController.open(action) },
+                        offersLedgerAccounts = graph.offersLedgerAccounts,
+                    )
                 }
             }
             composable(Destination.WATCH) {
@@ -826,6 +839,15 @@ private fun Destinations(
                 onBack = { navController.leave(Destination.MNEMONIC_IMPORT) },
                 onImported = { navController.leave(Destination.MNEMONIC_IMPORT) },
             )
+        }
+        if (graph.offersLedgerAccounts) {
+            composable(Destination.ADD_LEDGER) {
+                LedgerAccountRoute(
+                    viewModel = viewModel { graph.ledgerAccountViewModel() },
+                    onBack = { navController.leave(Destination.ADD_LEDGER) },
+                    onAdded = { navController.leave(Destination.ADD_LEDGER) },
+                )
+            }
         }
         // Send, and then where the transfer stands: the transaction's flow, over the bar too.
         composable(
@@ -1663,6 +1685,7 @@ private object Destination {
     const val ADD_TOKEN = "add-token"
     const val ACTIVITY_ADD_TOKEN = "activity-add-token"
     const val MNEMONIC_IMPORT = "mnemonic-import"
+    const val ADD_LEDGER = "add-ledger"
     const val CREATE_ACCOUNT = "create-account"
     const val CREATE_SAFE = "create-safe"
     const val SEND = "send"

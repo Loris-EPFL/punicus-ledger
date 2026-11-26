@@ -33,6 +33,9 @@ enum class Control(val label: String) {
     /** Its key is held here (or, for a Safe, enough of its owners' keys to reach its threshold). */
     FULL_CONTROL("Full control"),
 
+    /** The key stays in a USB Ledger; it can authorize plain ETH transfers here. */
+    LEDGER("Ledger"),
+
     /** A Safe with some of its owners held here, fewer than its threshold. */
     CO_SIGNER("Co-signer"),
 
@@ -44,6 +47,7 @@ enum class Control(val label: String) {
     val icon: ImageVector
         get() = when (this) {
             FULL_CONTROL -> SerotineIcons.Key
+            LEDGER -> SerotineIcons.Key
             CO_SIGNER -> SerotineIcons.Passkey
             WATCH_ONLY -> SerotineIcons.Visibility
         }
@@ -57,6 +61,7 @@ enum class Control(val label: String) {
         fun of(kind: AccountKind, custody: AccountCustody): Control = when {
             kind == AccountKind.SAFE -> WATCH_ONLY
             custody == AccountCustody.InKeyStore -> FULL_CONTROL
+            custody is AccountCustody.Ledger -> LEDGER
             else -> WATCH_ONLY
         }
 
@@ -151,7 +156,7 @@ private val IconPadding = 4.dp
 private fun BadgeChip(control: Control, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val (background: Color, foreground: Color) = when (control) {
-        Control.FULL_CONTROL -> colors.secondaryContainer to colors.onSecondaryContainer
+        Control.FULL_CONTROL, Control.LEDGER -> colors.secondaryContainer to colors.onSecondaryContainer
         Control.CO_SIGNER -> colors.tertiaryContainer to colors.onTertiaryContainer
         Control.WATCH_ONLY -> colors.surfaceVariant to colors.onSurfaceVariant
     }

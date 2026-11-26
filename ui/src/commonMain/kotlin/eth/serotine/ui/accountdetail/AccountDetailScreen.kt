@@ -403,7 +403,7 @@ fun AccountDetailScreen(
     }
     val send: (String?) -> Unit = { contract ->
         val ready = state as? AccountDetailUiState.Ready
-        val reason = ready?.sendReason
+        val reason = ready?.sendReasonFor(contract)
         when {
             // A Gnosis Pay account controlled from here: its transfers go through its Delay, on its own screen.
             reason == null && ready?.sendsThroughGnosisPay == true -> onGnosisPay()
@@ -902,10 +902,11 @@ private fun Assets(
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         state.assets.forEach { asset ->
             val contract = asset.contract
+            val canSend = state.sendReasonFor(contract) == null
             // Long press (right click): docs/wallet-ux.md, screen 5. Each action is also behind a
             // visible button: Send and Swap above (the asset chosen there), the others in Settings → Tokens.
             val actions = listOfNotNull(
-                MenuAction("Send ${asset.symbol}", Icons.AutoMirrored.Filled.Send, unavailable = !state.canSend) {
+                MenuAction("Send ${asset.symbol}", Icons.AutoMirrored.Filled.Send, unavailable = !canSend) {
                     onSend(contract)
                 },
                 // Send from another wallet (#255), for an account whose key is in another wallet app;
@@ -930,7 +931,7 @@ private fun Assets(
                 actions = actions,
                 menuLabel = "Actions for ${asset.symbol}",
                 onClick = { onSend(contract) },
-                clickLabel = if (state.canSend) "Send ${asset.symbol}" else "Why Send ${asset.symbol} is unavailable",
+                clickLabel = if (canSend) "Send ${asset.symbol}" else "Why Send ${asset.symbol} is unavailable",
             ) {
                 AssetItem(asset)
             }

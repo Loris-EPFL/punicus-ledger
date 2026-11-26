@@ -28,6 +28,7 @@ import eth.serotine.ui.debug.debugScreenPreviews
 import eth.serotine.ui.deriveaccount.deriveAccountScreenPreviews
 import eth.serotine.ui.gnosispay.gnosisPayScreenPreviews
 import eth.serotine.ui.handoff.handoffScreenPreviews
+import eth.serotine.ui.ledger.ledgerAccountScreenPreviews
 import eth.serotine.ui.mnemonicimport.mnemonicImportScreenPreviews
 import eth.serotine.ui.pairdapp.pairDappScreenPreviews
 import eth.serotine.ui.perapp.perAppScreenPreviews
@@ -93,6 +94,7 @@ internal object Screens {
     val postage = Screen("postage", "Postage batch", postageScreenPreviews)
     val withdraw = Screen("withdraw", "Withdraw from the chequebook", withdrawScreenPreviews)
     val handoff = Screen("handoff", "Send from another wallet", handoffScreenPreviews)
+    val ledgerAccount = Screen("ledger-account", "Add Ledger account", ledgerAccountScreenPreviews)
     val mnemonicImport = Screen("mnemonic-import", "Import phrase or key", mnemonicImportScreenPreviews)
     val noAccountOpen = Screen("no-account-open", "No account open (wide window)", noAccountOpenScreenPreviews)
     val pairDapp = Screen("pair-dapp", "Connect a dApp", pairDappScreenPreviews)
@@ -163,6 +165,7 @@ internal object Screens {
         firstRunDialog,
         gnosisPay,
         handoff,
+        ledgerAccount,
         mnemonicImport,
         noAccountOpen,
         pairDapp,

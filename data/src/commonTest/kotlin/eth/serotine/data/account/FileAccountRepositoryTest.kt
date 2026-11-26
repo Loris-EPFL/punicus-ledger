@@ -1,5 +1,6 @@
 package eth.serotine.data.account
 
+import eth.serotine.data.files.VersionedJsonFile
 import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
@@ -7,6 +8,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AppHost
 import eth.serotine.domain.model.AppHostResult
 import eth.serotine.domain.model.AppIsolation
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.repository.AccountAdd
@@ -276,7 +278,7 @@ class FileAccountRepositoryTest {
 
     @Test
     fun aNewerFormatIsLeftUntouchedAndNothingIsAdded() = runTest {
-        val newer = """{"version":6,"accounts":[],"wallets":[]}"""
+        val newer = """{"version":7,"accounts":[],"wallets":[]}"""
         put(file, newer)
         val repository = repository()
 
@@ -392,5 +394,54 @@ class FileAccountRepositoryTest {
             text(file),
         )
         assertEquals(AccountList.Loaded(listOf(perApp)), repository().observeAccounts().first())
+    }
+
+    @Test
+    fun aLedgerAccountRequiresTheNewFormatOnlyUntilRemoved() = runTest {
+        val ledger = watched.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        val repository = repository()
+        assertEquals(AccountAdd.Added, repository.add(eoa))
+        assertEquals(AccountAdd.Added, repository.add(ledger))
+
+        val stored = text(file)
+        assertTrue(stored.startsWith("""{"version":6,"""))
+        assertTrue(stored.contains("\"custody\":\"ledger\",\"chain\":11155111,\"ledgerPath\":\"m/44'/60'/0'/0/0\""))
+        assertEquals(AccountList.Loaded(listOf(eoa, ledger)), repository().observeAccounts().first())
+
+        // The previous reader's format check runs before its strict account decoder.
+        val legacy = VersionedJsonFile(
+            file.toString(),
+            StandardTestDispatcher(testScheduler),
+            what = "legacy account list",
+            formatVersion = 5,
+            empty = emptyList<Account>(),
+            decode = { _, _ -> error("an older decoder must never see Ledger custody") },
+            encode = { error("an older writer must not overwrite Ledger custody") },
+        )
+        assertEquals(VersionedJsonFile.Read.Unreadable(newerFormat = true), legacy.observe().first())
+        assertFalse(legacy.change(false) { error("a newer file cannot be changed") })
+        assertEquals(stored, text(file))
+        assertEquals(emptyList(), setAside())
+
+        assertEquals(AccountChange.Changed, repository.remove(ledger.id))
+        assertTrue(text(file).startsWith("""{"version":4,"""))
+        assertEquals(AccountList.Loaded(listOf(eoa)), repository().observeAccounts().first())
+    }
+
+    @Test
+    fun otherCustodyAndPerAppChangesDoNotReplaceALedgerEnrollment() = runTest {
+        val custody = AccountCustody.Ledger(LedgerPath.DEFAULT)
+        val ledger = watched.copy(custody = custody)
+        val repository = repository()
+        assertEquals(AccountAdd.Added, repository.add(ledger))
+        assertEquals(AccountAdd.Added, repository.add(eoa))
+        val before = text(file)
+        val site = (AppHost.parse("uniswap.org") as AppHostResult.Host).host
+        val mark = PerAppAccount(site, AppIsolation.pathOf(site), eoa.address)
+
+        assertEquals(AccountChange.NotSaved, repository.setCustody(ledger.id, AccountCustody.InKeyStore))
+        assertEquals(AccountChange.NotSaved, repository.setCustody(eoa.id, custody))
+        assertEquals(AccountChange.NotSaved, repository.markPerApp(ledger.id, mark))
+        assertEquals(before, text(file))
     }
 }

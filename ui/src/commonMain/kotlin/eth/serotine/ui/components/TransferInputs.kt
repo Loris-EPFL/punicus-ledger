@@ -86,6 +86,7 @@ internal fun assetOptions(
     network: Network,
     everyToken: Boolean = false,
     lastKnown: Boolean = false,
+    nativeOnly: Boolean = false,
 ): List<AssetOption> {
     val native = value.native
     val nativeKnown = (native as? BalanceReading.LastKnown)?.takeIf { lastKnown }
@@ -111,6 +112,7 @@ internal fun assetOptions(
         warning = null,
         lastKnown = nativeKnown != null,
     )
+    if (nativeOnly) return listOf(nativeOption)
     val tokens = value.tokens.mapNotNull { (holding, valuation) ->
         val token = holding.token
         val reading = holding.reading

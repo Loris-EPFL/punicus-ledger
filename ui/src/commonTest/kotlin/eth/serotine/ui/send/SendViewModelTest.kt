@@ -7,9 +7,12 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.CowOrder
 import eth.serotine.domain.model.Eip1559Transaction
+import eth.serotine.domain.model.Digest
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Mnemonic
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PriceId
+import eth.serotine.domain.model.Signature
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TokenUnits
 import eth.serotine.domain.model.SignedTransfer
@@ -39,6 +42,8 @@ import eth.serotine.domain.repository.KeyImport
 import eth.serotine.domain.repository.KeyProtection
 import eth.serotine.domain.repository.KeyStore
 import eth.serotine.domain.repository.KeyStoreDescription
+import eth.serotine.domain.repository.LedgerDevice
+import eth.serotine.domain.repository.LedgerResult
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LightClientStatus
 import eth.serotine.domain.repository.NameResolution
@@ -47,6 +52,7 @@ import eth.serotine.domain.repository.Outbox
 import eth.serotine.domain.repository.ReadUnavailable
 import eth.serotine.domain.repository.SentAction
 import eth.serotine.domain.repository.SentTransfer
+import eth.serotine.domain.repository.SignatureRecovery
 import eth.serotine.domain.repository.Signing
 import eth.serotine.domain.repository.Simulation
 import eth.serotine.domain.repository.TokenBalanceReading
@@ -68,6 +74,7 @@ import eth.serotine.domain.usecase.ObserveUsdPrice
 import eth.serotine.domain.usecase.QuoteTransfer
 import eth.serotine.domain.usecase.RebroadcastTransfer
 import eth.serotine.domain.usecase.ResolveRecipient
+import eth.serotine.domain.usecase.SendLedgerTransfer
 import eth.serotine.domain.usecase.SendTransfer
 import eth.serotine.domain.usecase.WarmFeeHistory
 import eth.serotine.ui.FakeAccounts
@@ -215,6 +222,7 @@ class SendViewModelTest {
         from: Address = daily.address,
         asset: Address? = null,
         fill: SendFill? = null,
+        ledger: LedgerDevice? = null,
     ): SendViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val currency = MemoryCurrencySetting()
@@ -262,6 +270,17 @@ class SendViewModelTest {
             fill = fill,
             timeSource = clock,
             now = { wallClock },
+            sendLedgerTransfer = ledger?.let {
+                SendLedgerTransfer(
+                    it,
+                    object : SignatureRecovery {
+                        override fun recover(digest: Digest, signature: Signature) = daily.address
+                    },
+                    broadcaster,
+                    sent,
+                    accounts,
+                )
+            },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -278,14 +297,47 @@ class SendViewModelTest {
     }
 
     /** Composes 0.1 ETH to Savings, picked from the wallet's accounts, and asks for the review. */
-    private fun TestScope.reviewed(): SendViewModel {
+    private fun TestScope.reviewed(ledger: LedgerDevice? = null): SendViewModel {
         holding()
-        val viewModel = viewModel()
+        val viewModel = viewModel(ledger = ledger)
         viewModel.onPickAccount(viewModel.compose.accounts.single().address)
         viewModel.onAmountChange("0.1")
         viewModel.review()
         runCurrent()
         return viewModel
+    }
+
+    @Test
+    fun aLedgerReviewWaitsForDeviceApprovalWithoutUsingTheSoftwareSigner() = runTest {
+        val path = LedgerPath.DEFAULT
+        accounts.setCustody(daily.id, AccountCustody.Ledger(path))
+        val approval = CompletableDeferred<LedgerResult<Signature>>()
+        val asked = CompletableDeferred<Eip1559Transaction>()
+        val viewModel = reviewed(object : LedgerDevice {
+            override suspend fun confirmAddress(path: LedgerPath) = error("not enrolling")
+
+            override suspend fun signTransaction(
+                path: LedgerPath,
+                expectedAddress: Address,
+                transaction: Eip1559Transaction,
+            ): LedgerResult<Signature> {
+                asked.complete(transaction)
+                return approval.await()
+            }
+        })
+
+        assertTrue(viewModel.review.canSign)
+        viewModel.sign()
+        runCurrent()
+        assertTrue(viewModel.review.signing)
+        assertTrue(broadcaster.sent.isEmpty())
+        assertTrue(signer.asked.isEmpty())
+
+        approval.complete(LedgerResult.Ok(FakeSigner.SIGNATURE))
+        runCurrent()
+        assertIs<SendUiState.Sent>(viewModel.uiState.value)
+        assertContentEquals(asked.await().encodeSigned(FakeSigner.SIGNATURE), broadcaster.sent.single())
+        assertTrue(signer.asked.isEmpty())
     }
 
     @Test

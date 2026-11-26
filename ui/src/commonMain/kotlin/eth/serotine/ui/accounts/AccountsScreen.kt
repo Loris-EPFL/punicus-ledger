@@ -107,6 +107,7 @@ fun AccountsRoute(
     onAccountAction: (AccountAction) -> Unit,
     modifier: Modifier = Modifier,
     selected: SelectedAccount? = null,
+    onAddLedger: (() -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val copy = rememberCopyText()
@@ -131,6 +132,7 @@ fun AccountsRoute(
             onToggleAmounts = viewModel::toggleAmounts,
             onDismissLost = viewModel::dismissLost,
             selected = selected,
+            onAddLedger = onAddLedger,
         )
         InterfaceMode.DETAILED -> AccountsScreen(
             state = state,
@@ -147,6 +149,7 @@ fun AccountsRoute(
             onToggleAmounts = viewModel::toggleAmounts,
             onDismissLost = viewModel::dismissLost,
             selected = selected,
+            onAddLedger = onAddLedger,
         )
     }
 }
@@ -189,6 +192,7 @@ fun AccountsScreen(
     onToggleAmounts: () -> Unit = {},
     onDismissLost: () -> Unit = {},
     selected: SelectedAccount? = null,
+    onAddLedger: (() -> Unit)? = null,
 ) {
     val snackbar = remember { SnackbarHostState() }
     // Said once: a network that could not be turned on.
@@ -219,7 +223,9 @@ fun AccountsScreen(
         modifier = modifier,
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            AddAccountButton(state, onWatchAddress, onImportPhrase, onCreateAccount, onCreateSafe, fabExpandedAtStart) {
+            AddAccountButton(
+                state, onWatchAddress, onImportPhrase, onCreateAccount, onCreateSafe, fabExpandedAtStart, onAddLedger,
+            ) {
                 unavailable = it
             }
         },
@@ -274,6 +280,7 @@ internal fun AddAccountButton(
     onCreateAccount: () -> Unit,
     onCreateSafe: () -> Unit,
     expandedAtStart: Boolean,
+    onAddLedger: (() -> Unit)?,
     onUnavailable: (UnavailableNotice) -> Unit,
 ) {
     if (state is AccountsUiState.ListUnavailable) return
@@ -290,18 +297,21 @@ internal fun AddAccountButton(
         emptyList()
     }
     SpeedDialFab(
-        actions = listOf(
-            SpeedDialAction("Watch address", SerotineIcons.Visibility, onClick = onWatchAddress),
-            SpeedDialAction("Import phrase or key", SerotineIcons.Download, onClick = onImportPhrase),
-            SpeedDialAction("Create account", Icons.Filled.Add, onClick = onCreateAccount),
-            SpeedDialAction("Create Safe", Icons.Filled.Lock, unavailable = createSafeReason != null) {
+        actions = buildList {
+            add(SpeedDialAction("Watch address", SerotineIcons.Visibility, onClick = onWatchAddress))
+            add(SpeedDialAction("Import phrase or key", SerotineIcons.Download, onClick = onImportPhrase))
+            add(SpeedDialAction("Create account", Icons.Filled.Add, onClick = onCreateAccount))
+            if (onAddLedger != null) {
+                add(SpeedDialAction("Add Ledger account", Icons.Filled.Lock, onClick = onAddLedger))
+            }
+            add(SpeedDialAction("Create Safe", Icons.Filled.Lock, unavailable = createSafeReason != null) {
                 if (createSafeReason == null) {
                     onCreateSafe()
                 } else {
                     onUnavailable(UnavailableNotice("Create Safe", createSafeReason, createSafeFixes))
                 }
-            },
-        ),
+            })
+        },
         description = "Add account",
         expandedAtStart = expandedAtStart,
     )

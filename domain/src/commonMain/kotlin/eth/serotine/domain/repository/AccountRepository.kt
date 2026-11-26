@@ -43,7 +43,8 @@ interface AccountRepository {
      * Records that the entry [id] is now held as [custody], keeping everything
      * else about it ([AccountChange.Changed]); or [AccountChange.NotFound]; or, when the list
      * cannot be stored or is [AccountList.Unreadable], [AccountChange.NotSaved]. A watched
-     * account becomes [AccountCustody.InKeyStore] when its key is imported. Never throws.
+     * account becomes [AccountCustody.InKeyStore] when its key is imported; Ledger custody cannot be set
+     * or replaced this way ([AccountChange.NotSaved]). Never throws.
      */
     suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange
 
@@ -52,7 +53,7 @@ interface AccountRepository {
      * [AccountCustody.InKeyStore] and marked so, in one change in place that keeps everything
      * else about it, its name and position among them ([AccountChange.Changed]); or
      * [AccountChange.NotFound]; or, when the list cannot be stored or is [AccountList.Unreadable],
-     * [AccountChange.NotSaved]. Never throws.
+     * or the entry is a Ledger account, [AccountChange.NotSaved]. Never throws.
      */
     suspend fun markPerApp(id: AccountId, mark: PerAppAccount): AccountChange
 
@@ -113,6 +114,6 @@ sealed interface AccountChange {
     /** No entry has that network and address; nothing changed. */
     data object NotFound : AccountChange
 
-    /** The list could not be stored, or cannot be read; nothing changed. */
+    /** The change was refused or the list could not be stored/read; nothing changed. */
     data object NotSaved : AccountChange
 }

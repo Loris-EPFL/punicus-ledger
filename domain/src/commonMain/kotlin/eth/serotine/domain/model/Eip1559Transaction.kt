@@ -33,6 +33,10 @@ class Eip1559Transaction(
     val data: ByteArray
         get() = callData.copyOf()
 
+    /** Whether the transaction carries calldata, without copying it. */
+    val hasCallData: Boolean
+        get() = callData.isNotEmpty()
+
     init {
         require(chainId > 0) { "a chain id is positive: $chainId" }
         require(nonce >= 0) { "a nonce is not negative: $nonce" }
@@ -70,8 +74,8 @@ class Eip1559Transaction(
         ),
     )
 
-    /** `0x02 || rlp([the nine fields])`: what [signingDigest] hashes. */
-    internal fun encodeUnsigned(): ByteArray = typed(fields())
+    /** `0x02 || rlp([the nine fields])`: the unsigned transaction hardware signs and [signingDigest] hashes. */
+    fun encodeUnsigned(): ByteArray = typed(fields())
 
     private fun typed(items: List<ByteArray>): ByteArray = byteArrayOf(TYPE) + Rlp.encodeList(items)
 

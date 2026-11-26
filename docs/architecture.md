@@ -72,6 +72,12 @@ rule in code.
   `AddressIndexReaderSettings` (the engine's own setting of the reader, which `MyotisHost`
   applies) and `AddressIndexSetting` (`FileAddressIndexSetting` in `eth.serotine.data.settings`)) and owns
   every data source.
+- On the desktop, `UsbLedgerDevice` implements `LedgerDevice` over the
+  system's native HIDAPI and the Ledger Ethereum app's USB protocol.
+  `EnrollLedgerAccount` stores the public address and path;
+  `SendLedgerTransfer` recovers the signer of the reviewed EIP-1559
+  transaction before reusing Myotis's broadcast path. Only the desktop
+  composition root wires the adapter. It supplies no chain data.
 - **Native code of our own lives in this repository** (owner ruling,
   2026-11-11, docs/privacy-pools.md D9): the Privacy Pools library in Rust
   (Poseidon, the Lean IMT, the witness and the Groth16 prover), under

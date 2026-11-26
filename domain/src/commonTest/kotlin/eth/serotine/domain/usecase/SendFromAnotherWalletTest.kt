@@ -6,6 +6,7 @@ import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.Erc20
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TransferAsset
@@ -104,10 +105,11 @@ class SendFromAnotherWalletTest {
     }
 
     @Test
-    fun aSafeAndAnAccountWhoseKeyIsHeldHereAreLeftOut() {
+    fun onlyWatchedEoasAreOfferedHandoff() {
         val offer = OfferHandoff(Wallets())
         assertEquals(HandoffOffer.LeftOut, offer(account(AccountKind.SAFE, AccountCustody.Watched)))
         assertEquals(HandoffOffer.LeftOut, offer(account(AccountKind.EOA, AccountCustody.InKeyStore)))
+        assertEquals(HandoffOffer.LeftOut, offer(account(AccountKind.EOA, AccountCustody.Ledger(LedgerPath.DEFAULT))))
     }
 
     // HandOffTransfer

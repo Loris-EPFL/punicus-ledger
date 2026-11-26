@@ -27,7 +27,7 @@ import kotlinx.coroutines.withContext
  *
  * It runs under the app's [WalletChanges], so an import cannot change the entry's custody,
  * or store a key for it, between the read below and the removal: the custody read is the one
- * removed, and a watched account's removal leaves the key store alone.
+ * removed; removing a watched or Ledger account leaves the key store alone.
  *
  * The last account of a per-app address takes the address's aliases with it (issue #252; docs/walletconnect.md,
  * *Aliases*): a site linked to it is no longer linked, so that restoring the address later never links that site
@@ -77,7 +77,7 @@ class RemoveAccount(
         }
         addressIndex?.forget(id)
         return when (account.custody) {
-            AccountCustody.Watched -> AccountRemoval.Removed
+            AccountCustody.Watched, is AccountCustody.Ledger -> AccountRemoval.Removed
             AccountCustody.InKeyStore -> if (keyStillNeeded) {
                 AccountRemoval.RemovedKeyStays
             } else {
@@ -92,7 +92,7 @@ class RemoveAccount(
 
 /** The outcome of [RemoveAccount]. */
 sealed interface AccountRemoval {
-    /** The account is out of the wallet, and no key for it is left on this device. */
+    /** The account is out of the wallet; no locally held key was left behind by the removal. */
     data object Removed : AccountRemoval
 
     /**

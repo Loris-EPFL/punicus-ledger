@@ -12,6 +12,11 @@ and issues of this repository.
 
 ### Added
 
+- Desktop can add a USB Ledger account and send plain ETH on Ethereum or
+  Sepolia. The Ledger confirms the address and approves the transfer on
+  its own screen. Keys never leave it. Myotis still verifies chain state
+  and broadcasts the signed transaction. Requires system HIDAPI.
+
 - The first start says what to expect: a note, shown once until OK, that
   the first start takes a few minutes while Punicus finds computers of the
   network to talk to, that nothing works until a network is checked, and

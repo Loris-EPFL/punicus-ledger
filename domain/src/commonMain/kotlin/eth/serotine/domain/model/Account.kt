@@ -21,6 +21,9 @@ sealed interface AccountCustody {
 
     /** Its key is in this device's key store, sealed in the envelope of the recovery phrase it came from. */
     data object InKeyStore : AccountCustody
+
+    /** Its key stays on a Ledger; only the public derivation path is held here. */
+    data class Ledger(val path: LedgerPath) : AccountCustody
 }
 
 /**
@@ -62,6 +65,11 @@ data class Account(
     init {
         require(label.isNotBlank()) { "an account needs a label" }
         require(ensName == null || label == ensName) { "an account that follows an ENS name is named by it" }
+        if (custody is AccountCustody.Ledger) {
+            require(kind == AccountKind.EOA && network.supportsLedger && perApp == null) {
+                "a Ledger account must be an ordinary Ethereum or Sepolia EOA"
+            }
+        }
     }
 }
 

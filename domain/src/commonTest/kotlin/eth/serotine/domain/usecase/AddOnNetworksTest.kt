@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -44,5 +45,15 @@ class AddOnNetworksTest {
     fun anUnreadableListAddsNothing() = runTest {
         accounts.unreadable = true
         assertEquals(NetworksAdd.NotSaved(emptyList()), add(main.id, Network.entries))
+    }
+
+    @Test
+    fun aLedgerAccountMayBeAddedOnTheOtherEthereumNetworkButNotGnosisChain() = runTest {
+        val ledger = main.copy(custody = AccountCustody.Ledger(LedgerPath.DEFAULT))
+        accounts.accounts.value = listOf(ledger)
+        assertEquals(NetworksAdd.NotSaved(emptyList()), add(ledger.id, listOf(Network.ETHEREUM, Network.GNOSIS)))
+        assertEquals(listOf(ledger), accounts.accounts.value)
+        assertEquals(NetworksAdd.Added(listOf(Network.ETHEREUM)), add(ledger.id, listOf(Network.ETHEREUM)))
+        assertEquals(listOf(ledger, ledger.copy(network = Network.ETHEREUM)), accounts.accounts.value)
     }
 }

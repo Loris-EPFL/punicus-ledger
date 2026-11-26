@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.update
 /**
  * The accounts of this process, held in memory: an [AccountRepository] for tests and
  * previews, which nothing outlives. The hosts use [FileAccountRepository]. Safe to call
- * from any thread; never answers [AccountAdd.NotSaved] or [AccountChange.NotSaved].
+ * from any thread; can refuse a custody change, but never fails with a storage error.
  *
  * The port's one-entry-per-[AccountId] contract holds for [initial] too: a duplicate in it
  * keeps the first entry, as [add] does.
@@ -39,30 +39,43 @@ class InMemoryAccountRepository(initial: List<Account> = emptyList()) : AccountR
     }
 
     override suspend fun rename(id: AccountId, label: String): AccountChange =
-        changeEntry(id) { current ->
-            current.map { if (it.id == id) it.copy(label = label, ensName = null) else it }
-        }
+        updateEntry(id) { it.copy(label = label, ensName = null) }
 
     override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange =
-        changeEntry(id) { current ->
-            current.map { if (it.id == id) it.copy(custody = custody) else it }
+        updateEntry(id) {
+            if (it.custody is AccountCustody.Ledger || custody is AccountCustody.Ledger) {
+                null
+            } else {
+                it.copy(custody = custody)
+            }
         }
 
     override suspend fun markPerApp(id: AccountId, mark: PerAppAccount): AccountChange =
-        changeEntry(id) { current ->
-            current.map { if (it.id == id) it.copy(custody = AccountCustody.InKeyStore, perApp = mark) else it }
+        updateEntry(id) {
+            if (it.custody is AccountCustody.Ledger) null else it.copy(custody = AccountCustody.InKeyStore, perApp = mark)
         }
 
     override suspend fun remove(id: AccountId): AccountChange =
-        changeEntry(id) { current -> current.filterNot { it.id == id } }
+        changeEntry(id) { current, index -> current.toMutableList().apply { removeAt(index) } }
 
-    /** Applies [change] when there is an entry [id]; NotFound, with nothing changed, when there is none. */
-    private fun changeEntry(id: AccountId, change: (List<Account>) -> List<Account>): AccountChange {
-        var found = false
-        accounts.update { current ->
-            found = current.any { it.id == id }
-            if (found) change(current) else current
+    private fun updateEntry(id: AccountId, update: (Account) -> Account?): AccountChange =
+        changeEntry(id) { current, index ->
+            val updated = update(current[index]) ?: return@changeEntry null
+            current.toMutableList().apply { set(index, updated) }
         }
-        return if (found) AccountChange.Changed else AccountChange.NotFound
+
+    private fun changeEntry(id: AccountId, change: (List<Account>, Int) -> List<Account>?): AccountChange {
+        var answer: AccountChange = AccountChange.NotFound
+        accounts.update { current ->
+            val index = current.indexOfFirst { it.id == id }
+            val next = if (index < 0) null else change(current, index)
+            answer = when {
+                index < 0 -> AccountChange.NotFound
+                next == null -> AccountChange.NotSaved
+                else -> AccountChange.Changed
+            }
+            next ?: current
+        }
+        return answer
     }
 }

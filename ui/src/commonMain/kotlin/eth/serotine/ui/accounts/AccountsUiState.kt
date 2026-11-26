@@ -491,7 +491,11 @@ internal const val CREATE_SAFE_NEEDS_A_KEY = "Creating a Safe needs an account w
  * null when it can: the reason a greyed-out Send says on a tap (owner ruling, 2026-10-18, #55).
  */
 internal fun sendBlockedReason(kind: AccountKind, control: Control): String? = when (kind) {
-    AccountKind.EOA -> if (control == Control.FULL_CONTROL) null else watchOnlyReason("sent", "send")
+    AccountKind.EOA -> if (control == Control.FULL_CONTROL || control == Control.LEDGER) {
+        null
+    } else {
+        watchOnlyReason("sent", "send")
+    }
     AccountKind.SAFE -> if (control != Control.WATCH_ONLY) {
         null
     } else {
@@ -507,7 +511,11 @@ internal fun sendBlockedReason(kind: AccountKind, control: Control): String? = w
  * (owner ruling, 2026-10-18, #55).
  */
 internal fun swapBlockedReason(kind: AccountKind, control: Control): String? = when (kind) {
-    AccountKind.EOA -> if (control == Control.FULL_CONTROL) null else watchOnlyReason("swapped", "swap")
+    AccountKind.EOA -> when (control) {
+        Control.FULL_CONTROL -> null
+        Control.LEDGER -> "This Ledger account can send ETH, but cannot sign swaps in Punicus."
+        else -> watchOnlyReason("swapped", "swap")
+    }
     AccountKind.SAFE -> sendBlockedReason(kind, control)
 }
 
@@ -518,6 +526,7 @@ internal fun swapBlockedReason(kind: AccountKind, control: Control): String? = w
  * (owner ruling, 2026-11-25).
  */
 internal fun deriveBlockedReason(control: Control, bareKey: Boolean = false): String? = when {
+    control == Control.LEDGER -> "This key stays on the Ledger. Use Add Ledger account to confirm another address."
     control != Control.FULL_CONTROL ->
         "This account is watch-only: its key is not on this device, so no account of its recovery phrase can be " +
             "added from it. Import its recovery phrase to add its accounts."

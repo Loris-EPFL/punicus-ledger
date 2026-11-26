@@ -357,14 +357,21 @@ time*.
      only after its broadcast, so Activity may not list it.
    - The FAB (2). A long press on a row opens 3; a tap opens 4, or 16 for a
      Safe.
-   - With no account yet, it names every way the FAB adds one (watch,
-     import, create) and says that Create Safe, there too, can be used once
-     an account's key is on this device, the account that pays for it.
+   - With no account yet, the hint points to the + button for watch,
+     import and create. Create Safe can be used once an account's key is
+     on this device, to pay for the deployment.
 2. **FAB fan-out**: Watch address (10) · Import phrase or key (11) · Create
    account (12) · Create Safe (13). Create Safe is always there, and greyed
    out until the user holds an EOA's key: an EOA pays for the deployment. A
    tap on it then says so, with Import phrase or key and Create account
    as the ways to get one (owner ruling, 2026-10-18, #55).
+   - Desktop also offers **Add Ledger account**. It asks for Ethereum or
+     Sepolia and the derivation path. After the user confirms the address
+     on the device, the screen shows the full address and asks explicitly
+     before saving. The account shows a **Ledger** badge. Its Send review
+     asks for approval on the Ledger, not a wallet password. Token sends
+     and swaps are greyed out and say why. See
+     [setup and limits](keys-and-signing.md#usb-ledger-on-desktop).
 3. **Account menu**: Send (greyed out when watch-only, a tap saying why;
    for a Safe, usable once an owner of it is held here, and it opens the
    proposal of a Safe transaction, 16) · Send from another wallet (7H; an

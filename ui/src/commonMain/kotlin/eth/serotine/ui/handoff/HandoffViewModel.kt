@@ -307,6 +307,7 @@ class HandoffViewModel(
     private fun leftOut(account: Account): String = when {
         account.kind == AccountKind.SAFE -> SAFE
         account.custody == AccountCustody.InKeyStore -> KEY_HERE
+        account.custody is AccountCustody.Ledger -> "Use Send to approve this transfer on your Ledger."
         else -> NOT_ON_THIS_DEVICE
     }
 

@@ -27,6 +27,8 @@ Last updated: 2026-11-25.
 ## What stays on your device
 
 - Your accounts: their addresses, names and networks, and your settings.
+- For an account added from a USB Ledger on desktop, also its public
+  derivation path. Its private key stays on the Ledger.
 - Your keys and recovery phrases, encrypted. Each key needs your wallet
   password and a secret of the device's hardware key store to open, where the
   device has one (docs/keys-and-signing.md).
@@ -137,6 +139,12 @@ Activity: turned off, it stays off.
   and archive peers only for the blocks of entries not checked before.
 - The Swarm peers and archive peers are not run by Punicus. With the setting
   turned off, none of this happens.
+
+### A Ledger connected by USB (desktop only)
+
+When you confirm an address or approve an ETH transfer, Punicus talks to
+the Ledger over USB. This sends no data to a Ledger server. Myotis still
+talks to peers to verify balances and broadcast the signed transfer.
 
 ### Another wallet app (only if you hand a transfer to one)
 

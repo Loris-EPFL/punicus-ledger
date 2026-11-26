@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -703,6 +704,24 @@ private fun UnlockContent(
     onSign: () -> Unit,
     onSignWithBiometrics: () -> Unit,
 ) {
+    if (state.ledger) {
+        Text(
+            "Connect your Ledger by USB and open its Ethereum app. Check the amount, recipient and fee on the Ledger.",
+        )
+        state.unlock.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        Button(
+            onClick = onSign,
+            enabled = state.canSign,
+            modifier = Modifier.fillMaxWidth().testTag(SEND_SIGN_TAG),
+        ) {
+            if (state.signing) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.size(8.dp))
+            }
+            Text(if (state.signing) "Waiting for Ledger…" else "Sign on Ledger and send")
+        }
+        return
+    }
     UnlockFields(
         unlock = state.unlock,
         signing = state.signing,

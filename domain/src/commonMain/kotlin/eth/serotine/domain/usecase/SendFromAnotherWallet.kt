@@ -52,21 +52,21 @@ sealed interface HandoffOffer {
     data object NoWallet : HandoffOffer
 
     /**
-     * It does not apply, and is left out: a Safe (a link cannot sign a Safe transaction), an account
-     * whose key is held here (Send signs for it), or a platform that hands no link over.
+     * It does not apply, and is left out: only a watched EOA on a platform that hands
+     * links over is eligible.
      */
     data object LeftOut : HandoffOffer
 }
 
 /**
- * Whether [account] gets Send from another wallet ([HandoffOffer]): an EOA whose key this device
- * does not hold, on a device that hands payment links to other wallets. Watched still means
- * Punicus signs nothing (decision 5 of #255): the other wallet must hold the key. [availability]
+ * Whether [account] gets Send from another wallet ([HandoffOffer]): a watched EOA, on a
+ * device that hands payment links to other wallets. Punicus signs nothing (decision 5
+ * of #255): the other wallet must hold the key. [availability]
  * is asked of [wallets] anew unless the caller asked once for many accounts; never throws.
  */
 class OfferHandoff(private val wallets: WalletHandoff) {
     operator fun invoke(account: Account, availability: HandoffAvailability = availability()): HandoffOffer {
-        if (account.kind != AccountKind.EOA || account.custody == AccountCustody.InKeyStore) return HandoffOffer.LeftOut
+        if (account.kind != AccountKind.EOA || account.custody != AccountCustody.Watched) return HandoffOffer.LeftOut
         return when (availability) {
             HandoffAvailability.AVAILABLE -> HandoffOffer.Offered
             HandoffAvailability.NO_WALLET -> HandoffOffer.NoWallet

@@ -142,6 +142,12 @@ private fun SimpleAccountsSample(state: AccountsUiState, selected: SelectedAccou
     )
 }
 
+@Preview
+@Composable
+private fun SimpleAccountsLedgerMenuPreview() = SerotineTheme {
+    SimpleAccountsScreen(everyday, {}, {}, {}, {}, {}, {}, fabExpandedAtStart = true, onAddLedger = {})
+}
+
 /**
  * The home of three networks (H1), [selected] beside it: the list of the tablet's layout
  * (SimpleAccountsTabletScreenPreviews.kt), in the theme it is drawn in. Main's detail is the one
@@ -412,6 +418,7 @@ private fun SimpleAccountsLostQueuedPreview() = SimpleAccountsPreview(
 internal val simpleAccountsScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("everyday") { SimpleAccountsEverydayPreview() },
     ScreenPreview("everyday-dark") { SimpleAccountsEverydayDarkPreview() },
+    ScreenPreview("ledger-menu") { SimpleAccountsLedgerMenuPreview() },
     ScreenPreview("refreshing") { SimpleAccountsRefreshingPreview() },
     ScreenPreview("syncing") { SimpleAccountsSyncingPreview() },
     ScreenPreview("unreachable") { SimpleAccountsUnreachablePreview() },

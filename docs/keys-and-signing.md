@@ -1139,13 +1139,49 @@ For a Safe holding value, the app's own preview is therefore never the sole
 check. Hardware keys close the theft path, Safe policies close most of the
 deception path, and nothing on a phone closes it completely.
 
+## USB Ledger on desktop
+
+Connect one Ledger by USB, unlock it, and open **Ethereum** on the device.
+In Punicus, choose **Accounts → + → Add Ledger account**. Choose Ethereum
+or Sepolia and the account's derivation path (the first Ledger Live
+account is `m/44'/60'/0'/0/0`). Select **Confirm address on Ledger** and
+check the full address on the device before approving it. Compare it with
+the address Punicus shows and select **Add account**. An existing entry
+for the address and network is not overwritten. The wallet stores only the
+public address, path and ordinary account metadata.
+
+- **Linux:** Install HIDAPI 0.13 or newer with its hidraw backend (e.g.
+  `libhidapi-hidraw0` on Debian), and set up the
+  [Ledger USB permissions](https://github.com/LedgerHQ/udev-rules) for
+  your user. No need to run the wallet as root.
+- **macOS:** Install HIDAPI 0.13 or newer, e.g. `brew install hidapi`.
+- **Windows:** The adapter can use a matching `hidapi.dll` on the DLL
+  search path. This build has no Myotis engine on Windows, so it cannot
+  quote or broadcast a transfer there.
+
+**Send** uses the same Myotis-backed review as a software account, but
+**Sign on Ledger and send** asks the device, not the wallet password.
+Check the recipient, amount and fee on the Ledger. Punicus verifies the
+signature against the reviewed EIP-1559 bytes and the enrolled address
+before sending it through Myotis. A rejected or expired review sends nothing.
+Only plain ETH transfers are supported: no token transfers, swaps, Safe
+co-signing, dApp signatures, stale quotes or blind-signing fallback.
+Android and iOS do not offer Ledger enrollment or signing.
+
+Compose Desktop is Kotlin on the JVM. Its existing JNA bridge calls the
+system's [native HIDAPI](https://github.com/libusb/hidapi) from `:data`'s
+desktop source set. The adapter uses the Ledger Ethereum app's published
+[USB APDU protocol](https://github.com/LedgerHQ/app-ethereum/blob/master/doc/apdu.md).
+It does not use a Node helper, the Ledger SDK's cloud context, or a new
+Gradle dependency.
+
 ## Options considered and not taken, or deferred
 
-- **External signers** (Ledger over Bluetooth, Keystone over QR, Keycard and
-  Tangem over NFC) keep the secp256k1 key off the phone entirely and bring a
-  trusted screen. For a Safe wallet this is the natural top tier, and a
-  natural co-owner in the shapes above. Deferred: the owner decides when
-  (#42). A software wallet that holds an owner key, reached over
+- **Other external signer flows** (Ledger over Bluetooth, Keystone over QR,
+  Keycard and Tangem over NFC) keep the secp256k1 key off the phone entirely
+  and bring a trusted screen. For a Safe wallet this is the natural top tier,
+  and a natural co-owner in the shapes above. Deferred: the owner decides
+  when (#42). A software wallet that holds an owner key, reached over
   WalletConnect, is a tier of its own (*The account tiers*).
 - **Two-party threshold ECDSA with Myotis**, where neither the device share
   nor the server share can sign alone. Real protocol complexity, an

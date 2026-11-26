@@ -465,6 +465,12 @@ private fun AccountDetailAssetsPreview() = AccountDetailPreview(daily)
 @Composable
 private fun AccountDetailAssetsDarkPreview() = AccountDetailPreview(daily, darkTheme = true)
 
+@Preview
+@Composable
+private fun AccountDetailLedgerPreview() = AccountDetailPreview(
+    daily.copy(label = "Ledger account", control = Control.LEDGER),
+)
+
 /**
  * A Swarm node's EOA on Gnosis Chain, watched (docs/swarm.md): its row says what is proven its own,
  * and opens the Swarm node screen.
@@ -1374,6 +1380,7 @@ private fun AccountDetailActivityIndexUnprovenPreview() = AccountDetailActivityI
 internal val accountDetailScreenPreviews: List<ScreenPreview> = listOf(
     ScreenPreview("assets") { AccountDetailAssetsPreview() },
     ScreenPreview("assets-dark") { AccountDetailAssetsDarkPreview() },
+    ScreenPreview("assets-ledger") { AccountDetailLedgerPreview() },
     ScreenPreview("swarm-node") { AccountDetailSwarmNodePreview() },
     ScreenPreview("checking") { AccountDetailCheckingPreview() },
     ScreenPreview("head-too-old") { AccountDetailHeadTooOldPreview() },

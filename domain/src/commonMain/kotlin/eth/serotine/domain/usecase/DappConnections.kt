@@ -107,7 +107,7 @@ data class DappOverview(
 fun dappOffer(account: Account, enabled: Set<Network>): DappOffer = when {
     account.network !in enabled -> DappOffer.NETWORK_OFF
     // A watched Safe is offered: its owners sign for it, here or elsewhere.
-    account.kind == AccountKind.EOA && account.custody == AccountCustody.Watched -> DappOffer.NO_KEY
+    account.kind == AccountKind.EOA && account.custody != AccountCustody.InKeyStore -> DappOffer.NO_KEY
     else -> DappOffer.OFFERED
 }
 

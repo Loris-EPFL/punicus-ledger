@@ -2,9 +2,11 @@ package eth.serotine.ui.addnetwork
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Network
+import eth.serotine.domain.model.supportsLedger
 import eth.serotine.domain.repository.AccountList
 import eth.serotine.domain.usecase.AddOnNetworks
 import eth.serotine.domain.usecase.NetworksAdd
@@ -60,7 +62,9 @@ class AddOnNetworksViewModel(
                 choices = networkChoices(
                     on.toSet(),
                     form.chosen,
-                    Network.entries.filter { it !in present },
+                    Network.entries.filter {
+                        it !in present && (own.custody !is AccountCustody.Ledger || it.supportsLedger)
+                    },
                     withLines = false,
                 ),
                 adding = form.adding,

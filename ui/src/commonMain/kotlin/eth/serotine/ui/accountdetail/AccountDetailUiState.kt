@@ -183,6 +183,13 @@ sealed interface AccountDetailUiState {
                 else -> sendBlockedReason(kind, control)?.let { if (placeholderOwned) GNOSIS_PAY_SEND else it }
             }
 
+        /** A Ledger account can send only the network's native ETH, not a token. */
+        fun sendReasonFor(contract: String?): String? = sendReason ?: if (contract != null && control == Control.LEDGER) {
+            "This Ledger account can send ETH, but cannot sign token transfers in Punicus."
+        } else {
+            null
+        }
+
         /**
          * Whether a greyed-out Send offers the Gnosis Pay screen as the way to send: on a Gnosis Pay
          * account whose network is on and followed, where no owner held here can sign.

@@ -73,6 +73,7 @@ private suspend fun AccountRepository.addOrFind(id: AccountId, label: (List<Acco
         val existing = current.firstOrNull { it.id == id }
         if (existing != null) {
             if (existing.custody == AccountCustody.InKeyStore) return HeldAdd.AlreadyHeld(existing)
+            if (existing.custody is AccountCustody.Ledger) return HeldAdd.ListNotSaved
             // A watched address whose key the user has now: it is held, not watched, from here on.
             when (setCustody(id, AccountCustody.InKeyStore)) {
                 AccountChange.Changed -> return HeldAdd.NowHeld(existing.copy(custody = AccountCustody.InKeyStore))

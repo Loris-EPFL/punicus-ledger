@@ -308,7 +308,7 @@ private fun accountRefusal(
         account.kind == AccountKind.SAFE && transaction ->
             if (network in enabled) null else DappSignRefusal.NETWORK_OFF
         account.kind == AccountKind.SAFE -> DappSignRefusal.SAFE
-        account.custody == AccountCustody.Watched -> DappSignRefusal.NO_KEY
+        account.custody != AccountCustody.InKeyStore -> DappSignRefusal.NO_KEY
         network !in enabled -> DappSignRefusal.NETWORK_OFF
         else -> null
     }

@@ -108,6 +108,15 @@ class SendScreenTest {
     }
 
     @Test
+    fun ledgerReviewUsesTheDeviceInsteadOfAskingForTheWalletPassword() {
+        show(review.copy(ledger = true, unlock = UnlockStep(biometrics = true)))
+
+        rule.onNodeWithTag(SEND_PASSWORD_TAG).assertDoesNotExist()
+        rule.onNodeWithText("Sign on Ledger and send").performScrollTo().assertIsEnabled().performClick()
+        assertEquals(listOf("sign"), events)
+    }
+
+    @Test
     fun anEarlierTransactionMaybeOnItsWayIsOpenedFromTheComposeStep() {
         val hash = "0x" + "5e".repeat(32)
         val refused = compose.form.copy(error = "An earlier transaction may still be on its way.")

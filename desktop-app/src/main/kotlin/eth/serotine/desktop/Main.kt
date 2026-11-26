@@ -35,6 +35,7 @@ import eth.serotine.data.nfts.FileAddedNfts
 import eth.serotine.data.nfts.FileSeenEnsNames
 import eth.serotine.data.outbox.desktopOutbox
 import eth.serotine.data.safe.FileSafeTxQueue
+import eth.serotine.data.ledger.UsbLedgerDevice
 import eth.serotine.data.safe.JsonSigningRequestCodec
 import eth.serotine.data.safe.PinnedSafeReleases
 import eth.serotine.data.settings.FileAddressIndexSetting
@@ -543,6 +544,7 @@ private fun openWallet(dataDir: File) {
                 walletHandoff = NoWalletHandoff,
                 names = node.names,
                 signer = keyStore,
+                ledgerDevice = UsbLedgerDevice(),
                 sentTransfers = sentTransfers,
                 transactionHistory = transactionHistory,
                 historyStarts = historyStarts,

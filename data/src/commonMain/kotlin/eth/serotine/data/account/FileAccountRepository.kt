@@ -10,6 +10,7 @@ import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AppHost
 import eth.serotine.domain.model.AppHostResult
+import eth.serotine.domain.model.LedgerPath
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.PerAppAccount
 import eth.serotine.domain.model.PerAppPath
@@ -46,7 +47,8 @@ import kotlinx.serialization.json.Json
  * Sepolia alone, so it reads as a Sepolia account (docs/networks.md, *Files*). The next change
  * writes the file as the current format. Format 5 records what makes an account a per-app address
  * ([Account.perApp]: its site, path and phrase; issue #252); an entry without it, as every entry of an older file,
- * is an ordinary account. A list with no per-app address is written as format 4, which the release before reads.
+ * is an ordinary account. Format 6 records Ledger custody and its public path. Each write uses
+ * the oldest of formats 4–6 that can represent all the accounts.
  * An entry whose chain id this version does not know was
  * written by a later version that works on more networks: the list is then
  * [AccountList.Reason.NEWER_FORMAT], left untouched, and the user is asked to update.
@@ -60,16 +62,18 @@ class FileAccountRepository(
         path,
         dispatcher,
         what = "account list",
-        formatVersion = FORMAT_VERSION,
+        formatVersion = FORMAT_LEDGER,
         empty = emptyList(),
         decode = { _, text ->
             val stored = STRICT.decodeFromString(StoredAccounts.serializer(), text)
             stored.accounts.map { it.toAccount(stored.version) }.distinctBy { it.id }
         },
         encode = { accounts ->
-            // Format 4 while no account is a per-app address, so that an update alone leaves a list the release
-            // before can still read.
-            val version = if (accounts.any { it.perApp != null }) FORMAT_VERSION else FORMAT_BEFORE_PER_APP
+            val version = when {
+                accounts.any { it.custody is AccountCustody.Ledger } -> FORMAT_LEDGER
+                accounts.any { it.perApp != null } -> FORMAT_PER_APP
+                else -> FORMAT_BEFORE_PER_APP
+            }
             val stored = StoredAccounts(version, accounts.map(::StoredAccount))
             STRICT.encodeToString(StoredAccounts.serializer(), stored)
         },
@@ -96,19 +100,28 @@ class FileAccountRepository(
         updateEntry(id) { it.copy(label = label, ensName = null) }
 
     override suspend fun setCustody(id: AccountId, custody: AccountCustody): AccountChange =
-        updateEntry(id) { it.copy(custody = custody) }
+        updateEntry(id) {
+            if (it.custody is AccountCustody.Ledger || custody is AccountCustody.Ledger) {
+                null
+            } else {
+                it.copy(custody = custody)
+            }
+        }
 
     override suspend fun markPerApp(id: AccountId, mark: PerAppAccount): AccountChange =
-        updateEntry(id) { it.copy(custody = AccountCustody.InKeyStore, perApp = mark) }
+        updateEntry(id) {
+            if (it.custody is AccountCustody.Ledger) null else it.copy(custody = AccountCustody.InKeyStore, perApp = mark)
+        }
 
-    /** Replaces the entry [id] with [update] of it, in place; NotFound when there is none. */
-    private suspend fun updateEntry(id: AccountId, update: (Account) -> Account): AccountChange =
+    /** Replaces the entry [id] in place; NotFound when absent, NotSaved when [update] refuses. */
+    private suspend fun updateEntry(id: AccountId, update: (Account) -> Account?): AccountChange =
         file.change(AccountChange.NotSaved) { accounts ->
             val index = accounts.indexOfFirst { it.id == id }
             if (index < 0) {
                 Decision(AccountChange.NotFound)
             } else {
-                Decision(AccountChange.Changed, accounts.toMutableList().apply { set(index, update(get(index))) })
+                val updated = update(accounts[index]) ?: return@change Decision(AccountChange.NotSaved)
+                Decision(AccountChange.Changed, accounts.toMutableList().apply { set(index, updated) })
             }
         }
 
@@ -129,7 +142,7 @@ class FileAccountRepository(
         val address: String,
         val kind: String,
         val label: String,
-        /** [WATCHED] or [IN_KEY_STORE]; absent in format 1, whose accounts all came from a recovery phrase. */
+        /** Absent in format 1, whose accounts all came from a recovery phrase. */
         val custody: String? = null,
         /** [Account.ensName]; absent when the name follows none, and before format 3. */
         val ens: String? = null,
@@ -137,6 +150,8 @@ class FileAccountRepository(
         val chain: Long? = null,
         /** [Account.perApp]; absent for an ordinary account, and before format 5. */
         val perApp: StoredPerApp? = null,
+        /** Public derivation path, present only for Ledger custody in format 6. */
+        val ledgerPath: String? = null,
     ) {
         constructor(account: Account) : this(
             account.address.hex,
@@ -145,10 +160,12 @@ class FileAccountRepository(
             when (account.custody) {
                 AccountCustody.Watched -> WATCHED
                 AccountCustody.InKeyStore -> IN_KEY_STORE
+                is AccountCustody.Ledger -> LEDGER
             },
             account.ensName,
             account.network.chainId,
             account.perApp?.let(::StoredPerApp),
+            (account.custody as? AccountCustody.Ledger)?.path?.value,
         )
 
         /**
@@ -164,15 +181,23 @@ class FileAccountRepository(
             Address.of(address),
             AccountKind.valueOf(kind),
             label,
-            when {
-                version == 1 && custody == null -> AccountCustody.InKeyStore
-                custody == WATCHED -> AccountCustody.Watched
-                custody == IN_KEY_STORE -> AccountCustody.InKeyStore
-                else -> error("an account without a known custody")
-            },
+            toCustody(version),
             ens,
             perApp?.toMark(),
         )
+
+        private fun toCustody(version: Int): AccountCustody {
+            require(ledgerPath == null || custody == LEDGER) { "a Ledger path without Ledger custody" }
+            return when {
+                version == 1 && custody == null -> AccountCustody.InKeyStore
+                custody == WATCHED -> AccountCustody.Watched
+                custody == IN_KEY_STORE -> AccountCustody.InKeyStore
+                version >= FORMAT_LEDGER && custody == LEDGER -> AccountCustody.Ledger(
+                    ledgerPath?.let { LedgerPath.parse(it) } ?: error("a Ledger account without a valid path"),
+                )
+                else -> error("an account without a known custody")
+            }
+        }
     }
 
     /**
@@ -199,17 +224,14 @@ class FileAccountRepository(
     }
 
     private companion object {
-        /**
-         * 2 since watched accounts: each entry records its custody; 3 since names that follow ENS;
-         * 4 since accounts on more than one network: each entry records its chain id; 5 since per-app addresses: an
-         * entry made as one records its site, path and phrase.
-         */
-        const val FORMAT_VERSION = 5
+        const val FORMAT_LEDGER = 6
+        const val FORMAT_PER_APP = 5
 
         /** The format written while no entry needs format 5's per-app mark. */
         const val FORMAT_BEFORE_PER_APP = 4
         const val WATCHED = "watched"
         const val IN_KEY_STORE = "key-store"
+        const val LEDGER = "ledger"
         val STRICT = Json
     }
 }

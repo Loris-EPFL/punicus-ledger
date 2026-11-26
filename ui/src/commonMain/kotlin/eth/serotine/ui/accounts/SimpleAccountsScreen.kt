@@ -107,6 +107,7 @@ fun SimpleAccountsScreen(
     onToggleAmounts: () -> Unit = {},
     onDismissLost: () -> Unit = {},
     selected: SelectedAccount? = null,
+    onAddLedger: (() -> Unit)? = null,
 ) {
     val snackbar = remember { SnackbarHostState() }
     val message = (state as? AccountsUiState.Ready)?.message
@@ -140,7 +141,9 @@ fun SimpleAccountsScreen(
         modifier = modifier,
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            AddAccountButton(state, onWatchAddress, onImportPhrase, onCreateAccount, onCreateSafe, fabExpandedAtStart) {
+            AddAccountButton(
+                state, onWatchAddress, onImportPhrase, onCreateAccount, onCreateSafe, fabExpandedAtStart, onAddLedger,
+            ) {
                 unavailable = it
             }
         },

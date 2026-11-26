@@ -41,6 +41,7 @@ import eth.serotine.domain.repository.InterfaceModeSetting
 import eth.serotine.domain.repository.KeptSafes
 import eth.serotine.domain.repository.KeptTransactionInputs
 import eth.serotine.domain.repository.KeyStore
+import eth.serotine.domain.repository.LedgerDevice
 import eth.serotine.domain.repository.KnownUpgradeStore
 import eth.serotine.domain.repository.LightClient
 import eth.serotine.domain.repository.LogIndex
@@ -110,6 +111,7 @@ import eth.serotine.domain.usecase.DraftTransfer
 import eth.serotine.domain.usecase.DropWaitingSwap
 import eth.serotine.domain.usecase.EnableBiometricUnlock
 import eth.serotine.domain.usecase.EncodeSigningRequest
+import eth.serotine.domain.usecase.EnrollLedgerAccount
 import eth.serotine.domain.usecase.EstimateCowSwap
 import eth.serotine.domain.usecase.EstimateSwap
 import eth.serotine.domain.usecase.ExecuteSafeTx
@@ -239,6 +241,7 @@ import eth.serotine.domain.usecase.SendCowCancellation
 import eth.serotine.domain.usecase.SendDappTransaction
 import eth.serotine.domain.usecase.SendDelayCall
 import eth.serotine.domain.usecase.SendDelaySkip
+import eth.serotine.domain.usecase.SendLedgerTransfer
 import eth.serotine.domain.usecase.SendSwap
 import eth.serotine.domain.usecase.SendTokenApproval
 import eth.serotine.domain.usecase.SendTransfer
@@ -284,6 +287,7 @@ import eth.serotine.ui.deriveaccount.DeriveAccountViewModel
 import eth.serotine.ui.gnosispay.GnosisPayViewModel
 import eth.serotine.ui.handoff.HandoffViewModel
 import eth.serotine.ui.lightclient.LightClientViewModel
+import eth.serotine.ui.ledger.LedgerAccountViewModel
 import eth.serotine.ui.mnemonicimport.MnemonicImportViewModel
 import eth.serotine.ui.mode.InterfaceModeViewModel
 import eth.serotine.ui.pairdapp.IncomingDappLink
@@ -541,9 +545,20 @@ class AppGraph(
     private val addressIndexArchive: AddressIndexArchive? = null,
     /** Whether the user dismissed the first start's notice (owner's request, 2026-11-26). */
     private val firstRunNotice: FirstRunNotice,
+    private val ledgerDevice: LedgerDevice? = null,
 ) {
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
+
+    /** Native Ledger support is wired by the desktop host alone. */
+    val offersLedgerAccounts: Boolean
+        get() = ledgerDevice != null
+
+    fun ledgerAccountViewModel(): LedgerAccountViewModel = LedgerAccountViewModel(
+        EnrollLedgerAccount(checkNotNull(ledgerDevice), accounts, walletChanges),
+        ObserveEnabledNetworks(networkSettings),
+        SetNetworkEnabled(networkSettings),
+    )
 
     /** Every resolution of the app: [names]', each one that lands on an account kept in [seenEnsNames] (#274). */
     private val resolver: NameResolver = RememberResolvedNames(names, accounts, seenEnsNames)
@@ -950,6 +965,9 @@ class AppGraph(
         ),
         QueueTransfer(signer, outbox, outboxLock),
         fill = fill,
+        sendLedgerTransfer = ledgerDevice?.let {
+            SendLedgerTransfer(it, signatureRecovery, broadcaster, sentTransfers, accounts)
+        },
     )
 
     /**

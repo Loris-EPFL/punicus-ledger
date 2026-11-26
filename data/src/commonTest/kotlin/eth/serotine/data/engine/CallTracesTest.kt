@@ -52,6 +52,9 @@ class CallTracesTest {
         assertNull(CallTraceJson.parse(json.replace("DELEGATECALL", "TELEPORT")))
         assertNull(CallTraceJson.parse(json.replace("\"value\":\"0x10\"", "\"value\":\"16\"")))
         assertNull(CallTraceJson.parse(json.replace("0x$topic", "0x01")))
+        // A failure is said in words, and a frame that moves value says how much.
+        assertNull(CallTraceJson.parse(json.replace("\"error\":\"execution reverted\"", "\"error\":{\"code\":3}")))
+        assertNull(CallTraceJson.parse(json.replace("\"value\":\"0x10\",", "")))
         // Only a creation may have no recipient.
         assertNull(CallTraceJson.parse("""{"type":"CALL","from":"${user.hex}"}"""))
         assertNull(CallTraceJson.parse(json.replace("\"calls\":[", "\"calls\":{\"a\":[").replace("]}\n", "]}}\n")))

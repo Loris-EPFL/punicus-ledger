@@ -25,8 +25,9 @@ data class FirstRunNoticeText(val title: String, val points: List<Pair<String, S
                 "Give it a few minutes" to "Punicus talks to the network directly, with no company in between. On " +
                     "its first start it has to find computers of the network to talk to. It remembers them, so " +
                     "the next start is quicker.",
-                "While a bar or a banner is red, wait" to "Red means Punicus has not checked that network yet: " +
-                    "its balances are not confirmed, and sending waits. It turns green once the network is checked.",
+                "Until a network is checked, wait" to "Punicus checks each network before it relies on it. Until " +
+                    "then balances are not confirmed, names cannot be looked up and sending waits. The home screen " +
+                    "says so in red; another screen may only say that something cannot be read yet.",
                 "Try again often helps" to "Punicus keeps working in the background. If something does not load, " +
                     "tap Try again, or pull down to refresh, a little later.",
             ),

@@ -279,9 +279,11 @@ columns** (owner's request, 2026-11-25). Material's large window size class:
 (Owner's request, 2026-11-26.) The first time the app opens, a dialog,
 *Your first start*, says what to expect while Punicus finds its first peers,
 in three points: give it a few minutes (it has to find computers of the
-network to talk to, and remembers them for the next start); while a bar or a
-banner is red, wait (that network is not checked yet: balances are not
-confirmed and sending waits); and Try again often helps (Punicus keeps
+network to talk to, and remembers them for the next start); until a network
+is checked, wait (balances are not confirmed, names cannot be looked up and
+sending waits; the home screen says so in red, while another screen, such as
+Watch address, may only say that something cannot be read yet); and Try
+again often helps (Punicus keeps
 working in the background). OK closes it for good; so does a tap outside it
 or Back. It is shown once, at a start when it was never dismissed and the
 wallet holds no account; an install that already holds accounts (an update

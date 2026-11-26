@@ -21,7 +21,7 @@ class FirstRunDialogTest {
         rule.setContent { SerotineTheme { FirstRunDialog(FirstRunNoticeText.DEFAULT, onOk = { oks++ }) } }
 
         rule.onNodeWithText("Give it a few minutes").assertIsDisplayed()
-        rule.onNodeWithText("While a bar or a banner is red, wait").assertIsDisplayed()
+        rule.onNodeWithText("Until a network is checked, wait").assertIsDisplayed()
         rule.onNodeWithText("Try again often helps").assertIsDisplayed()
         rule.onNodeWithText("OK").performClick()
 

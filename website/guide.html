@@ -62,8 +62,8 @@
               <p>Punicus talks to the network directly, with no company in between. On its first start it has to find computers of the network to talk to. It remembers them, so the next start is quicker.</p>
             </li>
             <li>
-              <span class="ui">While a bar or a banner is red, wait.</span>
-              <p>Red means Punicus has not checked that network yet: its balances are not confirmed, and sending waits. It turns green once the network is checked.</p>
+              <span class="ui">Until a network is checked, wait.</span>
+              <p>Punicus checks each network before it relies on it. Until then balances are not confirmed, names cannot be looked up and sending waits. The home screen says so in red; another screen, such as Watch address, may only say that something cannot be read yet.</p>
             </li>
             <li>
               <span class="ui">Try again often helps.</span>
@@ -76,7 +76,7 @@
           <li>
             <figure>
               <img class="crop" style="--rows: 350" loading="lazy" src="../docs/screenshots/simple-accounts/syncing.png" width="412" height="892" alt="The home screen while Ethereum is still syncing: a red banner says its balances were last confirmed 3 hours ago and that sending waits until it has caught up; the Ethereum section says Syncing, 2 of 6 periods, beside a red dot.">
-              <figcaption>Red: still syncing, so wait</figcaption>
+              <figcaption>The home screen while Ethereum is still being checked</figcaption>
             </figure>
           </li>
         </ul>

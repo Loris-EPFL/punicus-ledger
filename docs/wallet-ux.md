@@ -1345,7 +1345,10 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
       since the owner's decisions of 2026-11-24 and 2026-11-25;
       `.claude/rules/data-sources.md`, *The history may also take the addr1
       index from Swarm*), while its experimental setting is on (18; on by
-      default since 2026-11-22, #334): the engine reads the account's part
+      default since 2026-11-22, #334), for an account of a network whose
+      index the release pins a key for (Ethereum; Gnosis Chain too since
+      Myotis 0.1.25, owner's request, 2026-11-26; Sepolia has none, and its
+      Activity is the log index's alone): the engine reads the account's part
       of the index from Swarm, page by page, newest first, and checks each
       entry against verified chain data.
       **Verified rows only**: an entry unverified, contradicted, unavailable
@@ -1545,7 +1548,9 @@ Screens 22 to 24 are the swap screens (docs/swaps.md).
     default (owner's decision, 2026-11-22, #334, amending "off by default"
     of 2026-11-21), the user may turn it off, and an explicit off stays off,
     whatever key a later release pins. It names the importer key pinned in
-    the release, says what it does and what Swarm and archive peers learn
+    the release for each network with an index (Ethereum's, and Gnosis
+    Chain's since 2026-11-26: one row and one choice for them all, the
+    default applying to each, owner's request of that day), says what it does and what Swarm and archive peers learn
     while it is on (docs/privacy-policy.md). A key is never typed in. A
     choice to turn it on made for a key the release no longer pins does not
     carry over: the key pinned now has no choice, so it is on by default

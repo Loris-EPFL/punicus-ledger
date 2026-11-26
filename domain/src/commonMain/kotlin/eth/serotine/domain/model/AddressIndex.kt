@@ -232,3 +232,37 @@ sealed interface AddressIndexVerdict {
      */
     data class Unavailable(override val entry: AddressIndexEntry, val reason: String) : AddressIndexVerdict
 }
+
+/**
+ * The importer keys of the addr1 index pinned in a release: one per network that has an index, the one key a list of
+ * that network's history may rest on (owner's decision, 2026-11-21, on #335: pinned in the release, never typed by the
+ * user). Myotis 0.1.25 reads each chain's index under its own key (Myotis #933). A network without a key has no addr1
+ * history: nothing of it is read, and its *Activity* is the log index's alone. One experimental setting covers every
+ * key, on by default for each (owner's request, 2026-11-26: "The default should apply for all chains that have an
+ * addr1 index").
+ */
+data class AddressIndexImporters(val keys: Map<Network, Address>) {
+
+    /** Whether no key is pinned at all: the setting has none to name. */
+    val none: Boolean
+        get() = keys.isEmpty()
+
+    /** The key pinned for [network], or null: [network] has no addr1 history in this release. */
+    fun of(network: Network): Address? = keys[network]
+
+    /** The networks that have a key, in [Network]'s order. */
+    val networks: List<Network>
+        get() = Network.entries.filter { it in keys }
+
+    /** The key the setting is saved as turned on for: the first network's, or null when none is pinned. */
+    val first: Address?
+        get() = networks.firstOrNull()?.let(keys::getValue)
+
+    /** Whether [importer] is one of these keys. */
+    operator fun contains(importer: Address): Boolean = importer in keys.values
+
+    companion object {
+        /** No key pinned: a release without an addr1 history. */
+        val NONE = AddressIndexImporters(emptyMap())
+    }
+}

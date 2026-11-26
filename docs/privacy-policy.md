@@ -110,7 +110,9 @@ or not, and for the swap you send. With Uniswap chosen, CoW is never contacted
 On the desktop and on Android, Settings → Experimental has *Account history
 from the addr1 index*, on by default. Only while it is on, the light client also reads an
 account's history from the addr1 address index, published on Swarm, a
-peer-to-peer storage network, by an importer whose key the release pins.
+peer-to-peer storage network, by an importer whose key the release pins:
+one key per network, for Ethereum and for Gnosis Chain (Sepolia has none).
+The one setting covers both.
 Nothing is read while the release pins no importer key, or while the app's
 engine has no Swarm reader. To keep the peers below from learning anything,
 turn the setting off in Settings → Experimental before you open an account's

@@ -389,7 +389,7 @@ class SettingsViewModel(
     }
 
     /**
-     * Turns the addr1 history on, for the importer key pinned in the release, or off; a choice not saved is said on
+     * Turns the addr1 history on, for the importer keys pinned in the release, or off; a choice not saved is said on
      * the switch. Where it cannot be turned on, the row is greyed out and a tap says why instead: nothing is asked.
      */
     fun useAddressIndex(on: Boolean) {
@@ -406,8 +406,13 @@ class SettingsViewModel(
         val text = buildString {
             append(if (on) "On" else "Off")
             append(
-                pinned?.let { ": importer ${Eip55.format(it)}, pinned in this release" }
-                    ?: ": no importer key is pinned in this release yet",
+                if (pinned.none) {
+                    ": no importer key is pinned in this release yet"
+                } else {
+                    val keys = pinned.networks.joinToString(", ") { "${Eip55.format(pinned.keys.getValue(it))} on " +
+                        it.displayName }
+                    ": ${if (pinned.networks.size == 1) "importer" else "importers"} $keys, pinned in this release"
+                },
             )
             if (AddressIndexMissing.NO_READER in missing) append(" · This build's engine has no Swarm reader")
             if (AddressIndexMissing.READER_NOT_KNOWN in missing) {
@@ -417,9 +422,9 @@ class SettingsViewModel(
             val other = trustsAnotherKey
             when {
                 // That choice does not carry over: the key pinned now had none, so it is on by default.
-                other != null && pinned != null && on -> append(
+                other != null && !pinned.none && on -> append(
                     " · It was turned on for another importer, ${shortAddress(Eip55.format(other))}: on by default " +
-                        "for the one pinned now",
+                        "for the ones pinned now",
                 )
                 // On by default (owner's decision, 2026-11-22), once nothing keeps it off.
                 choice == AddressIndexChoice.NotChosen && !on ->
@@ -435,8 +440,14 @@ class SettingsViewModel(
                     "read only on the word of an importer whose key a release pins; a key is never typed in here."
                 AddressIndexMissing.NO_READER -> "This build's engine has no Swarm reader, so the index cannot be " +
                     "read here. The history stays the light client's log index."
-                AddressIndexMissing.READER_NOT_KNOWN -> "The engine says whether this build reads Swarm once " +
-                    "Ethereum's light client runs: while Ethereum is on in Networks and one of your accounts is on it."
+                AddressIndexMissing.READER_NOT_KNOWN -> {
+                    val networks = pinned.networks.map { it.displayName }.ifEmpty { listOf("Ethereum") }
+                    val named = networks.dropLast(1).joinToString(", ").let {
+                        if (it.isEmpty()) networks.last() else "$it or ${networks.last()}"
+                    }
+                    "The engine says whether this build reads Swarm once the light client of $named runs: while " +
+                        "it is on in Networks and one of your accounts is on it."
+                }
                 AddressIndexMissing.CHOICE_UNREADABLE -> "Your saved choice cannot be read, so it is taken as off. " +
                     "Punicus keeps trying to read it, and the switch works again once it can."
             }

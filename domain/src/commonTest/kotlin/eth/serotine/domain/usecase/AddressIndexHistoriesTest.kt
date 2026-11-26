@@ -5,6 +5,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexCoverage
 import eth.serotine.domain.model.AddressIndexCursor
 import eth.serotine.domain.model.AddressIndexEntry
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.AddressIndexHeadGap
 import eth.serotine.domain.model.AddressIndexRole
 import eth.serotine.domain.model.AddressIndexRole.FROM
@@ -41,6 +42,7 @@ class AddressIndexHistoriesTest {
     private val alice = Address.of("0x" + "11".repeat(20))
     private val bob = Address.of("0x" + "22".repeat(20))
     private val importer = Address.of("0x" + "1e".repeat(20))
+    private val gnosisImporter = Address.of("0x" + "9e".repeat(20))
     private val account = AccountId(Network.ETHEREUM, alice)
     private val coverage = AddressIndexCoverage(
         importer = importer,
@@ -57,7 +59,7 @@ class AddressIndexHistoriesTest {
         retryPause: Duration = 2.seconds,
         budget: Duration = 5.minutes,
         checkBudget: Duration = 2.minutes,
-    ) = LoadAddressIndexPage(index, importer, attempts, retryPause, budget, checkBudget)
+    ) = LoadAddressIndexPage(index, onEthereum(importer), attempts, retryPause, budget, checkBudget)
 
     private fun entry(block: Long, slot: Int, vararg roles: AddressIndexRole) =
         AddressIndexEntry(block, slot, roles.toSet())
@@ -344,11 +346,50 @@ class AddressIndexHistoriesTest {
         index.pages[null] = page(listOf(entry(21_150_000, 1, FROM)))
         verifyingAll()
         val onGnosis = AccountId(Network.GNOSIS, alice)
+        val bothPinned = AddressIndexImporters(mapOf(Network.ETHEREUM to importer, Network.GNOSIS to gnosisImporter))
 
-        val load = loader()(onGnosis).last()
+        val load = LoadAddressIndexPage(index, bothPinned)(onGnosis).last()
 
         assertEquals(AddressIndexLoad.Refused(AddressIndexRefusal.NetworkNotServed(Network.GNOSIS)), load)
         assertEquals(listOf(Network.GNOSIS), index.queries.map { it.first })
+    }
+
+    @Test
+    fun aNetworkWithNoKeyPinnedIsRefusedAndNothingIsRead() = runTest {
+        index.pages[null] = page(listOf(entry(21_150_000, 1, FROM)))
+        verifyingAll()
+
+        val load = loader()(AccountId(Network.GNOSIS, alice)).last()
+
+        assertEquals(AddressIndexLoad.Refused(AddressIndexRefusal.NetworkNotServed(Network.GNOSIS)), load)
+        assertEquals(emptyList(), index.queries, "no key for Gnosis Chain: nothing asked of the engine")
+        assertEquals(emptyList(), index.checks)
+    }
+
+    @Test
+    fun eachNetworksListRestsOnItsOwnKeyAlone() = runTest {
+        val served = FakeAddressIndexHistory(setOf(Network.ETHEREUM, Network.GNOSIS))
+        served.check = { entries, _ -> AddressIndexCheck.Verdicts(entries.map(::verified)) }
+        val bothPinned = AddressIndexImporters(mapOf(Network.ETHEREUM to importer, Network.GNOSIS to gnosisImporter))
+        val load = LoadAddressIndexPage(served, bothPinned)
+        val onGnosis = AccountId(Network.GNOSIS, alice)
+
+        served.pages[null] = page(listOf(entry(21_150_000, 1, FROM)), signedBy = gnosisImporter)
+        val loaded = assertIs<AddressIndexLoad.Loaded>(load(onGnosis).last())
+        assertEquals(1, loaded.rows.size, "Gnosis Chain's page, signed by its own key")
+        assertEquals(gnosisImporter, loaded.coverage.importer)
+
+        // Ethereum's key is no key for Gnosis Chain's list, nor Gnosis Chain's for Ethereum's.
+        served.pages[null] = page(listOf(entry(21_150_000, 1, FROM)), signedBy = importer)
+        assertEquals(
+            AddressIndexLoad.Refused(AddressIndexRefusal.WrongImporter(gnosisImporter, importer)),
+            load(onGnosis).last(),
+        )
+        served.pages[null] = page(listOf(entry(21_150_000, 1, FROM)), signedBy = gnosisImporter)
+        assertEquals(
+            AddressIndexLoad.Refused(AddressIndexRefusal.WrongImporter(importer, gnosisImporter)),
+            load(account).last(),
+        )
     }
 
     @Test

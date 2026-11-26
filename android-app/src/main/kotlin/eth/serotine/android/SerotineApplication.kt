@@ -186,7 +186,7 @@ class SerotineApplication : Application() {
      */
     private suspend fun followAddressIndexSetting(host: MyotisHost) {
         try {
-            FollowAddressIndexSetting(addressIndexSetting, PinnedAddressIndexImporter.KEY, host)()
+            FollowAddressIndexSetting(addressIndexSetting, PinnedAddressIndexImporter.KEYS, host)()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -537,10 +537,11 @@ class SerotineApplication : Application() {
             // An account's history from the addr1 index on Swarm, on Android as on the desktop (owner's decisions,
             // 2026-11-24 and 2026-11-25), behind its experimental setting, read and checked by the engine. An engine
             // without the Swarm reader refuses it as not in this build, and the setting is greyed out saying so.
-            // The key the index rests on is pinned in the release (`0xb11B…7241`, owner's choice, 2026-11-24, #359).
+            // The key each network's index rests on is pinned in the release (Ethereum's `0xb11B…7241`, owner's
+            // choice, 2026-11-24, #359; Gnosis Chain's `0xE779…9335`, owner's request, 2026-11-26).
             addressIndex = node.addressIndex,
             addressIndexSetting = addressIndexSetting,
-            addressIndexImporter = PinnedAddressIndexImporter.KEY,
+            addressIndexImporters = PinnedAddressIndexImporter.KEYS,
             // What was read of each account's addr1 history, kept between runs (owner's request, 2026-11-25).
             addressIndexArchive = FileAddressIndexArchive(filesDir.resolve("address-index").path),
         )

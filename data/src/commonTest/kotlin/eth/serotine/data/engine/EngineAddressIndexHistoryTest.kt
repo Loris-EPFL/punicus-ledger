@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexCursor
 import eth.serotine.domain.model.AddressIndexEntry
 import eth.serotine.domain.model.AddressIndexHeadGap
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.AddressIndexRole
 import eth.serotine.domain.model.AddressIndexVerdict
 import eth.serotine.domain.model.Network
@@ -67,7 +68,11 @@ class EngineAddressIndexHistoryTest {
     private val chain = FakeChain()
 
     private fun TestScope.history(of: AddressHistoryChain? = chain) =
-        EngineAddressIndexHistory(Network.ETHEREUM, of, StandardTestDispatcher(testScheduler), 1.seconds)
+        history(of?.let { mapOf(Network.ETHEREUM to it) })
+
+    private fun TestScope.history(chains: Map<Network, AddressHistoryChain>?) =
+        EngineAddressIndexHistory(chains, StandardTestDispatcher(testScheduler), 1.seconds)
+
 
     private val entry = AddressIndexEntry(26_300_000, 3, setOf(AddressIndexRole.FROM, AddressIndexRole.TRACE))
 
@@ -216,6 +221,11 @@ class EngineAddressIndexHistoryTest {
             "the address history is not available on mobile in this version" to AddressIndexRefusal.NotInThisBuild,
             "no importer key is set for the address history (an experimental setting)" to
                 AddressIndexRefusal.SettingOff,
+            // Myotis 0.1.25: keys set for other chains, none for this one.
+            "no importer key is set for the address history on chain 1 (an experimental setting)" to
+                AddressIndexRefusal.NetworkNotServed(Network.ETHEREUM),
+            "no importer key is set for the address history on this chain" to
+                AddressIndexRefusal.NetworkNotServed(Network.ETHEREUM),
             "the address history is not available while Tor routing is on: the Swarm reader does not route " +
                 "through Tor" to AddressIndexRefusal.TorRouting,
             "checkpoint table alarm: block 9 is not the table's" to
@@ -439,15 +449,61 @@ class EngineAddressIndexHistoryTest {
     }
 
     @Test
-    fun theSettingsNameThePinnedKeyOrNoneAndTheSwarmNetwork() {
+    fun theSettingsNameEachNetworksPinnedKeyOrNoneAndTheSwarmNetwork() {
+        val gnosisImporter = Address.of("0x" + "9e".repeat(20))
         assertEquals(
-            """{"importer":"${fixtureImporter.hex}","swarm":{"network":"mainnet"}}""",
-            addressHistoryConfigJson(fixtureImporter, AddressIndexSwarm.Mainnet),
+            """{"importers":{"1":"${fixtureImporter.hex}"},"swarm":{"network":"mainnet"}}""",
+            addressHistoryConfigJson(
+                AddressIndexImporters(mapOf(Network.ETHEREUM to fixtureImporter)),
+                AddressIndexSwarm.Mainnet,
+            ),
+        )
+        assertEquals(
+            """{"importers":{"1":"${fixtureImporter.hex}","100":"${gnosisImporter.hex}"},""" +
+                """"swarm":{"network":"mainnet"}}""",
+            addressHistoryConfigJson(
+                // In Network's order, whatever the map's.
+                AddressIndexImporters(mapOf(Network.GNOSIS to gnosisImporter, Network.ETHEREUM to fixtureImporter)),
+                AddressIndexSwarm.Mainnet,
+            ),
         )
         assertEquals(
             """{"importer":null,"swarm":{"network":"dev","networkId":7,"bootnodes":["/ip4/192.0.2.1/tcp/1634"]}}""",
-            addressHistoryConfigJson(null, AddressIndexSwarm.Dev(7, listOf("/ip4/192.0.2.1/tcp/1634"))),
+            addressHistoryConfigJson(
+                AddressIndexImporters.NONE,
+                AddressIndexSwarm.Dev(7, listOf("/ip4/192.0.2.1/tcp/1634")),
+            ),
         )
+    }
+
+    @Test
+    fun eachNetworkIsReadThroughItsOwnLightClient() = runTest {
+        val gnosis = FakeChain()
+        val history = history(mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis))
+        gnosis.check = """[{"block":26300000,"slot":3,"roles":["from","trace"],"state":"unverified"}]"""
+
+        assertIs<AddressIndexCheck.Verdicts>(history.verify(Network.GNOSIS, alice, listOf(entry)))
+        assertEquals(1, gnosis.checksAsked.size, "Gnosis Chain's light client asked")
+        assertTrue(chain.checksAsked.isEmpty(), "never Ethereum's for a Gnosis Chain account")
+        assertEquals(
+            AddressIndexReading.Refused(AddressIndexRefusal.NetworkNotServed(Network.SEPOLIA)),
+            history.page(Network.SEPOLIA, alice, AddressIndexQuery()),
+        )
+    }
+
+    @Test
+    fun theReaderIsAskedOfAnyRunningLightClient() = runTest {
+        val gnosis = FakeChain()
+        chain.supports = null
+        chain.snapshot = EngineSnapshot.Stopped(off = true)
+        gnosis.supports = true
+
+        assertTrue(history(mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis)).hasReader(), "Gnosis Chain's")
+
+        gnosis.supports = null
+        gnosis.snapshot = EngineSnapshot.Down
+        chain.snapshot = EngineSnapshot.Down
+        assertFalse(history(mapOf(Network.ETHEREUM to chain, Network.GNOSIS to gnosis)).hasReader(), "all down")
     }
 
     private companion object {

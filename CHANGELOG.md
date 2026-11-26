@@ -12,6 +12,13 @@ and issues of this repository.
 
 ### Added
 
+- The account history from the addr1 index now covers Gnosis Chain as well
+  as Ethereum: a Gnosis Chain account's Activity also lists the verified
+  entries of the one-year Gnosis Chain index on Swarm, signed by its own
+  importer key, `0xE779…9335`, pinned in this release. The experimental
+  setting names both keys; it is on by default for both, and turning it off
+  turns both off. Sepolia has no such index. Needs Myotis 0.1.25, which
+  reads each chain's index under its own key.
 - Clear signing of dApp transactions, and of Permit2's batch permits among
   typed data: a call, or such a message, that Punicus did not decode before is
   now put in words when a built-in ERC-7730 description covers its contract

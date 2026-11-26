@@ -1,6 +1,8 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexImporters
+import eth.serotine.domain.model.Network
 import eth.serotine.domain.repository.AddressIndexChoice
 import eth.serotine.domain.repository.AddressIndexHistory
 import eth.serotine.domain.repository.AddressIndexReaderSettings
@@ -23,8 +25,8 @@ enum class AddressIndexMissing {
     NO_READER,
 
     /**
-     * The engine has not said yet whether it has a Swarm reader: it says so once Ethereum's light client runs
-     * ([AddressIndexHistory.hasReader] not answered yet).
+     * The engine has not said yet whether it has a Swarm reader: it says so once the light client of a network with a
+     * pinned key runs ([AddressIndexHistory.hasReader] not answered yet).
      */
     READER_NOT_KNOWN,
 
@@ -34,25 +36,32 @@ enum class AddressIndexMissing {
 
 /**
  * Where the experimental addr1 history stands (owner ruling, 2026-11-21, #334; the owner's decisions of that day on
- * #335; on by default, the owner's decision of 2026-11-22): [pinned], the importer key pinned in the release (null:
- * none pinned in this one), whether the engine has its Swarm [reader] (null: not known yet), and the user's [choice].
- * It is [wanted] when a key is pinned and the user did not turn it off, and [on] when it is wanted and the engine reads
- * Swarm:
+ * #335; on by default, the owner's decision of 2026-11-22): [pinned], the importer keys pinned in the release, one per
+ * network that has an index (none: none pinned in this one), whether the engine has its Swarm [reader] (null: not
+ * known yet), and the user's [choice]. It is [wanted] when a key is pinned and the user did not turn it off, and [on]
+ * when it is wanted and the engine reads Swarm. One choice covers every network's key, and the default applies to each
+ * of them (owner's request, 2026-11-26: "The default should apply for all chains that have an addr1 index"):
  * - **no choice made** ([AddressIndexChoice.NotChosen]: a fresh install): on, by default;
  * - **an explicit off** (a stored choice of no key): off, whatever key is pinned, until the user turns it on again;
- * - **on for the key pinned now**: on;
- * - **on for another key** ([trustsAnotherKey]): that choice does not carry over to the key pinned now, which no choice
- *   was made for, so it is on by default for it, as on a fresh install; only an explicit off is kept across keys;
+ * - **on for one of the keys pinned now**: on, for every one of them, since a key newly pinned beside it had no choice
+ *   made for it and is on by default;
+ * - **on for another key** ([trustsAnotherKey]): that choice does not carry over to the keys pinned now, which no
+ *   choice was made for, so it is on by default for them, as on a fresh install; only an explicit off is kept across
+ *   keys;
  * - **a choice that cannot be read**, or one found damaged and set aside: off, since it may have been an explicit off,
  *   and nothing is read on a guess. Unreadable, it cannot be changed until it can be read; set aside, it is off until
  *   the user chooses again.
  */
-data class AddressIndexStatus(val pinned: Address?, val reader: Boolean?, val choice: AddressIndexChoice) {
+data class AddressIndexStatus(
+    val pinned: AddressIndexImporters,
+    val reader: Boolean?,
+    val choice: AddressIndexChoice,
+) {
 
     /** What keeps the setting from being turned on, or changed at all; empty when it can be. */
     val missing: Set<AddressIndexMissing>
         get() = buildSet {
-            if (pinned == null) add(AddressIndexMissing.NO_KEY_PINNED)
+            if (pinned.none) add(AddressIndexMissing.NO_KEY_PINNED)
             if (reader == false) add(AddressIndexMissing.NO_READER)
             if (reader == null) add(AddressIndexMissing.READER_NOT_KNOWN)
             if (choice is AddressIndexChoice.Unreadable) add(AddressIndexMissing.CHOICE_UNREADABLE)
@@ -66,21 +75,27 @@ data class AddressIndexStatus(val pinned: Address?, val reader: Boolean?, val ch
         get() = wanted && reader == true
 
     /**
-     * Whether the user's choice asks for the history of the key [pinned]: a key pinned, and no explicit off nor a
+     * Whether the user's choice asks for the history of the keys [pinned]: a key pinned, and no explicit off nor a
      * choice that cannot be read or was set aside, whatever the engine's reader. What the engine is told to read
      * ([FollowAddressIndexSetting]); an engine without the reader refuses every read on its own.
      */
     val wanted: Boolean
-        get() = pinned != null && when (choice) {
+        get() = !pinned.none && when (choice) {
             AddressIndexChoice.NotChosen -> true
-            // On for any key: for the key pinned now, or, for another one, no choice for this one (default on).
+            // On for any key: for a key pinned now, or, for another one, no choice for these (default on).
             is AddressIndexChoice.Chosen -> choice.importer != null
             AddressIndexChoice.Unreadable -> false
         }
 
-    /** The key the setting was turned on for when that is not the key pinned now; null otherwise. */
+    /**
+     * The importer key whose index [network]'s *Activity* takes now: its pinned key while the setting is [on]; null
+     * while it is off, or when [network] has no index in this release.
+     */
+    fun readOn(network: Network): Address? = if (on) pinned.of(network) else null
+
+    /** The key the setting was turned on for when that is none of the keys pinned now; null otherwise. */
     val trustsAnotherKey: Address?
-        get() = (choice as? AddressIndexChoice.Chosen)?.importer?.takeIf { it != pinned }
+        get() = (choice as? AddressIndexChoice.Chosen)?.importer?.takeIf { it !in pinned }
 
     /** Whether the stored choice was damaged and set aside: off, said until another choice is made. */
     val setAside: Boolean
@@ -91,13 +106,14 @@ data class AddressIndexStatus(val pinned: Address?, val reader: Boolean?, val ch
  * The [AddressIndexStatus] now, re-emitted when the choice changes: [setting], the user's choice; [history], whose
  * engine says once whether it has a Swarm reader, which is not known ([AddressIndexStatus.reader] null) until it has
  * said, so that Settings draws the row greyed out meanwhile rather than none (owner ruling, 2026-10-18, #55);
- * [pinned], the importer key pinned in the release, null when this release pins none (none was until 2026-11-24,
- * owner's decision of 2026-11-21; `0xb11B…7241` since, owner's choice of 2026-11-24, #359).
+ * [pinned], the importer keys pinned in the release, none when this release pins none (none was until 2026-11-24,
+ * owner's decision of 2026-11-21; Ethereum's `0xb11B…7241` since, owner's choice of 2026-11-24, #359; Gnosis Chain's
+ * `0xE779…9335` beside it since 2026-11-26).
  */
 class ObserveAddressIndexStatus(
     private val history: AddressIndexHistory,
     private val setting: AddressIndexSetting,
-    private val pinned: Address?,
+    private val pinned: AddressIndexImporters,
 ) {
     operator fun invoke(): Flow<AddressIndexStatus> =
         combine(flow { emit(null); emit(history.hasReader()) }, setting.observe()) { reader, choice ->
@@ -118,30 +134,33 @@ sealed interface AddressIndexSwitch {
 }
 
 /**
- * Turns the addr1 history on, for the key [pinned] in the release, or off. On needs a pinned key and an engine with a
- * Swarm reader ([history]); without either it is refused and nothing is saved, never turned on for a key nobody
- * pinned. Off always saves, so a choice made in an earlier build can always be taken back.
+ * Turns the addr1 history on, for the keys [pinned] in the release, or off: one choice for every network's key. On is
+ * saved as the first network's key ([AddressIndexImporters.first]), which [AddressIndexStatus] reads as on for all of
+ * them. On needs a pinned key and an engine with a Swarm reader ([history]); without either it is refused and nothing
+ * is saved, never turned on for a key nobody pinned. Off always saves, so a choice made in an earlier build can always
+ * be taken back.
  */
 class TurnAddressIndex(
     private val history: AddressIndexHistory,
     private val setting: AddressIndexSetting,
-    private val pinned: Address?,
+    private val pinned: AddressIndexImporters,
 ) {
     suspend operator fun invoke(on: Boolean): AddressIndexSwitch {
         if (on) {
             val missing = buildSet {
-                if (pinned == null) add(AddressIndexMissing.NO_KEY_PINNED)
+                if (pinned.none) add(AddressIndexMissing.NO_KEY_PINNED)
                 if (!history.hasReader()) add(AddressIndexMissing.NO_READER)
             }
             if (missing.isNotEmpty()) return AddressIndexSwitch.Unavailable(missing)
         }
-        return if (setting.trust(if (on) pinned else null)) AddressIndexSwitch.Done else AddressIndexSwitch.NotSaved
+        val saved = setting.trust(if (on) pinned.first else null)
+        return if (saved) AddressIndexSwitch.Done else AddressIndexSwitch.NotSaved
     }
 }
 
 /**
  * Keeps the engine's addr1 reader to the user's choice, for as long as it runs (the composition root's app-wide work):
- * the importer key [pinned] in the release while the user's choice ([setting]) wants it
+ * the importer keys [pinned] in the release, each for its network, while the user's choice ([setting]) wants them
  * ([AddressIndexStatus.wanted]), and none otherwise, so that the engine reads nothing of the index, nor fetches
  * anything for it, while the setting is off. It does not wait for the engine to say whether it has a Swarm reader: the
  * setting is applied from the start, before any read, and an engine without the reader refuses it, and every read, on
@@ -150,12 +169,14 @@ class TurnAddressIndex(
  */
 class FollowAddressIndexSetting(
     private val setting: AddressIndexSetting,
-    private val pinned: Address?,
+    private val pinned: AddressIndexImporters,
     private val reader: AddressIndexReaderSettings,
 ) {
     suspend operator fun invoke() {
         setting.observe()
-            .map { choice -> pinned.takeIf { AddressIndexStatus(pinned, null, choice).wanted } }
+            .map { choice ->
+                if (AddressIndexStatus(pinned, null, choice).wanted) pinned else AddressIndexImporters.NONE
+            }
             .distinctUntilChanged()
             .collect { reader.apply(it) }
     }

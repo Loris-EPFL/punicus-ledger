@@ -180,8 +180,10 @@ can prove, from verified figures alone.
   is a gap, pinned to its transaction.
 - **Which blocks touched the account comes from the engine's address-activity
   follower** (`AddressActivity`, its `account` kind, Myotis #691), not from
-  the per-entry check of the addr1 index. That check serves Ethereum's index
-  alone, on the desktop, and answers only for entries the index holds, while
+  the per-entry check of the addr1 index. That check serves only the networks
+  whose index a release pins a key for (Ethereum and Gnosis Chain since
+  2026-11-26), on the desktop and Android, and answers only for entries the
+  index holds, while
   a gap is a block no entry names. The follower reports, for a watched
   account, every block that touched it, and the blocks it could not check (its
   gaps), while the app runs.

@@ -313,14 +313,14 @@ private fun openWallet(dataDir: File) {
             }
         }
         LaunchedEffect(Unit) {
-            // The engine's addr1 reader follows the setting: the pinned key while it is on, none otherwise, so that
-            // nothing is read from Swarm or checked for it while it is off. Applied from the start, without waiting
-            // for the engine to say whether it reads Swarm. Handing the engine the key does not make it dial out:
-            // its Swarm node starts on the first read (Myotis's addrhist.rs: "the node starts on the first read"),
-            // which an account's Activity tab asks, as docs/privacy-policy.md says. A failure ends it, never the
-            // wallet.
+            // The engine's addr1 reader follows the setting: each network's pinned key while it is on, none
+            // otherwise, so that nothing is read from Swarm or checked for it while it is off. Applied from the start,
+            // without waiting for the engine to say whether it reads Swarm. Handing the engine the keys does not make
+            // it dial out: its Swarm node starts on the first read (Myotis's addrhist.rs: "the node starts on the
+            // first read"), which an account's Activity tab asks, as docs/privacy-policy.md says. A failure ends it,
+            // never the wallet.
             try {
-                FollowAddressIndexSetting(addressIndexSetting, PinnedAddressIndexImporter.KEY, node)()
+                FollowAddressIndexSetting(addressIndexSetting, PinnedAddressIndexImporter.KEYS, node)()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -590,11 +590,11 @@ private fun openWallet(dataDir: File) {
                 // An account's history from the addr1 index on Swarm, the desktop's and Android's, behind its
                 // experimental setting (owner ruling, 2026-11-21, #334), read and checked by the engine. An engine
                 // without the Swarm reader refuses it as not in this build, and the setting is greyed out saying so.
-                // The key the index rests on is pinned in the release (`0xb11B…7241`, owner's choice, 2026-11-24,
-                // #359).
+                // The key each network's index rests on is pinned in the release (Ethereum's `0xb11B…7241`, owner's
+                // choice, 2026-11-24, #359; Gnosis Chain's `0xE779…9335`, owner's request, 2026-11-26).
                 addressIndex = node.addressIndex,
                 addressIndexSetting = addressIndexSetting,
-                addressIndexImporter = PinnedAddressIndexImporter.KEY,
+                addressIndexImporters = PinnedAddressIndexImporter.KEYS,
                 // What was read of each account's addr1 history, kept between runs (owner's request, 2026-11-25).
                 addressIndexArchive = FileAddressIndexArchive(dataDir.resolve("address-index").path),
             )

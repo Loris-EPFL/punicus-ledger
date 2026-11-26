@@ -37,6 +37,7 @@ import eth.serotine.domain.usecase.ObserveSentTo
 import eth.serotine.domain.usecase.ObserveTokenTransfers
 import eth.serotine.domain.usecase.ObserveWaitingSwaps
 import eth.serotine.ui.FIXTURE_IMPORTER
+import eth.serotine.ui.onEthereum
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeAddressIndexHistory
 import eth.serotine.ui.FakeLogIndex
@@ -113,9 +114,9 @@ class AddressIndexActivityTest {
             ObserveOutbox(MemoryOutbox()),
             addressIndex = pinned?.let {
                 AddressIndexActivity(
-                    ObserveAddressIndexStatus(index, setting, it),
-                    LoadAddressIndexPage(index, it),
-                    keep = archive?.let { kept -> KeepAddressIndex(kept, accounts, WalletChanges(), it) },
+                    ObserveAddressIndexStatus(index, setting, onEthereum(it)),
+                    LoadAddressIndexPage(index, onEthereum(it)),
+                    keep = archive?.let { kept -> KeepAddressIndex(kept, accounts, WalletChanges(), onEthereum(it)) },
                 )
             },
             now = { 600 },

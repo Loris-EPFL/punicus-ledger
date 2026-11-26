@@ -4,6 +4,7 @@ import eth.serotine.domain.model.Account
 import eth.serotine.domain.model.AccountCustody
 import eth.serotine.domain.model.AccountKind
 import eth.serotine.domain.model.Address
+import eth.serotine.domain.model.AddressIndexImporters
 import eth.serotine.domain.model.DisplayCurrency
 import eth.serotine.domain.model.Eip1559Transaction
 import eth.serotine.domain.model.InterfaceMode
@@ -49,6 +50,7 @@ import eth.serotine.domain.usecase.SyncPastStaleAnchor
 import eth.serotine.domain.usecase.TurnAddressIndex
 import eth.serotine.ui.APP_VERSION
 import eth.serotine.ui.FIXTURE_IMPORTER
+import eth.serotine.ui.onEthereum
 import eth.serotine.ui.FakeAccounts
 import eth.serotine.ui.FakeAddressIndexHistory
 import eth.serotine.ui.FakeConnectionMeter
@@ -142,6 +144,7 @@ class SettingsViewModelTest {
         screenCapture: ScreenCaptureDebugSwitch? = null,
         addressIndex: AddressIndexHistory? = null,
         pinned: Address? = null,
+        importers: AddressIndexImporters = onEthereum(pinned),
     ): SettingsViewModel {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = SettingsViewModel(
@@ -163,8 +166,10 @@ class SettingsViewModelTest {
             ObserveHeavyDownloads(meter, metered),
             AllowHeavyDownloadsOnMetered(metered),
             clock = { 1_000 },
-            observeAddressIndex = addressIndex?.let { ObserveAddressIndexStatus(it, addressIndexSetting, pinned) },
-            turnAddressIndex = addressIndex?.let { TurnAddressIndex(it, addressIndexSetting, pinned) },
+            observeAddressIndex = addressIndex?.let {
+                ObserveAddressIndexStatus(it, addressIndexSetting, importers)
+            },
+            turnAddressIndex = addressIndex?.let { TurnAddressIndex(it, addressIndexSetting, importers) },
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         runCurrent()
@@ -702,7 +707,7 @@ class SettingsViewModelTest {
         val viewModel = viewModel(addressIndex = FakeAddressIndexHistory(), pinned = FIXTURE_IMPORTER)
         val key = Eip55.format(FIXTURE_IMPORTER)
         assertEquals(
-            "On: importer $key, pinned in this release · On by default: you can turn it off",
+            "On: importer $key on Ethereum, pinned in this release · On by default: you can turn it off",
             viewModel.uiState.value.addressIndex?.text,
         )
         assertEquals(true, viewModel.uiState.value.addressIndex?.on)
@@ -710,7 +715,10 @@ class SettingsViewModelTest {
 
         viewModel.useAddressIndex(false)
         runCurrent()
-        assertEquals("Off: importer $key, pinned in this release", viewModel.uiState.value.addressIndex?.text)
+        assertEquals(
+            "Off: importer $key on Ethereum, pinned in this release",
+            viewModel.uiState.value.addressIndex?.text,
+        )
         assertEquals(AddressIndexChoice.Chosen(null), addressIndexSetting.choice.value)
 
         viewModel.useAddressIndex(true)
@@ -744,7 +752,7 @@ class SettingsViewModelTest {
         val waiting = checkNotNull(viewModel.uiState.value.addressIndex) { "the row is there, greyed out (#55)" }
         assertFalse(waiting.on)
         assertTrue(waiting.text.contains(" · Waiting for the engine to say whether it reads Swarm"), waiting.text)
-        assertTrue(checkNotNull(waiting.unavailableReason).contains("Ethereum's light client runs"))
+        assertTrue(checkNotNull(waiting.unavailableReason).contains("the light client of Ethereum runs"))
         assertTrue(waiting.turnOff, "the default can be turned off ahead")
 
         index.readerAnswered.value = true
@@ -778,5 +786,34 @@ class SettingsViewModelTest {
         assertFalse(item.on, "it may have been an off")
         assertTrue(item.text.contains("(your saved choice was damaged and set aside)"), item.text)
         assertTrue(item.turnOff)
+    }
+
+    @Test
+    fun withAKeyPinnedForEachOfTwoNetworksTheRowNamesBothAndOneSwitchTurnsBoth() = runTest {
+        val gnosisImporter = Address.of("0x" + "9e".repeat(20))
+        val viewModel = viewModel(
+            addressIndex = FakeAddressIndexHistory(),
+            importers = AddressIndexImporters(
+                mapOf(Network.ETHEREUM to FIXTURE_IMPORTER, Network.GNOSIS to gnosisImporter),
+            ),
+        )
+        val keys = "${Eip55.format(FIXTURE_IMPORTER)} on Ethereum, ${Eip55.format(gnosisImporter)} on Gnosis Chain"
+        assertEquals(
+            "On: importers $keys, pinned in this release · On by default: you can turn it off",
+            viewModel.uiState.value.addressIndex?.text,
+        )
+
+        viewModel.useAddressIndex(false)
+        runCurrent()
+        assertEquals("Off: importers $keys, pinned in this release", viewModel.uiState.value.addressIndex?.text)
+
+        viewModel.useAddressIndex(true)
+        runCurrent()
+        assertEquals(AddressIndexChoice.Chosen(FIXTURE_IMPORTER), addressIndexSetting.choice.value, "Ethereum's first")
+        assertEquals(
+            "On: importers $keys, pinned in this release",
+            viewModel.uiState.value.addressIndex?.text,
+            "on for both, not 'turned on for another importer'",
+        )
     }
 }

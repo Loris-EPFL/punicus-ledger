@@ -12,6 +12,12 @@ and issues of this repository.
 
 ### Added
 
+- The first start says what to expect: a note, shown once until OK, that
+  the first start takes a few minutes while Punicus finds computers of the
+  network to talk to, that nothing works until a network is checked, and
+  that Try again often helps since Punicus keeps trying while it is open.
+  The website's guide says the same under *When you run Punicus for the
+  first time*, and the downloads point to it.
 - The account history from the addr1 index now covers Gnosis Chain as well
   as Ethereum: a Gnosis Chain account's Activity also lists the verified
   entries of the one-year Gnosis Chain index on Swarm, signed by its own

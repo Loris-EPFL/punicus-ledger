@@ -35,8 +35,9 @@
         <h1>Getting started</h1>
         <p class="lede">How to put accounts into Punicus: a new one, one you already have, an address you only want to watch, and a Safe. Pick the part you need.</p>
         <ul class="toc">
+          <li><a href="#first-run">When you run Punicus for the first time</a></li>
           <li><a href="#kinds">The kinds of account</a></li>
-          <li><a href="#first">The first start</a></li>
+          <li><a href="#first">Add your first account</a></li>
           <li><a href="#create">Create a new account</a></li>
           <li><a href="#import">Bring in an account you already have</a></li>
           <li><a href="#more">Add another account from the same phrase</a></li>
@@ -49,6 +50,38 @@
         </ul>
       </div>
     </div>
+
+    <section class="section tinted" id="first-run">
+      <div class="wrap walk">
+        <div>
+          <h2>When you run Punicus for the first time</h2>
+          <p class="when">The first start takes a little patience while Punicus gets to know the network.</p>
+          <ol class="steps">
+            <li>
+              <span class="ui">Give it a few minutes.</span>
+              <p>Punicus talks to the network directly, with no company in between. On its first start it has to find computers of the network to talk to: keep it open meanwhile. It remembers them, so the next start is quicker.</p>
+            </li>
+            <li>
+              <span class="ui">Until a network is checked, wait.</span>
+              <p>Punicus checks each network before it relies on it. Until then balances are not confirmed, names cannot be looked up and sending waits. The home screen says so in red; another screen, such as Watch address, may only say that something cannot be read yet.</p>
+            </li>
+            <li>
+              <span class="ui">Try again often helps.</span>
+              <p>Punicus keeps trying on its own while it is open. If something does not load, tap Try again, or pull down to refresh, a little later.</p>
+            </li>
+          </ol>
+          <p class="proofline">The app says the same in a short note when you open it for the first time.</p>
+        </div>
+        <ul class="shots">
+          <li>
+            <figure>
+              <img class="crop" style="--rows: 350" loading="lazy" src="../docs/screenshots/simple-accounts/syncing.png" width="412" height="892" alt="The home screen while Ethereum is still syncing: a red banner says its balances were last confirmed 3 hours ago and that sending waits until it has caught up; the Ethereum section says Syncing, 2 of 6 periods, beside a red dot.">
+              <figcaption>The home screen while Ethereum is still being checked</figcaption>
+            </figure>
+          </li>
+        </ul>
+      </div>
+    </section>
 
     <section class="section" id="kinds">
       <div class="wrap">
@@ -79,7 +112,7 @@
     <section class="section tinted" id="first">
       <div class="wrap walk">
         <div>
-          <h2>The first start</h2>
+          <h2>Add your first account</h2>
           <p class="when">Install Punicus from the <a href="index.html#download">download section</a> and open it. The wallet starts empty.</p>
           <ol class="steps">
             <li>
@@ -91,8 +124,8 @@
               <p>Creating a Safe costs a network fee, which an account in this wallet pays. Tap the grey button and Punicus tells you what is missing.</p>
             </li>
             <li>
-              <span class="ui">Give the app a minute.</span>
-              <p>On its first start Punicus catches up with the network before it can check anything. It says so on screen while it does.</p>
+              <span class="ui">Give the app a few minutes.</span>
+              <p>On its first start Punicus catches up with the network before it can check anything. It says so on screen while it does: see <a href="#first-run">When you run Punicus for the first time</a>.</p>
             </li>
           </ol>
           <p class="proofline">Ethereum and Gnosis Chain hold real funds. To practise first, turn on Sepolia under Settings, Networks: a test network whose coins are worth nothing.</p>

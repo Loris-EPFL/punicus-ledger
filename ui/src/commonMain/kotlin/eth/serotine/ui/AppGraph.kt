@@ -1,5 +1,9 @@
 package eth.serotine.ui
 
+import eth.serotine.ui.firstrun.FirstRunViewModel
+import eth.serotine.domain.usecase.DismissFirstRunNotice
+import eth.serotine.domain.usecase.ObserveFirstRunNotice
+import eth.serotine.domain.repository.FirstRunNotice
 import eth.serotine.domain.model.AccountId
 import eth.serotine.domain.model.Address
 import eth.serotine.domain.model.AddressIndexImporters
@@ -523,6 +527,8 @@ class AppGraph(
      * reads the index from its newest page.
      */
     private val addressIndexArchive: AddressIndexArchive? = null,
+    /** Whether the user dismissed the first start's notice (owner's request, 2026-11-26). */
+    private val firstRunNotice: FirstRunNotice,
 ) {
     /** The one [WalletChanges] of the app: imports and removals never interleave. */
     private val walletChanges = WalletChanges()
@@ -1190,6 +1196,10 @@ class AppGraph(
 
     /** Whether the bottom bar shows the Debug tab: one for the app, in the host's scope. */
     fun debugTabViewModel(): DebugTabViewModel = DebugTabViewModel(ObserveDebugTab(debugScreen, interfaceMode))
+
+    /** The first start's notice (owner's request, 2026-11-26). */
+    fun firstRunViewModel(): FirstRunViewModel =
+        FirstRunViewModel(ObserveFirstRunNotice(firstRunNotice, accounts), DismissFirstRunNotice(firstRunNotice))
 
     /** The view the screens are drawn in: one for the app, in the host's scope. */
     fun interfaceModeViewModel(): InterfaceModeViewModel = InterfaceModeViewModel(ObserveInterfaceMode(interfaceMode))

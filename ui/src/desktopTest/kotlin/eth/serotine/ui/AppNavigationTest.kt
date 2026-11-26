@@ -1,5 +1,6 @@
 package eth.serotine.ui
 
+import eth.serotine.domain.repository.FirstRunNotice
 import eth.serotine.domain.model.PrivateKey
 import eth.serotine.domain.repository.PrivateKeys
 import androidx.compose.foundation.layout.Box
@@ -480,6 +481,7 @@ class AppNavigationTest {
         waitingSwaps = MemoryWaitingSwaps(),
         debugLog = debugLog,
         debugScreen = debugScreen,
+        firstRunNotice = FirstRunNotice.None,
         interfaceMode = interfaceMode,
         amountsHidden = MemoryAmountsHidden(),
         networkFreshness = FakeFreshness(),

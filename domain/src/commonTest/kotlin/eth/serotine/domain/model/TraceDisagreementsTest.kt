@@ -37,17 +37,20 @@ class TraceDisagreementsTest {
         return TraceReader.read(user, root, weth, TypedDataMeaning.PERMIT2)
     }
 
+    private fun check(reading: TraceReading, description: ClearSignResult) =
+        TraceDisagreements.check(user, reading, TraceClaims.of(description))
+
     private val honest = arrayOf(transfer(sold, user, pool, 10), transfer(bought, pool, user, 5))
 
     @Test
     fun aSwapThatDoesWhatItSaysAgrees() {
-        assertEquals(emptyList(), TraceDisagreements.check(user, trace(*honest), swap(user)))
+        assertEquals(emptyList(), check(trace(*honest), swap(user)))
     }
 
     @Test
     fun aTokenTheDescriptionDoesNotNameIsADisagreement() {
         val extra = address("08")
-        val found = TraceDisagreements.check(user, trace(*honest, transfer(extra, user, pool, 1)), swap(user))
+        val found = check(trace(*honest, transfer(extra, user, pool, 1)), swap(user))
         assertEquals(listOf(TraceDisagreement.TokenNotNamed(extra)), found)
     }
 
@@ -60,10 +63,10 @@ class TraceDisagreementsTest {
                 TraceDisagreement.OtherRecipient(TracedAsset.Fungible(sold), pool),
                 TraceDisagreement.OtherRecipient(TracedAsset.Fungible(bought), thief),
             ),
-            TraceDisagreements.check(user, stolen, swap(user)),
+            check(stolen, swap(user)),
         )
         // The thief named as the recipient is what the description says: no disagreement.
-        assertEquals(emptyList(), TraceDisagreements.check(user, stolen, swap(thief)))
+        assertEquals(emptyList(), check(stolen, swap(thief)))
     }
 
     @Test
@@ -80,14 +83,14 @@ class TraceDisagreementsTest {
         val reading = TraceReader.read(user, root, weth, TypedDataMeaning.PERMIT2)
         assertEquals(
             listOf(TraceDisagreement.OtherRecipient(TracedAsset.Fungible(bought), thief)),
-            TraceDisagreements.check(user, reading, swap(user)),
+            check(reading, swap(user)),
         )
     }
 
     @Test
     fun aDescriptionWithoutARecipientIsNotHeldToOne() {
         val stolen = trace(transfer(sold, user, pool, 10), transfer(bought, pool, thief, 5))
-        assertEquals(emptyList(), TraceDisagreements.check(user, stolen, swap(recipient = null)))
+        assertEquals(emptyList(), check(stolen, swap(recipient = null)))
     }
 
     @Test
@@ -95,7 +98,7 @@ class TraceDisagreementsTest {
         val withFee = trace(*honest, transfer(bought, pool, fee, 1))
         assertEquals(
             listOf(TraceDisagreement.OtherRecipient(TracedAsset.Fungible(bought), fee)),
-            TraceDisagreements.check(user, withFee, swap(user)),
+            check(withFee, swap(user)),
         )
     }
 
@@ -106,7 +109,7 @@ class TraceDisagreementsTest {
         val hops = trace(
             transfer(sold, user, pool, 10), transfer(middle, pool, pool2, 7), transfer(bought, pool2, user, 5),
         )
-        assertEquals(emptyList(), TraceDisagreements.check(user, hops, swap(user)))
+        assertEquals(emptyList(), check(hops, swap(user)))
     }
 
     @Test
@@ -120,7 +123,7 @@ class TraceDisagreementsTest {
             calls = listOf(TraceFrame(TraceFrame.Type.CALL, pool, thief, UInt256.of(3))),
         )
         val root = TraceFrame(TraceFrame.Type.CALL, user, router, UInt256.ZERO, calls = listOf(poolFrame))
-        val found = TraceDisagreements.check(user, TraceReader.read(user, root, weth, TypedDataMeaning.PERMIT2), described)
+        val found = check(TraceReader.read(user, root, weth, TypedDataMeaning.PERMIT2), described)
         assertEquals(TraceDisagreement.OtherRecipient(TracedAsset.Currency, thief), found.last())
     }
 
@@ -137,12 +140,48 @@ class TraceDisagreementsTest {
         )
         val root = TraceFrame(TraceFrame.Type.CALL, user, router, UInt256.of(4), calls = listOf(wrap, poolFrame))
         val reading = TraceReader.read(user, root, weth, TypedDataMeaning.PERMIT2)
-        assertEquals(emptyList(), TraceDisagreements.check(user, reading, swap(user, tokens = listOf(weth, bought))))
+        assertEquals(emptyList(), check(reading, swap(user, tokens = listOf(weth, bought))))
     }
 
     @Test
+    fun aLendingPoolsSupplyAndWithdrawalAgree() {
+        val aToken = address("0b")
+        val lendingPool = address("0c")
+        val described = ClearSignResult.ClearSigned(
+            owner = "Aave", attestedBy = emptyList(), intent = "Supply", interpolatedIntent = null,
+            fields = listOf(
+                ClearSignedField.Value("Amount", "10", "10", token = sold),
+                ClearSignedField.Value("For", user.hex, user.hex, recipient = user),
+            ),
+            otherParameters = emptyList(), grantsApproval = false,
+        )
+        fun pool(vararg logs: TraceLog): TraceReading {
+            val frame = TraceFrame(TraceFrame.Type.CALL, lendingPool, aToken, UInt256.ZERO, logs = logs.toList())
+            return TraceReader.read(user, TraceFrame(TraceFrame.Type.CALL, user, lendingPool, UInt256.ZERO, calls = listOf(frame)), weth, TypedDataMeaning.PERMIT2)
+        }
+        // Supply: the underlying to the aToken, which mints its shares to the user.
+        assertEquals(emptyList(), check(pool(transfer(sold, user, aToken, 10), transfer(aToken, Address.ZERO, user, 10)), described))
+        // Withdraw: the shares burnt, the underlying back; the aToken is named by no tokenAmount.
+        assertEquals(emptyList(), check(pool(transfer(aToken, user, Address.ZERO, 10), transfer(sold, aToken, user, 10)), described))
+        // A burn with nothing in return is a token sent.
+        assertEquals(listOf(TraceDisagreement.TokenNotNamed(aToken)), check(pool(transfer(aToken, user, Address.ZERO, 10)), described))
+    }
+
+    @Test
+    fun aHandDecodedTransferIsHeldToItsRecipient() {
+        val claims = TraceClaims.ofMeaning(DappCallMeaning.TokenTransfer(sold, other(), UInt256.of(10)), sold)
+        val root = TraceFrame(TraceFrame.Type.CALL, user, sold, UInt256.ZERO, logs = listOf(transfer(sold, user, thief, 10)))
+        val reading = TraceReader.read(user, root, weth, TypedDataMeaning.PERMIT2)
+        assertEquals(listOf(TraceDisagreement.OtherRecipient(TracedAsset.Fungible(sold), thief)), TraceDisagreements.check(user, reading, claims))
+        assertEquals(emptyList(), TraceDisagreements.check(user, reading, TraceClaims.ofMeaning(DappCallMeaning.TokenTransfer(sold, thief, UInt256.of(10)), sold)))
+        assertEquals(null, TraceClaims.ofMeaning(DappCallMeaning.NotDecoded("0x12345678"), sold))
+    }
+
+    private fun other() = address("0d")
+
+    @Test
     fun aBurnIsNoRecipient() {
-        assertEquals(emptyList(), TraceDisagreements.check(user, trace(*honest, transfer(bought, pool, Address.ZERO, 1)), swap(user)))
+        assertEquals(emptyList(), check(trace(*honest, transfer(bought, pool, Address.ZERO, 1)), swap(user)))
     }
 
     @Test
@@ -151,9 +190,9 @@ class TraceDisagreementsTest {
         val reading = trace(*honest, grant)
         assertEquals(
             listOf(TraceDisagreement.RightNotFlagged(TracedRight.Allowance(sold, thief, UInt256.of(1_000)))),
-            TraceDisagreements.check(user, reading, swap(user)),
+            check(reading, swap(user)),
         )
-        assertEquals(emptyList(), TraceDisagreements.check(user, reading, swap(user, grantsApproval = true)))
+        assertEquals(emptyList(), check(reading, swap(user, grantsApproval = true)))
     }
 
     @Test
@@ -166,7 +205,7 @@ class TraceDisagreementsTest {
         val stolen = trace(transfer(sold, user, pool, 10), transfer(bought, pool, thief, 5))
         assertEquals(
             TraceDisagreement.OtherRecipient(TracedAsset.Fungible(bought), thief),
-            TraceDisagreements.check(user, stolen, outer).last(),
+            check(stolen, outer).last(),
         )
     }
 
@@ -174,7 +213,7 @@ class TraceDisagreementsTest {
     fun aCallNotDescribedOrRevertedHasNone() {
         val extra = address("08")
         val notCovered = ClearSignResult.NotCovered(NotCoveredReason.NoDescriptor)
-        assertEquals(emptyList(), TraceDisagreements.check(user, trace(transfer(extra, user, thief, 1)), notCovered))
-        assertEquals(emptyList(), TraceDisagreements.check(user, trace(transfer(extra, user, thief, 1), error = "reverted"), swap(user)))
+        assertEquals(emptyList(), check(trace(transfer(extra, user, thief, 1)), notCovered))
+        assertEquals(emptyList(), check(trace(transfer(extra, user, thief, 1), error = "reverted"), swap(user)))
     }
 }

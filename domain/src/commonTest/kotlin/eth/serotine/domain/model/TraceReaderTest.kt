@@ -119,7 +119,7 @@ class TraceReaderTest {
         val someoneElses = approval(token, other, router, 5)
         val root = call(
             user, router, 0,
-            call(router, token, 0, logs = listOf(spent)),
+            call(router, token, 0, logs = listOf(spent, transfer(token, user, pool, 60))),
             logs = listOf(granted, revoked, forAll, notForAll, someoneElses),
         )
         assertEquals(
@@ -129,12 +129,29 @@ class TraceReaderTest {
     }
 
     @Test
+    fun aPermitRelayedByItsSpenderIsAGrant() {
+        // The spender calls permit on the token: an Approval alone in a frame it opened.
+        val relayed = call(user, router, 0, call(router, token, 0, logs = listOf(approval(token, user, router, 70))))
+        assertEquals(listOf(TracedRight.Allowance(token, router, UInt256.of(70))), read(relayed).effects.rights)
+        // Its transferFrom moves the token in the same frame: a spend.
+        val spent = call(user, router, 0, call(router, token, 0, logs = listOf(approval(token, user, router, 30), transfer(token, user, router, 40))))
+        assertEquals(emptyList(), read(spent).effects.rights)
+    }
+
+    @Test
+    fun theNetworksOwnLogOfACurrencyTransferIsNoToken() {
+        val eip7708 = transfer(TokenTransfers.ETH, user, router, 5)
+        val effects = read(call(user, router, 5, logs = listOf(eip7708))).effects
+        assertEquals(listOf(TracedMove(TracedAsset.Currency, UInt256.of(5), user, router)), effects.moves)
+    }
+
+    @Test
     fun aDelegateCallKeepsItsCallersSender() {
         // A proxied token: the spender calls the proxy, which delegates to its implementation, which logs.
         val spent = approval(proxy, user, router, 40)
         val root = call(
             user, router, 0,
-            call(router, proxy, 0, TraceFrame(TraceFrame.Type.DELEGATECALL, proxy, implementation, null, logs = listOf(spent))),
+            call(router, proxy, 0, TraceFrame(TraceFrame.Type.DELEGATECALL, proxy, implementation, null, logs = listOf(spent, transfer(proxy, user, router, 40)))),
         )
         assertEquals(emptyList(), read(root).effects.rights)
         assertEquals(listOf(ReachedContract(router, false), ReachedContract(proxy, false), ReachedContract(implementation, true)), read(root).effects.contracts)

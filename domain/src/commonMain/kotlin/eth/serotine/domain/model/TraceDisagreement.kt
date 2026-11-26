@@ -5,7 +5,7 @@ package eth.serotine.domain.model
  * 2): warned about loudly, the call still signable.
  */
 sealed interface TraceDisagreement {
-    /** The account sends [token] (a token, wrapped currency or an NFT collection) the description does not name. */
+    /** The account sends [token] (a token, wrapped currency or an NFT collection) the claims do not name. */
     data class TokenNotNamed(val token: Address) : TraceDisagreement
 
     /**
@@ -15,32 +15,96 @@ sealed interface TraceDisagreement {
      */
     data class OtherRecipient(val asset: TracedAsset, val holder: Address) : TraceDisagreement
 
-    /** The trace grants [right] while the call carries no approval flag (A3). */
+    /** The trace grants [right] while the claims grant none (no approval flag, A3, and no `approve`). */
     data class RightNotFlagged(val right: TracedRight) : TraceDisagreement
 }
 
 /**
- * Holds a [TraceReading] of [account]'s call against its [ClearSignResult.ClearSigned] description
- * (docs/clear-signing.md, *Phase B*, *The disagreements*). A call that is not described, or that reverts, has
- * none: there is no claim to hold it against, or nothing it does stays.
+ * What a call claims it does, which its verified trace is held against (docs/clear-signing.md, *What the trace
+ * is held against*): the [tokens] it names (and, with [currency], the network's own), the [addresses] it shows
+ * the user, and whether it [grantsRight]. From its description ([of]), or from a hand-written decoder's
+ * meaning ([ofMeaning], [ofSafeAction]); a call neither describes has none (null), and is shown as not decoded.
+ */
+data class TraceClaims(
+    val tokens: Set<Address>,
+    val currency: Boolean,
+    val addresses: Set<Address>,
+    val grantsRight: Boolean,
+) {
+    companion object {
+        /** A description's claims, its nested calls' included; null when it is not described. */
+        fun of(description: ClearSignResult): TraceClaims? {
+            val described = description as? ClearSignResult.ClearSigned ?: return null
+            val tokens = mutableSetOf<Address>()
+            val addresses = mutableSetOf<Address>()
+            val currency = collect(described, tokens, addresses)
+            return TraceClaims(tokens, currency, addresses, described.grantsApproval)
+        }
+
+        /** A dApp call's claims as its hand-written decoder reads it (sent to [to]); null when it is not decoded. */
+        fun ofMeaning(meaning: DappCallMeaning, to: Address): TraceClaims? = when (meaning) {
+            DappCallMeaning.Payment -> TraceClaims(emptySet(), currency = true, addresses = setOf(to), grantsRight = false)
+            is DappCallMeaning.TokenTransfer -> TraceClaims(setOf(meaning.token), false, setOf(meaning.recipient), false)
+            is DappCallMeaning.TokenApproval -> TraceClaims(setOf(meaning.token), false, setOf(meaning.spender), true)
+            is DappCallMeaning.NotDecoded -> null
+        }
+
+        /** A Safe transaction's claims as screen 17 decodes it, for [account] (the Safe); null when not decoded. */
+        fun ofSafeAction(action: SafeTxAction, account: Address): TraceClaims? = when (action) {
+            is SafeTxAction.NativeTransfer -> TraceClaims(emptySet(), true, setOf(action.to), false)
+            is SafeTxAction.TokenTransfer -> TraceClaims(setOf(action.token), false, setOf(action.to), false)
+            is SafeTxAction.TokenApproval -> TraceClaims(setOf(action.token), false, setOf(action.spender), true)
+            is SafeTxAction.Swap -> TraceClaims(
+                action.swap.route.tokens.toSet(),
+                currency = action.swap.sellsEther || action.swap.buysEther,
+                addresses = setOf(account),
+                grantsRight = false,
+            )
+            // It moves nothing and grants nothing: whatever the trace finds is a disagreement.
+            is SafeTxAction.SettingsChange, SafeTxAction.Rejection -> TraceClaims(emptySet(), false, emptySet(), false)
+            is SafeTxAction.ContractCall, is SafeTxAction.DelegateCall -> null
+        }
+
+        /** The tokens and the addresses a description names, its nested calls' included; true when it shows currency. */
+        private fun collect(described: ClearSignResult.ClearSigned, named: MutableSet<Address>, shown: MutableSet<Address>): Boolean {
+            var currency = false
+            for (field in described.fields) when (field) {
+                is ClearSignedField.Value -> {
+                    field.token?.let(named::add)
+                    field.recipient?.let(shown::add)
+                    if (field.nativeCurrency) currency = true
+                }
+                is ClearSignedField.Nested ->
+                    if ((field.result as? ClearSignResult.ClearSigned)?.let { collect(it, named, shown) } == true) currency = true
+            }
+            return currency
+        }
+    }
+}
+
+/**
+ * Holds a [TraceReading] of [account]'s call against its [TraceClaims] (docs/clear-signing.md, *Phase B*, *The
+ * disagreements*). A call with no claims, or that reverts, has none: there is nothing to hold it against, or
+ * nothing it does stays.
  */
 object TraceDisagreements {
 
-    /** Every disagreement, each once, in the order: tokens not named, other recipients, rights not flagged. */
-    fun check(account: Address, reading: TraceReading, description: ClearSignResult): List<TraceDisagreement> {
-        val described = description as? ClearSignResult.ClearSigned ?: return emptyList()
+    /** Every disagreement, each once, in the order: tokens not named, other recipients, rights not granted. */
+    fun check(account: Address, reading: TraceReading, claims: TraceClaims?): List<TraceDisagreement> {
+        claims ?: return emptyList()
         val effects = reading.effects
         if (effects.revert != null) return emptyList()
-        val named = mutableSetOf<Address>()
-        val recipients = mutableSetOf<Address>()
-        val namesCurrency = collect(described, named, recipients)
+        val named = claims.tokens
+        val recipients = claims.addresses
 
-        val sent = effects.moves.filter { it.from == account }.mapNotNull { it.asset.contract }
+        // A burn is sent to no one: it counts only where the account receives nothing in return.
+        val receives = effects.moves.any { it.to == account }
+        val sent = effects.moves.filter { it.from == account && !(receives && it.to == Address.ZERO) }.mapNotNull { it.asset.contract }
         val notNamed = sent.distinct().filter { it !in named }.map { TraceDisagreement.TokenNotNamed(it) }
 
-        val others = if (recipients.isEmpty()) emptyList() else otherRecipients(account, reading, named, recipients, namesCurrency)
+        val others = if (recipients.isEmpty()) emptyList() else otherRecipients(account, reading, named, recipients, claims.currency)
 
-        val unflagged = if (described.grantsApproval) emptyList() else effects.rights.map { TraceDisagreement.RightNotFlagged(it) }
+        val unflagged = if (claims.grantsRight) emptyList() else effects.rights.map { TraceDisagreement.RightNotFlagged(it) }
         return notNamed + others + unflagged
     }
 
@@ -73,9 +137,9 @@ object TraceDisagreements {
             .map { (asset, holder) -> TraceDisagreement.OtherRecipient(asset, holder) }
     }
 
-    /** Every address from which a chain of [moves] leads to one of [targets]. */
+    /** Every address from which a chain of [moves] leads to one of [targets]; a mint is its issuer's. */
     private fun payers(moves: List<TracedMove>, targets: Set<Address>): Set<Address> {
-        val into = moves.groupBy({ it.to }, { it.from })
+        val into = moves.groupBy({ it.to }, { if (it.from == Address.ZERO) it.asset.contract ?: it.from else it.from })
         val reached = targets.toMutableSet()
         val queue = ArrayDeque(targets)
         while (queue.isNotEmpty()) {
@@ -89,21 +153,6 @@ object TraceDisagreements {
 
     /** Stands for the network's currency among contracts: no contract is at it ([Address.ZERO] is a burn). */
     private val CURRENCY = Address.of("0x" + "e".repeat(40))
-
-    /** The tokens and the recipients a description names, its nested calls' included; true when it shows currency. */
-    private fun collect(described: ClearSignResult.ClearSigned, named: MutableSet<Address>, recipients: MutableSet<Address>): Boolean {
-        var currency = false
-        for (field in described.fields) when (field) {
-            is ClearSignedField.Value -> {
-                field.token?.let(named::add)
-                field.recipient?.let(recipients::add)
-                if (field.nativeCurrency) currency = true
-            }
-            is ClearSignedField.Nested ->
-                if ((field.result as? ClearSignResult.ClearSigned)?.let { collect(it, named, recipients) } == true) currency = true
-        }
-        return currency
-    }
 
     /**
      * Each asset with each address that ends up holding more of it than it started with, in the order first

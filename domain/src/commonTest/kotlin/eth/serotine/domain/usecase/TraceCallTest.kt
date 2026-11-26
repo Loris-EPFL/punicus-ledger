@@ -1,12 +1,10 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Address
-import eth.serotine.domain.model.ClearSignResult
 import eth.serotine.domain.model.ClearSigningDeployment
 import eth.serotine.domain.model.ClearSigningToken
 import eth.serotine.domain.model.CodePin
 import eth.serotine.domain.model.Network
-import eth.serotine.domain.model.NotCoveredReason
 import eth.serotine.domain.model.ReachedContract
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.TraceFrame
@@ -60,13 +58,12 @@ class TraceCallTest {
         }
     }
 
-    private val notDescribed = ClearSignResult.NotCovered(NotCoveredReason.NoDescriptor)
 
     @Test
     fun aTraceIsReadAndNamedByTheBuiltInListAndTheCatalog() = runTest {
         val traces = FakeTraces { CallTraceReading.Traced(root, 21_000_000) }
         val use = TraceCall(traces, tokens, catalog, { null }, backgroundScope)
-        val outcome = assertIs<TraceOutcome.Traced>(use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(1), notDescribed))
+        val outcome = assertIs<TraceOutcome.Traced>(use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(1), null))
         assertEquals(21_000_000, outcome.blockNumber)
         assertEquals(
             listOf(
@@ -85,11 +82,11 @@ class TraceCallTest {
     fun whatTheEngineCannotTraceIsSaidSo() = runTest {
         val traces = FakeTraces { CallTraceReading.NotTraced }
         val use = TraceCall(traces, tokens, catalog, { null }, backgroundScope)
-        assertEquals(TraceOutcome.NotTraced, use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(), notDescribed))
+        assertEquals(TraceOutcome.NotTraced, use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(), null))
         traces.answer = { CallTraceReading.Infeasible("insufficient funds for gas") }
-        assertEquals(TraceOutcome.Infeasible("insufficient funds for gas"), use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(), notDescribed))
+        assertEquals(TraceOutcome.Infeasible("insufficient funds for gas"), use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(), null))
         traces.answer = { CallTraceReading.Unavailable(ReadUnavailable.SYNCING) }
-        assertEquals(TraceOutcome.Unavailable(ReadUnavailable.SYNCING), use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(), notDescribed))
+        assertEquals(TraceOutcome.Unavailable(ReadUnavailable.SYNCING), use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(), null))
     }
 
     @Test
@@ -97,13 +94,13 @@ class TraceCallTest {
         val done = CompletableDeferred<CallTraceReading>()
         val traces = FakeTraces { done.await() }
         val use = TraceCall(traces, tokens, catalog, { null }, backgroundScope, waitMs = 1_000)
-        assertEquals(TraceOutcome.NotInTime, use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(1), notDescribed))
-        val again = async { use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(1), notDescribed) }
+        assertEquals(TraceOutcome.NotInTime, use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(1), null))
+        val again = async { use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(1), null) }
         done.complete(CallTraceReading.Traced(root, 1))
         assertIs<TraceOutcome.Traced>(again.await())
         assertEquals(1, traces.runs)
         // Once it has ended, the next ask runs a new trace, at the head then.
-        use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(1), notDescribed)
+        use.trace(Network.ETHEREUM, user, router, UInt256.ZERO, byteArrayOf(1), null)
         assertEquals(2, traces.runs)
     }
 }

@@ -1,10 +1,10 @@
 package eth.serotine.domain.usecase
 
 import eth.serotine.domain.model.Address
-import eth.serotine.domain.model.ClearSignResult
 import eth.serotine.domain.model.ClearSigningToken
 import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.ReachedContract
+import eth.serotine.domain.model.TraceClaims
 import eth.serotine.domain.model.TraceDisagreement
 import eth.serotine.domain.model.TraceDisagreements
 import eth.serotine.domain.model.TraceEffects
@@ -31,7 +31,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * What a dApp's or a Safe's transaction does when it runs at the verified head (docs/clear-signing.md,
  * *Phase B*): the engine's verified trace ([CallTraces]), its effects on the sender ([TraceReader]), and where
- * they disagree with the call's description ([TraceDisagreements]), which is warned about and leaves the call
+ * they disagree with the call's claims ([TraceDisagreements]), which is warned about and leaves the call
  * signable. A Safe's transaction is traced as the Safe's own call: [trace]'s `from` is the Safe.
  *
  * The wallet waits [waitMs] for a trace, and past it says it was not traced in time ([TraceOutcome.NotInTime]).
@@ -51,14 +51,17 @@ class TraceCall(
     private val running = mutableMapOf<Key, Deferred<CallTraceReading>>()
     private val lock = Mutex()
 
-    /** Traces [data] sent by [from] to [to] with [value] on [network], held against its [description]. */
+    /**
+     * Traces [data] sent by [from] to [to] with [value] on [network], held against its [claims] (from its
+     * description or a hand-written decoder: [TraceClaims]; null for a call neither describes).
+     */
     suspend fun trace(
         network: Network,
         from: Address,
         to: Address,
         value: UInt256,
         data: ByteArray,
-        description: ClearSignResult,
+        claims: TraceClaims?,
     ): TraceOutcome {
         val key = Key(network, from, to, value, data.toHex())
         val run = lock.withLock {
@@ -84,7 +87,7 @@ class TraceCall(
         }
         lock.withLock { if (running[key] === run) running.remove(key) }
         return when (reading) {
-            is CallTraceReading.Traced -> traced(network, from, reading, description)
+            is CallTraceReading.Traced -> traced(network, from, reading, claims)
             is CallTraceReading.Infeasible -> TraceOutcome.Infeasible(reading.detail)
             CallTraceReading.NotTraced -> TraceOutcome.NotTraced
             is CallTraceReading.Unavailable -> TraceOutcome.Unavailable(reading.reason)
@@ -95,7 +98,7 @@ class TraceCall(
         network: Network,
         from: Address,
         reading: CallTraceReading.Traced,
-        description: ClearSignResult,
+        claims: TraceClaims?,
     ): TraceOutcome.Traced {
         val read = TraceReader.read(from, reading.root, wrappedNative(network), TypedDataMeaning.PERMIT2)
         val builtIn = tokens.observeTokens(network).first()
@@ -111,7 +114,7 @@ class TraceCall(
         }.toMap()
         return TraceOutcome.Traced(
             effects = effects,
-            disagreements = TraceDisagreements.check(from, read, description),
+            disagreements = TraceDisagreements.check(from, read, claims),
             blockNumber = reading.blockNumber,
             names = names,
             tokens = listed.associate { it.address to ClearSigningToken(it.symbol, it.decimals) },
@@ -129,7 +132,7 @@ class TraceCall(
 /** What [TraceCall.trace] gives. */
 sealed interface TraceOutcome {
     /**
-     * Traced at [blockNumber]: its [effects] and its [disagreements] with the description. [names] is the
+     * Traced at [blockNumber]: its [effects] and its [disagreements] with the claims. [names] is the
      * wallet's name for each address it mentions that has one (a built-in token, a pinned deployment), and
      * [tokens] each built-in token's symbol and decimals; any other is shown by its address, its amount raw.
      */

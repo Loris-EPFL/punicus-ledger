@@ -93,8 +93,9 @@ data class TraceReading(val effects: TraceEffects, val allMoves: List<TracedMove
  * - Tokens: ERC-20 `Transfer` (three topics), ERC-721 `Transfer` (four), ERC-1155 `TransferSingle` and
  *   `TransferBatch`.
  * - Rights: `Approval` (an amount, or an NFT, other than none) and `ApprovalForAll` (true) with the account as
- *   owner, unless the frame's sender is the spender (a spend of an allowance logs a lower `Approval`); Permit2's
- *   `Approval` and `Permit`, emitted by [permit2] only.
+ *   owner, unless the frame's sender (`msg.sender` there) is the spender and the frame moves that token from the
+ *   account (a spend of an allowance logs a lower `Approval`); Permit2's `Approval` and `Permit`, emitted by
+ *   [permit2] only. A log of [TokenTransfers.ETH] (EIP-7708) is the currency's move, counted from the call tree.
  */
 object TraceReader {
 
@@ -116,7 +117,7 @@ object TraceReader {
                     moves += TracedMove(TracedAsset.Currency, value, frame.from, frame.to)
                 }
                 for (log in frame.logs) {
-                    when (val read = readLog(log, account, inner, wrappedNative, permit2)) {
+                    when (val read = readLog(log, frame.logs, account, inner, wrappedNative, permit2)) {
                         LogRead.Unread -> unread++
                         is LogRead.Moves -> moves += read.moves
                         is LogRead.Right -> rights += read.right
@@ -147,9 +148,23 @@ object TraceReader {
         data class Right(val right: TracedRight) : LogRead
     }
 
-    private fun readLog(log: TraceLog, account: Address, sender: Address, wrappedNative: Address?, permit2: Address): LogRead {
+    private fun readLog(
+        log: TraceLog,
+        frameLogs: List<TraceLog>,
+        account: Address,
+        sender: Address,
+        wrappedNative: Address?,
+        permit2: Address,
+    ): LogRead {
         val topics = log.topics
         val event = topics.firstOrNull() ?: return LogRead.Nothing
+        // The network's own log of a currency transfer (EIP-7708): the call tree counts that move already.
+        if (log.address == TokenTransfers.ETH) return LogRead.Nothing
+        // An Approval its spender's call logs is a spend where the same frame moves that token from the owner;
+        // without such a move it is a grant (a permit signed earlier, relayed by its spender).
+        fun spends(spender: Address): Boolean = sender == spender && frameLogs.any {
+            it.address == log.address && it.topics.size >= 3 && it.topics[0] == TRANSFER && topicAddress(it.topics[1]) == account
+        }
         val words = words(log.data)
         fun address(topic: String): Address? = topicAddress(topic)
         val emitter = log.address
@@ -200,7 +215,7 @@ object TraceReader {
                         val owner = address(topics[1]) ?: return LogRead.Unread
                         val spender = address(topics[2]) ?: return LogRead.Unread
                         val amount = words?.singleOrNull() ?: return LogRead.Unread
-                        if (owner != account || amount == UInt256.ZERO || sender == spender) LogRead.Nothing
+                        if (owner != account || amount == UInt256.ZERO || spends(spender)) LogRead.Nothing
                         else LogRead.Right(TracedRight.Allowance(emitter, spender, amount))
                     }
                     4 -> {
@@ -208,7 +223,7 @@ object TraceReader {
                         val spender = address(topics[2]) ?: return LogRead.Unread
                         if (words?.isEmpty() != true) return LogRead.Unread
                         val id = word(topics[3]) ?: return LogRead.Unread
-                        if (owner != account || spender == Address.ZERO || sender == spender) LogRead.Nothing
+                        if (owner != account || spender == Address.ZERO || spends(spender)) LogRead.Nothing
                         else LogRead.Right(TracedRight.OneNft(emitter, spender, id))
                     }
                     else -> LogRead.Unread
@@ -220,7 +235,7 @@ object TraceReader {
                 val operator = address(topics[2]) ?: return LogRead.Unread
                 val approved = words?.singleOrNull() ?: return LogRead.Unread
                 if (approved != UInt256.ZERO && approved != UInt256.ONE) return LogRead.Unread
-                if (owner != account || approved == UInt256.ZERO || sender == operator) LogRead.Nothing
+                if (owner != account || approved == UInt256.ZERO) LogRead.Nothing
                 else LogRead.Right(TracedRight.AllNfts(emitter, operator))
             }
             PERMIT2_APPROVAL -> if (emitter == permit2) permit2Right(topics, words, account, permit2, withNonce = false) else LogRead.Nothing

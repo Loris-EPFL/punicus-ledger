@@ -1,0 +1,19 @@
+{
+  "address": "0x4ffef8222648872b3de295ba1e49110e61f5b5aa",
+  "chainId": 100,
+  "compilerVersion": "0.7.6+commit.7338295f",
+  "metadata": "f32b511b71d2399dfb0b0ca21a6b8dd7a0dc47adc5916c9ac61b5992f0aa1473",
+  "runtime": "31a138f422912d47502e9cd44d5811757250695d16c340838389eb3023d82288",
+  "sources": {
+    "contracts/interfaces/IFallbackManager.sol": "bbf9356f7618576c14aa8781fda257c9eb8edaf4c647780de0d0a3871253923c",
+    "contracts/interfaces/IGuardManager.sol": "a817f0249d5c4bf40fb53da3e2d779fca9d6a49921d9ce1a0c1bfeeacc3feed9",
+    "contracts/interfaces/IModuleManager.sol": "5753b4d22f8bedd95727cc864f7cf94881c378dcc45d5756e4187c1a41047ca1",
+    "contracts/interfaces/INativeCurrencyPaymentFallback.sol": "c131a9927180f11e350579ba0210069a0d7e0022299f946435b097009f14866c",
+    "contracts/interfaces/IOwnerManager.sol": "8bfcb4f34996ad2569da4fef5dcca16b41f50d8154f8cc81b321a303572fb87a",
+    "contracts/interfaces/ISafe.sol": "ee9949b44f6b21f078e6b69dd927107f233fc38c1ea5b6d46b4618bf3a8af04d",
+    "contracts/interfaces/IStorageAccessible.sol": "664c8393448986b757a4cddf58e84be6a9a6d4883a49645545dc1d7450e7dc35",
+    "contracts/libraries/Enum.sol": "128b018da7ca5751a5ea7976e881afe4cdca65970d97ae8f73667f5700b3a7de",
+    "contracts/libraries/SafeStorage.sol": "e7eb12e5ec2045b4cfeed11266b6509f3ad688535d282a147c38a1069e689adb",
+    "contracts/libraries/SignMessageLib.sol": "ce19e95a61c8aa6ce6dfdc9633d8c8fd5eace0b7e181911815d2a20b71ef3178"
+  }
+}

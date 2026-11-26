@@ -5,7 +5,8 @@
         GNOSIS=http://127.0.0.1:8556 SEPOLIA=http://127.0.0.1:8547
 
 Each NETWORK=URL is a myotis-rpcd (the Myotis repository's JSON-RPC daemon over its verified light client) on
-loopback, never an RPC provider, as for phase A's pins (scripts/clear-signing/pin_code_hashes.py). For every
+loopback, never an RPC provider, read as phase A's pins are (scripts/clear-signing/pin_code_hashes.py: no
+redirect, every network at one block, no code refused, each code held to its account proof). For every
 entry of contracts.json on those networks it reads the code at the address, hashes it with Keccak-256, and
 with --write, pins it in contracts.json (`codeHash`), which verify.mjs then holds every vendored code to, so
 that CI tells a swapped code apart. Without it, it requires the pinned hash. A network not named is not
@@ -14,39 +15,28 @@ checked, and says so; the refresh is not done until all are.
 import json
 import pathlib
 import sys
-import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "clear-signing"))
-from keccak import keccak256  # noqa: E402
+from pin_code_hashes import Rpc, code_hash  # noqa: E402
 
 CHAINS = {"ETHEREUM": 1, "GNOSIS": 100, "SEPOLIA": 11155111}
 
 
-def code(url: str, address: str) -> bytes:
-    if not url.startswith(("http://127.0.0.1:", "http://localhost:", "http://[::1]:")):
-        raise SystemExit(f"refused: {url} is not on loopback; only a local Myotis daemon is read")
-    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "eth_getCode", "params": [address, "latest"]})
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    request = urllib.request.Request(url, body.encode(), {"Content-Type": "application/json"})
-    with opener.open(request, timeout=120) as response:
-        answer = json.loads(response.read())
-    if "error" in answer:
-        raise SystemExit(f"{address}: {answer['error']}")
-    return bytes.fromhex(answer["result"].removeprefix("0x"))
-
-
 def main(argv: list) -> int:
     write = "--write" in argv
-    daemons = {CHAINS[name]: url for name, url in (arg.split("=", 1) for arg in argv if arg != "--write")}
+    # Phase A's reader: loopback only, no redirect, each code held to its account proof, all at one block.
+    daemons = {CHAINS[name]: Rpc(url) for name, url in (arg.split("=", 1) for arg in argv if arg != "--write")}
+    blocks = {chain: rpc.call("eth_blockNumber") for chain, rpc in daemons.items()}
     listed = json.loads((HERE / "contracts.json").read_text(encoding="utf-8"))
     unchecked = 0
     for entry in listed["contracts"]:
-        url = daemons.get(entry["chainId"])
-        if url is None:
+        rpc = daemons.get(entry["chainId"])
+        if rpc is None:
             unchecked += 1
             continue
-        onchain = "0x" + keccak256(code(url, entry["address"])).hex()
+        where = f"{entry['label']} on {entry['chainId']}"
+        _, onchain = code_hash(rpc, entry["address"], blocks[entry["chainId"]], where)
         if write:
             entry["codeHash"] = onchain
         elif onchain != entry.get("codeHash"):

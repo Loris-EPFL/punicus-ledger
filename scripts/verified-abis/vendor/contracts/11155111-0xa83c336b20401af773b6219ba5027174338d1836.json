@@ -1,0 +1,10 @@
+{
+  "address": "0xa83c336b20401af773b6219ba5027174338d1836",
+  "chainId": 11155111,
+  "compilerVersion": "0.7.6+commit.7338295f",
+  "metadata": "3c2b5663674ee32d46356e1eca74449ecfddba48610bb21363fa060abec749e4",
+  "runtime": "f1f42809763909805becb8a133468b92ba2e5ef6dcc3a7fcdb05a4fd010bc38c",
+  "sources": {
+    "contracts/libraries/MultiSendCallOnly.sol": "36c6643e47f5810294428cfb869133df88444c8c62bf2974b2df164bcd9dca93"
+  }
+}

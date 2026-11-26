@@ -1,0 +1,10 @@
+{
+  "address": "0xb19d6ffc2182150f8eb585b79d4abcd7c5640a9d",
+  "chainId": 1,
+  "compilerVersion": "0.7.6+commit.7338295f",
+  "metadata": "1f1057fb26607c0fb8b62331de2a04bbb7cbbe7ea1c6686080689666ff81085f",
+  "runtime": "cb13db625cef159e0eeef3c2e8ac304273036fe571d0806ac7a3ce77911607c9",
+  "sources": {
+    "contracts/libraries/CreateCall.sol": "061e278a190a1e6b835b15ce6fcaa3668248cf7586b2e90296564d8cca3fad6f"
+  }
+}

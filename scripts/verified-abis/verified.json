@@ -1,6 +1,64 @@
 [
   {
     "chainId": 1,
+    "address": "0x218543288004cd07832472d464648173c77d7eb7",
+    "name": "MultiSend",
+    "codeHash": "0xca1147a12963172a93910c5cb2bfa5ad0e941c7f03fc7eb017dd06a8ea4e5604",
+    "functions": [
+      {
+        "selector": "0x8d80ff0a",
+        "name": "multiSend",
+        "inputs": [
+          {
+            "name": "transactions",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 1,
+    "address": "0x2ef5ecfbea521449e4de05edb1ce63b75eda90b4",
+    "name": "CreateCall",
+    "codeHash": "0x6b7d8d29bdf7004c4617d95041923774f3f7e74b056bff55c1861c9ec92ce54f",
+    "functions": [
+      {
+        "selector": "0x4847be6f",
+        "name": "performCreate2",
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "deploymentData",
+            "type": "bytes"
+          },
+          {
+            "name": "salt",
+            "type": "bytes32"
+          }
+        ]
+      },
+      {
+        "selector": "0x4c8c9ea1",
+        "name": "performCreate",
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "deploymentData",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 1,
     "address": "0x38869bf66a61cf6bdb996a6ae40d5853fd43b526",
     "name": "MultiSend",
     "codeHash": "0x0e4f7fc66550a322d1e7688e181b75e217e662a4f3f4d6a29b22bc61217c4b77",
@@ -29,6 +87,34 @@
         "inputs": [
           {
             "name": "transactions",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 1,
+    "address": "0x4ffef8222648872b3de295ba1e49110e61f5b5aa",
+    "name": "SignMessageLib",
+    "codeHash": "0xd61840855da008da59a00fc03fb71455b4f70bdca1f56f9504f072ed8d90c50e",
+    "functions": [
+      {
+        "selector": "0x0a1028c4",
+        "name": "getMessageHash",
+        "inputs": [
+          {
+            "name": "message",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "selector": "0x85a5affe",
+        "name": "signMessage",
+        "inputs": [
+          {
+            "name": "_data",
             "type": "bytes"
           }
         ]
@@ -397,6 +483,52 @@
   },
   {
     "chainId": 1,
+    "address": "0x98ffbbf51bb33a056b08ddf711f289936aaff717",
+    "name": "SignMessageLib",
+    "codeHash": "0x3ac65dea3cc9dd0d7b7b800f834e3d73415b4e944bb94555c3e4a08fb137e918",
+    "functions": [
+      {
+        "selector": "0x0a1028c4",
+        "name": "getMessageHash",
+        "inputs": [
+          {
+            "name": "message",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "selector": "0x85a5affe",
+        "name": "signMessage",
+        "inputs": [
+          {
+            "name": "_data",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 1,
+    "address": "0x998739bfdaadde7c933b942a68053933098f9eda",
+    "name": "MultiSend",
+    "codeHash": "0x81db0e4afdf5178583537b58c5ad403bd47a4ac7f9bde2442ef3e341d433126a",
+    "functions": [
+      {
+        "selector": "0x8d80ff0a",
+        "name": "multiSend",
+        "inputs": [
+          {
+            "name": "transactions",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 1,
     "address": "0x9b35af71d77eaf8d7e40252370304687390a1a52",
     "name": "CreateCall",
     "codeHash": "0x2b3060c55fcb8275653e99ad511a71f67ba76934ed66a7d74d6e68b52afff889",
@@ -429,6 +561,24 @@
           },
           {
             "name": "deploymentData",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 1,
+    "address": "0xa1dabef33b3b82c7814b6d82a79e50f4ac44102b",
+    "name": "MultiSendCallOnly",
+    "codeHash": "0xa9865ac2d9c7a1591619b188c4d88167b50df6cc0c5327fcbd1c8c75f7c066ad",
+    "functions": [
+      {
+        "selector": "0x8d80ff0a",
+        "name": "multiSend",
+        "inputs": [
+          {
+            "name": "transactions",
             "type": "bytes"
           }
         ]
@@ -483,6 +633,64 @@
   },
   {
     "chainId": 1,
+    "address": "0xa83c336b20401af773b6219ba5027174338d1836",
+    "name": "MultiSendCallOnly",
+    "codeHash": "0xcdbdcec38d2f1c7d961b0029ff8416b7e86e9974d6f0e9c9580c7d17fcfb6663",
+    "functions": [
+      {
+        "selector": "0x8d80ff0a",
+        "name": "multiSend",
+        "inputs": [
+          {
+            "name": "transactions",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 1,
+    "address": "0xb19d6ffc2182150f8eb585b79d4abcd7c5640a9d",
+    "name": "CreateCall",
+    "codeHash": "0x8155d988823a4f6f1bcbc76a64af8e510c4ce68819290d43cf24956bd24dee82",
+    "functions": [
+      {
+        "selector": "0x4847be6f",
+        "name": "performCreate2",
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "deploymentData",
+            "type": "bytes"
+          },
+          {
+            "name": "salt",
+            "type": "bytes32"
+          }
+        ]
+      },
+      {
+        "selector": "0x4c8c9ea1",
+        "name": "performCreate",
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "deploymentData",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 1,
     "address": "0xd53cd0ab83d845ac265be939c57f53ad838012c9",
     "name": "SignMessageLib",
     "codeHash": "0x525c754a46b79e05543a59bb61e8de3c9eee0d955a59352409cbe67ea1077528",
@@ -503,6 +711,24 @@
         "inputs": [
           {
             "name": "_data",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 100,
+    "address": "0x218543288004cd07832472d464648173c77d7eb7",
+    "name": "MultiSend",
+    "codeHash": "0xca1147a12963172a93910c5cb2bfa5ad0e941c7f03fc7eb017dd06a8ea4e5604",
+    "functions": [
+      {
+        "selector": "0x8d80ff0a",
+        "name": "multiSend",
+        "inputs": [
+          {
+            "name": "transactions",
             "type": "bytes"
           }
         ]
@@ -841,6 +1067,46 @@
           {
             "name": "newOwner",
             "type": "address"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 100,
+    "address": "0x2ef5ecfbea521449e4de05edb1ce63b75eda90b4",
+    "name": "CreateCall",
+    "codeHash": "0x6b7d8d29bdf7004c4617d95041923774f3f7e74b056bff55c1861c9ec92ce54f",
+    "functions": [
+      {
+        "selector": "0x4847be6f",
+        "name": "performCreate2",
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "deploymentData",
+            "type": "bytes"
+          },
+          {
+            "name": "salt",
+            "type": "bytes32"
+          }
+        ]
+      },
+      {
+        "selector": "0x4c8c9ea1",
+        "name": "performCreate",
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "deploymentData",
+            "type": "bytes"
           }
         ]
       }
@@ -1451,6 +1717,34 @@
   },
   {
     "chainId": 100,
+    "address": "0x4ffef8222648872b3de295ba1e49110e61f5b5aa",
+    "name": "SignMessageLib",
+    "codeHash": "0xd61840855da008da59a00fc03fb71455b4f70bdca1f56f9504f072ed8d90c50e",
+    "functions": [
+      {
+        "selector": "0x0a1028c4",
+        "name": "getMessageHash",
+        "inputs": [
+          {
+            "name": "message",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "selector": "0x85a5affe",
+        "name": "signMessage",
+        "inputs": [
+          {
+            "name": "_data",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 100,
     "address": "0x7cbb62eaa69f79e6873cd1ecb2392971036cfaa4",
     "name": "CreateCall",
     "codeHash": "0x8155d988823a4f6f1bcbc76a64af8e510c4ce68819290d43cf24956bd24dee82",
@@ -1509,6 +1803,52 @@
   },
   {
     "chainId": 100,
+    "address": "0x98ffbbf51bb33a056b08ddf711f289936aaff717",
+    "name": "SignMessageLib",
+    "codeHash": "0x3ac65dea3cc9dd0d7b7b800f834e3d73415b4e944bb94555c3e4a08fb137e918",
+    "functions": [
+      {
+        "selector": "0x0a1028c4",
+        "name": "getMessageHash",
+        "inputs": [
+          {
+            "name": "message",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "selector": "0x85a5affe",
+        "name": "signMessage",
+        "inputs": [
+          {
+            "name": "_data",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 100,
+    "address": "0x998739bfdaadde7c933b942a68053933098f9eda",
+    "name": "MultiSend",
+    "codeHash": "0x81db0e4afdf5178583537b58c5ad403bd47a4ac7f9bde2442ef3e341d433126a",
+    "functions": [
+      {
+        "selector": "0x8d80ff0a",
+        "name": "multiSend",
+        "inputs": [
+          {
+            "name": "transactions",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 100,
     "address": "0x9b35af71d77eaf8d7e40252370304687390a1a52",
     "name": "CreateCall",
     "codeHash": "0x2b3060c55fcb8275653e99ad511a71f67ba76934ed66a7d74d6e68b52afff889",
@@ -1541,6 +1881,24 @@
           },
           {
             "name": "deploymentData",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 100,
+    "address": "0xa1dabef33b3b82c7814b6d82a79e50f4ac44102b",
+    "name": "MultiSendCallOnly",
+    "codeHash": "0xa9865ac2d9c7a1591619b188c4d88167b50df6cc0c5327fcbd1c8c75f7c066ad",
+    "functions": [
+      {
+        "selector": "0x8d80ff0a",
+        "name": "multiSend",
+        "inputs": [
+          {
+            "name": "transactions",
             "type": "bytes"
           }
         ]
@@ -1595,6 +1953,64 @@
   },
   {
     "chainId": 100,
+    "address": "0xa83c336b20401af773b6219ba5027174338d1836",
+    "name": "MultiSendCallOnly",
+    "codeHash": "0xcdbdcec38d2f1c7d961b0029ff8416b7e86e9974d6f0e9c9580c7d17fcfb6663",
+    "functions": [
+      {
+        "selector": "0x8d80ff0a",
+        "name": "multiSend",
+        "inputs": [
+          {
+            "name": "transactions",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 100,
+    "address": "0xb19d6ffc2182150f8eb585b79d4abcd7c5640a9d",
+    "name": "CreateCall",
+    "codeHash": "0x8155d988823a4f6f1bcbc76a64af8e510c4ce68819290d43cf24956bd24dee82",
+    "functions": [
+      {
+        "selector": "0x4847be6f",
+        "name": "performCreate2",
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "deploymentData",
+            "type": "bytes"
+          },
+          {
+            "name": "salt",
+            "type": "bytes32"
+          }
+        ]
+      },
+      {
+        "selector": "0x4c8c9ea1",
+        "name": "performCreate",
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "deploymentData",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 100,
     "address": "0xd53cd0ab83d845ac265be939c57f53ad838012c9",
     "name": "SignMessageLib",
     "codeHash": "0x525c754a46b79e05543a59bb61e8de3c9eee0d955a59352409cbe67ea1077528",
@@ -1615,6 +2031,64 @@
         "inputs": [
           {
             "name": "_data",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 11155111,
+    "address": "0x218543288004cd07832472d464648173c77d7eb7",
+    "name": "MultiSend",
+    "codeHash": "0xca1147a12963172a93910c5cb2bfa5ad0e941c7f03fc7eb017dd06a8ea4e5604",
+    "functions": [
+      {
+        "selector": "0x8d80ff0a",
+        "name": "multiSend",
+        "inputs": [
+          {
+            "name": "transactions",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 11155111,
+    "address": "0x2ef5ecfbea521449e4de05edb1ce63b75eda90b4",
+    "name": "CreateCall",
+    "codeHash": "0x6b7d8d29bdf7004c4617d95041923774f3f7e74b056bff55c1861c9ec92ce54f",
+    "functions": [
+      {
+        "selector": "0x4847be6f",
+        "name": "performCreate2",
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "deploymentData",
+            "type": "bytes"
+          },
+          {
+            "name": "salt",
+            "type": "bytes32"
+          }
+        ]
+      },
+      {
+        "selector": "0x4c8c9ea1",
+        "name": "performCreate",
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "deploymentData",
             "type": "bytes"
           }
         ]
@@ -1651,6 +2125,34 @@
         "inputs": [
           {
             "name": "transactions",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 11155111,
+    "address": "0x4ffef8222648872b3de295ba1e49110e61f5b5aa",
+    "name": "SignMessageLib",
+    "codeHash": "0xd61840855da008da59a00fc03fb71455b4f70bdca1f56f9504f072ed8d90c50e",
+    "functions": [
+      {
+        "selector": "0x0a1028c4",
+        "name": "getMessageHash",
+        "inputs": [
+          {
+            "name": "message",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "selector": "0x85a5affe",
+        "name": "signMessage",
+        "inputs": [
+          {
+            "name": "_data",
             "type": "bytes"
           }
         ]
@@ -2019,6 +2521,52 @@
   },
   {
     "chainId": 11155111,
+    "address": "0x98ffbbf51bb33a056b08ddf711f289936aaff717",
+    "name": "SignMessageLib",
+    "codeHash": "0x3ac65dea3cc9dd0d7b7b800f834e3d73415b4e944bb94555c3e4a08fb137e918",
+    "functions": [
+      {
+        "selector": "0x0a1028c4",
+        "name": "getMessageHash",
+        "inputs": [
+          {
+            "name": "message",
+            "type": "bytes"
+          }
+        ]
+      },
+      {
+        "selector": "0x85a5affe",
+        "name": "signMessage",
+        "inputs": [
+          {
+            "name": "_data",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 11155111,
+    "address": "0x998739bfdaadde7c933b942a68053933098f9eda",
+    "name": "MultiSend",
+    "codeHash": "0x81db0e4afdf5178583537b58c5ad403bd47a4ac7f9bde2442ef3e341d433126a",
+    "functions": [
+      {
+        "selector": "0x8d80ff0a",
+        "name": "multiSend",
+        "inputs": [
+          {
+            "name": "transactions",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 11155111,
     "address": "0x9b35af71d77eaf8d7e40252370304687390a1a52",
     "name": "CreateCall",
     "codeHash": "0x2b3060c55fcb8275653e99ad511a71f67ba76934ed66a7d74d6e68b52afff889",
@@ -2051,6 +2599,24 @@
           },
           {
             "name": "deploymentData",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 11155111,
+    "address": "0xa1dabef33b3b82c7814b6d82a79e50f4ac44102b",
+    "name": "MultiSendCallOnly",
+    "codeHash": "0xa9865ac2d9c7a1591619b188c4d88167b50df6cc0c5327fcbd1c8c75f7c066ad",
+    "functions": [
+      {
+        "selector": "0x8d80ff0a",
+        "name": "multiSend",
+        "inputs": [
+          {
+            "name": "transactions",
             "type": "bytes"
           }
         ]
@@ -2097,6 +2663,64 @@
         "inputs": [
           {
             "name": "_data",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 11155111,
+    "address": "0xa83c336b20401af773b6219ba5027174338d1836",
+    "name": "MultiSendCallOnly",
+    "codeHash": "0xcdbdcec38d2f1c7d961b0029ff8416b7e86e9974d6f0e9c9580c7d17fcfb6663",
+    "functions": [
+      {
+        "selector": "0x8d80ff0a",
+        "name": "multiSend",
+        "inputs": [
+          {
+            "name": "transactions",
+            "type": "bytes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "chainId": 11155111,
+    "address": "0xb19d6ffc2182150f8eb585b79d4abcd7c5640a9d",
+    "name": "CreateCall",
+    "codeHash": "0x8155d988823a4f6f1bcbc76a64af8e510c4ce68819290d43cf24956bd24dee82",
+    "functions": [
+      {
+        "selector": "0x4847be6f",
+        "name": "performCreate2",
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "deploymentData",
+            "type": "bytes"
+          },
+          {
+            "name": "salt",
+            "type": "bytes32"
+          }
+        ]
+      },
+      {
+        "selector": "0x4c8c9ea1",
+        "name": "performCreate",
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "deploymentData",
             "type": "bytes"
           }
         ]

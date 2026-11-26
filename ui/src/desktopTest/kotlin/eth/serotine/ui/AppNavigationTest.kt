@@ -1,5 +1,7 @@
 package eth.serotine.ui
 
+import eth.serotine.domain.repository.CallTraces
+import eth.serotine.domain.repository.CallTraceReading
 import eth.serotine.domain.model.PrivateKey
 import eth.serotine.domain.repository.PrivateKeys
 import androidx.compose.foundation.layout.Box
@@ -343,6 +345,8 @@ class AppNavigationTest {
         Long.MAX_VALUE / 2,
     )
 
+    private val traceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
+
     private val graph = AppGraph(
         accounts = accountRepository,
         outbox = Outbox.None,
@@ -444,6 +448,13 @@ class AppNavigationTest {
             override suspend fun read(network: Network, address: Address, pin: CodePin): CodeReading =
                 CodeReading.Unavailable(ReadUnavailable.NO_ENGINE)
         },
+        callTraces = object : CallTraces {
+            override suspend fun trace(network: Network, from: Address, to: Address, value: UInt256, data: ByteArray) =
+                CallTraceReading.Unavailable(ReadUnavailable.NO_ENGINE)
+        },
+        wrappedCurrency = { null },
+        // A scope of its own: nothing here traces, the engine answering that there is none.
+        traceScope = traceScope,
         cowChain = object : CowChain {
             override suspend fun venue(network: Network): CowVenueReading = CowVenueReading.NotPinned
 

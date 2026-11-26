@@ -25,6 +25,7 @@ class DappTransactionScreenTest {
     private var sends = 0
     private var refusals = 0
     private var requotes = 0
+    private var retraces = 0
 
     private fun show(state: DappTransactionUiState) = rule.setContent {
         SerotineTheme {
@@ -35,6 +36,7 @@ class DappTransactionScreenTest {
                 onSendWithBiometrics = {},
                 onRetry = {},
                 onRequote = { requotes++ },
+                onRetrace = { retraces++ },
                 onRefuse = { refusals++ },
                 onDismissExplanation = {},
                 onBack = {},
@@ -65,6 +67,25 @@ class DappTransactionScreenTest {
         assertEquals(listOf("pw"), typed)
         rule.onNodeWithTag(DAPP_TRANSACTION_REFUSE_TAG).performScrollTo().performClick()
         assertEquals(1, refusals)
+    }
+
+    @Test
+    fun aTraceThatDisagreesIsSaidInItsSectionAndBesideSendWhichStaysAsItIs() {
+        val warning = "USDC ends up with 0x9999999999999999999999999999999999999999, an address this call does not show."
+        show(state.copy(trace = eth.serotine.ui.components.TraceSection(provenAt = "Proven at block 1.", warnings = listOf(warning))))
+
+        rule.onNodeWithText("• $warning").performScrollTo().assertExists()
+        rule.onNodeWithText(eth.serotine.ui.components.TraceText.DISAGREES_NEAR_SIGN).performScrollTo().assertExists()
+        rule.onNodeWithTag(DAPP_TRANSACTION_PASSWORD_TAG).performScrollTo().assertExists()
+    }
+
+    @Test
+    fun aTraceNotHadOffersTryAgainWhichTracesAnew() {
+        show(state.copy(trace = eth.serotine.ui.components.TraceSection(notTraced = "Not traced: no answer.", canRetry = true)))
+
+        rule.onNodeWithText("Not traced: no answer.").performScrollTo().assertExists()
+        rule.onNodeWithText("Try again").performScrollTo().performClick()
+        assertEquals(1, retraces)
     }
 
     @Test

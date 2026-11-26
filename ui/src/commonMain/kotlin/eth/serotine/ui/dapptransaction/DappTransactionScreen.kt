@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -42,6 +43,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eth.serotine.domain.model.AccountId
 import eth.serotine.ui.components.Blockie
 import eth.serotine.ui.components.ClearSignedDescription
+import eth.serotine.ui.components.TraceText
+import eth.serotine.ui.components.TracedEffects
 import eth.serotine.ui.components.NotSentFields
 import eth.serotine.ui.components.Unavailable
 import eth.serotine.ui.components.UnavailableDialog
@@ -97,6 +100,7 @@ fun DappTransactionRoute(
         onSendWithBiometrics = viewModel::sendWithBiometrics,
         onRetry = viewModel::retry,
         onRequote = { viewModel.requote() },
+        onRetrace = { viewModel.retrace() },
         onRefuse = viewModel::refuse,
         onDismissExplanation = viewModel::dismissExplanation,
         onOpenQueued = { state.queued?.let { open(it) } },
@@ -122,6 +126,7 @@ fun DappTransactionScreen(
     onSendWithBiometrics: () -> Unit,
     onRetry: () -> Unit,
     onRequote: () -> Unit,
+    onRetrace: () -> Unit = {},
     onRefuse: () -> Unit,
     onDismissExplanation: () -> Unit,
     onBack: () -> Unit,
@@ -197,6 +202,7 @@ fun DappTransactionScreen(
             state.notDescribed?.let {
                 Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.error)
             }
+            state.trace?.let { TracedEffects(it, onRetrace) }
             state.dataHex?.let { hex ->
                 Text(
                     "Call data (${state.dataSize})" + when {
@@ -261,6 +267,15 @@ fun DappTransactionScreen(
                 style = MaterialTheme.typography.bodySmall,
             )
             state.notice?.let { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
+            // Loud beside the button too, which stays as it is: a disagreement is warned about, never a block.
+            if (state.trace?.warnings?.isNotEmpty() == true && state.queued == null) {
+                Text(
+                    TraceText.DISAGREES_NEAR_SIGN,
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val notSent = state.notSent
                 when {

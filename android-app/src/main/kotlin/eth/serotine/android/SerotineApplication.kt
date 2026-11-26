@@ -1,5 +1,6 @@
 package eth.serotine.android
 
+import eth.serotine.data.swaps.WrappedCurrency
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.Application
@@ -501,6 +502,9 @@ class SerotineApplication : Application() {
             uniswap = node.uniswap,
             clearSigningCatalog = BuiltInClearSigningCatalog(),
             contractCodes = node.contractCodes,
+            callTraces = node.callTraces,
+            wrappedCurrency = WrappedCurrency::of,
+            traceScope = scope,
             // CoW Protocol: its pinned contracts proven by their code, and its order API, an off-chain
             // service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*).
             cowChain = node.cow,

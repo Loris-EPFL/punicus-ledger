@@ -14,6 +14,10 @@ import eth.serotine.domain.model.Network
 import eth.serotine.domain.model.Token
 import eth.serotine.domain.model.UInt256
 import eth.serotine.domain.model.Wei
+import eth.serotine.domain.repository.CallTraceReading
+import eth.serotine.domain.model.TraceFrame
+import eth.serotine.domain.model.TraceLog
+import eth.serotine.ui.components.TraceText
 import eth.serotine.domain.repository.BalanceReading
 import eth.serotine.domain.repository.Broadcast
 import eth.serotine.domain.repository.DappAsk
@@ -142,6 +146,8 @@ class DappTransactionViewModelTest {
     )
     private var deployments: Array<ClearSigningDeployment> = emptyArray()
     private var throwing = false
+    private var traceAnswer: CallTraceReading = CallTraceReading.NotTraced
+    private var traceWaits: suspend () -> Unit = {}
     private var counting: () -> Unit = {}
 
     private fun TestScope.viewModel(id: Long = 1): DappTransactionViewModel {
@@ -151,6 +157,10 @@ class DappTransactionViewModelTest {
             "t/$id",
             ObserveDappMessages(requests, accounts, networks, catalog, MemoryAliases(), clock = { now }),
             if (throwing) describingThat(throws = IllegalStateException("engine")) else describing(catalog, *deployments, onRead = counting),
+            tracing(catalog, backgroundScope) {
+                traceWaits()
+                traceAnswer
+            },
             QuoteDappTransaction(
                 requests, accounts, networks, catalog, balances, inputs, sent, history, Outbox.None, clock = { now },
             ),
@@ -167,6 +177,7 @@ class DappTransactionViewModelTest {
             clock = { now },
             timeSource = clock,
             ticks = kotlinx.coroutines.flow.flowOf(Unit),
+            formatOn = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         backgroundScope.launch { vm.uiState.collect {} }
         runCurrent()
@@ -348,6 +359,96 @@ class DappTransactionViewModelTest {
         vm.send()
         assertEquals("Cannot be sent", vm.uiState.value.explaining?.title)
         assertTrue(signer.asked.isEmpty())
+    }
+
+    @Test
+    fun aTraceThatSendsTheTokensElsewhereIsWarnedAboutAndTheCallStaysSignable() = runTest {
+        val thief = Address.of("0x" + "99".repeat(20))
+        val transfer = DappTransactionRequest(held.address, usdc.address, UInt256.ZERO, Erc20.transferData(recipient, UInt256.of(25_000_000)), null)
+        requests.waiting.value = listOf(request(1, transfer))
+        traceAnswer = CallTraceReading.Traced(
+            TraceFrame(
+                TraceFrame.Type.CALL, held.address, usdc.address, UInt256.ZERO,
+                logs = listOf(
+                    TraceLog(
+                        usdc.address,
+                        listOf(
+                            "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                            "0".repeat(24) + held.address.hex.removePrefix("0x"),
+                            "0".repeat(24) + thief.hex.removePrefix("0x"),
+                        ),
+                        "0".repeat(57) + "17d7840",
+                    ),
+                ),
+            ),
+            123,
+        )
+        val trace = viewModel().uiState.value.trace!!
+        assertEquals("Proven at block 123, at the verified head: what it does now, not when it is mined.", trace.provenAt)
+        assertEquals(listOf("Sends 25 USDC to 0x9999999999999999999999999999999999999999"), trace.moves)
+        assertEquals(
+            listOf("USDC ends up with 0x9999999999999999999999999999999999999999, an address this call does not show."),
+            trace.warnings,
+        )
+        assertFalse(viewModel().uiState.value.sendUnavailable)
+    }
+
+    private fun revertsAt(block: Long) = CallTraceReading.Traced(
+        TraceFrame(TraceFrame.Type.CALL, held.address, recipient, UInt256.of("500000000000000000"), error = "execution reverted"),
+        block,
+    )
+
+    @Test
+    fun aRevertTheQuotedRunDidNotShowIsWarnedAboutByWhetherTheBlocksDiffer() = runTest {
+        requests.waiting.value = listOf(request(1, payment))
+        // The quote ran at block 100 (the fake's head).
+        traceAnswer = revertsAt(101)
+        assertEquals(TraceText.REVERTS_UNLIKE_RUN, viewModel().uiState.value.trace!!.warnings.single())
+        traceAnswer = revertsAt(100)
+        assertEquals(TraceText.REVERTS_AT_THE_RUNS_BLOCK, viewModel().uiState.value.trace!!.warnings.single())
+    }
+
+    @Test
+    fun aDisagreementStaysShownWhileTheCallIsTracedAgain() = runTest {
+        val thief = Address.of("0x" + "99".repeat(20))
+        val transfer = DappTransactionRequest(held.address, usdc.address, UInt256.ZERO, Erc20.transferData(recipient, UInt256.of(25_000_000)), null)
+        requests.waiting.value = listOf(request(1, transfer))
+        traceAnswer = CallTraceReading.Traced(
+            TraceFrame(
+                TraceFrame.Type.CALL, held.address, usdc.address, UInt256.ZERO,
+                logs = listOf(
+                    TraceLog(
+                        usdc.address,
+                        listOf(
+                            "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                            "0".repeat(24) + held.address.hex.removePrefix("0x"),
+                            "0".repeat(24) + thief.hex.removePrefix("0x"),
+                        ),
+                        "0".repeat(57) + "17d7840",
+                    ),
+                ),
+            ),
+            123,
+        )
+        val vm = viewModel()
+        assertEquals(1, vm.uiState.value.trace!!.warnings.size)
+        // The next trace waits; meanwhile the last one, and its warning, stay.
+        val next = kotlinx.coroutines.CompletableDeferred<Unit>()
+        traceWaits = { next.await() }
+        vm.retrace()
+        runCurrent()
+        val meanwhile = vm.uiState.value.trace!!
+        assertTrue(meanwhile.tracing)
+        assertEquals(1, meanwhile.warnings.size)
+        next.complete(Unit)
+        runCurrent()
+        assertFalse(vm.uiState.value.trace!!.tracing)
+    }
+
+    @Test
+    fun aDeviceThatTracesNothingSaysSo() = runTest {
+        requests.waiting.value = listOf(request(1, payment))
+        assertEquals(TraceText.NOT_TRACED_HERE, viewModel().uiState.value.trace?.notTraced)
     }
 
     @Test

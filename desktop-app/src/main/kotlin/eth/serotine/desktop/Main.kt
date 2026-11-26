@@ -1,7 +1,9 @@
 package eth.serotine.desktop
 
+import eth.serotine.data.swaps.WrappedCurrency
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.dp
@@ -496,6 +498,8 @@ private fun openWallet(dataDir: File) {
                 }
             }
         }
+        // The window's for as long as the app runs: a trace a screen stopped waiting for goes on in it.
+        val appScope = rememberCoroutineScope()
         val graph = remember {
             // A Mac's Secure Enclave where the wallet uses it or can start to, the password
             // alone otherwise, and on Windows and Linux saying that their TPM is not used yet
@@ -556,6 +560,9 @@ private fun openWallet(dataDir: File) {
                 uniswap = node.uniswap,
                 clearSigningCatalog = BuiltInClearSigningCatalog(),
                 contractCodes = node.contractCodes,
+                callTraces = node.callTraces,
+                wrappedCurrency = WrappedCurrency::of,
+                traceScope = appScope,
                 // CoW Protocol: its pinned contracts proven by their code, and its order API, an
                 // off-chain service used only for a swap the user sends to CoW (CLAUDE.md, *Data sources*).
                 cowChain = node.cow,
